@@ -1,0 +1,22 @@
+[project]
+name = "mvgeos-tome"
+version = "0.1.0"
+description = "Session persistence using JSONL storage with file locking and in-memory index"
+requires-python = ">=3.14"
+license = {text = "MIT"}
+dependencies = [
+    "filelock>=3.14",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+extend = "../../../pyproject.toml"

@@ -1,0 +1,23 @@
+from mvgeos_provider.base import Realm
+from mvgeos_provider.types import Model
+
+
+def test_realm_protocol_has_stream_method() -> None:
+    assert hasattr(Realm, "stream")
+
+
+def test_model_has_required_fields() -> None:
+    model = Model(
+        id="openrouter/test-model",
+        name="Test Model",
+        realm="openrouter",
+        provider="openrouter",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="test-key",
+        mana_limit=1000,
+        context_window=128000,
+        max_tokens=4096,
+    )
+    assert model.id == "openrouter/test-model"
+    assert model.realm == "openrouter"
+    assert model.mana_limit == 1000
