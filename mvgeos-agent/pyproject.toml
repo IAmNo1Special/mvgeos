@@ -32,4 +32,4 @@ build-backend = "hatchling.build"
 packages = ["mvgeos_agent"]
 
 [tool.ruff]
-extend = "../../../pyproject.toml"
+extend = "../pyproject.toml"
