@@ -4,18 +4,17 @@
 
 ```text
 mvgeos/
-├── src/mvgeos/
-│   ├── mvgeos-agent/     # Core Mvge loop, invocations, state, spell execution
-│   ├── mvgeos-provider/  # Realm protocol + repository of realms
-│   ├── mvgeos-tome/      # JSONL session persistence with locking + index
-│   ├── mvgeos-spells/    # Spell implementations (bash, read, edit, write, grep, find, ls)
-│   ├── mvgeos-runes/     # Extension manifest, loader, sigil hooks
-│   └── mvgeos-cli/       # CLI entry point (mvgeos command)
+├── mvgeos-agent/         # Core Mvge loop, invocations, state, spell execution
+├── mvgeos-provider/      # Realm protocol + repository of realms
+├── mvgeos-tome/          # JSONL session persistence with locking + index
+├── mvgeos-spells/        # Spell implementations (bash, read, edit, write, grep, find, ls)
+├── mvgeos-runes/         # Extension manifest, loader, sigil hooks
+├── mvgeos-cli/           # CLI entry point (mvgeos command)
 ├── .agents/mvgeos/       # dotagents protocol compliance
 │   ├── extensions/       # Extension runes
 │   ├── sessions/         # Tome JSONL files
 │   └── auth/             # Relics
-└── adr/                  # Architecture Decision Records
+└── docs/adr/             # Architecture Decision Records
 ```
 
 ## Component Map

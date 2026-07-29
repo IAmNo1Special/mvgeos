@@ -9,14 +9,14 @@ MvgeOS is a Python-based AI coding agent inspired by the pi project, built with 
 ### Monorepo Structure (uv workspaces)
 
 ```
-src/mvgeos/                    # Root namespace package
+mvgeos/
 ├── mvgeos-agent/             # Core agent loop, state, types
 ├── mvgeos-provider/          # Realm protocol + OpenRouter provider
 ├── mvgeos-tome/              # JSONL session persistence with file locking
 ├── mvgeos-spells/            # Spell implementations (tools)
 ├── mvgeos-runes/             # Extension system (manifest, loader, sigils)
 ├── mvgeos-cli/               # CLI entry point
-└── __init__.py               # Root package
+└── pyproject.toml            # Root workspace config
 ```
 
 ### Package Details
@@ -321,111 +321,32 @@ All 7 spells implemented:
 
 ## Remaining Work (Priority Order)
 
-### 1. Complete mvgeos-spells ✅
+### 1. Implement zerocontext Rune (planned)
 
-**File**: `src/mvgeos/mvgeos-spells/src/mvgeos_spells/__init__.py`
+**ADR**: `docs/adr/0007-zerocontext-as-rune.md`
 
-Add exports:
-```python
-from mvgeos_spells.casting import cast_bash
-from mvgeos_spells.reading import cast_read
-from mvgeos_spells.writing import cast_write
-from mvgeos_spells.editing import cast_edit
-from mvgeos_spells.finding import cast_find
-from mvgeos_spells.listing import cast_list
-from mvgeos_spells.grep import cast_grep
+Port the zerocontext skill system as an mvgeos-runes extension:
 
-__all__ = [
-    "cast_bash",
-    "cast_read",
-    "cast_write",
-    "cast_edit",
-    "cast_find",
-    "cast_list",
-    "cast_grep",
-]
-```
+- `mvgeos-runes`: loader, manifest, sigils (prereq) ✅
+- `zerocontext` rune package structure
+  - `zerocontext_registry.py` — port with frozen-skill fix (ADR #6)
+  - `zerocontext_toolset.py` — port with `execute_capability` rename (ADR #2)
+  - `zerocontext_tool.py` — fix phantom `execute_capability` reference
+  - `tools.py` — `CapabilityExecutor`, `ActivateSkillTool`, `RunSkillScriptTool`
+  - `batch_executor.py` — `ExecuteCapabilityTool` (renamed), input copy fix (ADR #8)
+  - `wrappers.py` — **remove** `BudgetEnforcingSpellWrapper` (ADR #5, #10)
+  - `__init__.py` — exports
+- `ZEROCONTEXT_DISCOVERY_INSTRUCTION` rewrite (ADR #3)
+- `prune_ephemeral_schemas` key fix (ADR #1)
+- `zerocontext` rune manifest + entry point
+- Integration tests: rune load → toolset → harness
+- Wire into MvgeLoop via rune loader (not hardcoded)
 
-**Tests needed** (each in `tests/test_<spell>.py`):
-- test_cast_read: read existing, read non-existent, encoding
-- test_cast_write: write new, overwrite, create dirs
-- test_cast_edit: exact match, no match, multiple occurrences
-- test_cast_find: pattern match, no match, recursive
-- test_cast_list: non-recursive, recursive, non-existent
-- test_cast_grep: content match, line numbers, output modes
+### Open Decisions (from ADR)
 
-### 2. Implement OpenRouterRealm (mvgeos-provider/openrouter.py) ✅
-
-**Requirements**:
-- Real HTTP streaming to OpenRouter API (`https://openrouter.ai/api/v1/chat/completions`)
-- Handle: tool calls (function calling), content streaming, stop reasons
-- Map MvgeInvocation history to OpenAI-compatible messages
-- Proper error handling: retries, timeouts, rate limits
-- Mana tracking from response headers
-- Async iteration yielding `RealmResponse` objects
-
-**Key methods**:
-```python
-async def stream(
-    self,
-    model: Model,
-    invocations: list[MvgeInvocation],
-    config: ChannelConfig,
-) -> AsyncIterator[RealmResponse]:
-    # Build messages from invocations
-    # POST to /chat/completions with stream=True
-    # Parse SSE stream
-    # Yield RealmResponse for each chunk
-```
-
-**Tests needed**:
-- Mock HTTP responses, test tool call parsing, content streaming, error handling
-
-### 3. Implement mvgeos-runes ✅
-
-**Files to implement**:
-- `src/mvgeos/mvgeos-runes/src/mvgeos_runes/loader.py` - `RuneLoader`
-  - `discover_runes(paths: list[Path]) -> list[RuneManifest]`
-  - `load_rune(manifest: RuneManifest) -> ModuleType`
-  - Validate entry points, hooks
-
-- `src/mvgeos/mvgeos-runes/src/mvgeos_runes/manifest.py` - `load_manifest(path: Path) -> RuneManifest`
-  - Parse JSON manifest, validate schema
-
-- `src/mvgeos/mvgeos-runes/src/mvgeos_runes/sigils.py` - `SigilRegistry`
-  - `register(hook: SigilHook, handler: Callable) -> None`
-  - `emit(hook: SigilHook, data: Any) -> None`
-  - Handle async/sync handlers
-
-**Tests needed**: Discovery, loading, hook registration/emission, error cases
-
-### 4. Implement mvgeos-cli Commands ✅
-
-**Files to implement**:
-- `src/mvgeos/mvgeos-cli/src/mvgeos/commands/prompt.py` - `prompt` command
-  - `async def prompt(incantation: str, config: Config) -> None`
-  - Create MvgeState, load spells, create Realm, run MvgeLoop
-  - Handle streaming output to console
-
-- `src/mvgeos/mvgeos-cli/src/mvgeos/commands/tome.py` - `tome` command
-  - `tome list` - List all sessions
-  - `tome show <id>` - Show session details
-  - `tome export <id> <format>` - Export to JSON/Markdown
-
-- `src/mvgeos/mvgeos-cli/src/mvgeos/commands/config.py` - `config` command
-  - `config show` - Display current config
-  - `config set <key> <value>` - Set config value
-  - Config file at `.agents/mvgeos/config.json`
-
-**Main entry**: `src/mvgeos/mvgeos-cli/src/mvgeos/main.py`
-```python
-def main() -> None:
-    app = typer.Typer()
-    app.add_typer(prompt_app, name="prompt")
-    app.add_typer(tome_app, name="tome")
-    app.add_typer(config_app, name="config")
-    app()
-```
+- Capability threshold config (`rune_config.capability_threshold`)
+- DCI-style `grep`/`read` tools for skill drilling (ADR #4)
+- Keyword scoring → dual-match embeddings (ADR #3)
 
 ## Configuration
 

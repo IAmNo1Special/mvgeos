@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **ci:** release workflow only triggers on tags not every push (cb1a924)
 
+- **ci:** update handoff, distill, git-workflow skills - remove project-specific code (a9c8c68)
+
 
 ### Chores
 
