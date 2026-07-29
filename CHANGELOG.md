@@ -12,6 +12,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - generate CHANGELOG.md for v0.1.0-dev (6adae86)
 
+- **agent:** update package configuration (571d7ee)
+
+- **root:** update repository URL (3114faa)
+
+- **root:** fix test collection for monorepo (4425530)
+
+- **ci:** trigger workflow run (f773b4e)
+
+- **ci:** track uv.lock for CI caching (b43460c)
+
+- **ci:** fix test package installation and mypy target (55b99b5)
+
+- **root:** remove invalid hatch build config (d3bb80f)
+
+- **ci:** fix workspace package installation with --all-packages (a19c19d)
+
+- **provider:** track uv.lock for CI caching (1fc3c06)
+
+
+### Documentation
+
+- **root:** update documentation and configuration (cd64ef5)
+
+
+### Refactoring
+
+- **cli:** restructure to flat layout (3d9e050)
+
+- **provider:** update provider implementation (3f2b8a5)
+
+- **runes:** restructure to flat layout (36536ca)
+
+- **spells:** restructure to flat layout (38b62a9)
+
+- **tome:** restructure to flat layout (6789b1f)
+
 
 ## [0.1.0-dev] - 2026-07-28
 
