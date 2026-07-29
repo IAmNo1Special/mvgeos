@@ -22,24 +22,32 @@ def _invocations_to_messages(invocations: list[Any]) -> list[dict[str, Any]]:
                         text_content = block.get("text", "")
                         messages.append({"role": "assistant", "content": text_content})
                     elif block.get("type") == "tool_use":
-                        messages.append({
-                            "role": "assistant",
-                            "content": None,
-                            "tool_calls": [{
-                                "id": block.get("id", ""),
-                                "type": "function",
-                                "function": {
-                                    "name": block.get("name", ""),
-                                    "arguments": json.dumps(block.get("input", {}))
-                                }
-                            }]
-                        })
+                        messages.append(
+                            {
+                                "role": "assistant",
+                                "content": None,
+                                "tool_calls": [
+                                    {
+                                        "id": block.get("id", ""),
+                                        "type": "function",
+                                        "function": {
+                                            "name": block.get("name", ""),
+                                            "arguments": json.dumps(
+                                                block.get("input", {})
+                                            ),
+                                        },
+                                    }
+                                ],
+                            }
+                        )
         elif hasattr(inv, "role") and inv.role == "spellResult":
-            messages.append({
-                "role": "tool",
-                "tool_call_id": getattr(inv, "spell_cast_id", ""),
-                "content": inv.content[0].get("text", "") if inv.content else ""
-            })
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": getattr(inv, "spell_cast_id", ""),
+                    "content": inv.content[0].get("text", "") if inv.content else "",
+                }
+            )
     return messages
 
 
@@ -87,16 +95,16 @@ class OpenRouterRealm(Realm):
             content_type = response.headers.get("content-type", "")
             is_json = content_type.startswith("application/json")
             error_data = response.json() if is_json else {}
-            yield RealmResponse(
-                model=model,
-                error_message=error_data.get("error", {}).get("message", f"HTTP {response.status_code}"),
+            msg = error_data.get("error", {}).get(
+                "message", f"HTTP {response.status_code}"
             )
+            yield RealmResponse(model=model, error_message=msg)
             return
 
         async for line in response.aiter_lines():
             if not line:
                 continue
-            line_str = line
+            line_str = line if isinstance(line, str) else line.decode("utf-8")
             if not line_str.startswith("data: "):
                 continue
             data = line_str[6:]
@@ -122,13 +130,16 @@ class OpenRouterRealm(Realm):
                 if tool_calls:
                     for tc in tool_calls:
                         func = tc.get("function", {})
-                        blocks.append({
-                            "type": "tool_use",
-                            "id": tc.get("id", ""),
-                            "name": func.get("name", ""),
-                            "input": json.loads(func.get("arguments", "{}"))
-                        })
+                        blocks.append(
+                            {
+                                "type": "tool_use",
+                                "id": tc.get("id", ""),
+                                "name": func.get("name", ""),
+                                "input": json.loads(func.get("arguments", "{}")),
+                            }
+                        )
                 from mvgeos_agent.types import MvgeResponse
+
                 invocation = MvgeResponse(
                     role="assistant",
                     content=blocks,

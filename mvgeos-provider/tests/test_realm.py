@@ -63,11 +63,16 @@ def test_openrouter_realm_stream_builds_correct_messages() -> None:
     ]
 
     mock_response = MagicMock()
-    mock_response.aiter_lines.return_value = AsyncIterator([
-        b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
-        (b'data: {"choices":[{"delta":{"content":" world"},"finish_reason":"stop"}]}\n\n'),
-        b'data: [DONE]\n\n',
-    ])
+    mock_response.aiter_lines.return_value = AsyncIterator(
+        [
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
+            (
+                b'data: {"choices":[{"delta":{"content":" world"},'
+                b'"finish_reason":"stop"}]}\n\n'
+            ),
+            b"data: [DONE]\n\n",
+        ]
+    )
     mock_response.raise_for_status = MagicMock()
     mock_response.headers = {}
     mock_response.text = ""
@@ -110,14 +115,17 @@ def test_openrouter_realm_stream_handles_tool_calls() -> None:
     ]
 
     mock_response = MagicMock()
-    mock_response.aiter_lines.return_value = AsyncIterator([
-        (
-            b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123",'
-            b'"type":"function","function":{"name":"bash","arguments":"{\\"command\\":\\"echo hello\\"}"}}]}}]}\n\n'
-        ),
-        b'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n',
-        b'data: [DONE]\n\n',
-    ])
+    mock_response.aiter_lines.return_value = AsyncIterator(
+        [
+            (
+                b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123",'
+                b'"type":"function","function":{"name":"bash","arguments":"'
+                b'{\\"command\\":\\"echo hello\\"}"}}]}}]}\n\n'
+            ),
+            b'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+            b"data: [DONE]\n\n",
+        ]
+    )
     mock_response.raise_for_status = MagicMock()
     mock_response.headers = {}
     mock_response.text = ""
@@ -147,12 +155,16 @@ def test_openrouter_realm_stream_error_handling() -> None:
     invocations = [SummonerRequest(role="user", content="Hello")]
 
     mock_response = MagicMock()
-    mock_response.aiter_lines.return_value = AsyncIterator([
-        b'data: {"error":{"message":"Rate limit exceeded"}}\n\n',
-    ])
-    mock_response.raise_for_status = MagicMock(side_effect=httpx.HTTPStatusError(
-        "429", request=MagicMock(), response=MagicMock(status_code=429)
-    ))
+    mock_response.aiter_lines.return_value = AsyncIterator(
+        [
+            b'data: {"error":{"message":"Rate limit exceeded"}}\n\n',
+        ]
+    )
+    mock_response.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError(
+            "429", request=MagicMock(), response=MagicMock(status_code=429)
+        )
+    )
     mock_response.headers = {}
     mock_response.text = ""
     mock_response.status_code = 429
