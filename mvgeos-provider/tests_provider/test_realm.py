@@ -2,6 +2,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
+
 from mvgeos_provider.openrouter import OpenRouterRealm
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 

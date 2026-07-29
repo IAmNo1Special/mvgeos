@@ -5,10 +5,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import typer
+from typer.testing import CliRunner
+
 from mvgeos.commands.tome import (
     tome_app,
 )
-from typer.testing import CliRunner
 
 runner = CliRunner()
 

@@ -4,6 +4,8 @@ from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from mvgeos_provider.types import Model, RealmResponse
+
 from mvgeos_agent.types import (
     ContemplationLevel,
     MvgeResponse,
@@ -12,7 +14,6 @@ from mvgeos_agent.types import (
     StopReason,
     SummonerRequest,
 )
-from mvgeos_provider.types import Model, RealmResponse
 
 
 class TestMvgeLoop:
