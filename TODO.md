@@ -168,7 +168,7 @@ mvgeos/
 7. **No backward compat** — Unless explicitly asked
 8. **Pre-commit** — Runs ruff + mypy + pytest on commit
 9. **ADRs** — Add for significant architectural decisions
-10. **CHANGELOG** — Update under `[Unreleased]` for each change
+10. **CHANGELOG** — Update under `[Unreleased]` for each change; `uv run git-cliff --config cliff.toml --unreleased` to preview
 
 ---
 
@@ -183,3 +183,30 @@ mvgeos/
 ---
 
 *Update this file after completing each task. Keep it current for the next agent.*
+
+---
+
+## 🔄 ZEROCONTEXT PORT (Rune) — Planned
+
+**ADR**: `adr/0003-zerocontext-as-rune.md`
+
+### Port Tasks (TDD Order)
+- [ ] `mvgeos-runes`: loader, manifest, sigils (prereq)
+- [ ] `zerocontext` rune package structure
+  - [ ] `zerocontext_registry.py` — port with frozen-skill fix (ADR #6)
+  - [ ] `zerocontext_toolset.py` — port with `execute_capability` rename (ADR #2)
+  - [ ] `zerocontext_tool.py` — fix phantom `execute_capability` reference
+  - [ ] `tools.py` — `CapabilityExecutor`, `ActivateSkillTool`, `RunSkillScriptTool`
+  - [ ] `batch_executor.py` — `ExecuteCapabilityTool` (renamed), input copy fix (ADR #8)
+  - [ ] `wrappers.py` — **remove** `BudgetEnforcingSpellWrapper` (ADR #5, #10)
+  - [ ] `__init__.py` — exports
+- [ ] `ZEROCONTEXT_DISCOVERY_INSTRUCTION` rewrite (ADR #3)
+- [ ] `prune_ephemeral_schemas` key fix (ADR #1)
+- [ ] `zerocontext` rune manifest + entry point
+- [ ] Integration tests: rune load → toolset → harness
+- [ ] Wire into MvgeLoop via rune loader (not hardcoded)
+
+### Open Decisions (from ADR)
+- [ ] Capability threshold config (`rune_config.capability_threshold`)
+- [ ] DCI-style `grep`/`read` tools for skill drilling (ADR #4)
+- [ ] Keyword scoring → dual-match embeddings (ADR #3)

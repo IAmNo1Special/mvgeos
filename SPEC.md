@@ -321,7 +321,7 @@ All 7 spells implemented:
 
 ## Remaining Work (Priority Order)
 
-### 1. Complete mvgeos-spells
+### 1. Complete mvgeos-spells ✅
 
 **File**: `src/mvgeos/mvgeos-spells/src/mvgeos_spells/__init__.py`
 
@@ -354,7 +354,7 @@ __all__ = [
 - test_cast_list: non-recursive, recursive, non-existent
 - test_cast_grep: content match, line numbers, output modes
 
-### 2. Implement OpenRouterRealm (mvgeos-provider/openrouter.py)
+### 2. Implement OpenRouterRealm (mvgeos-provider/openrouter.py) ✅
 
 **Requirements**:
 - Real HTTP streaming to OpenRouter API (`https://openrouter.ai/api/v1/chat/completions`)
@@ -381,7 +381,7 @@ async def stream(
 **Tests needed**:
 - Mock HTTP responses, test tool call parsing, content streaming, error handling
 
-### 3. Implement mvgeos-runes
+### 3. Implement mvgeos-runes ✅
 
 **Files to implement**:
 - `src/mvgeos/mvgeos-runes/src/mvgeos_runes/loader.py` - `RuneLoader`
@@ -399,7 +399,7 @@ async def stream(
 
 **Tests needed**: Discovery, loading, hook registration/emission, error cases
 
-### 4. Implement mvgeos-cli Commands
+### 4. Implement mvgeos-cli Commands ✅
 
 **Files to implement**:
 - `src/mvgeos/mvgeos-cli/src/mvgeos/commands/prompt.py` - `prompt` command
@@ -501,6 +501,8 @@ Use these terms consistently in code, docs, and comments.
 
 - Branch per feature
 - Conventional commits: `feat(mvgeos-agent): add spell execution`
+- **Changelog**: git-cliff at `cliff.toml` — generates CHANGELOG.md from commits
+- **Release**: `.github/workflows/release.yml` — push `v*` tag or manual dispatch to create release
 - Pre-commit: ruff, mypy, pytest
 - No direct commits to main without PR
 

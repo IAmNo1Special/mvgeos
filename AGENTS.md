@@ -81,3 +81,14 @@ Extension manifest at `.agents/mvgeos/extensions/manifest.json`.
 | Credential | Relic |
 | API key | Arcane Key |
 | OAuth | Covenant |
+
+## Changelog & Releases
+
+- **git-cliff** configured at `cliff.toml` — generates CHANGELOG.md from conventional commits
+- **Release workflow**: `.github/workflows/release.yml` — triggers on `v*` tags or manual dispatch
+- **Conventional commits required**: `feat(scope):`, `fix(scope):`, `perf(scope):`, `refactor(scope):`, `docs(scope):`, `test(scope):`, `build(scope):`, `ci(scope):`, `chore(scope):`, `revert(scope):`
+- **Breaking changes**: include `BREAKING CHANGE:` in commit body
+- **Commands**:
+  - `uv run git-cliff --config cliff.toml --unreleased` — preview unreleased changes
+  - `uv run git-cliff --config cliff.toml --output CHANGELOG.md` — generate full changelog
+  - `git tag vX.Y.Z && uv run git-cliff --config cliff.toml --tag vX.Y.Z --output CHANGELOG.md` — release

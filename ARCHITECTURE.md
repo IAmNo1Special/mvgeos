@@ -163,3 +163,5 @@ Discriminated union of lifecycle events: agent_start, turn_start, message_start,
 - **CLI**: rich (future TUI), argparse (CLI commands)
 - **Pre-commit**: pre-commit framework (ruff + mypy + pytest checks)
 - **Config compliance**: dotagents protocol at `.agents/mvgeos/`
+- **Changelog**: git-cliff at `cliff.toml` — conventional commits → CHANGELOG.md
+- **Releases**: `.github/workflows/release.yml` — tags `v*` trigger changelog + GitHub release
