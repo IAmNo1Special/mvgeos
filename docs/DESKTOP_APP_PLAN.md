@@ -354,6 +354,7 @@ async def emit_event(event: PythonEvent):
         flush=True,
     )
 
+
 # Rust reads line by line and emits Tauri events
 ```
 
