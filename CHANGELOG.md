@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **provider:** track uv.lock for CI caching (1fc3c06)
 
+- commit changes (1339ed2)
+
 
 ### Documentation
 

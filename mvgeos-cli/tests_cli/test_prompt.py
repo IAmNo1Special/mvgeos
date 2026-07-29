@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import pytest
-from typer.testing import CliRunner
-
 from mvgeos.commands.prompt import _build_spells, prompt_app
+from typer.testing import CliRunner
 
 runner = CliRunner()
 

@@ -4,14 +4,13 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from typer.testing import CliRunner
-
 from mvgeos.commands.config import (
     DEFAULT_CONFIG,
     config_app,
     load_config,
     save_config,
 )
+from typer.testing import CliRunner
 
 runner = CliRunner()
 
