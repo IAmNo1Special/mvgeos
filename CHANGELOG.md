@@ -51,6 +51,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **tome:** restructure to flat layout (6789b1f)
 
 
+### Tests
+
+- **cli:** commit changes (21aaa49)
+
+
 ## [0.1.0-dev] - 2026-07-28
 
 
