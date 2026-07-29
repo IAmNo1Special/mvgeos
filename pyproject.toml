@@ -58,7 +58,7 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["T20", "PT001"]
+"tests_*/**" = ["T20", "PT001"]
 "*/__init__.py" = ["E402", "F401"]
 
 [tool.mypy]
@@ -75,8 +75,15 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
-exclude = ["mvgeos-*/tests/"]
+exclude = ["mvgeos-[^/]+/tests_.*"]
 
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false
+[tool.pytest.ini_options]
+testpaths = [
+    "mvgeos-agent/tests_agent",
+    "mvgeos-provider/tests_provider",
+    "mvgeos-tome/tests_tome",
+    "mvgeos-spells/tests_spells",
+    "mvgeos-runes/tests_runes",
+    "mvgeos-cli/tests_cli",
+]
+pythonpath = "."
