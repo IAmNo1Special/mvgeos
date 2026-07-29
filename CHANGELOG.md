@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+### Bug Fixes
+
+- **root:** fix MD022/MD036/MD047 lint violations in handoff generator (7baa3ff)
+
+- **ci:** align pre-commit hooks with CI workflow (190cbc1)
+
+- **ci:** release workflow only triggers on tags not every push (cb1a924)
+
+
 ### Chores
 
 - generate CHANGELOG.md for v0.1.0-dev (6adae86)

@@ -1,4 +1,4 @@
-# ADR 0003: ZeroContext as Optional Rune (Not Core)
+# ADR 0007: ZeroContext as Optional Rune (Not Core)
 
 ## Status
 Accepted
@@ -37,8 +37,8 @@ ZeroContext will be implemented as a **MvgeOS rune/extension**, not core archite
 | 6 | Write integration tests: rune load → toolset → harness | | v0.1 |
 
 ## Rejected Alternatives
-- Auto-switch at capability threshold (ADR 0003.1)
-- Core built-in with `zerocontext=True` flag (ADR 0003.2)
+- Auto-switch at capability threshold (ADR 0007.1)
+- Core built-in with `zerocontext=True` flag (ADR 0007.2)
 - Full MCP-Zero embedding-based routing (overkill for mvgeos scale)
 
 ## References
