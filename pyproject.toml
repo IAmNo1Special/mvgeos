@@ -17,7 +17,7 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/mvgeos/mvgeos"
+Repository = "https://github.com/IAmNo1Special/mvgeos"
 
 [tool.uv.workspace]
 members = [
