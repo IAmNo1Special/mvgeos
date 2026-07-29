@@ -7,7 +7,7 @@ A Python-based AI coding agent inspired by pi. Mvges invoke spells (tools) acros
 **v0.1.0-dev** — Scaffold complete, core loop implemented, all quality gates passing.
 
 | Component | Status |
-|-----------|--------|
+| ----------- | -------- |
 | mvgeos-agent (MvgeLoop) | ✅ Implemented + tested |
 | mvgeos-tome (TomeLedger) | ✅ Implemented + tested |
 | mvgeos-spells (7 spells) | ✅ Implemented + tested |
@@ -20,7 +20,7 @@ A Python-based AI coding agent inspired by pi. Mvges invoke spells (tools) acros
 MvgeOS is a monorepo with uv workspaces:
 
 | Package | Purpose |
-|---|---|
+| --- | --- |
 | `mvgeos-agent` | Core Mvge loop, invocations, state, spell execution |
 | `mvgeos-provider` | Realm protocol and OpenRouter provider |
 | `mvgeos-tome` | JSONL session persistence with file locking and in-memory index |
@@ -56,6 +56,7 @@ MIT
 - **Config**: `cliff.toml`
 - **Release workflow**: `.github/workflows/release.yml` (triggers on `v*` tags or manual dispatch)
 - **Commands**:
+
   ```bash
   # Preview unreleased changes
   uv run git-cliff --config cliff.toml --unreleased

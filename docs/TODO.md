@@ -1,7 +1,8 @@
 # MvgeOS TODO — Agent Task Tracker
 
 **Last Updated**: 2026-07-28
-**Current Status**: Scaffold complete, core loop implemented, all quality gates passing
+**Current Status**: Scaffold complete, core loop implemented,
+all quality gates passing
 **Location**: `C:\Users\ivmno\Desktop\mvgeos\`
 
 ---
@@ -23,6 +24,7 @@
 ## 🎯 NEXT PRIORITIES (In Order)
 
 ### 1. Implement zerocontext Rune ⭐ HIGH
+
 **ADR**: `docs/adr/0007-zerocontext-as-rune.md`
 
 Port the zerocontext skill system as an mvgeos-runes extension:
@@ -33,7 +35,8 @@ Port the zerocontext skill system as an mvgeos-runes extension:
   - [ ] `zerocontext_toolset.py` — port with `execute_capability` rename (ADR #2)
   - [ ] `zerocontext_tool.py` — fix phantom `execute_capability` reference
   - [ ] `tools.py` — `CapabilityExecutor`, `ActivateSkillTool`, `RunSkillScriptTool`
-  - [ ] `batch_executor.py` — `ExecuteCapabilityTool` (renamed), input copy fix (ADR #8)
+  - [ ] `batch_executor.py` — `ExecuteCapabilityTool` (renamed),
+    input copy fix (ADR #8)
   - [ ] `wrappers.py` — **remove** `BudgetEnforcingSpellWrapper` (ADR #5, #10)
   - [ ] `__init__.py` — exports
 - [ ] `ZEROCONTEXT_DISCOVERY_INSTRUCTION` rewrite (ADR #3)
@@ -42,7 +45,7 @@ Port the zerocontext skill system as an mvgeos-runes extension:
 - [ ] Integration tests: rune load → toolset → harness
 - [ ] Wire into MvgeLoop via rune loader (not hardcoded)
 
-### Open Decisions (from ADR)
+### Future Decisions (from ADR)
 
 - [ ] Capability threshold config (`rune_config.capability_threshold`)
 - [ ] DCI-style `grep`/`read` tools for skill drilling (ADR #4)
@@ -59,7 +62,8 @@ cd C:\Users\ivmno\Desktop\mvgeos
 uv run pytest --import-mode=importlib --cov
 
 # Type checking (must pass)
-uv run mypy -p mvgeos_agent -p mvgeos_provider -p mvgeos_tome -p mvgeos_spells -p mvgeos_runes -p mvgeos
+uv run mypy -p mvgeos_agent -p mvgeos_provider -p mvgeos_tome
+-p mvgeos_spells -p mvgeos_runes -p mvgeos
 
 # Linting (must pass)
 uv run ruff check
@@ -76,7 +80,7 @@ uv run ruff format
 
 ## 📁 PROJECT STRUCTURE
 
-```
+```text
 mvgeos/
 ├── mvgeos-agent/      # Core loop, state, types
 ├── mvgeos-provider/   # Realm protocol + OpenRouter
@@ -108,6 +112,7 @@ mvgeos/
 4. **VERIFY** — Run all quality gates above
 
 **Test Naming**: `test_<function>_<scenario>`
+
 - `test_loop_single_turn_no_spells`
 - `test_loop_with_spell_cast`
 - `test_cast_bash_success`
@@ -147,7 +152,8 @@ mvgeos/
 7. **No backward compat** — Unless explicitly asked
 8. **Pre-commit** — Runs ruff + mypy + pytest on commit
 9. **ADRs** — Add for significant architectural decisions
-10. **CHANGELOG** — Update under `[Unreleased]` for each change; `uv run git-cliff --config cliff.toml --unreleased` to preview
+10. **CHANGELOG** — Update under `[Unreleased]` for each change;
+    `uv run git-cliff --config cliff.toml --unreleased` to preview
 
 ---
 
@@ -167,25 +173,28 @@ mvgeos/
 
 ## 🔄 ZEROCONTEXT PORT (Rune) — Planned
 
-**ADR**: `adr/0003-zerocontext-as-rune.md`
+**ADR**: `docs/adr/0007-zerocontext-as-rune.md`
 
 ### Port Tasks (TDD Order)
+
 - [ ] `mvgeos-runes`: loader, manifest, sigils (prereq)
 - [ ] `zerocontext` rune package structure
   - [ ] `zerocontext_registry.py` — port with frozen-skill fix (ADR #6)
   - [ ] `zerocontext_toolset.py` — port with `execute_capability` rename (ADR #2)
   - [ ] `zerocontext_tool.py` — fix phantom `execute_capability` reference
   - [ ] `tools.py` — `CapabilityExecutor`, `ActivateSkillTool`, `RunSkillScriptTool`
-  - [ ] `batch_executor.py` — `ExecuteCapabilityTool` (renamed), input copy fix (ADR #8)
+  - [ ] `batch_executor.py` — `ExecuteCapabilityTool` (renamed),
+    input copy fix (ADR #8)
   - [ ] `wrappers.py` — **remove** `BudgetEnforcingSpellWrapper` (ADR #5, #10)
   - [ ] `__init__.py` — exports
 - [ ] `ZEROCONTEXT_DISCOVERY_INSTRUCTION` rewrite (ADR #3)
-- [ ] `prune_ephemeral_schemas` key fix (ADR #1)
+- [ ] `prune_ephemeral_schemas` key fix (ADR #7)
 - [ ] `zerocontext` rune manifest + entry point
 - [ ] Integration tests: rune load → toolset → harness
 - [ ] Wire into MvgeLoop via rune loader (not hardcoded)
 
-### Open Decisions (from ADR)
+### Future Decisions for Port (from ADR)
+
 - [ ] Capability threshold config (`rune_config.capability_threshold`)
 - [ ] DCI-style `grep`/`read` tools for skill drilling (ADR #4)
 - [ ] Keyword scoring → dual-match embeddings (ADR #3)

@@ -2,7 +2,7 @@
 
 ## Architecture Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                        MvgeOS Desktop                           │
 ├─────────────────────────────────────────────────────────────────┤
@@ -51,7 +51,8 @@ npm create tauri-app@latest mvgeos-desktop -- --template react-ts
 ```
 
 **Structure:**
-```
+
+```text
 mvgeos-desktop/
 ├── src/                    # React frontend
 │   ├── components/
@@ -75,7 +76,9 @@ mvgeos-desktop/
 
 ### 1.2 Rust → Python Bridge Design
 
-**Communication Protocol: JSON-RPC 2.0 over stdin/stdout**
+### Communication Protocol
+
+JSON-RPC 2.0 over stdin/stdout
 
 ```rust
 // python_bridge.rs
@@ -242,20 +245,24 @@ interface Message {
 ### 2.2 Core UI Components
 
 | Component | Description | Key Features |
-|-----------|-------------|--------------|
-| `ChatPanel` | Main conversation view | Streaming tokens, markdown, code blocks, copy |
-| `FileTree` | Project explorer | Lazy load, git status, drag-drop, context menu |
-| `SpellOutput` | Tool execution panel | Collapsible, live logs, progress bars |
-| `TabBar` | Multi-session tabs | New tab, close, rename, drag reorder |
-| `StatusBar` | Bottom bar | Model selector, mana/tokens, connection status |
-| `CommandPalette` | Cmd+K / Ctrl+K | Fuzzy search commands, files, settings |
+| ----------- | ----------- | ----------- |
+| ChatPanel | Main conversation view | Streaming, markdown, code, copy |
+| FileTree | Project explorer | Lazy load, git status, context menu |
+| SpellOutput | Tool execution panel | Collapsible, live logs, progress |
+| TabBar | Multi-session tabs | New tab, close, rename, reorder |
+| StatusBar | Bottom bar | Model selector, mana, connection |
+| CommandPalette | Cmd+K / Ctrl+K | Fuzzy search commands, files, settings |
 
 ### 2.3 Tauri IPC Commands
 
 ```rust
 // src-tauri/src/ipc.rs
 #[tauri::command]
-async fn agent_run(session_id: String, prompt: String, model: ModelConfig) -> Result<(), String> {
+async fn agent_run(
+  session_id: String,
+  prompt: String,
+  model: ModelConfig,
+) -> Result<(), String> {
     PYTHON_BRIDGE.send(PythonRequest::AgentRun { session_id, prompt, model }).await
 }
 
@@ -347,7 +354,6 @@ async def emit_event(event: PythonEvent):
         flush=True,
     )
 
-
 # Rust reads line by line and emits Tauri events
 ```
 
@@ -416,7 +422,9 @@ tauri-plugin-updater = "2"
 "plugins": {
   "updater": {
     "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ...",
-    "endpoints": ["https://releases.mvgeos.dev/{{target}}/{{current_version}}"],
+    "endpoints": [
+      "https://releases.mvgeos.dev/{{target}}/{{current_version}}"
+    ],
     "dialog": true
   }
 }
@@ -425,16 +433,16 @@ tauri-plugin-updater = "2"
 ### 4.4 Keyboard Shortcuts
 
 | Shortcut | Action |
-|----------|--------|
-| `Cmd+N` / `Ctrl+N` | New session |
-| `Cmd+O` / `Ctrl+O` | Open project |
-| `Cmd+B` / `Ctrl+B` | Toggle file tree |
-| `Cmd+Shift+B` / `Ctrl+Shift+B` | Toggle spell output |
-| `Cmd+K` / `Ctrl+K` | Command palette |
-| `Cmd+Shift+P` / `Ctrl+Shift+P` | Command palette (full) |
-| `Cmd+.` / `Ctrl+.` | Interrupt agent |
-| `Cmd+L` / `Ctrl+L` | Clear session |
-| `Cmd+1-9` / `Ctrl+1-9` | Switch tabs |
+| ---------- | -------- |
+| Cmd+N / Ctrl+N | New session |
+| Cmd+O / Ctrl+O | Open project |
+| Cmd+B / Ctrl+B | Toggle file tree |
+| Cmd+Shift+B / Ctrl+Shift+B | Toggle spell output |
+| Cmd+K / Ctrl+K | Command palette |
+| Cmd+Shift+P / Ctrl+Shift+P | Command palette (full) |
+| Cmd+. / Ctrl+. | Interrupt agent |
+| Cmd+L / Ctrl+L | Clear session |
+| Cmd+1-9 / Ctrl+1-9 | Switch tabs |
 
 ---
 
@@ -443,11 +451,11 @@ tauri-plugin-updater = "2"
 ### 5.1 Build Targets
 
 | Platform | Target | Output |
-|----------|--------|--------|
-| macOS (ARM) | `aarch64-apple-darwin` | `.dmg`, `.app` |
-| macOS (Intel) | `x86_64-apple-darwin` | `.dmg`, `.app` |
-| Windows | `x86_64-pc-windows-msvc` | `.msi`, `.exe` |
-| Linux | `x86_64-unknown-linux-gnu` | `.AppImage`, `.deb`, `.rpm` |
+| ---------- | -------- | -------- |
+| macOS (ARM) | aarch64-apple-darwin | .dmg, .app |
+| macOS (Intel) | x86_64-apple-darwin | .dmg, .app |
+| Windows | x86_64-pc-windows-msvc | .msi, .exe |
+| Linux | x86_64-unknown-linux-gnu | .AppImage, .deb, .rpm |
 
 ### 5.2 GitHub Actions Workflow
 
@@ -487,16 +495,16 @@ jobs:
 ### 5.3 Code Signing
 
 | Platform | Certificate | Method |
-|----------|-------------|--------|
-| macOS | Developer ID Application | `codesign --deep --force --verify --verbose --sign` |
-| Windows | EV Code Signing Cert | `signtool sign /fd sha256 /tr http://timestamp.digicert.com` |
-| Linux | GPG Key | `gpg --detach-sign --armor` |
+| ---------- | ------------- | -------- |
+| macOS | Developer ID Application | codesign --deep --force --verify |
+| Windows | EV Code Signing Cert | signtool sign /fd sha256 /tr timestamp URL |
+| Linux | GPG Key | gpg --detach-sign --armor |
 
 ---
 
 ## Project Structure (Final)
 
-```
+```text
 mvgeos/
 ├── mvgeos-agent/          # Core agent (existing)
 ├── mvgeos-provider/       # LLM providers (existing)
@@ -538,13 +546,13 @@ mvgeos/
 ## Key Technical Decisions
 
 | Decision | Rationale |
-|----------|-----------|
-| **Tauri over Electron** | Smaller bundle (~10MB vs ~100MB), Rust backend, better Python integration via stdio |
-| **JSON-RPC over stdio** | Simple, language-agnostic, works with existing `uv run` workflow |
-| **uv for Python management** | Consistent with existing MvgeOS, handles virtualenvs automatically |
-| **Zustand for state** | Lightweight, TypeScript-first, works well with Tauri events |
-| **React + TypeScript** | Familiar, good Tauri integration, solid ecosystem |
-| **TailwindCSS** | Utility-first, matches opencode aesthetic, small bundle |
+| ---------- | ----------- |
+| Tauri over Electron | Smaller bundle, Rust backend, Python stdio |
+| JSON-RPC over stdio | Simple, language-agnostic, uv workflow |
+| uv for Python management | Consistent with MvgeOS, auto virtualenvs |
+| Zustand for state | Lightweight, TypeScript-first, Tauri events |
+| React + TypeScript | Familiar, good Tauri integration, ecosystem |
+| TailwindCSS | Utility-first, matches aesthetic, small bundle |
 
 ---
 
@@ -570,32 +578,32 @@ mvgeos/
 ## Estimated Timeline
 
 | Phase | Duration | Deliverable |
-|-------|----------|-------------|
+| ------- | ---------- | ------------- |
 | 1. Foundation | 2 weeks | Tauri + Rust bridge + Python desktop command |
 | 2. Core Frontend | 2 weeks | Chat, FileTree, SpellOutput, TabBar |
 | 3. Backend Integration | 2 weeks | Full agent loop, spell casting, tome ops |
 | 4. Features & Polish | 2 weeks | Menus, tray, shortcuts, settings, themes |
 | 5. Packaging | 2 weeks | Signed builds, updater, CI/CD, release |
-| **Total** | **~10 weeks** | **v0.1.0 Desktop Release** |
+| Total | ~10 weeks | v0.1.0 Desktop Release |
 
 ---
 
 ## Risk Mitigation
 
 | Risk | Probability | Impact | Mitigation |
-|------|-------------|--------|------------|
-| Python subprocess crashes | Medium | High | Supervisor pattern, auto-restart, crash reporting |
-| JSON-RPC protocol mismatch | Low | Medium | Shared TypeScript/Python schemas, integration tests |
-| WebView rendering differences | Medium | Medium | Test on all 3 platforms early, use CSS resets |
-| Large bundle size | Low | Low | Tauri is inherently small; audit deps |
-| Code signing complexity | Medium | High | Start early, document process, use CI secrets |
+| ------ | ------------- | -------- | ------------ |
+| Python subprocess crashes | Medium | High | Supervisor, auto-restart, reports |
+| JSON-RPC protocol mismatch | Low | Medium | Shared schemas, tests |
+| WebView rendering differences | Medium | Medium | Test all platforms, CSS resets |
+| Large bundle size | Low | Low | Tauri is small; audit deps |
+| Code signing complexity | Medium | High | Start early, document, CI secrets |
 
 ---
 
 ## Next Steps
 
-1. **Initialize Tauri project**: `npm create tauri-app@latest mvgeos-desktop -- --template react-ts`
-2. **Add desktop command** to `mvgeos-cli`
-3. **Define shared types** (TypeScript ↔ Rust ↔ Python)
-4. **Build PythonBridge** in Rust with tests
-5. **Implement first end-to-end flow**: User types → Frontend → Rust → Python → Agent → Events → Frontend
+1. Initialize Tauri project: npm create tauri-app@latest mvgeos-desktop
+2. Add desktop command to mvgeos-cli
+3. Define shared types (TypeScript ↔ Rust ↔ Python)
+4. Build PythonBridge in Rust with tests
+5. Implement first end-to-end flow: User → Frontend → Rust → Python → Agent → Events → Frontend

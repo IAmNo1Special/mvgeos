@@ -8,7 +8,7 @@ MvgeOS is a Python-based AI coding agent inspired by the pi project, built with 
 
 ### Monorepo Structure (uv workspaces)
 
-```
+```text
 mvgeos/
 ├── mvgeos-agent/             # Core agent loop, state, types
 ├── mvgeos-provider/          # Realm protocol + OpenRouter provider
@@ -22,7 +22,7 @@ mvgeos/
 ### Package Details
 
 | Package | Module | Purpose |
-|---------|--------|---------|
+| --------- | --------- | --------- |
 | mvgeos-agent | `types.py` | MvgeState, MvgeSpell, MvgeInvocation, MvgeEvent, enums |
 | mvgeos-agent | `loop.py` | MvgeLoop - main agent loop with streaming |
 | mvgeos-provider | `base.py` | Realm protocol (abstract base) |
@@ -291,15 +291,15 @@ class RuneManifest:
 ### MvgeLoop (mvgeos-agent/loop.py)
 
 Main agent loop with:
+
 - Streaming response handling via async iterator
 - Spell/tool call execution with event emission
 - Mana budget enforcement
 - Event emission: AGENT_START, MESSAGE_UPDATE, SPELL_CASTING_START/END, AGENT_END
 - Error handling with proper cleanup
 
-### TomeLedger (mvgeos-tome/ledger.py)
-
 Session persistence:
+
 - `create_tome(metadata)` - Create new session
 - `open_tome(tome_id)` - Open existing session
 - `append(tome_id, entry)` - Append entry to session
@@ -308,9 +308,8 @@ Session persistence:
 - Uses `FileLock` for cross-process safety
 - JSONL storage with index
 
-### Spell Implementations (mvgeos-spells/)
-
 All 7 spells implemented:
+
 - `cast_bash` - Shell command execution with timeout
 - `cast_read` - File reading
 - `cast_write` - File writing with parent dir creation
@@ -353,6 +352,7 @@ Port the zerocontext skill system as an mvgeos-runes extension:
 ### dotagents Protocol
 
 Config at `.agents/mvgeos/`:
+
 - `config.json` - Main config (model, mana_budget, spells_enabled, etc.)
 - `sessions/` - Tome directories (managed by TomeLedger)
 - `extensions/manifest.json` - Extension manifest
@@ -391,6 +391,7 @@ Coverage target: **90%+** (CI enforced)
 4. **Run all quality gates** - Verify
 
 Test naming: `test_<function>_<scenario>`
+
 - `test_loop_single_turn_no_spells`
 - `test_loop_with_spell_cast`
 - `test_loop_mana_exhaustion`
@@ -400,7 +401,7 @@ Test naming: `test_<function>_<scenario>`
 ## MvgeOS Terminology Reference
 
 | Standard Term | MvgeOS Term |
-|---------------|-------------|
+| --------------- | ------------- |
 | Agent | Mvge |
 | Tool | Spell |
 | Toolset | Grimoire |

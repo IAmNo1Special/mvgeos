@@ -23,6 +23,7 @@
 - Never run `uv run build` or `uv run test` unless requested
 - For non-e2e tests, run specific package: `uv run pytest packages/mvgeos-agent/tests/`
 - If you create or modify a test file, run it and iterate until it passes
+- **Use `;` (semicolon) to chain commands in PowerShell, not `&&`** — PowerShell does not support `&&`
 
 ## Dependency Management
 

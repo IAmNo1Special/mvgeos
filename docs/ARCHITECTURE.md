@@ -7,7 +7,8 @@ mvgeos/
 ├── mvgeos-agent/         # Core Mvge loop, invocations, state, spell execution
 ├── mvgeos-provider/      # Realm protocol + repository of realms
 ├── mvgeos-tome/          # JSONL session persistence with locking + index
-├── mvgeos-spells/        # Spell implementations (bash, read, edit, write, grep, find, ls)
+├── mvgeos-spells/        # Spell implementations
+                           # (bash, read, edit, write, grep, find, ls)
 ├── mvgeos-runes/         # Extension manifest, loader, sigil hooks
 ├── mvgeos-cli/           # CLI entry point (mvgeos command)
 ├── .agents/mvgeos/       # dotagents protocol compliance
@@ -21,31 +22,44 @@ mvgeos/
 
 ### mvgeos-agent
 
-The heartbeat of MvgeOS. Contains the `Mvge` class (the agent), `MvgeLoop` (the event loop), `MvgeState` (mutable state), `MvgeSpell` (tool definition), `MvgeEvent` (lifecycle events), `EventBus` (event propagation), and `Sigil` (hook/callback system).
+The heartbeat of MvgeOS. Contains the `Mvge` class (the agent),
+`MvgeLoop` (the event loop), `MvgeState` (mutable state),
+`MvgeSpell` (tool definition), `MvgeEvent` (lifecycle events),
+`EventBus` (event propagation), and `Sigil` (hook/callback system).
 
-**Entry point**: `Mvge.prompt(incantation)` → `MvgeLoop.run()` → invoke `StreamFunction` → process events → return `MvgeResponse`
+**Entry point**: `Mvge.prompt(incantation)` → `MvgeLoop.run()`
+→ invoke `StreamFunction` → process events → return `MvgeResponse`
 
 **Dependencies**: mvgeos-provider, mvgeos-tome, mvgeos-spells, mvgeos-runes
 
 ### mvgeos-provider
 
-Manages the connection to LLM providers. Defines the `Realm` protocol (the provider interface) and implements `OpenRouterRealm` (the OpenRouter provider). The provider handles incantation streaming, authentication resolution (relay of Arcane Keys), and response streaming.
+Manages the connection to LLM providers. Defines the `Realm` protocol
+(the provider interface) and implements `OpenRouterRealm`
+(the OpenRouter provider). The provider handles incantation streaming,
+authentication resolution (relay of Arcane Keys), and response streaming.
 
-**Entry point**: `Realm.stream(model, context, config)` → returns `Channel` (stream of MvgeResponse events)
+**Entry point**: `Realm.stream(model, context, config)`
+→ returns `Channel` (stream of MvgeResponse events)
 
 **Dependencies**: httpx, filelock
 
 ### mvgeos-tome
 
-Manages session persistence. `TomeLedger` (session manager) creates, opens, and manages tomes. `JsonlStore` handles JSONL file I/O with file locking. An in-memory index (`Index`) accelerates session queries.
+Manages session persistence. `TomeLedger` (session manager)
+creates, opens, and manages tomes. `JsonlStore` handles JSONL
+file I/O with file locking. An in-memory index (`Index`)
+accelerates session queries.
 
-**Entry point**: `TomeLedger.create(cwd)` → `Tome.append_entry(entry)` → persists to JSONL
+**Entry point**: `TomeLedger.create(cwd)` → `Tome.append_entry(entry)`
+→ persists to JSONL
 
 **Dependencies**: filelock
 
 ### mvgeos-spells
 
-Implements the spell system. Each spell is a `MvgeSpell` with `name`, `description`, `parameters`, and `execute()`. Spells include:
+Implements the spell system. Each spell is a `MvgeSpell` with
+`name`, `description`, `parameters`, and `execute()`. Spells include:
 
 - `cast_bash` → execute shell commands
 - `cast_read` → read files
@@ -61,15 +75,20 @@ Implements the spell system. Each spell is a `MvgeSpell` with `name`, `descripti
 
 ### mvgeos-runes
 
-Extension system. `RuneManifest` describes extension metadata and hooks. `RuneLoader` discovers and loads runes from `.agents/mvgeos/extensions/`. `Sigil` hooks define lifecycle points where runes can inject behavior.
+Extension system. `RuneManifest` describes extension metadata
+and hooks. `RuneLoader` discovers and loads runes from
+`.agents/mvgeos/extensions/`. `Sigil` hooks define lifecycle
+points where runes can inject behavior.
 
-**Entry point**: `RuneLoader.load_all()` → discovers manifests → registers sigils → emits MvgeEvents on hooks
+**Entry point**: `RuneLoader.load_all()` → discovers manifests
+→ registers sigils → emits MvgeEvents on hooks
 
 **Dependencies**: importlib_metadata
 
 ### mvgeos-cli
 
-CLI entry point. Parses arguments and dispatches to commands, orchestrating the other packages.
+CLI entry point. Parses arguments and dispatches to commands,
+orchestrating the other packages.
 
 **Commands**:
 
@@ -77,7 +96,8 @@ CLI entry point. Parses arguments and dispatches to commands, orchestrating the 
 - `mvgeos tome <command>` → Manage tomes (list, create, resume)
 - `mvgeos config <command>` → Manage configuration
 
-**Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-tome, mvgeos-spells, mvgeos-runes, rich
+**Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-tome,
+mvgeos-spells, mvgeos-runes, rich
 
 ## Data Flow
 
@@ -88,7 +108,8 @@ CLI entry point. Parses arguments and dispatches to commands, orchestrating the 
 3. `Mvge.prompt(incantation)` → normalizes input to `SummonerRequest`
 4. `MvgeLoop.run()` adds incantation to `MvgeState.messages`
 5. Loop calls `Realm.stream(model, context, config)` on configured realm
-6. Provider streams `MvgeResponse` events (start, text_delta, thinking_delta, toolcall_start, etc.)
+6. Provider streams `MvgeResponse` events (start, text_delta,
+   thinking_delta, toolcall_start, etc.)
 7. `MvgeLoop` processes events → updates `MvgeState` → emits `MvgeEvent` to subscribers
 8. Tool calls detected → `MvgeSpell.execute()` → results appended to context
 9. Loop continues until no more tool calls and no steering/follow-up invocations
@@ -104,7 +125,8 @@ CLI entry point. Parses arguments and dispatches to commands, orchestrating the 
 
 ### Extension Rune Flow
 
-1. `RuneLoader.load_all()` scans `.agents/mvgeos/extensions/` for `manifest.json` files
+1. `RuneLoader.load_all()` scans `.agents/mvgeos/extensions/`
+   for `manifest.json` files
 2. Each manifest registers sigils (lifecycle hooks) with the `Sigil` system
 3. During `MvgeLoop`, appropriate events are emitted to registered sigils
 4. Sigils intercept, modify, or supplement the mvge's behavior
@@ -147,7 +169,9 @@ interface MvgeState {
 
 ### MvgeEvent (AgentEvent equivalent)
 
-Discriminated union of lifecycle events: agent_start, turn_start, message_start, message_update, message_end, spell_casting_start/update/end, turn_end, agent_end.
+Discriminated union of lifecycle events: agent_start, turn_start,
+message_start, message_update, message_end, spell_casting_start/update/end,
+turn_end, agent_end.
 
 ## Technology Stack
 
@@ -162,5 +186,7 @@ Discriminated union of lifecycle events: agent_start, turn_start, message_start,
 - **CLI**: rich (future TUI), argparse (CLI commands)
 - **Pre-commit**: pre-commit framework (ruff + mypy + pytest checks)
 - **Config compliance**: dotagents protocol at `.agents/mvgeos/`
-- **Changelog**: git-cliff at `cliff.toml` — conventional commits → CHANGELOG.md
-- **Releases**: `.github/workflows/release.yml` — tags `v*` trigger changelog + GitHub release
+- **Changelog**: git-cliff at `cliff.toml` — conventional commits
+  → CHANGELOG.md
+- **Releases**: `.github/workflows/release.yml` — tags `v*`
+  trigger changelog + GitHub release
