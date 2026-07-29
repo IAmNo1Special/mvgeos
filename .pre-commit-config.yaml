@@ -17,14 +17,14 @@ repos:
 
       - id: mypy
         name: mypy
-        entry: uv run mypy
+        entry: uv run mypy .
         language: system
         types: [python]
-        pass_filenames: true
+        pass_filenames: false
 
       - id: pytest
         name: pytest
-        entry: uv run pytest
+        entry: uv run pytest --import-mode=importlib --cov --cov-fail-under=90
         language: system
         types: [python]
-        pass_filenames: true
+        pass_filenames: false
