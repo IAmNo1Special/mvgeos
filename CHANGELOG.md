@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **root:** update documentation and configuration (cd64ef5)
 
+- commit changes (95ce416)
+
 
 ### Refactoring
 
