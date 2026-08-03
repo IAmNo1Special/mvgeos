@@ -67,7 +67,6 @@ MvgeOS is a monorepo with uv workspaces:
 | mvgeos-agent | Core loop, Mvge class, MvgeState, MvgeEvent |
 | mvgeos-provider | Realm protocol + OpenRouter provider |
 | mvgeos-tome | JSONL session persistence with file locking |
-| mvgeos-spells | Spell implementations (bash, read, edit, write, grep, find, list) |
 | mvgeos-runes | Extension manifest, loader, sigil hooks |
 | mvgeos-cli | CLI entry point (`mvgeos` command) |
 | coding-mvge | Coding agent package |
