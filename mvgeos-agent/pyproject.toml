@@ -9,6 +9,7 @@ dependencies = [
     "mvgeos-tome",
     "mvgeos-runes",
     "filelock>=3.14",
+    "pydantic>=2.0",
 ]
 
 [project.optional-dependencies]

@@ -20,6 +20,7 @@ skip_if_no_heal_my_goap = pytest.mark.skipif(
     not HAS_HEAL_MY_GOAP, reason="heal-my-goap not installed"
 )
 
+
 @skip_if_no_heal_my_goap
 @pytest.mark.asyncio
 async def test_coding_agent_with_heal_my_goap_rune() -> None:
