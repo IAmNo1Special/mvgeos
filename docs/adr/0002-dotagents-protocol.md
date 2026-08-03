@@ -10,12 +10,12 @@ MvgeOS needs a configuration directory convention. The .agents Protocol (dotagen
 
 ## Decision
 
-MvgeOS adheres to the `.agents/` directory name per the dotagents protocol. MvgeOS-specific data is namespaced under `.agents/mvgeos/`:
+MvgeOS adheres to the `.agents/` directory name per the dotagents protocol. MvgeOS-specific data is namespaced under `.agents/.mvgeos/`:
 
-- `.agents/mvgeos/extensions/manifest.json` — Extension registry
-- `.agents/mvgeos/sessions/` — Tome (session) JSONL files
-- `.agents/mvgeos/auth/` — Relics (API keys, credentials)
-- `.agents/mvgeos/models.json` — Model configuration
+- `.agents/.mvgeos/extensions/manifest.json` — Extension registry
+- `.agents/.mvgeos/sessions/` — Tome (session) JSONL files
+- `.agents/.mvgeos/auth/` — Relics (API keys, credentials)
+- `.agents/.mvgeos/models.json` — Model configuration
 
 ## Consequences
 

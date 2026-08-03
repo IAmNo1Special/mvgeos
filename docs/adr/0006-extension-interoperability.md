@@ -16,9 +16,9 @@ Extension interoperability is achieved at the data/config level, not the runtime
 - Shared auth.json format (both read the same credentials)
 - Shared tool definitions (both use the same JSON schema)
 
-MvgeOS extensions are Python modules (`.py` files) loaded dynamically from `.agents/mvgeos/extensions/`. Pi extensions are TypeScript modules loaded by Bun. TUI extensions from Pi cannot run in MvgeOS (different rendering engine).
+MvgeOS extensions are Python modules (`.py` files) loaded dynamically from `.agents/.mvgeos/extensions/`. Pi extensions are TypeScript modules loaded by Bun. TUI extensions from Pi cannot run in MvgeOS (different rendering engine).
 
-The extension manifest lives at `.agents/mvgeos/extensions/manifest.json`.
+The extension manifest lives at `.agents/.mvgeos/extensions/manifest.json`.
 
 ## Consequences
 
