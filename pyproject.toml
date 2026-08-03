@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "MvgeOS — a Python-based AI coding agent inspired by pi"
 requires-python = ">=3.14"
 license = {text = "MIT"}
-dependencies = [
+dependencies = []
+
+[project.optional-dependencies]
+test = [
     "heal-my-goap",
 ]
 
@@ -31,9 +34,6 @@ members = [
     "mvgeos-cli",
     "coding-mvge",
 ]
-
-[tool.uv.sources]
-heal-my-goap = { path = "../heal_my_goap", editable = true }
 
 [tool.ruff]
 line-length = 88
