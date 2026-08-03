@@ -7,7 +7,7 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from mvgeos.commands.tome import (
+from mvgeos_cli.commands.tome import (
     tome_app,
 )
 
@@ -22,25 +22,25 @@ class TestTomeCommands:
     def test_tome_list_help(self) -> None:
         result = runner.invoke(tome_app, ["list", "--help"])
         assert result.exit_code == 0
-        assert "List all sessions" in result.stdout
+        assert "List all tomes" in result.stdout
 
     def test_tome_show_help(self) -> None:
         result = runner.invoke(tome_app, ["show", "--help"])
         assert result.exit_code == 0
-        assert "Show session details" in result.stdout
+        assert "Show tome details" in result.stdout
 
     def test_tome_export_help(self) -> None:
         result = runner.invoke(tome_app, ["export", "--help"])
         assert result.exit_code == 0
-        assert "Export a session" in result.stdout
+        assert "Export a tome" in result.stdout
 
     def test_tome_create_help(self) -> None:
         result = runner.invoke(tome_app, ["create", "--help"])
         assert result.exit_code == 0
-        assert "Create a new session" in result.stdout
+        assert "Create a new tome" in result.stdout
 
-    @patch("mvgeos.commands.tome.Path.cwd")
-    @patch("mvgeos.commands.tome.TomeLedger")
+    @patch("mvgeos_cli.commands.tome.Path.cwd")
+    @patch("mvgeos_cli.commands.tome.TomeLedger")
     def test_tome_list_empty(self, mock_ledger: MagicMock, mock_cwd: MagicMock) -> None:
         mock_ledger_instance = MagicMock()
         mock_ledger_instance._tomles = {}
@@ -50,8 +50,8 @@ class TestTomeCommands:
         result = runner.invoke(tome_app, ["list"])
         assert result.exit_code == 0
 
-    @patch("mvgeos.commands.tome.Path.cwd")
-    @patch("mvgeos.commands.tome.TomeLedger")
+    @patch("mvgeos_cli.commands.tome.Path.cwd")
+    @patch("mvgeos_cli.commands.tome.TomeLedger")
     def test_tome_list_with_sessions(
         self, mock_ledger: MagicMock, mock_cwd: MagicMock
     ) -> None:
@@ -62,7 +62,7 @@ class TestTomeCommands:
         mock_meta.active_leaf_id = "leaf_123"
 
         mock_ledger_instance = MagicMock()
-        mock_ledger_instance._tomles = {"tome_abc123": mock_meta}
+        mock_ledger_instance.list_tomes.return_value = [mock_meta]
         mock_ledger.return_value = mock_ledger_instance
         mock_cwd.return_value = Path("/test")
 
@@ -70,8 +70,8 @@ class TestTomeCommands:
         assert result.exit_code == 0
         assert "tome_abc123" in result.stdout
 
-    @patch("mvgeos.commands.tome.Path.cwd")
-    @patch("mvgeos.commands.tome.TomeLedger")
+    @patch("mvgeos_cli.commands.tome.Path.cwd")
+    @patch("mvgeos_cli.commands.tome.TomeLedger")
     def test_tome_show_not_found(
         self, mock_ledger: MagicMock, mock_cwd: MagicMock
     ) -> None:
@@ -82,10 +82,10 @@ class TestTomeCommands:
 
         result = runner.invoke(tome_app, ["show", "nonexistent"])
         assert result.exit_code == 1
-        assert "Session not found" in result.stdout
+        assert "Tome not found" in result.stdout
 
-    @patch("mvgeos.commands.tome.Path.cwd")
-    @patch("mvgeos.commands.tome.TomeLedger")
+    @patch("mvgeos_cli.commands.tome.Path.cwd")
+    @patch("mvgeos_cli.commands.tome.TomeLedger")
     def test_tome_show_found(self, mock_ledger: MagicMock, mock_cwd: MagicMock) -> None:
         mock_meta = MagicMock()
         mock_meta.id = "tome_abc123"
@@ -108,8 +108,8 @@ class TestTomeCommands:
         assert result.exit_code == 0
         assert "tome_abc123" in result.stdout
 
-    @patch("mvgeos.commands.tome.Path.cwd")
-    @patch("mvgeos.commands.tome.TomeLedger")
+    @patch("mvgeos_cli.commands.tome.Path.cwd")
+    @patch("mvgeos_cli.commands.tome.TomeLedger")
     def test_tome_export_json(
         self, mock_ledger: MagicMock, mock_cwd: MagicMock
     ) -> None:
@@ -138,8 +138,8 @@ class TestTomeCommands:
         assert result.exit_code == 0
         assert "tome_abc123" in result.stdout
 
-    @patch("mvgeos.commands.tome.Path.cwd")
-    @patch("mvgeos.commands.tome.TomeLedger")
+    @patch("mvgeos_cli.commands.tome.Path.cwd")
+    @patch("mvgeos_cli.commands.tome.TomeLedger")
     def test_tome_export_markdown(
         self, mock_ledger: MagicMock, mock_cwd: MagicMock
     ) -> None:
@@ -167,10 +167,10 @@ class TestTomeCommands:
             ["export", "tome_abc123", "--format", "markdown"],
         )
         assert result.exit_code == 0
-        assert "Session: tome_abc123" in result.stdout
+        assert "Tome: tome_abc123" in result.stdout
 
-    @patch("mvgeos.commands.tome.Path.cwd")
-    @patch("mvgeos.commands.tome.TomeLedger")
+    @patch("mvgeos_cli.commands.tome.Path.cwd")
+    @patch("mvgeos_cli.commands.tome.TomeLedger")
     def test_tome_export_not_found(
         self, mock_ledger: MagicMock, mock_cwd: MagicMock
     ) -> None:
@@ -180,10 +180,10 @@ class TestTomeCommands:
 
         result = runner.invoke(tome_app, ["export", "nonexistent"])
         assert result.exit_code == 1
-        assert "Session not found" in result.stdout
+        assert "Tome not found" in result.stdout
 
-    @patch("mvgeos.commands.tome.Path.cwd")
-    @patch("mvgeos.commands.tome.TomeLedger")
+    @patch("mvgeos_cli.commands.tome.Path.cwd")
+    @patch("mvgeos_cli.commands.tome.TomeLedger")
     def test_tome_create(self, mock_ledger: MagicMock, mock_cwd: MagicMock) -> None:
         mock_cwd.return_value = Path("/test")
 
@@ -192,7 +192,7 @@ class TestTomeCommands:
 
         result = runner.invoke(tome_app, ["create"])
         assert result.exit_code == 0
-        assert "Created session" in result.stdout
+        assert "Created tome" in result.stdout
 
 
 if __name__ == "__main__":

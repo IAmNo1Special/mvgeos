@@ -11,17 +11,17 @@ console = Console()
 
 config_app = typer.Typer(name="config", help="Configuration management")
 
-CONFIG_DIR = Path(".agents/mvgeos")
+CONFIG_DIR = Path(".agents/.mvgeos")
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULT_CONFIG = {
-    "model": "openrouter/anthropic/claude-3.5-sonnet",
+    "model": "openrouter/free",
     "mana_budget": 10000,
     "max_tokens": 4096,
     "temperature": 0.7,
     "contemplation_level": "medium",
     "spells_enabled": ["bash", "read", "write", "edit", "find", "list", "grep"],
-    "runes_paths": [".agents/mvgeos/extensions"],
+    "runes_paths": [".agents/.mvgeos/extensions"],
 }
 
 
