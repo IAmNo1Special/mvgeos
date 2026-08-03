@@ -87,4 +87,6 @@ omit = [
     "*/temp/*",
     "*/tmp*/**",
     "*/AppData/Local/Temp/**",
+    "*test_heal_my_goap*",
+    "*test_interactive_cli_demo*",
 ]
