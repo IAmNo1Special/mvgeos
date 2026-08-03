@@ -1,7 +1,6 @@
 import asyncio
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
-
-import httpx
 
 from mvgeos_provider.openrouter import OpenRouterRealm
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
@@ -27,6 +26,54 @@ async def collect_responses(iterator):
     return [item async for item in iterator]
 
 
+def _mock_response(status_code, headers, body):
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.headers = headers
+    resp.json.return_value = body
+    return resp
+
+
+def test_error_from_response_strips_leading_trailing_newlines() -> None:
+    from mvgeos_provider.openrouter import _error_from_response
+
+    resp = _mock_response(
+        400,
+        {"content-type": "application/json"},
+        {"error": {"message": "\nBad request\n"}},
+    )
+    message, code = _error_from_response(resp)
+    assert "\n" not in message
+    assert message == "Bad request"
+    assert code is None
+
+
+def test_error_from_response_normalizes_crlf() -> None:
+    from mvgeos_provider.openrouter import _error_from_response
+
+    resp = _mock_response(
+        400,
+        {"content-type": "application/json"},
+        {"error": {"message": "line1\r\nline2"}},
+    )
+    message, code = _error_from_response(resp)
+    assert "\r\n" not in message
+    assert "\r" not in message
+    assert message == "line1\nline2"
+
+
+def test_error_from_response_preserves_internal_newlines() -> None:
+    from mvgeos_provider.openrouter import _error_from_response
+
+    resp = _mock_response(
+        400,
+        {"content-type": "application/json"},
+        {"error": {"message": "first\nsecond"}},
+    )
+    message, code = _error_from_response(resp)
+    assert message == "first\nsecond"
+
+
 def test_openrouter_realm_has_stream_method() -> None:
     realm = OpenRouterRealm(api_key="test-key")
     assert hasattr(realm, "stream")
@@ -45,7 +92,7 @@ def test_model_has_realm_field() -> None:
 
 
 def test_openrouter_realm_stream_builds_correct_messages() -> None:
-    from mvgeos_agent.types import MvgeResponse, SummonerRequest
+    from mvgeos_agent.types import SummonerRequest
 
     realm = OpenRouterRealm(api_key="test-key")
     model = Model(
@@ -58,12 +105,11 @@ def test_openrouter_realm_stream_builds_correct_messages() -> None:
     )
     config = ChannelConfig(model=model)
 
-    invocations: list[SummonerRequest | MvgeResponse] = [
+    invocations: list[SummonerRequest] = [
         SummonerRequest(role="user", content="Hello"),
     ]
 
-    mock_response = MagicMock()
-    mock_response.aiter_lines.return_value = AsyncIterator(
+    realm._client.stream = _make_stream_factory(  # type: ignore[method-assign]
         [
             b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
             (
@@ -73,17 +119,11 @@ def test_openrouter_realm_stream_builds_correct_messages() -> None:
             b"data: [DONE]\n\n",
         ]
     )
-    mock_response.raise_for_status = MagicMock()
-    mock_response.headers = {}
-    mock_response.text = ""
-    mock_response.status_code = 200
-
-    realm._client.post = AsyncMock(return_value=mock_response)
 
     responses = asyncio.run(collect_responses(realm.stream(model, invocations, config)))
 
     assert len(responses) >= 1
-    assert responses[0].stop_reason == "stop"
+    assert responses[-1].stop_reason == "stop"
 
 
 def test_openrouter_realm_stream_handles_tool_calls() -> None:
@@ -138,7 +178,7 @@ def test_openrouter_realm_stream_handles_tool_calls() -> None:
     assert len(responses) >= 1
 
 
-def test_openrouter_realm_stream_error_handling() -> None:
+def test_openrouter_realm_stream_retries_on_429_then_succeeds() -> None:
     from mvgeos_agent.types import SummonerRequest
 
     realm = OpenRouterRealm(api_key="test-key")
@@ -154,33 +194,400 @@ def test_openrouter_realm_stream_error_handling() -> None:
 
     invocations = [SummonerRequest(role="user", content="Hello")]
 
-    mock_response = MagicMock()
-    mock_response.aiter_lines.return_value = AsyncIterator(
+    factory = _make_sequence_factory(
         [
-            b'data: {"error":{"message":"Rate limit exceeded"}}\n\n',
+            (429, {"retry-after": "0"}, []),
+            (
+                200,
+                {},
+                [
+                    b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n',
+                    b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+                    b"data: [DONE]\n\n",
+                ],
+            ),
         ]
     )
-    mock_response.raise_for_status = MagicMock(
-        side_effect=httpx.HTTPStatusError(
-            "429", request=MagicMock(), response=MagicMock(status_code=429)
-        )
-    )
-    mock_response.headers = {}
-    mock_response.text = ""
-    mock_response.status_code = 429
-
-    realm._client.post = AsyncMock(return_value=mock_response)
+    realm._client.stream = factory  # type: ignore[method-assign]
 
     responses = asyncio.run(collect_responses(realm.stream(model, invocations, config)))
 
-    assert len(responses) >= 1
+    assert factory._calls == 2
+    assert responses[-1].stop_reason == "stop"
+
+
+def test_openrouter_realm_stream_retries_on_5xx() -> None:
+    from mvgeos_agent.types import SummonerRequest
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = _make_model()
+    config = ChannelConfig(model=model)
+    invocations = [SummonerRequest(role="user", content="Hello")]
+
+    factory = _make_sequence_factory(
+        [
+            (503, {}, []),
+            (
+                200,
+                {},
+                [
+                    b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n',
+                    b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+                    b"data: [DONE]\n\n",
+                ],
+            ),
+        ]
+    )
+    realm._client.stream = factory  # type: ignore[method-assign]
+
+    responses = asyncio.run(collect_responses(realm.stream(model, invocations, config)))
+
+    assert factory._calls == 2
+    assert responses[-1].stop_reason == "stop"
+
+
+def test_openrouter_realm_stream_uses_retry_after_header() -> None:
+    from unittest.mock import patch
+
+    from mvgeos_agent.types import SummonerRequest
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = _make_model()
+    config = ChannelConfig(model=model)
+    invocations = [SummonerRequest(role="user", content="Hello")]
+
+    factory = _make_sequence_factory(
+        [
+            (429, {"retry-after": "5"}, []),
+            (
+                200,
+                {},
+                [
+                    b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+                    b"data: [DONE]\n\n",
+                ],
+            ),
+        ]
+    )
+    realm._client.stream = factory  # type: ignore[method-assign]
+
+    with patch("asyncio.sleep", new=AsyncMock()) as sleep:
+        responses = asyncio.run(
+            collect_responses(realm.stream(model, invocations, config))
+        )
+
+    sleep.assert_awaited_once_with(5)
+    assert responses[-1].stop_reason == "stop"
+
+
+def test_openrouter_realm_stream_exhausts_retries_yields_rate_limited() -> None:
+    from unittest.mock import patch
+
+    from mvgeos_agent.types import SummonerRequest
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = _make_model()
+    config = ChannelConfig(model=model)
+    invocations = [SummonerRequest(role="user", content="Hello")]
+
+    factory = _make_sequence_factory(
+        [
+            (429, {}, []),
+            (429, {}, []),
+            (429, {}, []),
+        ]
+    )
+    realm._client.stream = factory  # type: ignore[method-assign]
+
+    with patch("asyncio.sleep", new=AsyncMock()):
+        responses = asyncio.run(
+            collect_responses(realm.stream(model, invocations, config))
+        )
+
+    assert factory._calls == 3
+    assert len(responses) == 1
     assert responses[0].error_message is not None
+    assert responses[0].error_code == "rate_limited"
+
+
+def test_openrouter_realm_stream_non_retryable_no_retry() -> None:
+    from mvgeos_agent.types import SummonerRequest
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = _make_model()
+    config = ChannelConfig(model=model)
+    invocations = [SummonerRequest(role="user", content="Hello")]
+
+    factory = _make_sequence_factory([(401, {}, [])])
+    realm._client.stream = factory  # type: ignore[method-assign]
+
+    responses = asyncio.run(collect_responses(realm.stream(model, invocations, config)))
+
+    assert factory._calls == 1
+    assert len(responses) == 1
+    assert responses[0].error_message is not None
+    assert responses[0].error_code == "auth_failed"
+
+
+def test_openrouter_realm_stream_400_yields_generic_error() -> None:
+    from mvgeos_agent.types import SummonerRequest
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = _make_model()
+    config = ChannelConfig(model=model)
+    invocations = [SummonerRequest(role="user", content="Hello")]
+
+    factory = _make_sequence_factory([(400, {}, [])])
+    realm._client.stream = factory  # type: ignore[method-assign]
+
+    responses = asyncio.run(collect_responses(realm.stream(model, invocations, config)))
+
+    assert factory._calls == 1
+    assert len(responses) == 1
+    assert responses[0].error_message is not None
+    assert responses[0].error_code is None
 
 
 def test_openrouter_realm_close() -> None:
     realm = OpenRouterRealm(api_key="test-key")
     asyncio.run(realm.close())
     # Should not raise
+
+
+def test_reasoning_sent_when_contemplation_level_set() -> None:
+    from mvgeos_agent.types import MvgeResponse
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = Model(
+        id="openrouter/openai/o1",
+        name="Test Model",
+        realm="openrouter",
+        provider="openrouter",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="test-key",
+        supported_parameters=["reasoning", "temperature", "max_tokens"],
+    )
+    config = ChannelConfig(model=model, contemplation_level="high")
+
+    invocations: list[MvgeResponse] = [
+        MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": "Hello"}],
+        )
+    ]
+
+    captured_payload: dict[str, Any] = {}
+
+    class MockStreamResponse:
+        status_code = 200
+        headers = {}
+
+        def __init__(self) -> None:
+            self._lines = AsyncIterator(
+                [
+                    b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
+                    b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+                    b"data: [DONE]\n\n",
+                ]
+            )
+
+        async def aiter_lines(self):
+            async for line in self._lines:
+                yield line
+
+    class MockStreamCM:
+        def __init__(self, method: str, url: str, **kwargs: Any) -> None:
+            captured_payload.update(kwargs.get("json", {}))
+
+        async def __aenter__(self) -> MockStreamResponse:
+            return MockStreamResponse()
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+    realm._client.stream = MockStreamCM  # type: ignore[method-assign]
+
+    asyncio.run(collect_responses(realm.stream(model, invocations, config)))
+
+    assert "reasoning" in captured_payload
+    assert captured_payload["reasoning"]["effort"] == "high"
+
+
+def test_reasoning_not_sent_when_exclude_contemplation() -> None:
+    from mvgeos_agent.types import MvgeResponse
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = Model(
+        id="openrouter/openai/o1",
+        name="Test Model",
+        realm="openrouter",
+        provider="openrouter",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="test-key",
+        supported_parameters=["reasoning"],
+    )
+    config = ChannelConfig(
+        model=model, contemplation_level="none", exclude_contemplation=True
+    )
+
+    invocations: list[MvgeResponse] = [
+        MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": "Hello"}],
+        )
+    ]
+
+    captured_payload: dict[str, Any] = {}
+
+    class MockStreamResponse:
+        status_code = 200
+        headers = {}
+
+        def __init__(self) -> None:
+            self._lines = AsyncIterator(
+                [
+                    b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
+                    b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+                    b"data: [DONE]\n\n",
+                ]
+            )
+
+        async def aiter_lines(self):
+            async for line in self._lines:
+                yield line
+
+    class MockStreamCM:
+        def __init__(self, method: str, url: str, **kwargs: Any) -> None:
+            captured_payload.update(kwargs.get("json", {}))
+
+        async def __aenter__(self) -> MockStreamResponse:
+            return MockStreamResponse()
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+    realm._client.stream = MockStreamCM  # type: ignore[method-assign]
+
+    asyncio.run(collect_responses(realm.stream(model, invocations, config)))
+
+    assert "reasoning" not in captured_payload
+
+
+def test_reasoning_not_sent_for_non_reasoning_model() -> None:
+    from mvgeos_agent.types import MvgeResponse
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = Model(
+        id="openrouter/anthropic/claude-3.5-sonnet",
+        name="Test Model",
+        realm="openrouter",
+        provider="openrouter",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="test-key",
+        supported_parameters=["temperature", "top_p", "max_tokens"],
+    )
+    config = ChannelConfig(model=model, contemplation_level="high")
+
+    invocations: list[MvgeResponse] = [
+        MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": "Hello"}],
+        )
+    ]
+
+    captured_payload: dict[str, Any] = {}
+
+    class MockStreamResponse:
+        status_code = 200
+        headers = {}
+
+        def __init__(self) -> None:
+            self._lines = AsyncIterator(
+                [
+                    b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
+                    b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+                    b"data: [DONE]\n\n",
+                ]
+            )
+
+        async def aiter_lines(self):
+            async for line in self._lines:
+                yield line
+
+    class MockStreamCM:
+        def __init__(self, method: str, url: str, **kwargs: Any) -> None:
+            captured_payload.update(kwargs.get("json", {}))
+
+        async def __aenter__(self) -> MockStreamResponse:
+            return MockStreamResponse()
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+    realm._client.stream = MockStreamCM  # type: ignore[method-assign]
+
+    asyncio.run(collect_responses(realm.stream(model, invocations, config)))
+
+    assert "reasoning" not in captured_payload
+
+
+def test_reasoning_sent_for_model_with_supported_parameters() -> None:
+    from mvgeos_agent.types import MvgeResponse
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = Model(
+        id="google/gemini-2.5-flash",
+        name="Gemini 2.5 Flash",
+        realm="openrouter",
+        provider="google",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="test-key",
+        supported_parameters=["reasoning", "temperature", "max_tokens"],
+    )
+    config = ChannelConfig(model=model, contemplation_level="high")
+
+    invocations: list[MvgeResponse] = [
+        MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": "Hello"}],
+        )
+    ]
+
+    captured_payload: dict[str, Any] = {}
+
+    class MockStreamResponse:
+        status_code = 200
+        headers = {}
+
+        def __init__(self) -> None:
+            self._lines = AsyncIterator(
+                [
+                    b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
+                    b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+                    b"data: [DONE]\n\n",
+                ]
+            )
+
+        async def aiter_lines(self):
+            async for line in self._lines:
+                yield line
+
+    class MockStreamCM:
+        def __init__(self, method: str, url: str, **kwargs: Any) -> None:
+            captured_payload.update(kwargs.get("json", {}))
+
+        async def __aenter__(self) -> MockStreamResponse:
+            return MockStreamResponse()
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+    realm._client.stream = MockStreamCM  # type: ignore[method-assign]
+
+    asyncio.run(collect_responses(realm.stream(model, invocations, config)))
+
+    assert "reasoning" in captured_payload
+    assert captured_payload["reasoning"]["effort"] == "high"
 
 
 def test_realm_response_has_mana_used() -> None:
@@ -194,3 +601,216 @@ def test_realm_response_has_mana_used() -> None:
     )
     response = RealmResponse(model=model, mana_used=100)
     assert response.mana_used == 100
+
+
+class _StreamRecorder:
+    def __init__(self, lines: list[bytes]) -> None:
+        self._lines = lines
+        self.status_code = 200
+        self.headers: dict[str, str] = {}
+
+    async def aiter_lines(self):
+        for line in self._lines:
+            yield line
+
+
+class _StatusRecorder(_StreamRecorder):
+    def __init__(
+        self,
+        lines: list[bytes],
+        status_code: int = 200,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(lines)
+        self.status_code = status_code
+        self.headers = headers or {}
+
+
+def _make_sequence_factory(
+    entries: list[tuple[int, dict[str, str], list[bytes]]],
+) -> type:
+    """Return a stream factory consuming (status, headers, lines) in order."""
+
+    class _SeqCM:
+        _calls = 0
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        async def __aenter__(self) -> _StatusRecorder:
+            idx = min(_SeqCM._calls, len(entries) - 1)
+            _SeqCM._calls += 1
+            status, headers, lines = entries[idx]
+            return _StatusRecorder(lines, status, headers)
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+    return _SeqCM
+
+
+def _make_stream_factory(
+    lines: list[bytes], sink: dict[str, Any] | None = None
+) -> type:
+    class _StreamCM:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            if sink is not None:
+                sink.update(kwargs.get("json", {}))
+
+        async def __aenter__(self) -> _StreamRecorder:
+            return _StreamRecorder(lines)
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+    return _StreamCM
+
+
+def _make_model(
+    model_id: str = "openrouter/test-model",
+    supported: list[str] | None = None,
+) -> Model:
+    return Model(
+        id=model_id,
+        name="Test Model",
+        realm="openrouter",
+        provider="openrouter",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="test-key",
+        supported_parameters=supported or ["temperature", "top_p", "max_tokens"],
+    )
+
+
+def test_stream_sends_tools_in_payload() -> None:
+    from mvgeos_agent.types import SummonerRequest
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = _make_model()
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "bash",
+                "description": "Run a command",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+    config = ChannelConfig(model=model, tools=tools)
+    invocations = [SummonerRequest(role="user", content="Hello")]
+
+    captured_payload: dict[str, Any] = {}
+
+    realm._client.stream = _make_stream_factory(  # type: ignore[method-assign]
+        [
+            b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n',
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+            b"data: [DONE]\n\n",
+        ],
+        captured_payload,
+    )
+
+    responses = asyncio.run(collect_responses(realm.stream(model, invocations, config)))
+
+    assert captured_payload["tools"] == tools
+    assert responses[-1].stop_reason == "stop"
+
+
+def test_stream_accumulates_text_into_final_invocation() -> None:
+    from mvgeos_agent.types import StopReason, SummonerRequest
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = _make_model()
+    config = ChannelConfig(model=model)
+    invocations = [SummonerRequest(role="user", content="Hello")]
+
+    realm._client.stream = _make_stream_factory(  # type: ignore[method-assign]
+        [
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
+            b'data: {"choices":[{"delta":{"content":" world"}}]}\n\n',
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+            b"data: [DONE]\n\n",
+        ]
+    )
+
+    responses = asyncio.run(collect_responses(realm.stream(model, invocations, config)))
+
+    partials = [
+        r
+        for r in responses
+        if r.invocation is not None and r.invocation.stop_reason == StopReason.PENDING
+    ]
+    final = responses[-1]
+    assert len(partials) == 2
+    assert final.invocation is not None
+    assert final.invocation.content == [{"type": "text", "text": "Hello world"}]
+    assert final.invocation.stop_reason == StopReason.STOP
+
+
+def test_stream_tool_calls_produce_spell_use_invocation() -> None:
+    from mvgeos_agent.types import StopReason, SummonerRequest
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = _make_model()
+    config = ChannelConfig(model=model)
+    invocations = [SummonerRequest(role="user", content="Run echo")]
+
+    realm._client.stream = _make_stream_factory(  # type: ignore[method-assign]
+        [
+            (
+                b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1",'
+                b'"type":"function","function":{"name":"bash","arguments":"{\\"command\\":'
+                b' \\"echo hello\\"}"}}]}}]}\n\n'
+            ),
+            b'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+            b"data: [DONE]\n\n",
+        ]
+    )
+
+    responses = asyncio.run(collect_responses(realm.stream(model, invocations, config)))
+
+    final = responses[-1]
+    assert final.invocation is not None
+    assert final.invocation.stop_reason == StopReason.SPELL_USE
+    tool_block = final.invocation.content[0]
+    assert tool_block["type"] == "tool_call"
+    assert tool_block["tool_call"]["id"] == "call_1"
+    assert tool_block["tool_call"]["name"] == "bash"
+    assert tool_block["tool_call"]["arguments"] == {"command": "echo hello"}
+
+
+def test_invocations_to_messages_serializes_tool_calls() -> None:
+    from mvgeos_agent.types import MvgeResponse, SpellResultMessage
+
+    from mvgeos_provider.openrouter import _invocations_to_messages
+
+    invocations = [
+        MvgeResponse(
+            role="assistant",
+            content=[
+                {
+                    "type": "tool_call",
+                    "tool_call": {
+                        "id": "call_1",
+                        "name": "bash",
+                        "arguments": {"command": "echo hi"},
+                    },
+                }
+            ],
+        ),
+        SpellResultMessage(
+            spell_cast_id="call_1",
+            spell_name="bash",
+            content=[{"type": "text", "text": "hi"}],
+        ),
+    ]
+
+    messages = _invocations_to_messages(invocations)
+
+    assert messages[0]["role"] == "assistant"
+    assert messages[0]["tool_calls"][0]["function"]["name"] == "bash"
+    args = messages[0]["tool_calls"][0]["function"]["arguments"]
+    assert args == '{"command": "echo hi"}'
+    assert messages[1]["role"] == "tool"
+    assert messages[1]["tool_call_id"] == "call_1"
+    assert messages[1]["content"] == "hi"

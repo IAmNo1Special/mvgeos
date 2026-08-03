@@ -21,3 +21,18 @@ def test_model_has_required_fields() -> None:
     assert model.id == "openrouter/test-model"
     assert model.realm == "openrouter"
     assert model.mana_limit == 1000
+    assert model.supported_parameters == []
+
+
+def test_model_supported_parameters() -> None:
+    model = Model(
+        id="openrouter/openai/o1",
+        name="Test Model",
+        realm="openrouter",
+        provider="openrouter",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="test-key",
+        supported_parameters=["reasoning", "temperature"],
+    )
+    assert "reasoning" in model.supported_parameters
+    assert "temperature" in model.supported_parameters

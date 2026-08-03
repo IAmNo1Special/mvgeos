@@ -16,6 +16,7 @@ class Model:
     context_window: int = 128000
     max_tokens: int = 4096
     headers: dict[str, str] = field(default_factory=dict)
+    supported_parameters: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -26,6 +27,10 @@ class ChannelConfig:
     mana_limit: int | None = None
     timeout_ms: int = 60000
     max_retries: int = 3
+    contemplation_level: str = "medium"
+    contemplation_budget: int | None = None
+    exclude_contemplation: bool = False
+    tools: list[dict[str, Any]] = field(default_factory=list)
     meta_data: dict[str, Any] = field(default_factory=dict)
 
 
@@ -36,3 +41,4 @@ class RealmResponse:
     mana_used: int = 0
     stop_reason: str = "stop"
     error_message: str | None = None
+    error_code: str | None = None

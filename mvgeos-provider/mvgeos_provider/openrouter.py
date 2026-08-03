@@ -1,13 +1,57 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
+from mvgeos_agent.types import MvgeResponse, StopReason
 
 from mvgeos_provider.base import Realm
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
+
+_REASONING_MODELS = ("openai/o1", "openai/o3")
+_RETRYABLE_STATUSES = (429, 500, 502, 503, 504)
+_RETRY_BACKOFF_BASE = 1.0
+
+
+def _supports_reasoning(model: Model) -> bool:
+    if model.supported_parameters:
+        return "reasoning" in model.supported_parameters
+    return any(m in model.id for m in _REASONING_MODELS)
+
+
+def _error_from_response(response: Any) -> tuple[str, str | None]:
+    content_type = response.headers.get("content-type", "")
+    is_json = content_type.startswith("application/json")
+    try:
+        error_data = response.json() if is_json else {}
+    except Exception:
+        error_data = {}
+    message = error_data.get("error", {}).get("message", f"HTTP {response.status_code}")
+    if message:
+        message = message.replace("\r\n", "\n").replace("\r", "\n").strip("\n")
+    if response.status_code == 429:
+        error_code = "rate_limited"
+        # Use a clean message for rate limits; the CLI shows a friendly template
+        if message == f"HTTP {response.status_code}":
+            message = "Rate limit exceeded"
+    elif response.status_code == 401:
+        error_code = "auth_failed"
+    else:
+        error_code = None
+    return message, error_code
+
+
+def _retry_after_seconds(response: Any) -> float | None:
+    value = response.headers.get("retry-after")
+    if value is None:
+        return None
+    try:
+        return max(0.0, float(value.strip()))
+    except ValueError:
+        return None
 
 
 def _invocations_to_messages(invocations: list[Any]) -> list[dict[str, Any]]:
@@ -17,29 +61,35 @@ def _invocations_to_messages(invocations: list[Any]) -> list[dict[str, Any]]:
             messages.append({"role": "user", "content": inv.content or ""})
         elif hasattr(inv, "role") and inv.role == "assistant":
             if hasattr(inv, "content") and inv.content:
+                text_parts: list[str] = []
+                tool_calls: list[dict[str, Any]] = []
                 for block in inv.content:
                     if block.get("type") == "text":
-                        text_content = block.get("text", "")
-                        messages.append({"role": "assistant", "content": text_content})
-                    elif block.get("type") == "tool_use":
-                        messages.append(
+                        text_parts.append(str(block.get("text", "")))
+                    elif block.get("type") == "tool_call":
+                        tc = block.get("tool_call", {})
+                        tool_calls.append(
                             {
-                                "role": "assistant",
-                                "content": None,
-                                "tool_calls": [
-                                    {
-                                        "id": block.get("id", ""),
-                                        "type": "function",
-                                        "function": {
-                                            "name": block.get("name", ""),
-                                            "arguments": json.dumps(
-                                                block.get("input", {})
-                                            ),
-                                        },
-                                    }
-                                ],
+                                "id": tc.get("id", ""),
+                                "type": "function",
+                                "function": {
+                                    "name": tc.get("name", ""),
+                                    "arguments": json.dumps(tc.get("arguments", {})),
+                                },
                             }
                         )
+                if tool_calls:
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": "".join(text_parts) or None,
+                            "tool_calls": tool_calls,
+                        }
+                    )
+                else:
+                    messages.append(
+                        {"role": "assistant", "content": "".join(text_parts)}
+                    )
         elif hasattr(inv, "role") and inv.role == "spellResult":
             messages.append(
                 {
@@ -82,24 +132,56 @@ class OpenRouterRealm(Realm):
             "stream": True,
         }
 
+        if _supports_reasoning(model) and not config.exclude_contemplation:
+            reasoning: dict[str, Any] = {"effort": config.contemplation_level}
+            if config.contemplation_budget is not None:
+                reasoning["max_tokens"] = config.contemplation_budget
+            payload["reasoning"] = reasoning
+
         if config.mana_limit is not None:
             payload["max_tokens"] = min(config.max_tokens, config.mana_limit)
 
-        response = await self._client.post(
-            "/chat/completions",
-            json=payload,
-            timeout=config.timeout_ms / 1000,
-        )
+        if config.tools:
+            payload["tools"] = config.tools
 
-        if response.status_code != 200:
-            content_type = response.headers.get("content-type", "")
-            is_json = content_type.startswith("application/json")
-            error_data = response.json() if is_json else {}
-            msg = error_data.get("error", {}).get(
-                "message", f"HTTP {response.status_code}"
-            )
-            yield RealmResponse(model=model, error_message=msg)
-            return
+        max_attempts = max(1, config.max_retries)
+        backoff = _RETRY_BACKOFF_BASE
+        for attempt in range(max_attempts):
+            async with self._client.stream(
+                "POST",
+                "/chat/completions",
+                json=payload,
+                timeout=config.timeout_ms / 1000,
+            ) as response:
+                if response.status_code == 200:
+                    async for item in self._consume_stream(model, response):
+                        yield item
+                    return
+
+                message, error_code = _error_from_response(response)
+                if response.status_code not in _RETRYABLE_STATUSES:
+                    yield RealmResponse(
+                        model=model, error_message=message, error_code=error_code
+                    )
+                    return
+
+                if attempt >= max_attempts - 1:
+                    yield RealmResponse(
+                        model=model, error_message=message, error_code=error_code
+                    )
+                    return
+
+                retry_after = _retry_after_seconds(response)
+                await asyncio.sleep(retry_after if retry_after is not None else backoff)
+                backoff *= 2
+
+    async def _consume_stream(
+        self,
+        model: Model,
+        response: Any,
+    ) -> AsyncIterator[RealmResponse]:
+        text_parts: list[str] = []
+        tool_calls_acc: dict[int, dict[str, Any]] = {}
 
         async for line in response.aiter_lines():
             if not line:
@@ -118,44 +200,78 @@ class OpenRouterRealm(Realm):
             choice = chunk.get("choices", [{}])[0]
             delta = choice.get("delta", {})
             finish_reason = choice.get("finish_reason")
+            usage = chunk.get("usage", {})
 
             content = delta.get("content")
-            tool_calls = delta.get("tool_calls")
+            if content:
+                text_parts.append(content)
+                yield RealmResponse(
+                    model=model,
+                    invocation=MvgeResponse(
+                        role="assistant",
+                        content=[{"type": "text", "text": content}],
+                        realm="openrouter",
+                        model=model.id,
+                    ),
+                    stop_reason="pending",
+                )
 
-            invocation = None
-            if content or tool_calls:
-                blocks = []
-                if content:
-                    blocks.append({"type": "text", "text": content})
-                if tool_calls:
-                    for tc in tool_calls:
-                        func = tc.get("function", {})
-                        blocks.append(
-                            {
-                                "type": "tool_use",
-                                "id": tc.get("id", ""),
-                                "name": func.get("name", ""),
-                                "input": json.loads(func.get("arguments", "{}")),
-                            }
+            for tc in delta.get("tool_calls") or []:
+                index = tc.get("index", 0)
+                acc = tool_calls_acc.setdefault(
+                    index, {"id": "", "name": "", "arguments": ""}
+                )
+                if tc.get("id"):
+                    acc["id"] = tc["id"]
+                func = tc.get("function", {})
+                if func.get("name"):
+                    acc["name"] = func["name"]
+                if func.get("arguments"):
+                    acc["arguments"] += func["arguments"]
+
+            if finish_reason:
+                blocks: list[dict[str, Any]] = []
+                if text_parts:
+                    blocks.append({"type": "text", "text": "".join(text_parts)})
+                for index in sorted(tool_calls_acc):
+                    acc = tool_calls_acc[index]
+                    try:
+                        arguments = (
+                            json.loads(acc["arguments"]) if acc["arguments"] else {}
                         )
-                from mvgeos_agent.types import MvgeResponse
+                    except json.JSONDecodeError:
+                        arguments = {}
+                    blocks.append(
+                        {
+                            "type": "tool_call",
+                            "tool_call": {
+                                "id": acc["id"],
+                                "name": acc["name"],
+                                "arguments": arguments,
+                            },
+                        }
+                    )
+                if tool_calls_acc:
+                    stop_reason = StopReason.SPELL_USE
+                elif finish_reason == "length":
+                    stop_reason = StopReason.LENGTH
+                else:
+                    stop_reason = StopReason.STOP
 
                 invocation = MvgeResponse(
                     role="assistant",
                     content=blocks,
                     realm="openrouter",
                     model=model.id,
+                    stop_reason=stop_reason,
                 )
-
-            usage = chunk.get("usage", {})
-            mana_used = usage.get("total_tokens", 0)
-
-            yield RealmResponse(
-                model=model,
-                invocation=invocation,
-                mana_used=mana_used,
-                stop_reason=finish_reason or "stop",
-            )
+                yield RealmResponse(
+                    model=model,
+                    invocation=invocation,
+                    mana_used=usage.get("total_tokens", 0),
+                    stop_reason=stop_reason.value,
+                )
+                return
 
     async def close(self) -> None:
         await self._client.aclose()
