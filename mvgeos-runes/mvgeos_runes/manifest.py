@@ -4,7 +4,7 @@ import contextlib
 import json
 from pathlib import Path
 
-from mvgeos_runes.types import RuneManifest, SigilHook
+from mvgeos_runes.types import RuneManifest, RuneShortcut, SigilHook
 
 
 def load_manifest(path: Path) -> RuneManifest | None:
@@ -25,10 +25,23 @@ def load_manifest(path: Path) -> RuneManifest | None:
         with contextlib.suppress(ValueError):
             hooks.append(SigilHook(hook_str))
 
+    shortcuts = []
+    for sc_data in data.get("shortcuts", []):
+        if isinstance(sc_data, str):
+            shortcuts.append(RuneShortcut(key=sc_data))
+        elif isinstance(sc_data, dict):
+            shortcuts.append(
+                RuneShortcut(
+                    key=sc_data.get("key", ""),
+                    description=sc_data.get("description", ""),
+                )
+            )
+
     return RuneManifest(
         name=data["name"],
         version=data["version"],
         description=data.get("description", ""),
         hooks=hooks,
         entry_point=data.get("entry_point", ""),
+        shortcuts=shortcuts,
     )

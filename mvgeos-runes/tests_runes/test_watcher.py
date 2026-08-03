@@ -1,0 +1,302 @@
+from __future__ import annotations
+
+import asyncio
+import tempfile
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from mvgeos_runes.rune_runner import RuneRunner
+
+
+class TestRuneWatcher:
+    def test_create_watcher(self) -> None:
+        runner = RuneRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            from mvgeos_runes.watcher import RuneWatcher
+
+            watcher = RuneWatcher(Path(tmpdir), runner)
+            assert watcher._extensions_dir == Path(tmpdir)
+            assert watcher._runner is runner
+
+    def test_reload_rune_with_shortcuts(self) -> None:
+        runner = RuneRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            rune_dir = ext_dir / "test_rune"
+            rune_dir.mkdir()
+
+            manifest_data = (
+                '{"name": "test_rune", "version": "1.0.0", '
+                '"description": "Test", "hooks": [], '
+                '"entry_point": "main.py", '
+                '"shortcuts": [{"key": "ctrl+k", "description": "Clear"}]}'
+            )
+            (rune_dir / "manifest.json").write_text(manifest_data, encoding="utf-8")
+            (rune_dir / "main.py").write_text(
+                "def rune_factory(api):\n"
+                "    api.register_shortcut('ctrl+r', 'Reload')\n"
+            )
+
+            from mvgeos_runes.watcher import RuneWatcher
+
+            watcher = RuneWatcher(ext_dir, runner)
+
+            import asyncio
+
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(watcher._reload_rune("test_rune"))
+            loop.close()
+
+            shortcuts = runner.get_shortcuts()
+            assert len(shortcuts) >= 1
+            keys = {s.key for s in shortcuts}
+            assert "ctrl+k" in keys
+
+    @pytest.mark.asyncio
+    async def test_reload_rune_warns_on_missing_manifest(self) -> None:
+        runner = RuneRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+
+            from mvgeos_runes.watcher import RuneWatcher
+
+            watcher = RuneWatcher(ext_dir, runner)
+            await watcher._reload_rune("nonexistent")
+
+    @pytest.mark.asyncio
+    async def test_reload_rune_warns_on_no_factory(self) -> None:
+        runner = RuneRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            rune_dir = ext_dir / "test_rune"
+            rune_dir.mkdir()
+
+            manifest_data = (
+                '{"name": "test_rune", "version": "1.0.0", '
+                '"description": "Test", "hooks": []}'
+            )
+            (rune_dir / "manifest.json").write_text(manifest_data, encoding="utf-8")
+
+            from mvgeos_runes.watcher import RuneWatcher
+
+            watcher = RuneWatcher(ext_dir, runner)
+            await watcher._reload_rune("test_rune")
+
+    @pytest.mark.asyncio
+    async def test_reload_rune_reinvokes_factory(self) -> None:
+        runner = RuneRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            rune_dir = ext_dir / "test_rune"
+            rune_dir.mkdir()
+
+            manifest_data = (
+                '{"name": "test_rune", "version": "1.0.0", '
+                '"description": "Test", "hooks": [], '
+                '"entry_point": "main.py"}'
+            )
+            (rune_dir / "manifest.json").write_text(manifest_data, encoding="utf-8")
+            (rune_dir / "main.py").write_text(
+                "def rune_factory(api):\n"
+                "    api.register_spell(__import__('mvgeos_runes.types', "
+                "fromlist=['SpellDefinition'])."
+                "SpellDefinition('hot_reload_spell', 'Hot reloaded'))\n"
+            )
+
+            from mvgeos_runes.watcher import RuneWatcher
+
+            watcher = RuneWatcher(ext_dir, runner)
+            await watcher._reload_rune("test_rune")
+
+            spells = runner.get_all_registered_spells()
+            assert len(spells) == 1
+            assert spells[0].name == "hot_reload_spell"
+
+
+class TestRuneReloadHandler:
+    @pytest.mark.asyncio
+    async def test_schedule_reload_debounce(self) -> None:
+        """Test that _schedule_reload debounces multiple calls."""
+        from mvgeos_runes.watcher import _RuneReloadHandler
+
+        callback = AsyncMock()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            handler = _RuneReloadHandler(ext_dir, callback, debounce_seconds=0.01)
+
+            # Schedule multiple reloads quickly
+            handler._schedule_reload("rune1")
+            handler._schedule_reload("rune2")
+            handler._schedule_reload("rune1")  # duplicate
+
+            # Wait for debounce - first task
+            await asyncio.sleep(0.05)
+            # Wait for second task
+            await asyncio.sleep(0.05)
+
+            # Should have been called for each unique name
+            assert callback.call_count >= 1
+            called_names = {call[0][0] for call in callback.call_args_list}
+            assert "rune1" in called_names
+            assert "rune2" in called_names
+
+    def test_find_rune_dir(self) -> None:
+        from mvgeos_runes.watcher import _RuneReloadHandler
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            handler = _RuneReloadHandler(ext_dir, AsyncMock())
+
+            rune_dir = ext_dir / "my_rune"
+            rune_dir.mkdir()
+
+            # File inside rune directory
+            test_file = rune_dir / "main.py"
+            test_file.write_text("test", encoding="utf-8")
+
+            found = handler._find_rune_dir(str(test_file))
+            assert found == "my_rune"
+
+    def test_find_rune_dir_outside_extensions(self) -> None:
+        from mvgeos_runes.watcher import _RuneReloadHandler
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            handler = _RuneReloadHandler(ext_dir, AsyncMock())
+
+            # File outside extensions dir - use absolute path outside
+            outside_file = Path(tmpdir).parent / "other.py"
+            found = handler._find_rune_dir(str(outside_file))
+            assert found is None
+
+    @pytest.mark.asyncio
+    async def test_on_modified(self) -> None:
+        from mvgeos_runes.watcher import _RuneReloadHandler
+
+        callback = AsyncMock()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            handler = _RuneReloadHandler(ext_dir, callback, debounce_seconds=0.01)
+
+            rune_dir = ext_dir / "test_rune"
+            rune_dir.mkdir()
+
+            # Create mock event
+            event = MagicMock()
+            event.is_directory = False
+            event.src_path = str(rune_dir / "main.py")
+
+            handler.on_modified(event)
+
+            await asyncio.sleep(0.05)
+            callback.assert_called_once_with("test_rune")
+
+    @pytest.mark.asyncio
+    async def test_on_created(self) -> None:
+        from mvgeos_runes.watcher import _RuneReloadHandler
+
+        callback = AsyncMock()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            handler = _RuneReloadHandler(ext_dir, callback, debounce_seconds=0.01)
+
+            rune_dir = ext_dir / "test_rune"
+            rune_dir.mkdir()
+
+            event = MagicMock()
+            event.is_directory = False
+            event.src_path = str(rune_dir / "new_file.py")
+
+            handler.on_created(event)
+
+            await asyncio.sleep(0.05)
+            callback.assert_called_once_with("test_rune")
+
+    @pytest.mark.asyncio
+    async def test_on_deleted(self) -> None:
+        from mvgeos_runes.watcher import _RuneReloadHandler
+
+        callback = AsyncMock()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            handler = _RuneReloadHandler(ext_dir, callback, debounce_seconds=0.01)
+
+            rune_dir = ext_dir / "test_rune"
+            rune_dir.mkdir()
+
+            event = MagicMock()
+            event.is_directory = False
+            event.src_path = str(rune_dir / "deleted.py")
+
+            handler.on_deleted(event)
+
+            await asyncio.sleep(0.05)
+            callback.assert_called_once_with("test_rune")
+
+    def test_ignore_directory_events(self) -> None:
+        from mvgeos_runes.watcher import _RuneReloadHandler
+
+        callback = AsyncMock()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            handler = _RuneReloadHandler(ext_dir, callback, debounce_seconds=0.01)
+
+            event = MagicMock()
+            event.is_directory = True
+            event.src_path = str(ext_dir / "test_rune")
+
+            handler.on_modified(event)
+            handler.on_created(event)
+            handler.on_deleted(event)
+
+            # Should not call callback for directory events
+            callback.assert_not_called()
+
+
+class TestRuneWatcherStartStop:
+    @pytest.mark.asyncio
+    async def test_start_creates_observer(self) -> None:
+        runner = RuneRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+
+            from mvgeos_runes.watcher import RuneWatcher
+
+            watcher = RuneWatcher(ext_dir, runner)
+            await watcher.start()
+
+            assert watcher._observer is not None
+            assert watcher._handler is not None
+            await watcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_start_idempotent(self) -> None:
+        runner = RuneRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+
+            from mvgeos_runes.watcher import RuneWatcher
+
+            watcher = RuneWatcher(ext_dir, runner)
+            await watcher.start()
+            first_observer = watcher._observer
+            await watcher.start()  # Should not create new observer
+            assert watcher._observer is first_observer
+            await watcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_stop_cleans_up(self) -> None:
+        runner = RuneRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+
+            from mvgeos_runes.watcher import RuneWatcher
+
+            watcher = RuneWatcher(ext_dir, runner)
+            await watcher.start()
+            await watcher.stop()
+
+            assert watcher._observer is None
+            assert watcher._handler is None

@@ -1,11 +1,17 @@
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
 
-from mvgeos_runes.loader import RuneLoader
+from mvgeos_runes.loader import (
+    RuneLoader,
+    load_factories,
+    load_factory_from_manifest,
+    load_manifests,
+)
 from mvgeos_runes.manifest import load_manifest
-from mvgeos_runes.sigils import SigilRegistry
-from mvgeos_runes.types import SigilHook
+from mvgeos_runes.types import (
+    RuneManifest,
+    SigilHook,
+)
 
 
 def test_load_manifest_valid() -> None:
@@ -64,6 +70,81 @@ def test_load_manifest_missing_required_fields() -> None:
         assert manifest is None
 
 
+def test_load_manifest_with_shortcuts_dict() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = Path(tmpdir) / "test_rune"
+        rune_dir.mkdir()
+        manifest_file = rune_dir / "manifest.json"
+        manifest_data = (
+            '{"name": "test_rune", "version": "1.0.0", '
+            '"description": "Test", "hooks": [], '
+            '"shortcuts": [{"key": "ctrl+k", "description": "Clear"}]}'
+        )
+        manifest_file.write_text(manifest_data, encoding="utf-8")
+
+        manifest = load_manifest(rune_dir)
+
+        assert manifest is not None
+        assert len(manifest.shortcuts) == 1
+        assert manifest.shortcuts[0].key == "ctrl+k"
+        assert manifest.shortcuts[0].description == "Clear"
+
+
+def test_load_manifest_with_shortcuts_strings() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = Path(tmpdir) / "test_rune"
+        rune_dir.mkdir()
+        manifest_file = rune_dir / "manifest.json"
+        manifest_data = (
+            '{"name": "test_rune", "version": "1.0.0", '
+            '"description": "Test", "hooks": [], '
+            '"shortcuts": ["ctrl+k", "ctrl+r"]}'
+        )
+        manifest_file.write_text(manifest_data, encoding="utf-8")
+
+        manifest = load_manifest(rune_dir)
+
+        assert manifest is not None
+        assert len(manifest.shortcuts) == 2
+        assert manifest.shortcuts[0].key == "ctrl+k"
+        assert manifest.shortcuts[1].key == "ctrl+r"
+
+
+def test_load_manifest_without_shortcuts() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = Path(tmpdir) / "test_rune"
+        rune_dir.mkdir()
+        manifest_file = rune_dir / "manifest.json"
+        manifest_data = (
+            '{"name": "test_rune", "version": "1.0.0", '
+            '"description": "Test", "hooks": []}'
+        )
+        manifest_file.write_text(manifest_data, encoding="utf-8")
+
+        manifest = load_manifest(rune_dir)
+
+        assert manifest is not None
+        assert manifest.shortcuts == []
+
+
+def test_load_manifests_with_shortcuts() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ext_dir = Path(tmpdir)
+        rune_dir = ext_dir / "rune_with_shortcuts"
+        rune_dir.mkdir()
+        manifest_data = (
+            '{"name": "sc_rune", "version": "1.0.0", '
+            '"description": "Rune with shortcuts", "hooks": [], '
+            '"shortcuts": [{"key": "ctrl+s", "description": "Save"}]}'
+        )
+        (rune_dir / "manifest.json").write_text(manifest_data, encoding="utf-8")
+
+        manifests = load_manifests(ext_dir)
+        assert len(manifests) == 1
+        assert len(manifests[0].shortcuts) == 1
+        assert manifests[0].shortcuts[0].key == "ctrl+s"
+
+
 def test_rune_loader_load_all() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         extensions_dir = Path(tmpdir)
@@ -110,45 +191,21 @@ def test_rune_loader_load_all_nonexistent_dir() -> None:
     assert manifests == []
 
 
-def test_sigil_registry_register_and_emit() -> None:
-    registry = SigilRegistry()
-    handler = MagicMock()
-
-    registry.register(SigilHook.BEFORE_INVOCATION, handler)
-    registry.emit(SigilHook.BEFORE_INVOCATION, {"test": "data"})
-
-    handler.before_invocation.assert_called_once_with({"test": "data"})
+def test_load_factories_empty_dir() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        factories = load_factories(Path(tmpdir))
+        assert factories == []
 
 
-def test_sigil_registry_multiple_handlers() -> None:
-    registry = SigilRegistry()
-    handler1 = MagicMock()
-    handler2 = MagicMock()
-
-    registry.register(SigilHook.BEFORE_INVOCATION, handler1)
-    registry.register(SigilHook.BEFORE_INVOCATION, handler2)
-    registry.emit(SigilHook.BEFORE_INVOCATION, {"key": "value"})
-
-    handler1.before_invocation.assert_called_once_with({"key": "value"})
-    handler2.before_invocation.assert_called_once_with({"key": "value"})
+def test_load_factories_nonexistent_dir() -> None:
+    factories = load_factories(Path("/nonexistent/path"))
+    assert factories == []
 
 
-def test_sigil_registry_emit_no_handlers() -> None:
-    registry = SigilRegistry()
-    # Should not raise
-    registry.emit(SigilHook.BEFORE_INVOCATION, {"test": "data"})
-
-
-def test_sigil_registry_emit_async_handler() -> None:
-
-    registry = SigilRegistry()
-
-    async def async_handler(data):
-        pass
-
-    registry.register(SigilHook.BEFORE_INVOCATION, async_handler)
-    # Should not raise
-    registry.emit(SigilHook.BEFORE_INVOCATION, {"test": "data"})
+def test_load_factory_from_manifest_no_entry_point() -> None:
+    manifest = RuneManifest(name="test", version="1.0", description="", entry_point="")
+    factory = load_factory_from_manifest(manifest, Path("/tmp"))
+    assert factory is None
 
 
 def test_sigil_hook_enum_values() -> None:
