@@ -1,10 +1,26 @@
+from __future__ import annotations
+
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any, Protocol
+
+from pydantic import BaseModel, ValidationError
+
+if TYPE_CHECKING:
+    from mvgeos_runes.rune_runner import RuneRunner
+
+    from mvgeos_agent.agent_session import MvgeTome
+    from mvgeos_agent.event_bus import EventBus
+
+
+class ContentType(StrEnum):
+    TEXT = "text"
+    TOOL_CALL = "tool_call"
 
 
 class ContemplationLevel(StrEnum):
-    OFF = "off"
+    OFF = "none"
     MINIMAL = "minimal"
     LOW = "low"
     MEDIUM = "medium"
@@ -21,14 +37,22 @@ class SpellExecutionMode(StrEnum):
 class MvgeEventType(StrEnum):
     AGENT_START = "agent_start"
     AGENT_END = "agent_end"
+    AGENT_SETTLED = "agent_settled"
     TURN_START = "turn_start"
     TURN_END = "turn_end"
     MESSAGE_START = "message_start"
     MESSAGE_UPDATE = "message_update"
     MESSAGE_END = "message_end"
+    TOOL_EXECUTION_START = "tool_execution_start"
+    TOOL_EXECUTION_UPDATE = "tool_execution_update"
+    TOOL_EXECUTION_END = "tool_execution_end"
     SPELL_CASTING_START = "spell_casting_start"
     SPELL_CASTING_UPDATE = "spell_casting_update"
     SPELL_CASTING_END = "spell_casting_end"
+    COMPACTION_START = "compaction_start"
+    COMPACTION_END = "compaction_end"
+    ENTRY_APPENDED = "entry_appended"
+    QUEUE_UPDATE = "queue_update"
 
 
 class StopReason(StrEnum):
@@ -38,6 +62,7 @@ class StopReason(StrEnum):
     SPELL_USE = "spellUse"
     ERROR = "error"
     ABORTED = "aborted"
+    MANA_EXHAUSTED = "mana_exhausted"
 
 
 @dataclass
@@ -73,15 +98,73 @@ class SpellResultMessage:
 MvgeInvocation = SummonerRequest | MvgeResponse | SpellResultMessage
 
 
+class SpellSignal(Protocol):
+    cancelled: bool
+
+    def cancel(self) -> None: ...
+
+
+SpellUpdateCallback = Callable[[dict[str, Any]], None]
+
+
 @dataclass
 class MvgeSpell:
     name: str
     description: str
     parameters: dict[str, Any]
     execution_mode: SpellExecutionMode = SpellExecutionMode.PARALLEL
+    _schema_model: type[BaseModel] | None = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.parameters:
+            from pydantic import create_model
+
+            self._schema_model = create_model(
+                f"{self.name}_Schema",
+                **self._convert_to_model_fields(self.parameters),
+            )
+
+    def _convert_to_model_fields(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Convert JSON Schema properties to Pydantic model fields."""
+        fields = {}
+        props = params.get("properties", {})
+        required = params.get("required", [])
+        for name, prop in props.items():
+            field_type = self._json_type_to_python(prop)
+            # Use the field type directly; Pydantic infers optional from default
+            fields[name] = (field_type, ... if name in required else None)
+        return fields
+
+    def _json_type_to_python(self, prop: dict[str, Any]) -> type:
+        """Convert JSON Schema type to Python type."""
+        json_type = prop.get("type", "string")
+        if json_type == "string":
+            return str
+        elif json_type == "integer":
+            return int
+        elif json_type == "number":
+            return float
+        elif json_type == "boolean":
+            return bool
+        elif json_type == "array":
+            items = prop.get("items", {})
+            if items:
+                _ = self._json_type_to_python(items)
+                # Use list[Any] and let Pydantic handle validation at runtime
+                return list[Any]
+            return list[Any]
+        elif json_type == "object":
+            return dict[str, Any]
+        return Any
 
     def prepare_arguments(self, args: dict[str, Any]) -> dict[str, Any]:
-        return args
+        if self._schema_model is None:
+            return args
+        try:
+            validated = self._schema_model.model_validate(args)
+            return validated.model_dump()
+        except ValidationError as e:
+            raise ValueError(f"Invalid arguments for spell {self.name}: {e}") from e
 
     async def execute(
         self,
@@ -89,7 +172,7 @@ class MvgeSpell:
         params: dict[str, Any],
         signal: Any | None = None,
         on_update: Any | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | str:
         raise NotImplementedError
 
 
@@ -97,19 +180,45 @@ class MvgeSpell:
 class MvgeState:
     system_prompt: str = ""
     model: dict[str, Any] | None = None
-    contemplation_level: ContemplationLevel = ContemplationLevel.OFF
+    contemplation_level: ContemplationLevel = ContemplationLevel.MEDIUM
     spells: list[MvgeSpell] = field(default_factory=list)
+    _spell_index: dict[str, MvgeSpell] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
     invocations: list[MvgeInvocation] = field(default_factory=list)
     is_streaming: bool = False
     streaming_manifestation: MvgeInvocation | None = None
     pending_spell_casts: set[str] = field(default_factory=set)
     error_message: str | None = None
     mana_budget: int | None = None
+    mana_used: int = 0
     max_tokens: int | None = None
     temperature: float | None = None
+    max_turns: int = 50
+    max_events: int = 1000
+    spell_timeout_ms: int = 30000
+    contemplation_budget: int | None = None
+    exclude_contemplation: bool = False
+    rune_runner: RuneRunner | None = None
+    agent_session: MvgeTome | None = None
+    event_bus: EventBus | None = None
+    events: list[MvgeEvent] = field(default_factory=list)
+    steer_queue: list[SummonerRequest] = field(default_factory=list)
+    followup_queue: list[SummonerRequest] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self._spell_index = {s.name: s for s in self.spells}
+
+
+class SessionResumeError(Exception):
+    """Raised when resuming a session fails."""
 
 
 @dataclass
 class MvgeEvent:
     type: MvgeEventType
     data: dict[str, Any] = field(default_factory=dict)
+
+
+class SandboxTimeoutError(Exception):
+    """Raised when sandbox code execution exceeds the timeout threshold."""

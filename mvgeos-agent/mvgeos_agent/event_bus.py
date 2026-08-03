@@ -1,26 +1,32 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from collections.abc import Callable
 from typing import Any
 
-pass
-
-EventHandler = Callable[[Any], Any | None]
+from mvgeos_agent.types import MvgeEvent, MvgeEventType
 
 
 class EventBus:
     def __init__(self) -> None:
-        self._handlers: dict[str, list[EventHandler]] = defaultdict(list)
+        self._listeners: dict[MvgeEventType, list[Callable[[MvgeEvent], None]]] = {}
 
-    def on(self, channel: str, handler: EventHandler) -> Callable[[], None]:
-        self._handlers[channel].append(handler)
+    def on(
+        self,
+        event_type: MvgeEventType,
+        callback: Callable[[MvgeEvent], None],
+    ) -> Callable[[], None]:
+        if event_type not in self._listeners:
+            self._listeners[event_type] = []
+        self._listeners[event_type].append(callback)
 
         def unsubscribe() -> None:
-            self._handlers[channel].remove(handler)
+            listeners = self._listeners.get(event_type, [])
+            if callback in listeners:
+                listeners.remove(callback)
 
         return unsubscribe
 
-    def emit(self, channel: str, data: Any) -> None:
-        for handler in self._handlers.get(channel, []):
-            handler(data)
+    def emit(self, event_type: MvgeEventType, data: dict[str, Any]) -> None:
+        event = MvgeEvent(type=event_type, data=data)
+        for listener in self._listeners.get(event_type, []):
+            listener(event)

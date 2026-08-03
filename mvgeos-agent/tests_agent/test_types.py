@@ -25,6 +25,11 @@ def test_mvge_state_default_spells() -> None:
     assert state.spells == []
 
 
+def test_mvge_state_default_events() -> None:
+    state = MvgeState()
+    assert state.events == []
+
+
 def test_mvge_spell_has_required_fields() -> None:
     spell = MvgeSpell(name="test_spell", description="A test spell", parameters={})
     assert spell.name == "test_spell"
