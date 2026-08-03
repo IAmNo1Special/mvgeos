@@ -130,7 +130,7 @@ class TestCodingMvgeInit:
 
     def test_default_session_dir(self) -> None:
         agent = CodingMvge(api_key="k")
-        assert agent._session_dir == Path(".agents/.mvgeos/sessions")
+        assert agent._session_dir == Path("~/.agents/.mvgeos/tomes")
 
 
 class TestCodingMvgeBuildSpells:

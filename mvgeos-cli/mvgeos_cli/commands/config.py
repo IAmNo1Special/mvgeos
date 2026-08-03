@@ -21,7 +21,7 @@ DEFAULT_CONFIG = {
     "temperature": 0.7,
     "contemplation_level": "medium",
     "spells_enabled": ["bash", "read", "write", "edit", "find", "list", "grep"],
-    "runes_paths": [".agents/.mvgeos/extensions"],
+    "runes_paths": ["~/.agents/.mvgeos/runes"],
 }
 
 

@@ -66,7 +66,7 @@ class BaseMvge:
         self._name = name
         self._model_id = model
         self._extension_dir = extension_dir
-        self._session_dir = session_dir or Path(".agents/.mvgeos/sessions")
+        self._session_dir = session_dir or Path("~/.agents/.mvgeos/tomes")
         self._session_resume = session_resume
         self._provider_name = provider_name
         self._temperature = temperature
@@ -376,3 +376,4 @@ class BaseMvge:
 
     async def __aexit__(self, *args: Any) -> None:
         await self.close()
+

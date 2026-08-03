@@ -244,7 +244,7 @@ async def _run_agent(
 
 
 def _get_session_dir() -> Path:
-    return Path(".agents/.mvgeos/sessions")
+    return Path("~/.agents/.mvgeos/tomes")
 
 
 def _build_spells(enabled: list[str]) -> list[MvgeSpell]:
@@ -377,3 +377,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
