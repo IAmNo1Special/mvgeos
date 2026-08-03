@@ -376,4 +376,3 @@ class BaseMvge:
 
     async def __aexit__(self, *args: Any) -> None:
         await self.close()
-
