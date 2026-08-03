@@ -17,7 +17,8 @@ class TomeEntryType(StrEnum):
     CUSTOM = "custom"
     CUSTOM_MESSAGE = "customMessage"
     LEAF = "leaf"
-    SESSION_INFO = "sessionInfo"
+    SESSION_INFO = "session_info"
+    MESSAGE = "message"
 
 
 @dataclass
