@@ -35,6 +35,9 @@ members = [
     "coding-mvge",
 ]
 
+[tool.uv.sources]
+heal-my-goap = { path = "../heal_my_goap", editable = true }
+
 [tool.ruff]
 line-length = 88
 target-version = "py314"
