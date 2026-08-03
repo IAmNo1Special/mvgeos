@@ -2,6 +2,8 @@
 
 ## Development Rules
 
+MVGEOS IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https://github.com/earendil-works/pi) CHECK OUT IT'S SOURCE CODE FOR A REFRESHER ON HOW WE ARE MAKING MVGEOS
+
 ## Conversational Style
 
 - Keep answers short and direct
@@ -21,7 +23,7 @@
 
 - After code changes: `uv run pytest --cov` (full output, no tail)
 - Never run `uv run build` or `uv run test` unless requested
-- For non-e2e tests, run specific package: `uv run pytest packages/mvgeos-agent/tests/`
+- For non-e2e tests, run specific package: `uv run pytest mvgeos-agent/tests_agent/`
 - If you create or modify a test file, run it and iterate until it passes
 - **Use `;` (semicolon) to chain commands in PowerShell, not `&&`** — PowerShell does not support `&&`
 
@@ -44,29 +46,41 @@
 
 - pytest framework with pytest-asyncio
 - 90%+ coverage target enforced by CI
-- Tests mirror source structure: `tests/test_<module>.py`
+- Tests mirror source structure: `<package>/tests_<package>/test_<module>.py` (e.g., `mvgeos-agent/tests_agent/test_types.py`)
 - Unit, harness, and integration test types supported
+- **Mock sync methods with `MagicMock()`, async methods with `AsyncMock()`** — mixing causes "coroutine never awaited" warnings
+- **Add coverage omit patterns for temp directories** in pyproject.toml to avoid "couldn't parse" warnings
+- **90% is practical ceiling** — 100% requires brittle mocks of external dependencies
+
+## Debugging
+
+- **RuntimeWarning "coroutine never awaited"** = async mock used on sync method
+- **CoverageWarning "couldn't parse"** = test creates temp files outside project; add to `[tool.coverage.run] omit`
+- **TUI tests fail silently** = check indentation of early returns in rendering loops
 
 ## Architecture
 
-MvgeOS is a monorepo with uv workspaces under `packages/`:
+MvgeOS is a monorepo with uv workspaces:
 
 | Package | Purpose |
-|---|---|
+| --- | --- |
 | mvgeos-agent | Core loop, Mvge class, MvgeState, MvgeEvent |
 | mvgeos-provider | Realm protocol + OpenRouter provider |
 | mvgeos-tome | JSONL session persistence with file locking |
 | mvgeos-spells | Spell implementations (bash, read, edit, write, grep, find, list) |
 | mvgeos-runes | Extension manifest, loader, sigil hooks |
 | mvgeos-cli | CLI entry point (`mvgeos` command) |
+| coding-mvge | Coding agent package |
 
-Config follows dotagents protocol at `.agents/mvgeos/`.
-Extension manifest at `.agents/mvgeos/extensions/manifest.json`.
+Config follows dotagents protocol at `.agents/.mvgeos/`.
+Extension manifest at `.agents/.mvgeos/extensions/manifest.json`.
+
+Test paths follow pattern: `<package>/tests_<package>/test_<module>.py` (e.g., `mvgeos-agent/tests_agent/test_types.py`).
 
 ## Key Types (MvgeOS Terminology)
 
 | Concept | Type |
-|---|---|
+| --- | --- |
 | Agent | Mvge |
 | Tools | Spells |
 | Toolsets | Grimoire |

@@ -27,6 +27,7 @@ MvgeOS is a monorepo with uv workspaces:
 | `mvgeos-spells` | Spell system: bash, read, edit, write, grep, find, ls |
 | `mvgeos-runes` | Extension system: manifest, loader, sigil hooks |
 | `mvgeos-cli` | CLI entry point (`mvgeos` command) |
+| `coding-mvge` | Coding agent package (BaseMvge subclass) |
 
 ## Quick Start
 
@@ -40,11 +41,11 @@ uv run ruff format --check
 
 ## Configuration
 
-MvgeOS adheres to the dotagents protocol. Configuration lives in `.agents/mvgeos/`:
+MvgeOS adheres to the dotagents protocol. Configuration lives in `.agents/.mvgeos/`:
 
-- `.agents/mvgeos/extensions/manifest.json` — Extension registry
-- `.agents/mvgeos/auth/` — Relics (API keys, credentials)
-- `.agents/mvgeos/sessions/` — Tome (session) JSONL files
+- `.agents/.mvgeos/extensions/manifest.json` — Extension registry
+- `.agents/.mvgeos/auth/` — Relics (API keys, credentials)
+- `.agents/.mvgeos/sessions/` — Tome (session) JSONL files
 
 ## License
 
