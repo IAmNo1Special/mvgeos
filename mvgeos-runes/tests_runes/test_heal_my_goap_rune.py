@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 
@@ -8,6 +9,13 @@ import pytest
 from mvgeos_runes.loader import load_factory_from_manifest, load_manifest
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import SigilHook
+
+HAS_HEAL_MY_GOAP = importlib.util.find_spec("heal_my_goap") is not None
+
+
+skip_if_no_heal_my_goap = pytest.mark.skipif(
+    not HAS_HEAL_MY_GOAP, reason="heal-my-goap not installed"
+)
 
 
 @pytest.fixture
@@ -36,6 +44,7 @@ def test_heal_my_goap_manifest_loading(rune_dir: Path) -> None:
     assert SigilHook.AFTER_SPELL_RESULT in manifest.hooks
 
 
+@skip_if_no_heal_my_goap
 @pytest.mark.asyncio
 async def test_rune_factory_registers_spells_and_sigils(rune_dir: Path) -> None:
     """Verifies rune_factory registers spells and AFTER_SPELL_RESULT sigil."""
@@ -178,6 +187,7 @@ def rune_factory(api: RuneAPI) -> None:
     assert transformed.get("result", {}).get("status") == "spell_registered"
 
 
+@skip_if_no_heal_my_goap
 @pytest.mark.asyncio
 async def test_global_heal_my_goap_rune_loading() -> None:
     """Verifies loading installed global Rune at ~/.agents/.mvgeos/extensions/."""

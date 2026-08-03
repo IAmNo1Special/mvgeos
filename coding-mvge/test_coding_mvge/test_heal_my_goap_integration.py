@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
@@ -12,7 +13,14 @@ from mvgeos_runes.types import SigilHook
 
 from coding_mvge.mvge import CodingMvge
 
+HAS_HEAL_MY_GOAP = importlib.util.find_spec("heal_my_goap") is not None
 
+
+skip_if_no_heal_my_goap = pytest.mark.skipif(
+    not HAS_HEAL_MY_GOAP, reason="heal-my-goap not installed"
+)
+
+@skip_if_no_heal_my_goap
 @pytest.mark.asyncio
 async def test_coding_agent_with_heal_my_goap_rune() -> None:
     """Verifies CodingMvge initializes with global heal_my_goap Rune."""
@@ -99,6 +107,7 @@ async def test_coding_agent_with_heal_my_goap_rune() -> None:
         await agent._watcher.stop()
 
 
+@skip_if_no_heal_my_goap
 @pytest.mark.asyncio
 async def test_missing_read_tool_self_healing_execution(tmp_path: Path) -> None:
     """Verifies heal_my_goap synthesizes and executes code when tool missing."""

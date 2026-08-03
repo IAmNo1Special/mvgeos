@@ -3,27 +3,34 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import json
 from pathlib import Path
 
+import pytest
 from mvgeos_agent.loop import _safe_emit_chain
 from mvgeos_runes.types import SigilHook
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
 
 from coding_mvge.mvge import CodingMvge
 
-console = Console()
+HAS_HEAL_MY_GOAP = importlib.util.find_spec("heal_my_goap") is not None
 
 
-async def run_interactive_demo() -> None:
-    console.print(
-        Panel.fit(
-            "[bold cyan]MvgeOS + heal-my-goap Interactive Rune Test[/bold cyan]",
-            border_style="cyan",
-        )
-    )
+skip_if_no_heal_my_goap = pytest.mark.skipif(
+    not HAS_HEAL_MY_GOAP, reason="heal-my-goap not installed"
+)
+
+
+@skip_if_no_heal_my_goap
+@pytest.mark.asyncio
+@pytest.mark.skip(
+    reason="Requires local scratch_extensions with heal_my_goap rune installed"
+)
+async def test_interactive_demo() -> None:
+    """Test version of interactive demo for CI."""
+    console = Console()
 
     global_ext_dir = Path("scratch_extensions").resolve()
     console.print(f"[dim]Loading global extensions from: {global_ext_dir}[/dim]")
@@ -117,4 +124,4 @@ async def run_interactive_demo() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(run_interactive_demo())
+    asyncio.run(test_interactive_demo())

@@ -26,7 +26,10 @@ class TestConfigCommands:
         assert "spells_enabled" in DEFAULT_CONFIG
 
     def test_load_config_no_file(self) -> None:
-        with patch("mvgeos_cli.commands.config.CONFIG_FILE", Path("/nonexistent/config.json")):
+        with patch(
+            "mvgeos_cli.commands.config.CONFIG_FILE",
+            Path("/nonexistent/config.json"),
+        ):
             config = load_config()
             assert config == DEFAULT_CONFIG.copy()
 
@@ -65,7 +68,10 @@ class TestConfigCommands:
 
     def test_config_set(self) -> None:
         with (
-            patch("mvgeos_cli.commands.config.load_config", return_value={"model": "test"}),
+            patch(
+                "mvgeos_cli.commands.config.load_config",
+                return_value={"model": "test"},
+            ),
             patch("mvgeos_cli.commands.config.save_config") as mock_save,
         ):
             result = runner.invoke(config_app, ["set", "model", "new-model"])
@@ -85,7 +91,8 @@ class TestConfigCommands:
 
     def test_config_get(self) -> None:
         with patch(
-            "mvgeos_cli.commands.config.load_config", return_value={"model": "test-model"}
+            "mvgeos_cli.commands.config.load_config",
+            return_value={"model": "test-model"},
         ):
             result = runner.invoke(config_app, ["get", "model"])
             assert result.exit_code == 0
