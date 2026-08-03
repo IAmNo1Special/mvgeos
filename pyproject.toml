@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "MvgeOS — a Python-based AI coding agent inspired by pi"
 requires-python = ">=3.14"
 license = {text = "MIT"}
+dependencies = [
+    "heal-my-goap",
+]
 
 [dependency-groups]
 dev = [
@@ -24,10 +27,13 @@ members = [
     "mvgeos-agent",
     "mvgeos-provider",
     "mvgeos-tome",
-    "mvgeos-spells",
     "mvgeos-runes",
     "mvgeos-cli",
+    "coding-mvge",
 ]
+
+[tool.uv.sources]
+heal-my-goap = { path = "../heal_my_goap", editable = true }
 
 [tool.ruff]
 line-length = 88
@@ -75,8 +81,15 @@ testpaths = [
     "mvgeos-agent/tests_agent",
     "mvgeos-provider/tests_provider",
     "mvgeos-tome/tests_tome",
-    "mvgeos-spells/tests_spells",
     "mvgeos-runes/tests_runes",
     "mvgeos-cli/tests_cli",
+    "coding-mvge/test_coding_mvge",
 ]
 pythonpath = "."
+
+[tool.coverage.run]
+omit = [
+    "*/temp/*",
+    "*/tmp*/**",
+    "*/AppData/Local/Temp/**",
+]
