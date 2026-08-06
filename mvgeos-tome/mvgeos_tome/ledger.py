@@ -162,11 +162,11 @@ class TomeLedger:
         self.append(tome_id, entry)
         return entry
 
-    def append_session_info(self, tome_id: str, payload: dict[str, Any]) -> TomeEntry:
+    def append_tome_info(self, tome_id: str, payload: dict[str, Any]) -> TomeEntry:
         entry = TomeEntry(
             id=_generate_short_id(),
             parent_id=None,
-            type=TomeEntryType.SESSION_INFO,
+            type=TomeEntryType.TOME_INFO,
             timestamp=_timestamp_now(),
             payload=payload,
         )

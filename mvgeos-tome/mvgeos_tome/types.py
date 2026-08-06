@@ -10,14 +10,14 @@ class TomeEntryType(StrEnum):
     SPELL_RESULT = "spellResult"
     MODEL_CHANGE = "modelChange"
     CONTEMPLATION_LEVEL_CHANGE = "contemplationLevelChange"
-    TOOL_CALLS_CHANGE = "toolCallsChange"
+    SPELL_CALLS_CHANGE = "spellCallsChange"
     LABEL = "label"
     BRANCH_SUMMARY = "branchSummary"
     COMPACTION = "compaction"
     CUSTOM = "custom"
     CUSTOM_MESSAGE = "customMessage"
     LEAF = "leaf"
-    SESSION_INFO = "session_info"
+    TOME_INFO = "tome_info"
     MESSAGE = "message"
 
 
