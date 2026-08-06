@@ -132,8 +132,10 @@ def test_repl_callback_missing_api_key() -> None:
     # Ensure OPENROUTER_API_KEY is not set and no auth file exists
     env = dict(os.environ)
     env.pop("OPENROUTER_API_KEY", None)
-    with patch.dict(os.environ, env, clear=True):
-        with patch("mvgeos_cli.main._load_api_key_from_auth", return_value=None):
-            result = runner.invoke(app, ["--incantation", "test"])
-            assert result.exit_code == 1
-            assert "API key required" in result.output
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("mvgeos_cli.main._load_api_key_from_auth", return_value=None),
+    ):
+        result = runner.invoke(app, ["--incantation", "test"])
+        assert result.exit_code == 1
+        assert "API key required" in result.output

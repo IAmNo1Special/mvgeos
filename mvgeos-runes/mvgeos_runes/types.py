@@ -22,6 +22,7 @@ class SigilHook(StrEnum):
     CONTEXT_TRANSFORM = "context_transform"
     AGENT_START = "agent_start"
     AGENT_END = "agent_end"
+    BEFORE_MVGE_START = "before_mvge_start"
     INPUT = "input"
 
 

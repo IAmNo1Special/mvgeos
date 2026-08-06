@@ -7,7 +7,6 @@ import pytest
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     RegisteredCommand,
-    RuneContext,
     RuneManifest,
     RuneShortcut,
     SigilHook,
@@ -83,8 +82,12 @@ class TestRuneRunnerShortcuts:
 
     def test_duplicate_shortcut_logs_warning(self, caplog) -> None:
         runner = RuneRunner()
-        shortcut1 = RuneShortcut(key="ctrl+k", description="First", handler=lambda: None)
-        shortcut2 = RuneShortcut(key="ctrl+k", description="Second", handler=lambda: None)
+        shortcut1 = RuneShortcut(
+            key="ctrl+k", description="First", handler=lambda: None
+        )
+        shortcut2 = RuneShortcut(
+            key="ctrl+k", description="Second", handler=lambda: None
+        )
         runner.register_shortcut(shortcut1)
         runner.register_shortcut(shortcut2)
         assert len(runner.get_shortcuts()) == 1

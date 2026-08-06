@@ -24,7 +24,7 @@ DEFAULT_CONFIG = {
     "runes_paths": [
         "~/.agents/.mvgeos/runes",
         "~/.agents/.mvgeos/{agent_name}/runes",
-        ".agents/.mvgeos/runes"
+        ".agents/.mvgeos/runes",
     ],
 }
 

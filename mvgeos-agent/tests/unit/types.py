@@ -1,3 +1,5 @@
+from typing import Any
+
 from mvgeos_agent.types import (
     MvgeResponse,
     MvgeSpell,
@@ -5,7 +7,6 @@ from mvgeos_agent.types import (
     StopReason,
     SummonerRequest,
 )
-from typing import Any
 
 
 def test_summoner_request_defaults() -> None:

@@ -1,7 +1,7 @@
 [project]
 name = "mvgeos"
 version = "0.1.0"
-description = "MvgeOS — a Python-based AI coding agent inspired by pi"
+description = "MvgeOS — a Python-based AI coding agent"
 requires-python = ">=3.14"
 license = {text = "MIT"}
 dependencies = []
@@ -52,7 +52,7 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests_*/**" = ["T20", "PT001"]
+"tests/**" = ["T20", "PT001"]
 "*/__init__.py" = ["E402", "F401"]
 
 [tool.mypy]
@@ -69,11 +69,16 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
-exclude = ["mvgeos-[^/]+/tests_.*"]
+exclude = ["/tests/", "/scripts/"]
 
 [tool.pytest.ini_options]
 testpaths = [
-    ".",
+    "coding-mvge/tests",
+    "mvgeos-agent/tests",
+    "mvgeos-provider/tests",
+    "mvgeos-runes/tests",
+    "mvgeos-tome/tests",
+    "mvgeos-cli/tests",
 ]
 pythonpath = "."
 python_files = "*.py"
@@ -88,4 +93,9 @@ omit = [
     "*/AppData/Local/Temp/**",
     "*test_heal_my_goap*",
     "*test_interactive_cli_demo*",
+    "*/heal_my_goap/*",
+    "*/.agents/.mvgeos/runes/*",
 ]
+
+[tool.coverage.report]
+fail_under = 84

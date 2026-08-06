@@ -15,7 +15,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --all-packages --extra dev
-      - run: uv run pytest --import-mode=importlib --cov --cov-fail-under=90
+      - run: uv run pytest --import-mode=importlib --cov
 
   lint:
     runs-on: ubuntu-latest

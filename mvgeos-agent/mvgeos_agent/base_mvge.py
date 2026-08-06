@@ -11,7 +11,7 @@ from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 from mvgeos_runes.loader import load_runes_from_paths
 from mvgeos_runes.rune_runner import RuneRunner
-from mvgeos_runes.types import RuneContext, RuneShortcut
+from mvgeos_runes.types import RuneContext, RuneShortcut, SigilHook
 from mvgeos_runes.watcher import RuneWatcher
 from mvgeos_tome.ledger import TomeLedger
 
@@ -174,6 +174,26 @@ class BaseMvge:
         """Override in subclass to provide agent-specific system prompt."""
         return "You are a helpful AI agent."
 
+    async def _build_system_prompt_async(self) -> str:
+        """Async version that supports rune prompt injection via sigil hooks.
+        Override in subclass for async prompt building with rune injection.
+        Default delegates to sync version for backward compatibility.
+        """
+        if self._runner is not None:
+            prompt_data: dict[str, Any] = {
+                "base_prompt": self._build_system_prompt(),
+                "spell_names": [],
+                "config_dir": str(self.config_dir) if self.config_dir else "",
+                "custom_prompt": getattr(self, "_custom_system_prompt", ""),
+                "agent_name": self._name,
+                "cwd": str(Path.cwd()),
+            }
+            prompt_data = await self._runner.emit_chain(
+                SigilHook.BEFORE_MVGE_START, prompt_data
+            )
+            return str(prompt_data.get("base_prompt", self._build_system_prompt()))
+        return self._build_system_prompt()
+
     async def _run_impl(self) -> MvgeInvocation:
         """Override in subclass to implement turn-processing logic."""
         raise NotImplementedError
@@ -247,16 +267,32 @@ class BaseMvge:
             self._model, self._api_key, self._provider_name
         )
 
-        # Only load seeker spells (meta-tools) - no preloaded builtin spells
-        # All capabilities discovered on demand via tool_search, skill_search, mcp_search
-        seeker_spells = []
-        if self._runner is not None:
-            for rs in self._runner.get_all_registered_spells():
-                if rs.name in ("tool_search", "skill_search", "skill_execute", "mcp_search"):
-                    # Use the actual SpellDefinition from rune (preserves execute)
-                    seeker_spells.append(rs)
-
+        # Initialize tome ledger (needed for both new and resumed sessions)
         self._tome_ledger = TomeLedger(self._session_dir)
+
+        # Emit BEFORE_MVGE_START to allow runes to inject prompt additions
+        base_prompt = await self._build_system_prompt_async()
+        prompt_data: dict[str, Any] = {
+            "base_prompt": base_prompt,
+            "spell_names": [],
+            "config_dir": str(self.config_dir) if self.config_dir else "",
+            "custom_prompt": getattr(self, "_custom_system_prompt", ""),
+            "agent_name": self._name,
+            "cwd": str(Path.cwd()),
+        }
+        if self._runner is not None:
+            prompt_data = await self._runner.emit_chain(
+                SigilHook.BEFORE_MVGE_START, prompt_data
+            )
+
+        # Build final system prompt from prompt_data (may have been modified by runes)
+        final_prompt = str(prompt_data.get("base_prompt", base_prompt))
+
+        self._model = self._compose_model(self._model_id)
+
+        self._realm = self._provider_registry.create_realm(
+            self._model, self._api_key, self._provider_name
+        )
 
         if self._session_resume:
             resume_path = Path(self._session_resume)
@@ -279,7 +315,7 @@ class BaseMvge:
             await self._agent_session.start(reason="startup")
 
         self._state = MvgeState(
-            system_prompt=self._build_system_prompt(),
+            system_prompt=final_prompt,
             model=dataclasses.asdict(self._model),
             contemplation_level=ContemplationLevel(self._contemplation_level),
             spells=self._build_spells(),
@@ -304,7 +340,14 @@ class BaseMvge:
             return
 
         self._runner = RuneRunner()
-        self._runner.bind_context(RuneContext(cwd=str(Path.cwd()), mode="cli", agent_name=self._name, api_key=self._api_key))
+        self._runner.bind_context(
+            RuneContext(
+                cwd=str(Path.cwd()),
+                mode="cli",
+                agent_name=self._name,
+                api_key=self._api_key,
+            )
+        )
         await self._runner.load_runes(factories, manifests)
         for pname, pconfig in self._runner.get_registered_providers().items():
             if isinstance(pconfig, dict):
@@ -350,7 +393,7 @@ class BaseMvge:
         assert self._loop is not None
 
         self._state.invocations.append(SummonerRequest(role="user", content=prompt))
-        self._state.system_prompt = self._build_system_prompt()
+        self._state.system_prompt = await self._build_system_prompt_async()
 
         return await self._run_impl()
 

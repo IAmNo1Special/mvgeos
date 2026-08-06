@@ -3,11 +3,13 @@ from __future__ import annotations
 import dataclasses
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from mvgeos_agent.base_mvge import BaseMvge
 from mvgeos_agent.prompt_config import load_system_prompt
-from mvgeos_agent.types import MvgeInvocation, MvgeSpell
+from mvgeos_agent.spell_schema import generate_spell_schema
+from mvgeos_agent.types import MvgeInvocation, MvgeSpell, SpellResult
+from mvgeos_runes.types import SigilHook
 
 from coding_mvge.spells import (
     cast_bash,
@@ -18,8 +20,6 @@ from coding_mvge.spells import (
     cast_read,
     cast_write,
 )
-from mvgeos_agent.spell_schema import generate_spell_schema
-from mvgeos_agent.types import SpellResult
 
 logger = logging.getLogger(__name__)
 
@@ -106,15 +106,25 @@ class CodingMvge(BaseMvge):
         seeker_spells: list[MvgeSpell] = []
         if self._runner is not None:
             for rs in self._runner.get_all_registered_spells():
-                if rs.name in ("tool_search", "skill_search", "skill_execute", "mcp_search"):
-                    seeker_spells.append(rs)
+                if rs.name in (
+                    "tool_search",
+                    "skill_search",
+                    "skill_execute",
+                    "mcp_search",
+                ):
+                    seeker_spells.append(cast(MvgeSpell, rs))
 
         # Rune spells (non-seeker) - all other rune-registered spells
         rune_spells: list[MvgeSpell] = []
         if self._runner is not None:
             for rs in self._runner.get_all_registered_spells():
-                if rs.name not in ("tool_search", "skill_search", "skill_execute", "mcp_search"):
-                    rune_spells.append(rs)
+                if rs.name not in (
+                    "tool_search",
+                    "skill_search",
+                    "skill_execute",
+                    "mcp_search",
+                ):
+                    rune_spells.append(cast(MvgeSpell, rs))
 
         # Builtin spells - only if explicitly enabled via self._spell_names
         builtin_spells: list[MvgeSpell] = []
@@ -125,16 +135,37 @@ class CodingMvge(BaseMvge):
 
         return seeker_spells + rune_spells + builtin_spells
 
-    def _build_system_prompt(self) -> str:
-        # Only show seeker meta-tools in prompt
+    async def _build_system_prompt_async(self) -> str:
+        # Build base prompt with seeker spell names for display
         seeker_names = ["tool_search", "skill_search", "skill_execute", "mcp_search"]
-        prompt = load_system_prompt(
+        base_prompt = load_system_prompt(
             name=self._name,
             custom=self._custom_system_prompt,
             config_dir=self.config_dir,
             spells=seeker_names,
         )
-        return f"{prompt}\n\nCurrent working directory: {Path.cwd()}"
+
+        # Allow runes to inject additional prompt content
+        if self._runner is not None:
+            prompt_data = {
+                "base_prompt": base_prompt,
+                "seeker_names": [
+                    "tool_search",
+                    "skill_search",
+                    "skill_execute",
+                    "mcp_search",
+                ],
+                "config_dir": str(self.config_dir) if self.config_dir else "",
+                "custom_prompt": self._custom_system_prompt,
+                "agent_name": self._name,
+                "cwd": str(Path.cwd()),
+            }
+            prompt_data = await self._runner.emit_chain(
+                SigilHook.BEFORE_MVGE_START, prompt_data
+            )
+            base_prompt = prompt_data.get("base_prompt", base_prompt)
+
+        return f"{base_prompt}\n\nCurrent working directory: {Path.cwd()}"
 
     async def _run_impl(self) -> MvgeInvocation:
         assert self._model is not None

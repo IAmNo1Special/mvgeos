@@ -6,6 +6,7 @@ import json
 import os
 from collections.abc import AsyncGenerator, Sequence
 from pathlib import Path
+from typing import cast
 
 import typer
 from coding_mvge.spells import (
@@ -54,8 +55,9 @@ def _load_api_key_from_auth() -> str | None:
     if auth_path.exists():
         try:
             data = json.loads(auth_path.read_text(encoding="utf-8"))
-            return data.get("api_key")
-        except (json.JSONDecodeError, OSError):
+            api_key = data.get("api_key")
+            return api_key if isinstance(api_key, str) else None
+        except json.JSONDecodeError, OSError:
             pass
     return None
 
@@ -188,7 +190,7 @@ async def _run_agent(
                 "skill_execute",
                 "mcp_search",
             ):
-                spells.append(rs)
+                spells.append(cast(MvgeSpell, rs))
         commands = runner.get_commands()
         if commands:
             cmd_names = ", ".join(c.name for c in commands)

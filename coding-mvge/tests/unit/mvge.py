@@ -132,25 +132,37 @@ class TestCodingMvgeInit:
 
 
 class TestCodingMvgeBuildSpells:
-    def test_build_spells_returns_builtin_when_no_rune_runner(self, agent: CodingMvge) -> None:
+    def test_build_spells_returns_builtin_when_no_rune_runner(
+        self, agent: CodingMvge
+    ) -> None:
         # Without rune runner, builtin spells are returned by default (7 spells)
         spells = agent._build_spells()
         assert len(spells) == 7
 
-    def test_build_spells_returns_seeker_and_rune_spells(self, agent: CodingMvge) -> None:
-        # With a rune runner that has seeker and regular spells, _build_spells returns both
+    def test_build_spells_returns_seeker_and_rune_spells(
+        self, agent: CodingMvge
+    ) -> None:
+        # With a rune runner that has seeker and regular spells,
+        # _build_spells returns both
         from mvgeos_runes.types import SpellDefinition
 
         mock_runner = MagicMock()
         mock_runner.get_all_registered_spells.return_value = [
-            SpellDefinition(name="tool_search", description="Search for tools", parameters={}),
-            SpellDefinition(name="skill_search", description="Search for skills", parameters={}),
-            SpellDefinition(name="bash", description="Execute shell commands", parameters={}),
+            SpellDefinition(
+                name="tool_search", description="Search for tools", parameters={}
+            ),
+            SpellDefinition(
+                name="skill_search", description="Search for skills", parameters={}
+            ),
+            SpellDefinition(
+                name="bash", description="Execute shell commands", parameters={}
+            ),
         ]
         agent._runner = mock_runner
         spells = agent._build_spells()
         names = {s.name for s in spells}
-        # Seeker spells + rune spells (bash) + builtin spells (since _spell_names defaults to all)
+        # Seeker spells + rune spells (bash) + builtin spells
+        # (since _spell_names defaults to all)
         assert "tool_search" in names
         assert "skill_search" in names
         assert "bash" in names
@@ -422,7 +434,8 @@ class TestCodingMvgeToolCalls:
             )
             _install_mock(agent)
             assert agent._state is not None
-            # Manually add the bash spell to the state (spells are now discovered on-demand via Seeker)
+            # Manually add the bash spell to the state
+            # (spells are now discovered on-demand via Seeker)
             agent._state.spells = [_BuiltinSpell("bash", cast_bash)]
 
             class FakeRealm:

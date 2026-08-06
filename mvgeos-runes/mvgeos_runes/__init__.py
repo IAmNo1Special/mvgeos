@@ -32,7 +32,6 @@ __all__ = [
     "RuneManifest",
     "RuneRunner",
     "RuneShortcut",
-    "RuneWatcher",
     "RegisteredCommand",
     "SigilHook",
     "SigilRegistry",
