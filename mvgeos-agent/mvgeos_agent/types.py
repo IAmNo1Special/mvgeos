@@ -84,6 +84,21 @@ class MvgeResponse:
     timestamp: float = 0.0
 
 
+class SpellStatus(StrEnum):
+    SUCCESS = "success"
+    ERROR = "error"
+    PARTIAL = "partial"
+
+
+@dataclass
+class SpellResult:
+    spell_name: str
+    status: SpellStatus = SpellStatus.SUCCESS
+    content: str = ""
+    details: dict[str, Any] = field(default_factory=dict)
+    error_message: str | None = None
+
+
 @dataclass
 class SpellResultMessage:
     role: str = "spellResult"

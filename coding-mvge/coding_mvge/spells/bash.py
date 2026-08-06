@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from coding_mvge.spells.types import SpellResult, SpellStatus
+from mvgeos_agent.types import SpellResult, SpellStatus
 
 
 async def cast_bash(command: str, timeout_ms: int = 30000) -> SpellResult:

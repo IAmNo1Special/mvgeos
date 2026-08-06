@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from coding_mvge.spells.types import SpellResult, SpellStatus
+from mvgeos_agent.types import SpellResult, SpellStatus
 
 
 async def cast_edit(path: str, old_string: str, new_string: str) -> SpellResult:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
@@ -20,7 +21,7 @@ class RuneLoader:
         for entry in self._extensions_dir.iterdir():
             if entry.is_dir():
                 manifest = load_manifest(entry)
-                if manifest is not None:
+                if manifest is not None and manifest.enabled:
                     manifests.append(manifest)
         return manifests
 
@@ -61,7 +62,7 @@ def load_factories(extensions_dir: Path) -> list[RuneFactory]:
         if not entry.is_dir():
             continue
         manifest = load_manifest(entry)
-        if manifest is None:
+        if manifest is None or not manifest.enabled:
             continue
         factory = load_factory_from_manifest(manifest, entry)
         if factory is not None:
@@ -77,6 +78,35 @@ def load_manifests(extensions_dir: Path) -> list[RuneManifest]:
         if not entry.is_dir():
             continue
         manifest = load_manifest(entry)
-        if manifest is not None:
+        if manifest is not None and manifest.enabled:
             manifests.append(manifest)
     return manifests
+
+
+def load_runes_from_paths(
+    paths: Sequence[str | Path],
+    agent_name: str | None = None,
+) -> tuple[list[RuneFactory], list[RuneManifest]]:
+    """Load runes from multiple paths in precedence order (first wins).
+
+    Args:
+        paths: List of path strings, can include ~ and {agent_name} placeholder
+        agent_name: Agent name to substitute {agent_name} placeholder
+
+    Returns:
+        Tuple of (factories, manifests) merged from all paths
+    """
+    all_factories: list[RuneFactory] = []
+    all_manifests: list[RuneManifest] = []
+
+    for path_str in paths:
+        expanded = str(path_str).replace("{agent_name}", agent_name or "")
+        path = Path(expanded).expanduser()
+        if not path.exists():
+            continue
+        factories = load_factories(path)
+        manifests = load_manifests(path)
+        all_factories.extend(factories)
+        all_manifests.extend(manifests)
+
+    return all_factories, all_manifests

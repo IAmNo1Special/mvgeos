@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from coding_mvge.spells.types import SpellResult, SpellStatus
+from mvgeos_agent.types import SpellResult, SpellStatus
 
 
 async def cast_find(pattern: str, path: str = ".") -> SpellResult:

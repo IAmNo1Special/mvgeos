@@ -37,6 +37,20 @@ def load_manifest(path: Path) -> RuneManifest | None:
                 )
             )
 
+    system_deps = data.get("system_deps", [])
+    if not isinstance(system_deps, list):
+        system_deps = []
+    system_deps = [str(dep) for dep in system_deps if isinstance(dep, str)]
+
+    python_deps = data.get("python_deps", [])
+    if not isinstance(python_deps, list):
+        python_deps = []
+    python_deps = [str(dep) for dep in python_deps if isinstance(dep, str)]
+
+    enabled = data.get("enabled", True)
+    if not isinstance(enabled, bool):
+        enabled = True
+
     return RuneManifest(
         name=data["name"],
         version=data["version"],
@@ -44,4 +58,7 @@ def load_manifest(path: Path) -> RuneManifest | None:
         hooks=hooks,
         entry_point=data.get("entry_point", ""),
         shortcuts=shortcuts,
+        system_deps=system_deps,
+        python_deps=python_deps,
+        enabled=enabled,
     )

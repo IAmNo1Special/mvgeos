@@ -17,9 +17,9 @@ from coding_mvge.spells import (
     cast_list,
     cast_read,
     cast_write,
-    generate_spell_schema,
 )
-from coding_mvge.spells.types import SpellResult
+from mvgeos_agent.spell_schema import generate_spell_schema
+from mvgeos_agent.types import SpellResult
 
 logger = logging.getLogger(__name__)
 
@@ -102,18 +102,37 @@ class CodingMvge(BaseMvge):
         return list(self._spell_names)
 
     def _build_spells(self) -> list[MvgeSpell]:
-        spells: list[MvgeSpell] = []
-        for name in self._spell_names:
-            if name in DEFAULT_SPELL_MAP:
-                spells.append(_BuiltinSpell(name=name, func=DEFAULT_SPELL_MAP[name]))
-        return spells
+        # Seekers (meta-tools) - always included
+        seeker_spells: list[MvgeSpell] = []
+        if self._runner is not None:
+            for rs in self._runner.get_all_registered_spells():
+                if rs.name in ("tool_search", "skill_search", "skill_execute", "mcp_search"):
+                    seeker_spells.append(rs)
+
+        # Rune spells (non-seeker) - all other rune-registered spells
+        rune_spells: list[MvgeSpell] = []
+        if self._runner is not None:
+            for rs in self._runner.get_all_registered_spells():
+                if rs.name not in ("tool_search", "skill_search", "skill_execute", "mcp_search"):
+                    rune_spells.append(rs)
+
+        # Builtin spells - only if explicitly enabled via self._spell_names
+        builtin_spells: list[MvgeSpell] = []
+        if self._spell_names:
+            for name in self._spell_names:
+                if name in DEFAULT_SPELL_MAP:
+                    builtin_spells.append(_BuiltinSpell(name, DEFAULT_SPELL_MAP[name]))
+
+        return seeker_spells + rune_spells + builtin_spells
 
     def _build_system_prompt(self) -> str:
+        # Only show seeker meta-tools in prompt
+        seeker_names = ["tool_search", "skill_search", "skill_execute", "mcp_search"]
         prompt = load_system_prompt(
             name=self._name,
             custom=self._custom_system_prompt,
             config_dir=self.config_dir,
-            spells=self._spell_names,
+            spells=seeker_names,
         )
         return f"{prompt}\n\nCurrent working directory: {Path.cwd()}"
 

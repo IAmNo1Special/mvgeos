@@ -195,13 +195,11 @@ class MvgeLoop:
                     id=model.get("id", ""),
                     name=model.get("name", ""),
                     realm=model.get("realm", ""),
-                    provider=model.get("provider", ""),
                     base_url=model.get("base_url", ""),
                     api_key=model.get("api_key", ""),
                 ),
                 temperature=self._state.temperature or 0.7,
                 max_tokens=self._state.max_tokens or 4096,
-                mana_limit=self._state.mana_budget,
                 contemplation_level=self._state.contemplation_level.value,
                 contemplation_budget=self._state.contemplation_budget,
                 exclude_contemplation=self._state.exclude_contemplation,
@@ -339,7 +337,7 @@ class MvgeLoop:
                             role="assistant",
                             content=inv.content,
                             model=model.get("id", ""),
-                            provider=model.get("provider", ""),
+                            provider=model.get("id", "").split("/")[0],
                         )
                         await _safe_emit(
                             runner,

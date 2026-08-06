@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from coding_mvge.spells.types import SpellResult, SpellStatus
+from mvgeos_agent.types import SpellResult, SpellStatus
 
 
 async def cast_grep(

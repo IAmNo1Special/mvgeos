@@ -33,6 +33,9 @@ class RuneManifest:
     hooks: list[SigilHook] = field(default_factory=list)
     entry_point: str = ""
     shortcuts: list[RuneShortcut] = field(default_factory=list)
+    system_deps: list[str] = field(default_factory=list)
+    python_deps: list[str] = field(default_factory=list)
+    enabled: bool = True
 
 
 class ExecutionMode(StrEnum):
@@ -45,6 +48,8 @@ class RuneContext:
     cwd: str = ""
     mode: str = "cli"
     has_ui: bool = False
+    agent_name: str = ""
+    api_key: str = ""
 
 
 @dataclass

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Sequence
 from pathlib import Path
 from typing import Any
 
 from mvgeos_provider.base import Realm
-from mvgeos_provider.registry import ProviderRegistry
+from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
-from mvgeos_runes.loader import load_factories, load_manifests
+from mvgeos_runes.loader import load_runes_from_paths
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import RuneContext, RuneShortcut
 from mvgeos_runes.watcher import RuneWatcher
@@ -61,12 +61,13 @@ class BaseMvge:
         contemplation_level: str = "medium",
         contemplation_budget: int | None = None,
         exclude_contemplation: bool = False,
+        runes_paths: Sequence[str] | None = None,
     ) -> None:
         self._api_key = api_key
         self._name = name
         self._model_id = model
         self._extension_dir = extension_dir
-        self._session_dir = session_dir or Path("~/.agents/.mvgeos/tomes")
+        self._session_dir = session_dir or Path("~/.agents/.mvgeos/tomes").expanduser()
         self._session_resume = session_resume
         self._provider_name = provider_name
         self._temperature = temperature
@@ -75,10 +76,15 @@ class BaseMvge:
         self._contemplation_level = contemplation_level
         self._contemplation_budget = contemplation_budget
         self._exclude_contemplation = exclude_contemplation
+        self._runes_paths: Sequence[str] = runes_paths or [
+            "~/.agents/.mvgeos/runes",
+            f"~/.agents/.mvgeos/{name}/runes",
+            ".agents/.mvgeos/runes",
+        ]
 
-        self._provider_registry = ProviderRegistry()
+        self._provider_registry = RealmRegistry()
         self._runner: RuneRunner | None = None
-        self._watcher: RuneWatcher | None = None
+        self._watchers: list[RuneWatcher] = []
         self._model: Model | None = None
         self._realm: Realm | None = None
         self._agent_session: MvgeTome | None = None
@@ -151,10 +157,9 @@ class BaseMvge:
             id=model_info.id,
             name=model_info.name,
             realm=model_info.realm,
-            provider=model_info.provider,
             base_url=model_info.base_url,
             api_key=self._api_key,
-            mana_limit=model_info.mana_limit,
+            max_completion_mana=model_info.max_completion_mana,
             context_window=model_info.context_window,
             max_tokens=model_info.max_tokens,
             headers=dict(model_info.headers or {}),
@@ -213,7 +218,6 @@ class BaseMvge:
                         model=model,
                         temperature=temperature,
                         max_tokens=max_tokens,
-                        mana_limit=mana_budget,
                         contemplation_level=state.contemplation_level.value,
                         contemplation_budget=state.contemplation_budget,
                         exclude_contemplation=state.exclude_contemplation,
@@ -235,19 +239,7 @@ class BaseMvge:
         if self._initialized:
             return
 
-        if self._extension_dir:
-            ext_path = Path(self._extension_dir)
-            if ext_path.exists():
-                self._runner = RuneRunner()
-                self._runner.bind_context(RuneContext(cwd=str(ext_path), mode="cli"))
-                manifests = load_manifests(ext_path)
-                factories = load_factories(ext_path)
-                await self._runner.load_runes(factories, manifests)
-                for pname, pconfig in self._runner.get_registered_providers().items():
-                    if isinstance(pconfig, dict):
-                        self._provider_registry.register_provider(pname, pconfig)
-                self._watcher = RuneWatcher(ext_path, self._runner)
-                await self._watcher.start()
+        await self._load_runes()
 
         self._model = self._compose_model(self._model_id)
 
@@ -255,16 +247,14 @@ class BaseMvge:
             self._model, self._api_key, self._provider_name
         )
 
-        spells = self._build_spells()
+        # Only load seeker spells (meta-tools) - no preloaded builtin spells
+        # All capabilities discovered on demand via tool_search, skill_search, mcp_search
+        seeker_spells = []
         if self._runner is not None:
             for rs in self._runner.get_all_registered_spells():
-                spells.append(
-                    MvgeSpell(
-                        name=rs.name,
-                        description=rs.description,
-                        parameters=rs.parameters,
-                    )
-                )
+                if rs.name in ("tool_search", "skill_search", "skill_execute", "mcp_search"):
+                    # Use the actual SpellDefinition from rune (preserves execute)
+                    seeker_spells.append(rs)
 
         self._tome_ledger = TomeLedger(self._session_dir)
 
@@ -274,7 +264,6 @@ class BaseMvge:
                 raise FileNotFoundError(
                     f"Session file not found: {self._session_resume}"
                 )
-            # Extract tome_id from the resume path
             tome_id = resume_path.stem
             meta = self._tome_ledger.open_tome(tome_id)
             if meta is None:
@@ -289,22 +278,11 @@ class BaseMvge:
             self._agent_session = MvgeTome(self._tome_ledger, meta, self._runner)
             await self._agent_session.start(reason="startup")
 
-        spells = self._build_spells()
-        if self._runner is not None:
-            for rs in self._runner.get_all_registered_spells():
-                spells.append(
-                    MvgeSpell(
-                        name=rs.name,
-                        description=rs.description,
-                        parameters=rs.parameters,
-                    )
-                )
-
         self._state = MvgeState(
             system_prompt=self._build_system_prompt(),
             model=dataclasses.asdict(self._model),
             contemplation_level=ContemplationLevel(self._contemplation_level),
-            spells=spells,
+            spells=self._build_spells(),
             invocations=[],
             mana_budget=self._mana_budget,
             max_tokens=self._max_tokens,
@@ -318,6 +296,28 @@ class BaseMvge:
 
         self._loop = MvgeLoop(self._state)
         self._initialized = True
+
+    async def _load_runes(self) -> None:
+        """Load runes from all three levels (global, agent, project)."""
+        factories, manifests = load_runes_from_paths(self._runes_paths, self._name)
+        if not factories and not manifests:
+            return
+
+        self._runner = RuneRunner()
+        self._runner.bind_context(RuneContext(cwd=str(Path.cwd()), mode="cli", agent_name=self._name, api_key=self._api_key))
+        await self._runner.load_runes(factories, manifests)
+        for pname, pconfig in self._runner.get_registered_providers().items():
+            if isinstance(pconfig, dict):
+                self._provider_registry.register_provider(pname, pconfig)
+
+        # Start a watcher for each path that exists
+        for path_str in self._runes_paths:
+            expanded = str(path_str).replace("{agent_name}", self._name)
+            path = Path(expanded).expanduser()
+            if path.exists():
+                watcher = RuneWatcher(path, self._runner)
+                await watcher.start()
+                self._watchers.append(watcher)
 
     async def switch_model(self, model_id: str) -> None:
         """Switch the active model, preserving the current session context."""
@@ -357,9 +357,9 @@ class BaseMvge:
     async def close(self) -> None:
         if self._agent_session is not None:
             await self._agent_session.shutdown(reason="quit")
-        if self._watcher is not None:
-            await self._watcher.stop()
-            self._watcher = None
+        for watcher in self._watchers:
+            await watcher.stop()
+        self._watchers.clear()
         if self._realm is not None:
             await self._realm.close()
             self._realm = None
