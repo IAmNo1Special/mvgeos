@@ -214,7 +214,16 @@ def _handle_command(
         sid = agent.session_id or "none"
         out(f"[dim]Session ID: {sid}[/dim]")
         out(f"[dim]Model: {agent._model_id}[/dim]")
-        out(f"[dim]Spells: {', '.join(agent.enabled_spells)}[/dim]")
+        builtin = agent.enabled_spells
+        rune_spells = []
+        if agent._state is not None:
+            for spell in agent._state.spells:
+                if spell.name not in builtin:
+                    rune_spells.append(spell.name)
+        if builtin:
+            out(f"[bold]Builtin spells:[/bold] {', '.join(builtin)}")
+        if rune_spells:
+            out(f"[bold]Rune spells:[/bold] {', '.join(rune_spells)}")
         out(f"[dim]Providers: {', '.join(agent.registered_providers) or 'none'}[/dim]")
         return ReplAction.CONTINUE
 
@@ -244,7 +253,19 @@ def _handle_command(
             agent._spell_names = new_spells
             out(f"[green]Spells set to: {', '.join(new_spells)}[/green]")
         else:
-            out(f"[dim]Spells: {', '.join(agent.enabled_spells)}[/dim]")
+            # Show both builtin and rune-discovered spells
+            builtin = agent.enabled_spells
+            rune_spells = []
+            if agent._state is not None:
+                for spell in agent._state.spells:
+                    if spell.name not in builtin:
+                        rune_spells.append(spell.name)
+            if builtin:
+                out(f"[bold]Builtin spells:[/bold] {', '.join(builtin)}")
+            if rune_spells:
+                out(f"[bold]Rune spells:[/bold] {', '.join(rune_spells)}")
+            if not builtin and not rune_spells:
+                out("[dim]No spells available[/dim]")
         return ReplAction.CONTINUE
 
     if cmd == "/new":

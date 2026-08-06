@@ -1,0 +1,342 @@
+from __future__ import annotations
+
+import asyncio
+import importlib.util
+import platform
+import shutil
+import subprocess
+from pathlib import Path
+
+import typer
+from mvgeos_runes.manifest import load_manifest
+from mvgeos_runes.types import RuneManifest
+from rich.console import Console
+
+console = Console()
+
+setup_app = typer.Typer(name="setup", help="Install system dependencies for runes")
+
+# Package manager mappings for common tools
+PACKAGE_MAP: dict[str, dict[str, list[str]]] = {
+    "ripgrep": {
+        "windows": ["BurntSushi.ripgrep.MSVC", "RipGrep", "rg"],
+        "darwin": ["ripgrep"],
+        "linux": ["ripgrep", "ripgrep"],
+    },
+    "git": {
+        "windows": ["Git.Git"],
+        "darwin": ["git"],
+        "linux": ["git"],
+    },
+    "fd": {
+        "windows": ["sharkdp.fd"],
+        "darwin": ["fd"],
+        "linux": ["fd-find"],
+    },
+    "bat": {
+        "windows": ["sharkdp.bat"],
+        "darwin": ["bat"],
+        "linux": ["bat"],
+    },
+    "fzf": {
+        "windows": ["junegunn.fzf"],
+        "darwin": ["fzf"],
+        "linux": ["fzf"],
+    },
+}
+
+# Command-line tool names to check (may differ from package names)
+TOOL_CHECK: dict[str, str] = {
+    "ripgrep": "rg",
+    "git": "git",
+    "fd": "fd",
+    "bat": "bat",
+    "fzf": "fzf",
+}
+
+
+def get_platform() -> str:
+    system = platform.system().lower()
+    if system == "windows":
+        return "windows"
+    elif system == "darwin":
+        return "darwin"
+    return "linux"
+
+
+def get_package_manager_commands() -> list[list[str]]:
+    """Return list of package manager command templates for current platform."""
+    plat = get_platform()
+    if plat == "windows":
+        return [
+            [
+                "winget",
+                "install",
+                "--silent",
+                "--accept-source-agreements",
+                "--accept-package-agreements",
+            ],
+            ["choco", "install", "-y"],
+            ["scoop", "install"],
+        ]
+    elif plat == "darwin":
+        return [
+            ["brew", "install"],
+        ]
+    return [
+        ["apt", "install", "-y"],
+        ["dnf", "install", "-y"],
+        ["pacman", "-S", "--noconfirm"],
+    ]
+
+
+def check_tool_installed(tool: str) -> bool:
+    """Check if a command-line tool is available on PATH."""
+    check_name = TOOL_CHECK.get(tool, tool)
+    return shutil.which(check_name) is not None
+
+
+def check_python_dep(module_name: str) -> bool:
+    """Check if a Python package is importable."""
+    return importlib.util.find_spec(module_name) is not None
+
+
+async def install_package(package: str, dry_run: bool = False) -> tuple[bool, str]:
+    """Try to install a package using available package managers."""
+    plat = get_platform()
+    pkg_names = PACKAGE_MAP.get(package, {}).get(plat, [package])
+
+    for pm_cmd in get_package_manager_commands():
+        pm_name = pm_cmd[0]
+        if not shutil.which(pm_name):
+            continue
+
+        for pkg in pkg_names:
+            cmd = [*pm_cmd, pkg]
+            console.print(f"[dim]Trying: {' '.join(cmd)}[/dim]")
+            if dry_run:
+                return True, f"Would run: {' '.join(cmd)}"
+            try:
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+                if result.returncode == 0:
+                    return True, f"Installed {package} via {pm_name}"
+                console.print(
+                    f"[yellow]{pm_name} failed for {pkg}: "
+                    f"{result.stderr[:200]}[/yellow]"
+                )
+            except subprocess.TimeoutExpired:
+                console.print(f"[yellow]{pm_name} timed out for {pkg}[/yellow]")
+            except Exception as e:
+                console.print(f"[yellow]{pm_name} error for {pkg}: {e}[/yellow]")
+
+    return False, f"No working package manager found for {package} on {plat}"
+
+
+async def install_rune_python_deps(
+    rune_dir: Path, dry_run: bool = False
+) -> tuple[bool, str]:
+    """Install a rune's Python deps via editable install of the rune directory."""
+    if not shutil.which("uv"):
+        return False, "uv not found on PATH"
+    cmd = ["uv", "pip", "install", "-e", str(rune_dir)]
+    console.print(f"[dim]Trying: {' '.join(cmd)}[/dim]")
+    if dry_run:
+        return True, f"Would run: {' '.join(cmd)}"
+    try:
+        result = await asyncio.to_thread(
+            subprocess.run,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        if result.returncode == 0:
+            return True, f"Installed via uv pip install -e {rune_dir.name}"
+        return False, f"uv pip install failed: {result.stderr[:200]}"
+    except subprocess.TimeoutExpired:
+        return False, "uv pip install timed out"
+    except Exception as e:
+        return False, f"uv pip install error: {e}"
+
+
+def get_rune_paths(agent_name: str, extension_dir: str | None) -> list[Path]:
+    """Return expanded rune search paths in precedence order."""
+    paths: list[str | Path] = [
+        "~/.agents/.mvgeos/runes",
+        f"~/.agents/.mvgeos/{agent_name}/runes",
+        ".agents/.mvgeos/runes",
+    ]
+    if extension_dir:
+        paths = [*paths, extension_dir]
+    return [Path(str(p)).expanduser() for p in paths]
+
+
+def collect_rune_dirs(
+    agent_name: str, extension_dir: str | None
+) -> list[tuple[RuneManifest, Path]]:
+    """Load enabled runes and return (manifest, rune_dir) pairs."""
+    results: list[tuple[RuneManifest, Path]] = []
+    seen_names: set[str] = set()
+    for base in get_rune_paths(agent_name, extension_dir):
+        if not base.exists():
+            continue
+        for entry in base.iterdir():
+            if not entry.is_dir():
+                continue
+            manifest = load_manifest(entry)
+            if manifest is None or not manifest.enabled:
+                continue
+            if manifest.name in seen_names:
+                continue
+            seen_names.add(manifest.name)
+            results.append((manifest, entry))
+    return results
+
+
+@setup_app.command("check")
+def setup_check(
+    agent_name: str = typer.Option(
+        "coding-agent",
+        "--agent-name",
+        help="Agent name for agent-specific rune directory",
+    ),
+    extension_dir: str | None = typer.Option(
+        None, "--extension-dir", "-e", help="Path to extension runes directory"
+    ),
+) -> None:
+    """Check which system dependencies are missing."""
+    runes = collect_rune_dirs(agent_name, extension_dir)
+
+    if not runes:
+        console.print("[yellow]No runes found[/yellow]")
+        return
+
+    all_system_deps: set[str] = set()
+    all_python_deps: set[str] = set()
+    for manifest, _ in runes:
+        all_system_deps.update(manifest.system_deps)
+        all_python_deps.update(manifest.python_deps)
+
+    if not all_system_deps and not all_python_deps:
+        console.print("[green]No dependencies declared by runes[/green]")
+        return
+
+    any_missing = False
+
+    if all_system_deps:
+        console.print("\n[bold]System Dependencies:[/bold]")
+        for dep in sorted(all_system_deps):
+            installed = check_tool_installed(dep)
+            status = "[green]OK[/green]" if installed else "[red]MISSING[/red]"
+            console.print(f"  {dep}: {status}")
+            if not installed:
+                any_missing = True
+
+    if all_python_deps:
+        console.print("\n[bold]Python Dependencies:[/bold]")
+        for dep in sorted(all_python_deps):
+            installed = check_python_dep(dep)
+            status = "[green]OK[/green]" if installed else "[red]MISSING[/red]"
+            console.print(f"  {dep}: {status}")
+            if not installed:
+                any_missing = True
+
+    if any_missing:
+        console.print(
+            "\n[yellow]Run 'mvgeos setup install' "
+            "to install missing dependencies[/yellow]"
+        )
+        raise typer.Exit(1)
+    else:
+        console.print("\n[green]All dependencies satisfied[/green]")
+
+
+@setup_app.command("install")
+def setup_install(
+    agent_name: str = typer.Option(
+        "coding-agent",
+        "--agent-name",
+        help="Agent name for agent-specific rune directory",
+    ),
+    extension_dir: str | None = typer.Option(
+        None, "--extension-dir", "-e", help="Path to extension runes directory"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would be installed without installing"
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Auto-confirm all installations"
+    ),
+) -> None:
+    """Install missing dependencies for runes."""
+    runes = collect_rune_dirs(agent_name, extension_dir)
+
+    if not runes:
+        console.print("[yellow]No runes found[/yellow]")
+        return
+
+    all_system_deps: set[str] = set()
+    all_python_deps: set[str] = set()
+    for manifest, _ in runes:
+        all_system_deps.update(manifest.system_deps)
+        all_python_deps.update(manifest.python_deps)
+
+    if not all_system_deps and not all_python_deps:
+        console.print("[green]No dependencies declared by runes[/green]")
+        return
+
+    missing_system = sorted(d for d in all_system_deps if not check_tool_installed(d))
+    missing_python = sorted(d for d in all_python_deps if not check_python_dep(d))
+    runes_needing_python = [
+        (m, d) for m, d in runes if any(dep in missing_python for dep in m.python_deps)
+    ]
+
+    if not missing_system and not missing_python:
+        console.print("[green]All dependencies already installed[/green]")
+        return
+
+    if missing_system:
+        console.print(
+            f"\n[bold]Missing system dependencies:[/bold] {', '.join(missing_system)}"
+        )
+    if missing_python:
+        console.print(
+            f"[bold]Missing python dependencies:[/bold] {', '.join(missing_python)}"
+        )
+
+    if not yes and not dry_run:
+        response = input("Install now? [y/N]: ").strip().lower()
+        if response != "y":
+            console.print("[yellow]Aborted[/yellow]")
+            raise typer.Exit(0)
+
+    results: list[tuple[str, bool, str]] = []
+    for dep in missing_system:
+        success, msg = asyncio.run(install_package(dep, dry_run=dry_run))
+        results.append((dep, success, msg))
+        if success:
+            console.print(f"[green]OK {dep}: {msg}[/green]")
+        else:
+            console.print(f"[red]FAIL {dep}: {msg}[/red]")
+
+    for manifest, rune_dir in runes_needing_python:
+        success, msg = asyncio.run(install_rune_python_deps(rune_dir, dry_run=dry_run))
+        label = f"python deps ({manifest.name})"
+        results.append((label, success, msg))
+        if success:
+            console.print(f"[green]OK {label}: {msg}[/green]")
+        else:
+            console.print(f"[red]FAIL {label}: {msg}[/red]")
+
+    failed = [r for r in results if not r[1]]
+    if failed:
+        console.print(f"\n[red]Failed to install {len(failed)} dependency(s)[/red]")
+        raise typer.Exit(1)
+    else:
+        console.print("\n[green]All dependencies installed successfully[/green]")

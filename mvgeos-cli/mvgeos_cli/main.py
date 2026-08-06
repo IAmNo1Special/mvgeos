@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import json
 import os
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from pathlib import Path
 
 import typer
@@ -30,9 +31,9 @@ from mvgeos_agent.types import (
     SummonerRequest,
 )
 from mvgeos_provider.models import get_model
-from mvgeos_provider.registry import ProviderRegistry
+from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
-from mvgeos_runes.loader import load_factories, load_manifests
+from mvgeos_runes.loader import load_runes_from_paths
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import RuneContext
 from mvgeos_runes.watcher import RuneWatcher
@@ -41,9 +42,23 @@ from rich.console import Console
 
 from mvgeos_cli import DEFAULT_MODEL
 from mvgeos_cli.commands.config import config_app
+from mvgeos_cli.commands.setup import setup_app
 from mvgeos_cli.commands.tome import tome_app
 
 console = Console()
+
+
+def _load_api_key_from_auth() -> str | None:
+    """Load API key from ~/.agents/.mvgeos/auth/openrouter.json."""
+    auth_path = Path("~/.agents/.mvgeos/auth/openrouter.json").expanduser()
+    if auth_path.exists():
+        try:
+            data = json.loads(auth_path.read_text(encoding="utf-8"))
+            return data.get("api_key")
+        except (json.JSONDecodeError, OSError):
+            pass
+    return None
+
 
 app = typer.Typer(name="mvgeos", help="MvgeOS — a Python-based AI coding agent")
 
@@ -62,6 +77,7 @@ async def _run_agent(
     provider_name: str | None,
     session_dir: str | None,
     tui: bool,
+    agent_name: str = "coding-agent",
 ) -> None:
     if incantation is None:
         if tui:
@@ -99,26 +115,46 @@ async def _run_agent(
         )
         return
 
-    provider_registry = ProviderRegistry()
+    provider_registry = RealmRegistry()
 
-    ensure_config_files("coding-agent")
+    ensure_config_files(agent_name)
 
     runner: RuneRunner | None = None
-    watcher: RuneWatcher | None = None
+    watchers: list[RuneWatcher] = []
 
+    # Load runes from three levels: global, agent, project
+    runes_paths: Sequence[str | Path] = [
+        "~/.agents/.mvgeos/runes",
+        f"~/.agents/.mvgeos/{agent_name}/runes",
+        ".agents/.mvgeos/runes",
+    ]
     if extension_dir:
-        ext_path = Path(extension_dir)
-        if ext_path.exists():
-            runner = RuneRunner()
-            runner.bind_context(RuneContext(cwd=str(ext_path), mode="cli"))
-            manifests = load_manifests(ext_path)
-            factories = load_factories(ext_path)
-            await runner.load_runes(factories, manifests)
-            for pname, pconfig in runner.get_registered_providers().items():
-                if isinstance(pconfig, dict):
-                    ProviderRegistry().register_provider(pname, pconfig)
-            watcher = RuneWatcher(ext_path, runner)
-            await watcher.start()
+        runes_paths = [*runes_paths, extension_dir]
+
+    factories, manifests = load_runes_from_paths(runes_paths, agent_name)
+    if factories or manifests:
+        runner = RuneRunner()
+        runner.bind_context(
+            RuneContext(
+                cwd=str(Path.cwd()),
+                mode="cli",
+                agent_name=agent_name,
+                api_key=api_key,
+            )
+        )
+        await runner.load_runes(factories, manifests)
+        for pname, pconfig in runner.get_registered_providers().items():
+            if isinstance(pconfig, dict):
+                provider_registry.register_provider(pname, pconfig)
+
+        # Start watchers for each path that exists
+        for path_str in runes_paths:
+            expanded = str(path_str).replace("{agent_name}", agent_name)
+            path = Path(expanded).expanduser()
+            if path.exists():
+                watcher = RuneWatcher(path, runner)
+                await watcher.start()
+                watchers.append(watcher)
 
     model_info = get_model(model_id)
     if model_info is None:
@@ -129,30 +165,30 @@ async def _run_agent(
         id=model_info.id,
         name=model_info.name,
         realm=model_info.realm,
-        provider=model_info.provider,
         base_url=model_info.base_url,
         api_key=api_key,
-        mana_limit=model_info.mana_limit,
+        max_completion_mana=model_info.max_completion_mana,
         context_window=model_info.context_window,
         max_tokens=model_info.max_tokens,
         headers=dict(model_info.headers or {}),
     )
 
-    provider_registry = ProviderRegistry()
+    provider_registry = RealmRegistry()
     realm = provider_registry.create_realm(model, api_key, provider_name)
 
-    spells = _build_spells(spells_enabled)
+    spells = []
 
     if runner is not None:
+        # Only load seeker meta-tools, no preloaded spells
         rune_spells = runner.get_all_registered_spells()
         for rs in rune_spells:
-            spells.append(
-                MvgeSpell(
-                    name=rs.name,
-                    description=rs.description,
-                    parameters=rs.parameters,
-                )
-            )
+            if rs.name in (
+                "tool_search",
+                "skill_search",
+                "skill_execute",
+                "mcp_search",
+            ):
+                spells.append(rs)
         commands = runner.get_commands()
         if commands:
             cmd_names = ", ".join(c.name for c in commands)
@@ -161,7 +197,7 @@ async def _run_agent(
         if shortcuts:
             sc_names = ", ".join(s.key for s in shortcuts)
             console.print(f"[dim]Registered shortcuts: {sc_names}[/dim]")
-        ext_providers = ProviderRegistry().get_registered_providers()
+        ext_providers = provider_registry.get_registered_providers()
         if ext_providers:
             console.print(
                 f"[dim]Registered providers: {', '.join(ext_providers)}[/dim]"
@@ -222,7 +258,6 @@ async def _run_agent(
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                mana_limit=mana_budget,
             ),
         ):
             yield response
@@ -236,7 +271,7 @@ async def _run_agent(
         if isinstance(result, MvgeResponse):
             console.print(f"\n[green]Done. Stop reason: {result.stop_reason}[/green]")
     finally:
-        if watcher is not None:
+        for watcher in watchers:
             await watcher.stop()
         if agent_session is not None:
             await agent_session.shutdown(reason="quit")
@@ -335,6 +370,11 @@ def _repl_callback(
         "--tui",
         help="Use the full-screen TUI instead of the streaming REPL",
     ),
+    agent_name: str = typer.Option(
+        "coding-agent",
+        "--agent-name",
+        help="Agent name for agent-specific rune directory",
+    ),
 ) -> None:
     """Launch the MvgeOS interactive REPL, or run a single prompt."""
     if ctx.invoked_subcommand is not None:
@@ -343,8 +383,11 @@ def _repl_callback(
     if api_key is None:
         api_key = os.environ.get("OPENROUTER_API_KEY")
     if api_key is None:
+        api_key = _load_api_key_from_auth()
+    if api_key is None:
         console.print(
-            "[red]API key required. Set OPENROUTER_API_KEY or use --api-key[/red]"
+            "[red]API key required. Set OPENROUTER_API_KEY, "
+            "add to ~/.agents/.mvgeos/auth/openrouter.json, or use --api-key[/red]"
         )
         raise typer.Exit(1)
 
@@ -363,12 +406,14 @@ def _repl_callback(
             provider_name=provider,
             session_dir=session_dir,
             tui=tui,
+            agent_name=agent_name,
         )
     )
 
 
 app.add_typer(config_app, name="config")
 app.add_typer(tome_app, name="tome")
+app.add_typer(setup_app, name="setup")
 
 
 def main() -> None:
