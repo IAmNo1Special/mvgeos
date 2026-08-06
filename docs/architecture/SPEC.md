@@ -247,6 +247,7 @@ def generate_spell_schema(func: Callable[..., Any]) -> dict[str, Any]:
     """Generate a JSON schema from a spell function's signature and type hints."""
     ...
 
+
 def validate_spell_args(schema: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:
     """Validate spell arguments against a JSON schema using Pydantic."""
     ...

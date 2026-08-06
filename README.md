@@ -1,6 +1,6 @@
 # MvgeOS
 
-A Python-based AI coding agent inspired by pi. Mvges invoke spells (tools) across Models through Realms (providers) to perform coding tasks.
+A Python-based AI coding agent. Mvges invoke spells (tools) across Models through Realms (providers) to perform coding tasks.
 
 ## Status
 

@@ -617,9 +617,7 @@ Spell is added to `state.spells` during agent initialization:
 tool_config = config.get("tool_search", {})
 tool_search_spell = ToolSearchSpell(
     provider_registry=self._provider_registry,
-    spells_root=Path(
-        tool_config.get("spells_root", ".agents/.mvgeos/spells")
-    ),
+    spells_root=Path(tool_config.get("spells_root", ".agents/.mvgeos/spells")),
     rg_timeout=tool_config.get("rg_timeout", 10),
     nlt_model=tool_config.get("nlt_model", "openrouter/free"),
     nlt_api_key=tool_config.get("nlt_api_key", ""),
