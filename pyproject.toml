@@ -73,14 +73,13 @@ exclude = ["mvgeos-[^/]+/tests_.*"]
 
 [tool.pytest.ini_options]
 testpaths = [
-    "mvgeos-agent/tests_agent",
-    "mvgeos-provider/tests_provider",
-    "mvgeos-tome/tests_tome",
-    "mvgeos-runes/tests_runes",
-    "mvgeos-cli/tests_cli",
-    "coding-mvge/test_coding_mvge",
+    ".",
 ]
 pythonpath = "."
+python_files = "*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "--import-mode=importlib"
 
 [tool.coverage.run]
 omit = [

@@ -65,7 +65,6 @@ class TestMvgeLoop:
             id="test-model",
             name="Test Model",
             realm="test",
-            provider="test",
             base_url="https://api.test.com",
             api_key="test",
         )
@@ -99,7 +98,6 @@ class TestMvgeLoop:
             id="test-model",
             name="Test Model",
             realm="test",
-            provider="test",
             base_url="https://api.test.com",
             api_key="test",
         )
@@ -156,7 +154,6 @@ class TestMvgeLoop:
             id="test-model",
             name="Test Model",
             realm="test",
-            provider="test",
             base_url="https://api.test.com",
             api_key="test",
         )
@@ -211,7 +208,6 @@ class TestMvgeLoop:
             id="test-model",
             name="Test Model",
             realm="test",
-            provider="test",
             base_url="https://api.test.com",
             api_key="test",
         )
@@ -267,7 +263,6 @@ class TestMvgeLoop:
             id="test-model",
             name="Test Model",
             realm="test",
-            provider="test",
             base_url="https://api.test.com",
             api_key="test",
         )
@@ -310,7 +305,6 @@ class TestMvgeLoop:
             id="test-model",
             name="Test",
             realm="test",
-            provider="test",
             base_url="",
             api_key="",
         )
@@ -335,7 +329,6 @@ class TestMvgeLoop:
             id="test-model",
             name="Test",
             realm="test",
-            provider="test",
             base_url="",
             api_key="",
         )
@@ -361,7 +354,6 @@ class TestMvgeLoop:
             id="test-model",
             name="Test",
             realm="test",
-            provider="test",
             base_url="",
             api_key="",
         )
@@ -413,7 +405,6 @@ class TestMvgeLoopProviderHooks:
             id="test-model",
             name="Test",
             realm="test",
-            provider="test",
             base_url="",
             api_key="",
         )
@@ -454,7 +445,6 @@ class TestMvgeLoopProviderHooks:
             id="test-model",
             name="Test",
             realm="test",
-            provider="test",
             base_url="",
             api_key="",
         )
@@ -499,7 +489,6 @@ class TestMvgeLoopProviderHooks:
             id="test-model",
             name="Test",
             realm="test",
-            provider="test",
             base_url="",
             api_key="",
         )
@@ -545,7 +534,6 @@ class TestMvgeLoopProviderHooks:
             id="test-model",
             name="Test",
             realm="test",
-            provider="test",
             base_url="",
             api_key="",
         )
@@ -592,7 +580,6 @@ class TestMvgeLoopContextTransform:
             id="test-model",
             name="Test",
             realm="test",
-            provider="test",
             base_url="",
             api_key="",
         )
@@ -636,7 +623,6 @@ class TestMvgeLoopInputHook:
             id="test-model",
             name="Test",
             realm="test",
-            provider="test",
             base_url="",
             api_key="",
         )
@@ -693,7 +679,6 @@ class TestMvgeLoopSessionHooks:
                 id="test-model",
                 name="Test",
                 realm="test",
-                provider="test",
                 base_url="",
                 api_key="",
             )
@@ -749,7 +734,6 @@ class TestMvgeLoopSessionHooks:
                 id="test-model",
                 name="Test",
                 realm="test",
-                provider="test",
                 base_url="",
                 api_key="",
             )

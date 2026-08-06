@@ -106,7 +106,6 @@ class TestEventBusIntegration:
             id="test-model",
             name="Test",
             realm="test",
-            provider="test",
             base_url="",
             api_key="",
         )
@@ -171,7 +170,6 @@ class TestEventBusIntegration:
             id="test-model",
             name="Test",
             realm="test",
-            provider="test",
             base_url="",
             api_key="",
         )

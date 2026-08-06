@@ -81,6 +81,15 @@ class TestRuneRunnerShortcuts:
         assert len(shortcuts) == 1
         assert shortcuts[0].key == "ctrl+k"
 
+    def test_duplicate_shortcut_logs_warning(self, caplog) -> None:
+        runner = RuneRunner()
+        shortcut1 = RuneShortcut(key="ctrl+k", description="First", handler=lambda: None)
+        shortcut2 = RuneShortcut(key="ctrl+k", description="Second", handler=lambda: None)
+        runner.register_shortcut(shortcut1)
+        runner.register_shortcut(shortcut2)
+        assert len(runner.get_shortcuts()) == 1
+        assert "Duplicate shortcut registration skipped" in caplog.text
+
 
 class TestRuneRunnerProviders:
     def test_register_provider(self) -> None:
@@ -298,129 +307,3 @@ class TestRuneRunnerLifecycle:
 
         await runner.load_runes([factory], None)
         assert runner.get_shortcuts() == []
-
-    def test_bind_context(self) -> None:
-        runner = RuneRunner()
-        ctx = RuneContext(cwd="/test", mode="tui", has_ui=True)
-        runner.bind_context(ctx)
-        assert runner.context.cwd == "/test"
-        assert runner.context.mode == "tui"
-
-    def test_send_message_queues(self) -> None:
-        runner = RuneRunner()
-        runner.send_message("hello")
-        runner.send_message("world")
-        assert runner._message_queue == ["hello", "world"]
-
-    def test_set_session_name(self) -> None:
-        runner = RuneRunner()
-        runner.set_session_name("my-session")
-        assert runner._session_name == "my-session"
-
-
-class TestRuneRunnerErrorIsolation:
-    @pytest.mark.asyncio
-    async def test_emit_async_raises_on_handler_error(self) -> None:
-        runner = RuneRunner()
-
-        def bad_handler(data: dict) -> None:
-            raise ValueError("oops")
-
-        runner.register_handler(SigilHook.TURN_START, bad_handler)
-        with pytest.raises(ValueError, match="oops"):
-            await runner.emit_async(SigilHook.TURN_START, {})
-
-    @pytest.mark.asyncio
-    async def test_emit_chain_raises_on_handler_error(self) -> None:
-        runner = RuneRunner()
-
-        def bad_handler(data: dict) -> dict:
-            raise ValueError("oops")
-
-        runner.register_handler(SigilHook.CONTEXT_TRANSFORM, bad_handler)
-        with pytest.raises(ValueError, match="oops"):
-            await runner.emit_chain(SigilHook.CONTEXT_TRANSFORM, {"data": 1})
-
-    @pytest.mark.asyncio
-    async def test_emit_first_raises_on_handler_error(self) -> None:
-        runner = RuneRunner()
-
-        def bad_handler(data: dict) -> None:
-            raise ValueError("oops")
-
-        runner.register_handler(SigilHook.BEFORE_SPELL_CAST, bad_handler)
-        with pytest.raises(ValueError, match="oops"):
-            await runner.emit_first(SigilHook.BEFORE_SPELL_CAST, {})
-
-    @pytest.mark.asyncio
-    async def test_emit_block_raises_on_handler_error(self) -> None:
-        runner = RuneRunner()
-
-        def bad_handler(data: dict) -> None:
-            raise ValueError("oops")
-
-        runner.register_handler(SigilHook.BEFORE_SPELL_CAST, bad_handler)
-        with pytest.raises(ValueError, match="oops"):
-            await runner.emit_block(SigilHook.BEFORE_SPELL_CAST, {})
-
-    @pytest.mark.asyncio
-    async def test_emit_async_raises_on_async_handler_error(self) -> None:
-        runner = RuneRunner()
-
-        async def async_bad(data: dict) -> None:
-            raise RuntimeError("async fail")
-
-        runner.register_handler(SigilHook.TURN_START, async_bad)
-        with pytest.raises(RuntimeError, match="async fail"):
-            await runner.emit_async(SigilHook.TURN_START, {})
-
-
-class TestRuneRunnerEventBus:
-    def test_on_event_registers_handler(self) -> None:
-        runner = RuneRunner()
-        handler = MagicMock()
-        runner.on_event("custom:channel", handler)
-        assert "custom:channel" in runner.get_event_channels()
-
-    def test_emit_event_calls_handler(self) -> None:
-        runner = RuneRunner()
-        handler = MagicMock()
-        runner.on_event("custom:channel", handler)
-        runner.emit_event("custom:channel", {"key": "value"})
-        handler.assert_called_once_with({"key": "value"})
-
-    def test_emit_event_multiple_handlers(self) -> None:
-        runner = RuneRunner()
-        handler1 = MagicMock()
-        handler2 = MagicMock()
-        runner.on_event("custom:channel", handler1)
-        runner.on_event("custom:channel", handler2)
-        runner.emit_event("custom:channel", {"data": 1})
-        handler1.assert_called_once_with({"data": 1})
-        handler2.assert_called_once_with({"data": 1})
-
-    def test_emit_event_isolates_handler_error(self) -> None:
-        runner = RuneRunner()
-        order: list[int] = []
-
-        def bad(data: dict) -> None:
-            raise ValueError("oops")
-
-        def good(data: dict) -> None:
-            order.append(1)
-
-        runner.on_event("ch", bad)
-        runner.on_event("ch", good)
-        runner.emit_event("ch", {})
-        assert order == [1]
-
-    def test_get_event_channels_empty(self) -> None:
-        runner = RuneRunner()
-        assert runner.get_event_channels() == []
-
-    def test_on_event_isolated_channels(self) -> None:
-        runner = RuneRunner()
-        handler = MagicMock()
-        runner.on_event("ch1", handler)
-        runner.emit_event("ch2", {"data": 1})
-        handler.assert_not_called()

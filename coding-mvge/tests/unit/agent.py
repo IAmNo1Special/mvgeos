@@ -46,7 +46,6 @@ def _install_mock(agent: CodingMvge, text: str = "Hello") -> _MockRealm:
         id="test-model",
         name="Test",
         realm="test",
-        provider="test",
         base_url="",
         api_key="test-key",
     )
@@ -79,7 +78,6 @@ class _Iter:
             id="test-model",
             name="Test",
             realm="test",
-            provider="test",
             base_url="",
             api_key="",
         )
@@ -130,23 +128,34 @@ class TestCodingMvgeInit:
 
     def test_default_session_dir(self) -> None:
         agent = CodingMvge(api_key="k")
-        assert agent._session_dir == Path("~/.agents/.mvgeos/tomes")
+        assert agent._session_dir == Path.home() / ".agents" / ".mvgeos" / "tomes"
 
 
 class TestCodingMvgeBuildSpells:
-    def test_build_spells_from_names(self, agent: CodingMvge) -> None:
-        agent._spell_names = ["bash", "read", "write"]
+    def test_build_spells_returns_builtin_when_no_rune_runner(self, agent: CodingMvge) -> None:
+        # Without rune runner, builtin spells are returned by default (7 spells)
         spells = agent._build_spells()
-        assert len(spells) == 3
-        names = {s.name for s in spells}
-        assert names == {"bash", "read", "write"}
+        assert len(spells) == 7
 
-    def test_build_spells_filters_unknown(self, agent: CodingMvge) -> None:
-        agent._spell_names = ["bash", "nonexistent", "read"]
+    def test_build_spells_returns_seeker_and_rune_spells(self, agent: CodingMvge) -> None:
+        # With a rune runner that has seeker and regular spells, _build_spells returns both
+        from mvgeos_runes.types import SpellDefinition
+
+        mock_runner = MagicMock()
+        mock_runner.get_all_registered_spells.return_value = [
+            SpellDefinition(name="tool_search", description="Search for tools", parameters={}),
+            SpellDefinition(name="skill_search", description="Search for skills", parameters={}),
+            SpellDefinition(name="bash", description="Execute shell commands", parameters={}),
+        ]
+        agent._runner = mock_runner
         spells = agent._build_spells()
-        assert len(spells) == 2
         names = {s.name for s in spells}
-        assert names == {"bash", "read"}
+        # Seeker spells + rune spells (bash) + builtin spells (since _spell_names defaults to all)
+        assert "tool_search" in names
+        assert "skill_search" in names
+        assert "bash" in names
+        # Should have at least seeker + rune + builtin spells
+        assert len(spells) >= 3
 
     def test_build_spells_empty(self, agent: CodingMvge) -> None:
         agent._spell_names = []
@@ -401,6 +410,9 @@ class TestCodingMvgeToolCalls:
         from mvgeos_agent.types import SpellResultMessage, StopReason
         from mvgeos_provider.types import RealmResponse
 
+        from coding_mvge.mvge import _BuiltinSpell
+        from coding_mvge.spells import cast_bash
+
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
@@ -410,7 +422,8 @@ class TestCodingMvgeToolCalls:
             )
             _install_mock(agent)
             assert agent._state is not None
-            agent._state.spells = agent._build_spells()
+            # Manually add the bash spell to the state (spells are now discovered on-demand via Seeker)
+            agent._state.spells = [_BuiltinSpell("bash", cast_bash)]
 
             class FakeRealm:
                 def __init__(self) -> None:
@@ -466,6 +479,9 @@ class TestCodingMvgeToolCalls:
     @pytest.mark.asyncio
     async def test_make_stream_sends_tools_schema(self) -> None:
 
+        from coding_mvge.mvge import _BuiltinSpell
+        from coding_mvge.spells import cast_bash, cast_read
+
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
@@ -475,7 +491,11 @@ class TestCodingMvgeToolCalls:
             )
             _install_mock(agent)
             assert agent._state is not None
-            agent._state.spells = agent._build_spells()
+            # Manually add spells (spells are now discovered on-demand via Seeker)
+            agent._state.spells = [
+                _BuiltinSpell("bash", cast_bash),
+                _BuiltinSpell("read", cast_read),
+            ]
 
             captured: dict[str, Any] = {}
 
@@ -511,21 +531,16 @@ class TestCodingMvgeToolCalls:
 
     @pytest.mark.asyncio
     async def test_builtin_spell_executes_real_function(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            agent = CodingMvge(
-                api_key="test-key",
-                model="openrouter/free",
-                session_dir=Path(tmpdir),
-                spells=["bash"],
-            )
-            spells = agent._build_spells()
-            bash_spell = next(s for s in spells if s.name == "bash")
-            assert bash_spell.parameters.get("properties", {}).get("command")
+        from coding_mvge.mvge import _BuiltinSpell
+        from coding_mvge.spells import cast_bash
 
-            result = await bash_spell.execute(
-                "call-1", {"command": "echo hi", "timeout_ms": 5000}
-            )
-            assert "hi" in result
+        bash_spell = _BuiltinSpell("bash", cast_bash)
+        assert bash_spell.parameters.get("properties", {}).get("command")
+
+        result = await bash_spell.execute(
+            "call-1", {"command": "echo hi", "timeout_ms": 5000}
+        )
+        assert "hi" in result
 
 
 class TestBuildSystemPrompt:

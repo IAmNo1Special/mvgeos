@@ -25,9 +25,9 @@ skip_if_no_heal_my_goap = pytest.mark.skipif(
 @pytest.mark.asyncio
 async def test_coding_agent_with_heal_my_goap_rune() -> None:
     """Verifies CodingMvge initializes with global heal_my_goap Rune."""
-    global_ext_dir = Path.home() / ".agents" / ".mvgeos" / "extensions"
+    global_ext_dir = Path.home() / ".agents" / ".mvgeos" / "runes"
     assert global_ext_dir.exists(), (
-        "Global .agents/.mvgeos/extensions directory does not exist"
+        "Global ~/.agents/.mvgeos/runes directory does not exist"
     )
 
     # Instantiate CodingMvge pointing to global extension directory
@@ -103,9 +103,10 @@ async def test_coding_agent_with_heal_my_goap_rune() -> None:
     )
     assert transformed_res.get("result", {}).get("healed_by") == "heal_my_goap"
 
-    # Cleanup watcher
-    if agent._watcher:
-        await agent._watcher.stop()
+    # Cleanup watchers
+    if agent._watchers:
+        for watcher in agent._watchers:
+            await watcher.stop()
 
 
 @skip_if_no_heal_my_goap
@@ -176,5 +177,7 @@ async def test_missing_read_tool_self_healing_execution(tmp_path: Path) -> None:
             == "README file contents read via heal_my_goap self-healing!"
         )
 
-    if agent._watcher:
-        await agent._watcher.stop()
+    # Cleanup watchers
+    if agent._watchers:
+        for watcher in agent._watchers:
+            await watcher.stop()

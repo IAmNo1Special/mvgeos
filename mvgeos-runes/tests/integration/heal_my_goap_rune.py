@@ -190,9 +190,9 @@ def rune_factory(api: RuneAPI) -> None:
 @skip_if_no_heal_my_goap
 @pytest.mark.asyncio
 async def test_global_heal_my_goap_rune_loading() -> None:
-    """Verifies loading installed global Rune at ~/.agents/.mvgeos/extensions/."""
+    """Verifies loading installed global Rune at ~/.agents/.mvgeos/runes/."""
     global_rune_dir = (
-        Path.home() / ".agents" / ".mvgeos" / "extensions" / "heal_my_goap"
+        Path.home() / ".agents" / ".mvgeos" / "runes" / "heal_my_goap"
     )
     assert global_rune_dir.exists()
 

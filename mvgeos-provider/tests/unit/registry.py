@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from mvgeos_provider.registry import ProviderRegistry
+from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import Model
 
 
 def test_register_provider() -> None:
-    reg = ProviderRegistry()
+    reg = RealmRegistry()
     reg.register_provider(
         "custom", {"apiKey": "sekret", "baseUrl": "https://custom.ai"}
     )
@@ -15,7 +15,7 @@ def test_register_provider() -> None:
 
 
 def test_register_provider_overwrites_merges() -> None:
-    reg = ProviderRegistry()
+    reg = RealmRegistry()
     reg.register_provider("custom", {"apiKey": "sekret"})
     reg.register_provider("custom", {"baseUrl": "https://custom.ai"})
     config = reg.get_provider_config("custom")
@@ -25,12 +25,12 @@ def test_register_provider_overwrites_merges() -> None:
 
 
 def test_get_provider_config_nonexistent() -> None:
-    reg = ProviderRegistry()
+    reg = RealmRegistry()
     assert reg.get_provider_config("nonexistent") is None
 
 
 def test_get_registered_providers() -> None:
-    reg = ProviderRegistry()
+    reg = RealmRegistry()
     assert reg.get_registered_providers() == []
     reg.register_provider("a", {})
     reg.register_provider("b", {})
@@ -40,36 +40,36 @@ def test_get_registered_providers() -> None:
 
 
 def test_has_provider_builtin() -> None:
-    reg = ProviderRegistry()
+    reg = RealmRegistry()
     assert reg.has_provider("openrouter")
 
 
 def test_has_provider_extension() -> None:
-    reg = ProviderRegistry()
+    reg = RealmRegistry()
     reg.register_provider("custom", {})
     assert reg.has_provider("custom")
 
 
 def test_has_provider_nonexistent() -> None:
-    reg = ProviderRegistry()
+    reg = RealmRegistry()
     assert not reg.has_provider("nonexistent")
 
 
 def test_compose_model_no_extension() -> None:
-    reg = ProviderRegistry()
+    reg = RealmRegistry()
     model = reg.compose_model("openai/gpt-oss-20b:free", api_key="test-key")
     assert model is not None
     assert model.api_key == "test-key"
 
 
 def test_compose_model_unknown() -> None:
-    reg = ProviderRegistry()
+    reg = RealmRegistry()
     model = reg.compose_model("nonexistent/model", api_key="test-key")
     assert model is None
 
 
 def test_compose_model_with_extension_override() -> None:
-    reg = ProviderRegistry()
+    reg = RealmRegistry()
     reg.register_provider(
         "openai", {"baseUrl": "https://custom.openai.com", "apiKey": "ext-key"}
     )
@@ -80,12 +80,11 @@ def test_compose_model_with_extension_override() -> None:
 
 
 def test_create_realm_default_openrouter() -> None:
-    reg = ProviderRegistry()
+    reg = RealmRegistry()
     model = Model(
         id="test-model",
         name="Test",
         realm="openrouter",
-        provider="openrouter",
         base_url="https://openrouter.ai/api/v1",
         api_key="test-key",
     )

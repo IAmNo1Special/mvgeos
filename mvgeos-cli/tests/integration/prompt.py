@@ -25,12 +25,13 @@ class TestPromptCommands:
 
 class TestPromptCommand:
     def test_prompt_no_api_key(self) -> None:
-        # Ensure OPENROUTER_API_KEY is not set
+        # Ensure OPENROUTER_API_KEY is not set and no auth file exists
         env = dict(os.environ)
         env.pop("OPENROUTER_API_KEY", None)
         with patch.dict(os.environ, env, clear=True):
-            result = runner.invoke(app, ["--incantation", "test prompt"])
-            assert result.exit_code != 0
+            with patch("mvgeos_cli.main._load_api_key_from_auth", return_value=None):
+                result = runner.invoke(app, ["--incantation", "test prompt"])
+                assert result.exit_code != 0
 
     def test_prompt_unknown_model(self) -> None:
         result = runner.invoke(

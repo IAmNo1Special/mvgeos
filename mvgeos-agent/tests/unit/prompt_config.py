@@ -121,6 +121,93 @@ def test_load_system_prompt_config_dir_with_guidelines(tmp_path: Path) -> None:
     assert "Guideline 2" in prompt
 
 
+def test_load_system_prompt_config_dir_with_guidelines(tmp_path: Path) -> None:
+    system_md = tmp_path / "SYSTEM.md"
+    system_md.write_text("Base prompt", encoding="utf-8")
+
+    guidelines_md = tmp_path / "GUIDELINES.md"
+    guidelines_md.write_text("- Guideline 1\n- Guideline 2\n", encoding="utf-8")
+
+    prompt = load_system_prompt("test-agent", config_dir=tmp_path)
+    assert "Base prompt" in prompt
+    assert "Guideline 1" in prompt
+    assert "Guideline 2" in prompt
+
+
+def test_build_system_prompt_with_config_dir_guidelines(tmp_path: Path) -> None:
+    system_md = tmp_path / "SYSTEM.md"
+    system_md.write_text("Custom system", encoding="utf-8")
+
+    # build_system_prompt doesn't load GUIDELINES from config_dir
+    # (load_guidelines does that from ~/.agents/.mvgeos/{name}/GUIDELINES.md)
+    prompt = build_system_prompt(spells=[], config_dir=tmp_path)
+    assert "Custom system" in prompt
+
+
+def test_build_system_prompt_guidelines_empty_file(tmp_path: Path) -> None:
+    system_md = tmp_path / "SYSTEM.md"
+    system_md.write_text("Custom system", encoding="utf-8")
+
+    # build_system_prompt doesn't load GUIDELINES.md from config_dir
+    # (load_guidelines does that from ~/.agents/.mvgeos/{name}/GUIDELINES.md)
+    # Default guidelines are always included
+    prompt = build_system_prompt(spells=[], config_dir=tmp_path)
+    assert "Custom system" in prompt
+    assert "Guidelines:" in prompt
+
+
+def test_ensure_config_files_creates_guidelines_file(tmp_path: Path) -> None:
+    config_dir = ensure_config_files("test-agent")
+
+    assert config_dir.exists()
+    assert (config_dir / "SYSTEM.md").exists()
+    assert (config_dir / "GUIDELINES.md").exists()
+
+
+def test_load_system_prompt_oserror_fallback(tmp_path: Path) -> None:
+    import sys
+    if sys.platform == "win32":
+        import pytest
+        pytest.skip("File permissions not enforced on Windows")
+
+    config_path = tmp_path / "SYSTEM.md"
+    config_path.write_text("Original prompt", encoding="utf-8")
+
+    config_path.chmod(0o000)
+
+    try:
+        prompt = load_system_prompt("test-agent", config_dir=tmp_path)
+        assert prompt == DEFAULT_SYSTEM_PROMPT
+    finally:
+        config_path.chmod(0o644)
+
+
+def test_load_guidelines_oserror_fallback(tmp_path: Path) -> None:
+    import sys
+    if sys.platform == "win32":
+        import pytest
+        pytest.skip("File permissions not enforced on Windows")
+
+    home = Path.home()
+    config_dir = home / ".agents" / ".mvgeos" / "test-agent-oserror"
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        guidelines_md = config_dir / "GUIDELINES.md"
+        guidelines_md.write_text("- Custom 1\n- Custom 2\n", encoding="utf-8")
+        guidelines_md.chmod(0o000)
+
+        try:
+            guidelines = load_guidelines("test-agent-oserror")
+            assert guidelines == DEFAULT_GUIDELINES
+        finally:
+            guidelines_md.chmod(0o644)
+    finally:
+        import shutil
+
+        shutil.rmtree(config_dir, ignore_errors=True)
+
+
 def test_load_system_prompt_fallback_to_default() -> None:
     prompt = load_system_prompt("nonexistent-agent")
     assert "You are Mvge" in prompt
