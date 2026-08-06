@@ -27,3 +27,6 @@ htmlcov/
 .kilo/
 .agents/
 .goap_actions.json
+coverage.txt
+cov_report.txt
+learning_proposal.md
