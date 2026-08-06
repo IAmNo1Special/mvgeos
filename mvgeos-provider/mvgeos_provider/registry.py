@@ -9,7 +9,7 @@ from mvgeos_provider.openrouter import OpenRouterRealm
 from mvgeos_provider.types import Model
 
 
-class ProviderRegistry:
+class RealmRegistry:
     def __init__(self) -> None:
         self._extension_providers: dict[str, dict[str, Any]] = {}
         self._builtin_providers: dict[str, Callable[..., Realm]] = {
@@ -99,10 +99,9 @@ class ProviderRegistry:
             id=model_info.id,
             name=model_info.name,
             realm=model_info.realm,
-            provider=model_info.provider,
             base_url=model_info.base_url,
             api_key=api_key,
-            mana_limit=model_info.mana_limit,
+            max_completion_mana=model_info.max_completion_mana,
             context_window=model_info.context_window,
             max_tokens=model_info.max_tokens,
             headers=dict(model_info.headers or {}),

@@ -8,10 +8,6 @@ from mvgeos_provider.types import Model
 _MODELS_PATH = Path(__file__).parent / "models.json"
 
 
-def _provider_from_id(model_id: str) -> str:
-    return model_id.split("/")[1] if "/" in model_id else model_id
-
-
 def _load_models_json() -> list[tuple[str, str, int, list[str]]]:
     try:
         data = json.loads(_MODELS_PATH.read_text(encoding="utf-8"))
@@ -36,10 +32,9 @@ for mid, name, ctx, params in _load_models_json():
         id=mid,
         name=name,
         realm="openrouter",
-        provider=_provider_from_id(mid),
         base_url="https://openrouter.ai/api/v1",
         api_key="",
-        mana_limit=0,
+        max_completion_mana=0,
         context_window=ctx,
         max_tokens=4096,
         supported_parameters=params,

@@ -43,10 +43,9 @@ class ModelRegistry:
                 id=mid,
                 name=name,
                 realm="openrouter",
-                provider=self._provider_from_id(mid),
                 base_url="https://openrouter.ai/api/v1",
                 api_key="",
-                mana_limit=0,
+                max_completion_mana=0,
                 context_window=ctx,
                 max_tokens=4096,
                 supported_parameters=params,
@@ -69,10 +68,9 @@ class ModelRegistry:
                     id=mid,
                     name=entry.get("name", mid),
                     realm="openrouter",
-                    provider=self._provider_from_id(mid),
                     base_url="https://openrouter.ai/api/v1",
                     api_key="",
-                    mana_limit=0,
+                    max_completion_mana=0,
                     context_window=entry.get("context_length", 4096),
                     max_tokens=4096,
                     supported_parameters=entry.get("supported_parameters", []),
@@ -103,10 +101,9 @@ class ModelRegistry:
                 id=mid,
                 name=entry.get("name", mid),
                 realm="openrouter",
-                provider=self._provider_from_id(mid),
                 base_url="https://openrouter.ai/api/v1",
                 api_key="",
-                mana_limit=0,
+                max_completion_mana=0,
                 context_window=entry.get("context_length", 4096),
                 max_tokens=4096,
                 supported_parameters=entry.get("supported_parameters", []),
@@ -135,6 +132,3 @@ class ModelRegistry:
             self._cache_path.write_text(json.dumps(cache, indent=2), encoding="utf-8")
         except OSError:
             logger.exception("Failed to save models cache")
-
-    def _provider_from_id(self, model_id: str) -> str:
-        return model_id.split("/")[1] if "/" in model_id else model_id

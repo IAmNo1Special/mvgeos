@@ -138,8 +138,8 @@ class OpenRouterRealm(Realm):
                 reasoning["max_tokens"] = config.contemplation_budget
             payload["reasoning"] = reasoning
 
-        if config.mana_limit is not None:
-            payload["max_tokens"] = min(config.max_tokens, config.mana_limit)
+        if config.max_output_mana is not None:
+            payload["max_tokens"] = min(config.max_tokens, config.max_output_mana)
 
         if config.tools:
             payload["tools"] = config.tools
