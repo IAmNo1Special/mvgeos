@@ -129,20 +129,23 @@ def load_system_prompt(
     prompt: str | None = None
 
     if config_dir is not None and config_dir.exists():
-        system_md = config_dir / "SYSTEM.md"
-        if system_md.exists():
-            prompt = system_md.read_text(encoding="utf-8").strip()
-        guidelines_md = config_dir / "GUIDELINES.md"
-        if guidelines_md.exists():
-            guidelines_text = guidelines_md.read_text(encoding="utf-8").strip()
-            if guidelines_text:
-                return (
-                    (prompt or _SYSTEM_PROMPT_BODY)
-                    + "\n\nGuidelines:\n"
-                    + guidelines_text
-                )
-        if prompt is not None:
-            return prompt
+        try:
+            system_md = config_dir / "SYSTEM.md"
+            if system_md.exists():
+                prompt = system_md.read_text(encoding="utf-8").strip()
+            guidelines_md = config_dir / "GUIDELINES.md"
+            if guidelines_md.exists():
+                guidelines_text = guidelines_md.read_text(encoding="utf-8").strip()
+                if guidelines_text:
+                    return (
+                        (prompt or _SYSTEM_PROMPT_BODY)
+                        + "\n\nGuidelines:\n"
+                        + guidelines_text
+                    )
+            if prompt is not None:
+                return prompt
+        except OSError:
+            prompt = None
 
     if custom:
         return custom
