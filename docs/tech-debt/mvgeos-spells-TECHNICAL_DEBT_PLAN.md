@@ -1,5 +1,7 @@
 # Technical Debt Remediation Plan — mvgeos-spells
 
+> **DEPRECATED**: The `mvgeos-spells` package was deleted. Its functionality moved to `coding-mvge/spells/`. This document is retained for historical reference. See `coding-mvge/AGENTS.md` for current spell implementation.
+
 ## Overview
 
 This document addresses each issue listed under the `mvgeos-spells` section of `TECHNICAL_DEBT_BY_PACKAGE.md`. The package currently consists of seven spell modules (`casting.py`, `reading.py`, `writing.py`, `editing.py`, `grep.py`, `finding.py`, `listing.py`) plus `types.py` and `__init__.py`. All spells are plain async functions returning `SpellResult`. The `aiofiles` dependency is declared in `pyproject.toml` but never used.

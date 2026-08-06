@@ -12,7 +12,7 @@ On-demand search via the three Seekers replaces the need for an active capabilit
 
 ## Decision
 
-The Seeker Protocol (three `MvgeSpell` subclasses: `ToolSearchSpell`, `SkillSearchSpell`, `MCPSearchSpell`) is packaged as an `mvgeos-runes-seeker` extension. Agents find capabilities on demand via the three Seekers rather than pre-loading an active toolset.
+The Seeker Protocol (three `MvgeSpell` subclasses: `ToolSearchSpell`, `SkillSearchSpell`, `MCPSearchSpell`) is packaged as an **external global rune** (`mvgeos-runes-seeker`). Agents find capabilities on demand via the three Seekers rather than pre-loading an active toolset. The rune is installed globally via the rune manifest at `~/.agents/.mvgeos/runes/manifest.json` and loaded by the RuneWatcher at startup.
 
 ## Consequences
 
@@ -29,6 +29,6 @@ The Seeker Protocol (three `MvgeSpell` subclasses: `ToolSearchSpell`, `SkillSear
 
 ## References
 
-- `docs/ARCHITECTURE_TOOL_SEARCH.md`
-- `docs/ARCHITECTURE_SKILL_SEARCH.md`
-- `docs/ARCHITECTURE_MCP_SEARCH.md`
+- `docs/architecture/ARCHITECTURE_TOOL_SEARCH.md`
+- `docs/architecture/ARCHITECTURE_SKILL_SEARCH.md`
+- `docs/architecture/ARCHITECTURE_MCP_SEARCH.md`

@@ -10,7 +10,7 @@ MvgeOS needs session persistence. The .agents protocol and Pi both use JSONL fil
 
 ## Decision
 
-MvgeOS uses the exact same JSONL session schema as Pi (all 12 entry types). The schema is versioned with a `schema_version` field on each entry (`schema_version: "1.0"`). Each tome is stored as a single JSONL file (`{tome_id}.jsonl`) in `.agents/.mvgeos/sessions/` with a header line followed by entry lines. File locking prevents data corruption from concurrent access (cross-platform via `filelock`). An in-memory index accelerates querying and is rebuilt on startup.
+MvgeOS uses the exact same JSONL session schema as Pi (all 12 entry types). The schema is versioned with a `schema_version` field on each entry (`schema_version: "1.0"`). Each tome is stored as a single JSONL file (`{tome_id}.jsonl`) in `~/.agents/.mvgeos/tomes/` with a header line followed by entry lines. File locking prevents data corruption from concurrent access (cross-platform via `filelock`). An in-memory index accelerates querying and is rebuilt on startup.
 
 ## Consequences
 

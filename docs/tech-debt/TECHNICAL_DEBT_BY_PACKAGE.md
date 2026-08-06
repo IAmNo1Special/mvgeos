@@ -45,7 +45,7 @@
 - **No HTTP/2 or connection pooling** — each request opens new connection
 
 ### Architecture Quirks
-- ~~**`mana_limit` in `ChannelConfig` ignored by OpenRouter** — passed but not enforced by provider (`types.py:26`)~~ ✅ **RESOLVED** — Caps `max_tokens` via `min()` in `openrouter.py`
+- ~~**`max_output_mana` in `ChannelConfig` ignored by OpenRouter** — passed but not enforced by provider (`types.py:27`)~~ ✅ **RESOLVED** — Caps `max_tokens` via `min()` in `openrouter.py`
 - ~~**Contemplation levels passed but unused** — `ContemplationLevel` in `ChannelConfig` but OpenRouter ignores (`types.py:24`)~~ ✅ **RESOLVED** — Wired through to OpenRouter `reasoning: { effort: <level> }` payload
 
 ---
@@ -70,6 +70,8 @@
 ---
 
 ## mvgeos-spells
+
+> **DEPRECATED**: The `mvgeos-spells` package was deleted. Its functionality moved to `coding-mvge/spells/`. This section is retained for historical reference.
 
 ### Anti-Patterns & Bugs
 - **Hardcoded empty parameters** — `parameters={}` in `prompt.py:67-73` and `agent.py:252-258` — no JSON Schema generation from spell signatures
@@ -130,7 +132,7 @@
 
 ### Gaps in Logic
 - **No spell sandboxing** — inherits from mvgeos-spells
-- **No validation of extension-provided spells** — `runner.get_all_registered_spells()` added without parameter check (`agent.py:221-229`)
+- **No validation of rune-provided spells** — `runner.get_all_registered_spells()` added without parameter check (`agent.py:221-229`)
 
 ---
 

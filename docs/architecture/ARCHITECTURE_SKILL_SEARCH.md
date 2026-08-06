@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-The **Seeker of Skills** enables MvgeOS to discover and load **skills** (markdown-based agent instructions) from skill directories using **Direct Corpus Interaction (DCI)**. Part of the **MvgeOS Seeker Protocol**. Skills are plain `.md` files — no embeddings, no index, no vector store. Drops when skill file appears, instantly findable.
+The **Seeker of Skills** enables MvgeOS to discover and load **skills** (markdown-based agent instructions) from skill directories using **Direct Corpus Interaction (DCI)**. Part of the **MvgeOS Seeker Protocol** (external global rune: `mvgeos-runes-seeker`). Skills are plain `.md` files — no embeddings, no index, no vector store. Drops when skill file appears, instantly findable.
 
 Derived from DCI-Agent (2605.05242) skill prompting patterns and MCP-Zero (2506.01056) multi-agent discovery.
 
@@ -96,7 +96,7 @@ from pathlib import Path
 from typing import Any
 
 from mvgeos_agent.types import MvgeSpell, SpellExecutionMode
-from mvgeos_provider.registry import ProviderRegistry
+from mvgeos_provider.registry import RealmRegistry
 
 from .dci_matcher import DCI_SkillMatcher, SkillFile, _DEFAULT_SKILL_DIRS
 from .nlt_selector import SkillNLTSelector
@@ -110,7 +110,7 @@ class SkillSearchSpell(MvgeSpell):
 
     def __init__(
         self,
-        provider_registry: ProviderRegistry,
+        provider_registry: RealmRegistry,
         skill_dirs: list[Path] | None = None,
         rg_timeout: int = 15,
         nlt_model: str = "openrouter/free",
@@ -434,7 +434,7 @@ import re
 from typing import Any
 
 from mvgeos_agent.types import SummonerRequest
-from mvgeos_provider.registry import ProviderRegistry
+from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig
 
 from .dci_matcher import SkillFile, SkillSearchError
@@ -447,7 +447,7 @@ class SkillNLTSelector:
 
     def __init__(
         self,
-        registry: ProviderRegistry,
+        registry: RealmRegistry,
         model_id: str = "openrouter/free",
         api_key: str = "",
     ) -> None:

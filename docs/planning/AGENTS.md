@@ -14,11 +14,10 @@ all quality gates passing
 | mvgeos-agent | 10 passed | 76-99% | ✅ | ✅ |
 | mvgeos-provider | 9 passed | 67-100% | ✅ | ✅ |
 | mvgeos-tome | 4 passed | 65-100% | ✅ | ✅ |
-| mvgeos-spells | 7 passed | 59-100% | ✅ | ✅ |
 | mvgeos-runes | 5 passed | 85-100% | ✅ | ✅ |
 | mvgeos-cli | 6 passed | 70-100% | ✅ | ✅ |
 | coding-mvge | 8 passed | 87-100% | ✅ | ✅ |
-| **TOTAL** | **49 passed** | **87%** | ✅ | ✅ |
+| **TOTAL** | **42 passed** | **87%** | ✅ | ✅ |
 
 ---
 
@@ -69,7 +68,6 @@ mvgeos/
 ├── mvgeos-agent/      # Core loop, state, types
 ├── mvgeos-provider/   # Realm protocol + OpenRouter
 ├── mvgeos-tome/       # JSONL session persistence
-├── mvgeos-spells/     # 7 spell implementations
 ├── mvgeos-runes/      # Extension system
 ├── mvgeos-cli/        # CLI entry point
 ├── coding-mvge/      # Coding agent package
@@ -107,19 +105,17 @@ mvgeos/
 | Standard | MvgeOS |
 |----------|--------|
 | Agent | Mvge |
+| User | Summoner |
 | Tool | Spell |
-| Toolset | Grimoire |
 | Token | Mana |
 | Context Window | Mana Pool |
 | Provider | Realm |
 | Session | Tome |
-| Prompt | Incantation |
-| Response | Manifestation |
+| Message | Invocation |
+| Streaming | Channeling |
 | Extension | Rune |
 | Callback | Sigil |
-| Credential | Relic |
-| API Key | Arcane Key |
-| OAuth | Covenant |
+| Reasoning Effort | Contemplation |
 
 ---
 

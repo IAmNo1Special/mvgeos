@@ -297,7 +297,7 @@ Only `cast_bash()` has timeout (30s). Other spells have no timeout. `MvgeSpell.e
 **Files**: `mvgeos_agent/types.py:117`, `mvgeos_agent/base_mvge.py:248-254`, `mvgeos_provider/openrouter.py:85-86`
 
 ### Root Cause
-`mana_budget` stored in `MvgeState` and passed to `ChannelConfig.mana_limit` but only used to cap `max_tokens`. No cumulative tracking or enforcement across turns.
+`mana_budget` stored in `MvgeState` and passed to `ChannelConfig.max_output_mana` but only used to cap `max_tokens`. No cumulative tracking or enforcement across turns.
 
 ### Fix Steps
 1. **Track cumulative mana in `MvgeState`**:

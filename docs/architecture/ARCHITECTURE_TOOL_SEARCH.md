@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-The **Seeker of Spells** provides a unified search interface for discovering **spells** (tools) via **Direct Corpus Interaction (DCI)** — ripgrep over live spell source files. Part of the **MvgeOS Seeker Protocol**. No vector stores, no embeddings, no offline indexing. Hot-loading is instant.
+The **Seeker of Spells** provides a unified search interface for discovering **spells** (tools) via **Direct Corpus Interaction (DCI)** — ripgrep over live spell source files. Part of the **MvgeOS Seeker Protocol** (external global rune: `mvgeos-runes-seeker`). No vector stores, no embeddings, no offline indexing. Hot-loading is instant.
 
 Architecture derived from four arXiv papers: MCP-Zero (2506.01056), NLT (2607.03953), Tool Attention (2604.21816), and DCI (2605.05242).
 
@@ -13,7 +13,7 @@ Architecture derived from four arXiv papers: MCP-Zero (2506.01056), NLT (2607.03
 | Principle | Source | MvgeOS Implementation |
 |-----------|--------|----------------------|
 | **Agent-Generated Requests** | MCP-Zero | Mvge emits `<tool_request>` in response content |
-| **Direct Corpus Interaction** | DCI | `rg` over `.agents/.mvgeos/extensions/**/spells/*.py` |
+| **Direct Corpus Interaction** | DCI | `rg` over `~/.agents/.mvgeos/spells/`, `~/.agents/.mvgeos/{agent}/spells/`, `.agents/.mvgeos/spells/` |
 | **Natural Language Selection** | NLT | YES/NO grid over candidates (93% fewer parse errors) |
 | **Lazy Schema Loading** | Tool Attention | Load full parameter JSON only for top-k selected spells |
 | **Zero-Latency Hot Loading** | DCI | New spell file on disk = immediately searchable |
@@ -36,7 +36,7 @@ ToolSearchSpell (MvgeSpell subclass)
   |
   |-- Stage 2: NLT Selector
   |     Present candidates as YES/NO grid
-  |     Call realm via ProviderRegistry.compose_model() -> create_realm()
+  |     Call realm via RealmRegistry.compose_model() -> create_realm()
   |
   |-- Stage 3: Lazy Schema Loader
   |     Only load full parameter JSON for selected spells
@@ -60,7 +60,7 @@ from typing import Any
 from pathlib import Path
 
 from mvgeos_agent.types import MvgeSpell, SpellExecutionMode
-from mvgeos_provider.registry import ProviderRegistry
+from mvgeos_provider.registry import RealmRegistry
 
 from .router import DCIRouter, SpellFileMatch, SpellSearchError
 from .nlt_selector import NLTSelector
@@ -72,7 +72,7 @@ class ToolSearchSpell(MvgeSpell):
 
     def __init__(
         self,
-        provider_registry: ProviderRegistry,
+        provider_registry: RealmRegistry,
         spells_root: Path | None = None,
         rg_timeout: int = 10,
         nlt_model: str = "openrouter/free",
@@ -97,7 +97,7 @@ class ToolSearchSpell(MvgeSpell):
             execution_mode=SpellExecutionMode.SEQUENTIAL,
         )
         self._provider_registry = provider_registry
-        self._spells_root = spells_root or Path(".agents/.mvgeos/extensions/spells")
+        self._spells_root = spells_root or Path(".agents/.mvgeos/spells")
         self._rg_timeout = rg_timeout
         self._nlt_model = nlt_model
         self._nlt_api_key = nlt_api_key
@@ -374,21 +374,21 @@ import re
 from typing import Any
 
 from mvgeos_agent.types import SummonerRequest
-from mvgeos_provider.registry import ProviderRegistry
+from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig
 
 from .router import SpellFileMatch, SpellSearchError
 
 
 class NLTSelector:
-    """YES/NO grid selection using ProviderRegistry flow.
+    """YES/NO grid selection using RealmRegistry flow.
     Returns list[SpellFileMatch] (not MvgeSpell) so LazySpellRegistry
     can lazily import schemas from source files.
     """
 
     def __init__(
         self,
-        registry: ProviderRegistry,
+        registry: RealmRegistry,
         model_id: str = "openrouter/free",
         api_key: str = "",
         nlt_timeout: int = 30,
@@ -618,7 +618,7 @@ tool_config = config.get("tool_search", {})
 tool_search_spell = ToolSearchSpell(
     provider_registry=self._provider_registry,
     spells_root=Path(
-        tool_config.get("spells_root", ".agents/.mvgeos/extensions/spells")
+        tool_config.get("spells_root", ".agents/.mvgeos/spells")
     ),
     rg_timeout=tool_config.get("rg_timeout", 10),
     nlt_model=tool_config.get("nlt_model", "openrouter/free"),
@@ -654,7 +654,7 @@ The MvgeLoop discovers spells by iterating `state.spells` and matching by name (
     "nlt_model": "openrouter/free",
     "nlt_api_key": "${OPENAI_API_KEY}",
     "nlt_timeout": 30,
-    "spells_root": ".agents/.mvgeos/extensions/spells"
+    "spells_root": ".agents/.mvgeos/spells"
   }
 }
 ```

@@ -15,7 +15,7 @@ Based on analysis of `TECHNICAL_DEBT_BY_PACKAGE.md` and source files in `mvgeos-
 | PROV-05 | Anti-Pattern | Streaming tightly coupled to OpenRouter SSE format in `_invocations_to_messages()` | Medium | M | PROV-01 |
 | PROV-06 | Performance | 24h cache TTL may serve stale model data | Low | S | None |
 | PROV-07 | Performance | No HTTP/2 or connection pooling | Medium | M | PROV-01 |
-| PROV-08 | Architecture | `mana_limit` in `ChannelConfig` ignored by OpenRouter provider | Medium | S | None |
+| PROV-08 | Architecture | `max_output_mana` in `ChannelConfig` ignored by OpenRouter provider | Medium | S | None |
 | PROV-09 | Architecture | `ContemplationLevel` in `ChannelConfig` passed but unused by OpenRouter | Low | S | mvgeos-agent |
 
 ---
@@ -27,14 +27,14 @@ Based on analysis of `TECHNICAL_DEBT_BY_PACKAGE.md` and source files in `mvgeos-
 ### PROV-01: No Connection Pooling — New `httpx.AsyncClient` per Instance
 
 **Root Cause**  
-`OpenRouterRealm.__init__()` (openrouter.py:60-67) creates a new `httpx.AsyncClient` per instance. The `ProviderRegistry.create_realm()` (registry.py:35-84) creates a new `OpenRouterRealm` per request/agent, so each agent turn opens a new TCP connection. No connection reuse across requests.
+`OpenRouterRealm.__init__()` (openrouter.py:60-67) creates a new `httpx.AsyncClient` per instance. The `RealmRegistry.create_realm()` (registry.py:35-84) creates a new `OpenRouterRealm` per request/agent, so each agent turn opens a new TCP connection. No connection reuse across requests.
 
 **Files & Lines**
 - `mvgeos_provider/openrouter.py:54-67` — `OpenRouterRealm.__init__()`
-- `mvgeos_provider/registry.py:35-84` — `ProviderRegistry.create_realm()`
+- `mvgeos_provider/registry.py:35-84` — `RealmRegistry.create_realm()`
 
 **Fix Steps**
-1. **Add connection pool to `ProviderRegistry`** (registry.py)
+1. **Add connection pool to `RealmRegistry`** (registry.py)
    - Add `_http_client: httpx.AsyncClient | None = None` field
    - Add `async def get_http_client() -> httpx.AsyncClient` that creates shared client with limits
    - Add `async def close()` to close shared client on shutdown
@@ -44,7 +44,7 @@ Based on analysis of `TECHNICAL_DEBT_BY_PACKAGE.md` and source files in `mvgeos-
    - If provided, use it; else create own (backward compat)
    - Add `_owns_client` flag to track ownership for `close()`
 
-3. **Update `ProviderRegistry.create_realm()`** (registry.py:78-84)
+3. **Update `RealmRegistry.create_realm()`** (registry.py:78-84)
    - Get shared client via `await self.get_http_client()`
    - Pass to `OpenRouterRealm(api_key=..., base_url=..., client=shared_client)`
 
@@ -54,7 +54,7 @@ Based on analysis of `TECHNICAL_DEBT_BY_PACKAGE.md` and source files in `mvgeos-
    timeout = httpx.Timeout(60.0, connect=10.0)
    ```
 
-5. **Add lifecycle management** — ensure `ProviderRegistry.close()` is called on agent shutdown (coordinate with mvgeos-agent)
+5. **Add lifecycle management** — ensure `RealmRegistry.close()` is called on agent shutdown (coordinate with mvgeos-agent)
 
 **Priority**: High  
 **Effort**: Medium (3-4 files, ~80 lines changed)  
@@ -122,7 +122,7 @@ Based on analysis of `TECHNICAL_DEBT_BY_PACKAGE.md` and source files in `mvgeos-
 
 3. **Optional: Pagination for `list_all()`** — add `limit`, `offset` params for large catalogs
 
-4. **Update `ProviderRegistry.compose_model()`** (registry.py:86-121) — ensure it triggers lazy load
+4. **Update `RealmRegistry.compose_model()`** (registry.py:86-121) — ensure it triggers lazy load
 
 **Priority**: Medium  
 **Effort**: Medium (~50 lines changed in model_registry.py)  
@@ -237,30 +237,30 @@ The `Realm` base class (base.py:9-16) has no streaming abstraction — `OpenRout
 
 ---
 
-### PROV-08: `mana_limit` in `ChannelConfig` Ignored by OpenRouter
+### PROV-08: `max_output_mana` in `ChannelConfig` Ignored by OpenRouter
 
-**Root Cause**  
-`ChannelConfig.mana_limit` (types.py:26) is passed to `OpenRouterRealm.stream()` (openrouter.py:74) and used only to cap `max_tokens` (line 86):
+**Root Cause**
+`ChannelConfig.max_output_mana` (types.py:27) is passed to `OpenRouterRealm.channel()` and used only to cap `max_tokens`:
 ```python
-if config.mana_limit is not None:
-    payload["max_tokens"] = min(config.max_tokens, config.mana_limit)
+if config.max_output_mana is not None:
+    payload["max_tokens"] = min(config.max_tokens, config.max_output_mana)
 ```
-But `mana_limit` represents token budget (mana), not output tokens. OpenRouter doesn't enforce input+output token budget. The provider should track cumulative `mana_used` across stream and stop when limit reached.
+But `max_output_mana` represents a per-request output token cap. OpenRouter doesn't enforce input+output token budget. The provider should track cumulative `mana_used` across channel and stop when limit reached.
 
 **Files & Lines**
-- `mvgeos_provider/types.py:26` — `ChannelConfig.mana_limit`
-- `mvgeos_provider/openrouter.py:74-86` — `stream()` method
-- `mvgeos_provider/types.py:33-37` — `RealmResponse.mana_used`
+- `mvgeos_provider/types.py:27` — `ChannelConfig.max_output_mana`
+- `mvgeos_provider/openrouter.py:141-142` — `channel()` method
+- `mvgeos_provider/types.py:41` — `RealmResponse.mana_used`
 
 **Fix Steps**
-1. **Track cumulative tokens in `stream()`** (openrouter.py)
+1. **Track cumulative tokens in `channel()`** (openrouter.py)
    - Initialize `total_tokens = 0`
    - On each chunk: `total_tokens += chunk.usage.total_tokens` (or `completion_tokens`)
-   - If `config.mana_limit` and `total_tokens >= config.mana_limit`: break stream, yield final `RealmResponse` with `stop_reason="mana_exhausted"`
+   - If `config.max_output_mana` and `total_tokens >= config.max_output_mana`: break channel, yield final `RealmResponse` with `stop_reason="mana_exhausted"`
 
 2. **Add `stop_reason="mana_exhausted"`** to `RealmResponse` handling in mvgeos-agent loop
 
-3. **Update `ChannelConfig` docstring** to clarify `mana_limit` = total token budget (input + output)
+3. **Update `ChannelConfig` docstring** to clarify `max_output_mana` = per-request output token cap
 
 **Priority**: Medium  
 **Effort**: Small (~20 lines in openrouter.py)  

@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-The **Seeker of Servers** enables MvgeOS to discover and connect to **MCP (Model Context Protocol) servers** providing external tools, resources, and capabilities. Part of the **MvgeOS Seeker Protocol**. Uses DCI (Direct Corpus Interaction) over MCP server configuration files — no embeddings, no vector store. Integrates with MvgeOS as a **Rune** via `SpellDefinition` subclasses registered on `RuneRunner`.
+The **Seeker of Servers** enables MvgeOS to discover and connect to **MCP (Model Context Protocol) servers** providing external tools, resources, and capabilities. Part of the **MvgeOS Seeker Protocol** (external global rune: `mvgeos-runes-seeker`). Uses DCI (Direct Corpus Interaction) over MCP server configuration files — no embeddings, no vector store. Integrates with MvgeOS as a **Rune** via `SpellDefinition` subclasses registered on `RuneRunner`.
 
 Derived from MCP-Zero (2506.01056), DCI-Agent (2605.05242), and the Model Context Protocol specification (Streamable HTTP per 2025-03-26, stateless core per 2026-07-28 RC).
 
@@ -59,7 +59,7 @@ Mvge (agent)
 MCPSearchSpell (MvgeSpell subclass)
   |
   |-- Stage 1: DCI Config Router
-  |     rg over .agents/.mvgeos/extensions/**/*.mcp.json
+  |     rg over .agents/.mvgeos/runes/**/*.mcp.json
   |
   |-- Stage 2: NLT Selector
   |     YES/NO grid over candidate MCP servers
@@ -110,7 +110,7 @@ from __future__ import annotations
 from typing import Any
 
 from mvgeos_agent.types import MvgeSpell, SpellExecutionMode
-from mvgeos_provider.registry import ProviderRegistry
+from mvgeos_provider.registry import RealmRegistry
 
 from .discovery import MCPConfigDiscovery, MCPServerInfo
 from .nlt_selector import MCPNLTSelector
@@ -124,7 +124,7 @@ class MCPSearchSpell(MvgeSpell):
 
     def __init__(
         self,
-        provider_registry: ProviderRegistry,
+        provider_registry: RealmRegistry,
         rune_runner: Any | None = None,
         config: dict[str, Any] | None = None,
     ) -> None:
@@ -275,7 +275,7 @@ class MCPConfigDiscovery:
     """DCI over MCP config files. Searches *.mcp.json in standard locations."""
 
     def __init__(self, search_roots: list[Path] | None = None) -> None:
-        self._search_roots = search_roots or [Path(".agents/.mvgeos/extensions")]
+        self._search_roots = search_roots or [Path(".agents/.mvgeos/runes")]
 
     async def search(self, query: str) -> list[MCPServerInfo]:
         config_files = self._find_config_files()
@@ -999,7 +999,7 @@ from __future__ import annotations
 from typing import Any
 
 from mvgeos_agent.types import SummonerRequest
-from mvgeos_provider.registry import ProviderRegistry
+from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig
 
 from .discovery import MCPServerInfo
@@ -1010,7 +1010,7 @@ class MCPNLTSelector:
 
     def __init__(
         self,
-        registry: ProviderRegistry,
+        registry: RealmRegistry,
         model_id: str = "openrouter/free",
     ) -> None:
         self._registry = registry
@@ -1209,7 +1209,7 @@ rune_runner.register_handler(
     "max_results": 3,
     "auto_connect": true,
     "protocol_version": "2025-03-26",
-    "search_roots": [".agents/.mvgeos/extensions"],
+    "search_roots": [".agents/.mvgeos/runes"],
     "max_connections": 5,
     "timeout": {
       "init": 30,

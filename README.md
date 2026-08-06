@@ -10,10 +10,10 @@ A Python-based AI coding agent inspired by pi. Mvges invoke spells (tools) acros
 | ----------- | -------- |
 | mvgeos-agent (MvgeLoop) | ✅ Implemented + tested |
 | mvgeos-tome (TomeLedger) | ✅ Implemented + tested |
-| mvgeos-spells (7 spells) | ✅ Implemented + tested |
 | mvgeos-provider (OpenRouterRealm) | ✅ Implemented + tested |
 | mvgeos-runes (extension system) | ✅ Implemented + tested |
 | mvgeos-cli (commands) | ✅ Implemented + tested |
+| coding-mvge (coding agent) | ✅ Implemented + tested |
 
 ## Structure
 
@@ -21,10 +21,9 @@ MvgeOS is a monorepo with uv workspaces:
 
 | Package | Purpose |
 | --- | --- |
-| `mvgeos-agent` | Core Mvge loop, invocations, state, spell execution |
+| `mvgeos-agent` | Core Mvge loop, invocations, state, spell execution, spell types |
 | `mvgeos-provider` | Realm protocol and OpenRouter provider |
 | `mvgeos-tome` | JSONL session persistence with file locking and in-memory index |
-| `mvgeos-spells` | Spell system: bash, read, edit, write, grep, find, ls |
 | `mvgeos-runes` | Extension system: manifest, loader, sigil hooks |
 | `mvgeos-cli` | CLI entry point (`mvgeos` command) |
 | `coding-mvge` | Coding agent package (BaseMvge subclass) |
@@ -43,9 +42,9 @@ uv run ruff format --check
 
 MvgeOS adheres to the dotagents protocol. Configuration lives in `.agents/.mvgeos/`:
 
-- `.agents/.mvgeos/extensions/manifest.json` — Extension registry
-- `.agents/.mvgeos/auth/` — Relics (API keys, credentials)
-- `.agents/.mvgeos/sessions/` — Tome (session) JSONL files
+- `.agents/.mvgeos/runes/manifest.json` — Rune registry
+- `.agents/.mvgeos/auth/` — API keys and credentials
+- `.agents/.mvgeos/tomes/` — Tome JSONL files
 
 ## License
 

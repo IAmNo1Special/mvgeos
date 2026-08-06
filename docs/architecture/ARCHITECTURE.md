@@ -7,15 +7,13 @@ mvgeos/
 ├── mvgeos-agent/         # Core Mvge loop, invocations, state, spell execution
 ├── mvgeos-provider/      # Realm protocol + repository of realms
 ├── mvgeos-tome/          # JSONL session persistence with locking + index
-├── mvgeos-spells/        # Spell implementations
-                           # (bash, read, edit, write, grep, find, ls)
 ├── mvgeos-runes/         # Extension manifest, loader, sigil hooks
 ├── mvgeos-cli/           # CLI entry point (mvgeos command)
 ├── coding-mvge/         # Coding agent package (BaseMvge subclass)
 ├── .agents/.mvgeos/      # dotagents protocol compliance (created at runtime)
-│   ├── extensions/       # Extension runes
-│   ├── sessions/         # Tome JSONL files
-│   └── auth/             # Relics
+│   ├── runes/              # Rune extensions
+│   ├── tomes/            # Tome JSONL files
+│   └── auth/             # API keys and credentials
 └── docs/adr/             # Architecture Decision Records
 ```
 
@@ -31,17 +29,17 @@ The heartbeat of MvgeOS. Contains the `Mvge` class (the agent),
 **Entry point**: `BaseMvge.run(prompt)` → `MvgeLoop.run()`
 → invoke `StreamFunction` → process events → return `MvgeResponse`
 
-**Dependencies**: mvgeos-provider, mvgeos-tome, mvgeos-spells, mvgeos-runes
+**Dependencies**: mvgeos-provider, mvgeos-tome, mvgeos-runes
 
 ### mvgeos-provider
 
-Manages the connection to LLM providers. Defines the `Realm` protocol
+Manages the connection to LLM providers (Realms). Defines the `Realm` protocol
 (the provider interface) and implements `OpenRouterRealm`
-(the OpenRouter provider). The provider handles incantation streaming,
-authentication resolution (relay of Arcane Keys), and response streaming.
+(the OpenRouter provider). The provider handles channeling (streaming),
+authentication resolution, and response delivery.
 
-**Entry point**: `Realm.stream(model, context, config)`
-→ returns `Channel` (stream of MvgeResponse events)
+**Entry point**: `Realm.channel(model, invocations, config)`
+→ returns async generator of `RealmResponse`
 
 **Dependencies**: httpx, filelock
 
@@ -58,29 +56,12 @@ cross-platform concurrency safety.
 
 **Dependencies**: filelock
 
-### mvgeos-spells
-
-Implements the spell system. Each spell is a `MvgeSpell` with
-`name`, `description`, `parameters`, and `execute()`. Spells include:
-
-- `cast_bash` → execute shell commands
-- `cast_read` → read files
-- `cast_edit` → edit files using diff-based replacement
-- `cast_write` → write files
-- `cast_grep` → search file contents
-- `cast_find` → find files by glob
-- `cast_list` → list directory contents
-
-**Entry point**: `MvgeSpellsRegistry.register(spell)` → `spell.execute(params)`
-
-**Dependencies**: aiofiles, filelock
-
 ### mvgeos-runes
 
 Extension system. `RuneManifest` describes extension metadata
 and hooks. `RuneLoader` discovers and loads runes from
-`.agents/.mvgeos/extensions/`. `Sigil` hooks define lifecycle
-points where runes can inject behavior.
+`.agents/.mvgeos/runes/`. `SigilHook` defines lifecycle
+points where runes can register Sigil callbacks.
 
 **Entry point**: `RuneLoader.load_all()` → discovers manifests
 → registers sigils → emits MvgeEvents on hooks
@@ -94,12 +75,12 @@ orchestrating the other packages.
 
 **Commands**:
 
-- `mvgeos <incantation>` → Run a one-shot incantation (or start REPL/TUI if omitted)
+- `mvgeos <prompt>` → Run a one-shot prompt (or start REPL/TUI if omitted)
 - `mvgeos tome <command>` → Manage tomes (list, create, resume)
 - `mvgeos config <command>` → Manage configuration
 
 **Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-tome,
-mvgeos-spells, mvgeos-runes, rich, typer
+mvgeos-runes, rich, typer
 
 ### coding-mvge
 
@@ -110,21 +91,20 @@ and system prompt configuration.
 **Entry point**: `CodingMvge(api_key).run(prompt)`
 
 **Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-tome,
-mvgeos-spells, mvgeos-runes
+mvgeos-runes
 
 ## Data Flow
 
-### Incantation Flow (MvgePrompt)
+### Invocation Flow
 
-1. User provides incantation via CLI or TUI
-2. CLI creates `BaseMvge`/`CodingAgent` instance with configured realms and grimoire
+1. User provides input via CLI or TUI
+2. CLI creates `BaseMvge`/`CodingMvge` instance with configured realms
 3. `BaseMvge.run(prompt)` → normalizes input to `SummonerRequest`
-4. `MvgeLoop.run()` adds incantation to `MvgeState.messages`
-5. Loop calls `Realm.stream(model, context, config)` on configured realm
-6. Provider streams `MvgeResponse` events (start, text_delta,
-   thinking_delta, toolcall_start, etc.)
+4. `MvgeLoop.run()` adds invocation to `MvgeState.invocations`
+5. Loop calls `Realm.channel(model, invocations, config)` on configured realm
+6. Provider channels `RealmResponse` events (text deltas, tool calls, etc.)
 7. `MvgeLoop` processes events → updates `MvgeState` → emits `MvgeEvent` to subscribers
-8. Tool calls detected → `MvgeSpell.execute()` → results appended to context
+8. Tool calls detected → `Spell.execute()` → results appended to invocations
 9. Loop continues until no more tool calls and no steering/follow-up invocations
 10. Final `MvgeResponse` emitted with `done` event
 
@@ -138,7 +118,7 @@ mvgeos-spells, mvgeos-runes
 
 ### Extension Rune Flow
 
-1. `RuneLoader.load_all()` scans `.agents/.mvgeos/extensions/`
+1. `RuneLoader.load_all()` scans `.agents/.mvgeos/runes/`
    for `manifest.json` files
 2. Each manifest registers sigils (lifecycle hooks) with the `Sigil` system
 3. During `MvgeLoop`, appropriate events are emitted to registered sigils

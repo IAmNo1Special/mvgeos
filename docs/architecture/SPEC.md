@@ -13,9 +13,9 @@ mvgeos/
 ├── mvgeos-agent/             # Core agent loop, state, types
 ├── mvgeos-provider/          # Realm protocol + OpenRouter provider
 ├── mvgeos-tome/              # JSONL session persistence with file locking
-├── mvgeos-spells/            # Spell implementations (tools)
 ├── mvgeos-runes/             # Extension system (manifest, loader, sigils)
 ├── mvgeos-cli/               # CLI entry point
+├── coding-mvge/              # Coding agent package (BaseMvge subclass)
 └── pyproject.toml            # Root workspace config
 ```
 
@@ -31,16 +31,7 @@ mvgeos/
 | mvgeos-tome | `ledger.py` | TomeLedger - session management |
 | mvgeos-tome | `locking.py` | FileLock - cross-process locking |
 | mvgeos-tome | `index.py` | Index - entry indexing |
-| mvgeos-tome | `jsonl_store.py` | JsonlStore - JSONL append/read |
 | mvgeos-tome | `types.py` | TomeEntry, TomeMetadata, TomeEntryType |
-| mvgeos-spells | `casting.py` | cast_bash |
-| mvgeos-spells | `reading.py` | cast_read |
-| mvgeos-spells | `writing.py` | cast_write |
-| mvgeos-spells | `editing.py` | cast_edit |
-| mvgeos-spells | `finding.py` | cast_find |
-| mvgeos-spells | `listing.py` | cast_list |
-| mvgeos-spells | `grep.py` | cast_grep |
-| mvgeos-spells | `types.py` | SpellResult, SpellStatus |
 | mvgeos-runes | `loader.py` | RuneLoader |
 | mvgeos-runes | `manifest.py` | load_manifest |
 | mvgeos-runes | `sigils.py` | SigilRegistry |
@@ -50,6 +41,8 @@ mvgeos/
 | mvgeos-cli | `commands/config.py` | `mvgeos config` command |
 | mvgeos-cli | `commands/repl.py` | REPL/TUI implementation |
 | mvgeos-cli | `commands/tui.py` | TUI implementation |
+| coding-mvge | `mvge.py` | CodingMvge - concrete coding agent |
+| coding-mvge | `spells/` | Built-in spell implementations |
 | coding-mvge | `mvge.py` | CodingMvge (BaseMvge subclass) |
 
 ## Core Types
@@ -166,7 +159,7 @@ class Model:
     provider: str
     base_url: str
     api_key: str
-    mana_limit: int = 0
+    max_completion_mana: int = 0
     context_window: int = 128000
     max_tokens: int = 4096
     headers: dict[str, str] = field(default_factory=dict)
@@ -177,7 +170,7 @@ class ChannelConfig:
     model: Model
     temperature: float = 0.7
     max_tokens: int = 4096
-    mana_limit: int | None = None
+    max_output_mana: int | None = None
     timeout_ms: int = 60000
     max_retries: int = 3
     meta_data: dict[str, Any] = field(default_factory=dict)
@@ -201,14 +194,14 @@ class TomeEntryType(StrEnum):
         SPELL_RESULT,
         MODEL_CHANGE,
         CONTEMPLATION_LEVEL_CHANGE,
-        TOOL_CALLS_CHANGE,
+        SPELL_CALLS_CHANGE,
         LABEL,
         BRANCH_SUMMARY,
         COMPACTION,
         CUSTOM,
         CUSTOM_MESSAGE,
         LEAF,
-        SESSION_INFO,
+        TOME_INFO,
     )
 
 
@@ -231,7 +224,7 @@ class TomeMetadata:
     schema_version: str = "1.0"
 ```
 
-### mvgeos-spells/types.py
+### mvgeos-agent/types.py
 
 ```python
 class SpellStatus(StrEnum):
@@ -245,6 +238,18 @@ class SpellResult:
     content: str = ""
     details: dict[str, Any] = field(default_factory=dict)
     error_message: str | None = None
+```
+
+### mvgeos-agent/spell_schema.py
+
+```python
+def generate_spell_schema(func: Callable[..., Any]) -> dict[str, Any]:
+    """Generate a JSON schema from a spell function's signature and type hints."""
+    ...
+
+def validate_spell_args(schema: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:
+    """Validate spell arguments against a JSON schema using Pydantic."""
+    ...
 ```
 
 ### mvgeos-runes/types.py
@@ -352,7 +357,8 @@ Config at `.agents/.mvgeos/`:
 
 - `config.json` - Main config (model, mana_budget, spells_enabled, etc.)
 - `sessions/` - Tome directories (managed by TomeLedger)
-- `extensions/manifest.json` - Extension manifest
+- `runes/` - Project-level runes (each rune in its own subdirectory with manifest.json)
+- `runes/manifest.json` - Rune manifest
 
 ### Config Schema
 
@@ -364,7 +370,11 @@ Config at `.agents/.mvgeos/`:
   "temperature": 0.7,
   "contemplation_level": "medium",
   "spells_enabled": ["bash", "read", "write", "edit", "find", "list", "grep"],
-  "runes_paths": [".agents/.mvgeos/extensions"]
+  "runes_paths": [
+    "~/.agents/.mvgeos/runes",
+    "~/.agents/.mvgeos/{agent_name}/runes",
+    ".agents/.mvgeos/runes"
+  ]
 }
 ```
 
@@ -400,19 +410,17 @@ Test naming: `test_<function>_<scenario>`
 | Standard Term | MvgeOS Term |
 | --------------- | ------------- |
 | Agent | Mvge |
+| User | Summoner |
 | Tool | Spell |
-| Toolset | Grimoire |
 | Token | Mana |
 | Context Window | Mana Pool |
 | Provider | Realm |
 | Session | Tome |
-| Prompt | Incantation |
-| Response | Manifestation |
+| Message | Invocation |
+| Streaming | Channeling |
 | Extension | Rune |
 | Callback | Sigil |
-| Credential | Relic |
-| API Key | Arcane Key |
-| OAuth | Covenant |
+| Reasoning Effort | Contemplation |
 
 Use these terms consistently in code, docs, and comments.
 

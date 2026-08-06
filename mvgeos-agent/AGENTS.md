@@ -1,0 +1,58 @@
+# mvgeos-Agent — Agent Instructions
+
+This package implements the core BaseMvge: the `BaseMvge` class (agent), `MvgeLoop` (turn loop), `MvgeState` (mutable state), `MvgeEvent` (lifecycle events), `EventBus` (pub/sub), and `Sigil` (hook protocol).
+
+## Package-Specific Conventions
+
+- All code follows the red-green-refactor TDD cycle: write failing test first, then implement
+- No inline imports (`await import()`, `import("pkg").Type`). Top-level imports only
+- Use `pathlib.Path` for all file path operations — never raw string concatenation
+- Mock sync methods with `MagicMock()`, async methods with `AsyncMock()` — mixing causes "coroutine never awaited" warnings
+
+## Testing
+
+```bash
+# Run this package's tests
+uv run pytest mvgeos-agent/tests_agent/
+
+# Run with coverage
+uv run pytest mvgeos-agent/tests_agent/ --cov
+```
+
+Test paths follow pattern: `mvgeos-agent/tests_agent/test_<module>.py`
+
+## Key Types
+
+| Type | Purpose |
+| --- | --- |
+| `MvgeState` | Mutable agent state (prompt, model, spells, invocations, mana, events, queues) |
+| `MvgeEvent` / `MvgeEventType` | Lifecycle event (type + data dict) |
+| `MvgeSpell` | Tool base class; JSON-schema → Pydantic arg validation, abstract `execute()` |
+| `SpellResult` | Result of a spell execution (status, content, details, error) |
+| `SpellStatus` | Enum (SUCCESS, ERROR, PARTIAL) |
+| `SpellResultMessage` | Transcript message for spell results (role="spellResult") |
+| `MvgeInvocation` | Union alias: `SummonerRequest \| MvgeResponse \| SpellResultMessage` |
+| `ContemplationLevel` | Reasoning-effort enum (maps to OpenRouter `reasoning.effort`) |
+| `BaseMvge` | Template-Method agent skeleton (`run()` → `_run_impl()`) |
+| `MvgeLoop` | The turn loop: channels realm responses, executes spells, emits events/sigils |
+| `MvgeTome` | Session wrapper over `TomeLedger`; emits session sigils; switch/fork |
+
+## Spell Schema
+
+- `generate_spell_schema()` in `mvgeos_agent/spell_schema.py` — generates JSON schema from function signatures
+- `validate_spell_args()` in `mvgeos_agent/spell_schema.py` — validates args against a schema
+
+## Dependencies
+
+- `mvgeos-provider` (Realm protocol, Model, ChannelConfig, RealmResponse)
+- `mvgeos-runes` (RuneRunner, RuneContext, SigilHook)
+
+## Architecture
+
+The core loop flows:
+1. `BaseMvge.run(prompt)` → lazy `initialize()` → appends `SummonerRequest` to `state.invocations`
+2. `MvgeLoop.run()` channels `RealmResponse`s from the Realm
+3. On `StopReason.SPELL_USE`: fires `BEFORE_SPELL_CAST` sigil, executes spell, fires `AFTER_SPELL_RESULT`
+4. On `STOP/LENGTH/ERROR`: appends response, emits `MESSAGE_END`, `TURN_END`, `AGENT_END`
+
+Mana enforcement: the loop tracks cumulative `mana_used` vs `mana_budget` and returns `StopReason.MANA_EXHAUSTED` when the budget is exceeded.

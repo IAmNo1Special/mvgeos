@@ -9,8 +9,8 @@ Based on `TECHNICAL_DEBT_BY_PACKAGE.md` (lines 124-134) and source code analysis
 | ID | Title | Category | Priority | Effort |
 |----|-------|----------|----------|--------|
 | CODING-03 | Hardcoded `DEFAULT_SPELL_MAP` couples to spell implementations | Architecture Quirk | Medium | M |
-| CODING-04 | No spell sandboxing (inherited from mvgeos-spells) | Gap | Medium | L |
-| CODING-05 | No validation of extension-provided spells | Gap | Medium | S-M |
+| CODING-04 | No spell sandboxing | Gap | Medium | L |
+| CODING-05 | No validation of rune-provided spells | Gap | Medium | S-M |
 
 
 

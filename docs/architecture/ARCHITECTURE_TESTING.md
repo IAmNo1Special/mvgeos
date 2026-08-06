@@ -168,7 +168,7 @@ Skill metadata (name, description) is derived heuristically from markdown struct
 
 ## B. `NLTEvaluator` — Natural Language Tool Selection
 
-**Problem**: `NLTSelector`, `MCPNLTSelector`, and `SkillNLTSelector` each construct a `ProviderRegistry` → `Realm` pipeline, coupling selection logic to the LLM provider and incurring real API costs in tests.
+**Problem**: `NLTSelector`, `MCPNLTSelector`, and `SkillNLTSelector` each construct a `RealmRegistry` → `Realm` pipeline, coupling selection logic to the LLM provider and incurring real API costs in tests.
 
 **Interface**:
 
@@ -197,14 +197,14 @@ from __future__ import annotations
 from typing import Any
 
 from mvgeos_agent.types import SummonerRequest
-from mvgeos_provider.registry import ProviderRegistry
+from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig
 
 
 class RealmNLTEvaluator:
-    """YES/NO grid via ProviderRegistry -> Realm LLM call."""
+    """YES/NO grid via RealmRegistry -> Realm LLM call."""
 
-    def __init__(self, registry: ProviderRegistry) -> None:
+    def __init__(self, registry: RealmRegistry) -> None:
         self._registry = registry
 
     async def evaluate(
@@ -297,9 +297,9 @@ class StubNLTEvaluator:
 
 | Architecture | Selector | Change |
 |---|---|---|
-| Tool Search | `NLTSelector.__init__(self, evaluator: NLTEvaluator)` | Removes `ProviderRegistry` dependency |
-| MCP Search | `MCPNLTSelector.__init__(self, evaluator: NLTEvaluator)` | Removes `ProviderRegistry` dependency |
-| Skill Search | `SkillNLTSelector.__init__(self, evaluator: NLTEvaluator)` | Removes `ProviderRegistry` dependency |
+| Tool Search | `NLTSelector.__init__(self, evaluator: NLTEvaluator)` | Removes `RealmRegistry` dependency |
+| MCP Search | `MCPNLTSelector.__init__(self, evaluator: NLTEvaluator)` | Removes `RealmRegistry` dependency |
+| Skill Search | `SkillNLTSelector.__init__(self, evaluator: NLTEvaluator)` | Removes `RealmRegistry` dependency |
 
 Each selector's `select()` method calls `self._evaluator.evaluate(query, candidate_dicts)` instead of constructing a realm channel.
 
@@ -795,7 +795,7 @@ evaluator = RealmNLTEvaluator(provider_registry=self._provider_registry)
 # Tool search
 dcirouter = DCIRouter(
     searcher=searcher,
-    spells_root=Path(".agents/.mvgeos/extensions/spells"),
+    spells_root=Path(".agents/.mvgeos/runes/spells"),
     rg_timeout=10,
 )
 nlt_selector = NLTSelector(evaluator=evaluator)

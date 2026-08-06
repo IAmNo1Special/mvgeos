@@ -2923,7 +2923,6 @@ mvgeos/
 │       └── types.py       # Added event_bus field to MvgeState
 ├── mvgeos-provider/       # LLM providers (existing)
 ├── mvgeos-tome/           # Session persistence (existing)
-├── mvgeos-spells/         # Tool implementations (existing)
 ├── mvgeos-runes/          # Extensions (existing)
 ├── mvgeos-cli/            # CLI entry point (existing)
 │   └── mvgeos/

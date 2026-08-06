@@ -72,7 +72,7 @@ No synchronization between them. User sets model in CLI config but agent loads f
 
 ### Priority: High
 ### Effort: Medium (~150 lines across 3 files)
-### Dependencies: mvgeos-agent (prompt_config.py), mvgeos-runes (extension paths)
+### Dependencies: mvgeos-agent (prompt_config.py), mvgeos-runes (rune paths)
 
 ---
 

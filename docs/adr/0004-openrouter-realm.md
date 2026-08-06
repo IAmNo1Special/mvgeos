@@ -17,4 +17,4 @@ MVP includes only the OpenRouter provider (`OpenRouterRealm`). The `Realm` proto
 - Single dependency on OpenRouter API for v0.1
 - Provider abstraction (Realm protocol) is implemented first, enabling future providers
 - Model configuration is externalized to `models.json`
-- Authentication via Arcane Key (API key) stored in `.agents/.mvgeos/auth/`
+- Authentication via API key stored in `.agents/.mvgeos/auth/`

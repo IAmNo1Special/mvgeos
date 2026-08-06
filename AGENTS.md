@@ -16,7 +16,7 @@ MVGEOS IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https:/
 - Read files in full before wide-ranging changes
 - No inline imports (`await import()`, `import("pkg").Type`). Top-level imports only
 - Use `pathlib.Path` for all file path operations — never raw string concatenation
-- Follow MvgeOS terminology (Mvge/Mvges, Spells, Grimoire, Mana, Tome, Rune, Sigil, Relic, Realm, Incantation, Invocation, Manifestation, Contemplation, Condensing)
+- Follow MvgeOS terminology (Mvge, Spell, Realm, Mana, Mana Pool, Tome, Invocation, Summoner, Rune, Seeker, Skill, Channeling, Sigil, Contemplation, Leaf, Fork)
 - All code follows the red-green-refactor TDD cycle: write failing test first, then implement
 
 ## Commands
@@ -46,11 +46,14 @@ MVGEOS IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https:/
 
 - pytest framework with pytest-asyncio
 - 90%+ coverage target enforced by CI
-- Tests mirror source structure: `<package>/tests_<package>/test_<module>.py` (e.g., `mvgeos-agent/tests_agent/test_types.py`)
+- Tests mirror source structure: `<package>/tests/unit/test_<module>.py` and `<package>/tests/integration/test_<module>.py` (e.g., `mvgeos-agent/tests/unit/test_types.py`)
 - Unit, harness, and integration test types supported
 - **Mock sync methods with `MagicMock()`, async methods with `AsyncMock()`** — mixing causes "coroutine never awaited" warnings
 - **Add coverage omit patterns for temp directories** in pyproject.toml to avoid "couldn't parse" warnings
 - **90% is practical ceiling** — 100% requires brittle mocks of external dependencies
+- **Test file naming**: use flat `*.py` naming (no `test_` prefix) in `tests/unit/` and `tests/integration/`. Configure pytest with `python_files = "*.py"`.
+- **`_build_spells()` interface**: must use `self._runner` (not `self._state.rune_runner`) and return all spell types (rune spells from enabled runes only + builtin spells). Seeker is a rune — it only works through the rune/extension system, not as a built-in category.
+- **Test cleanup**: use `_watchers` (plural), not `_watcher` (singular).
 
 ## Debugging
 
@@ -67,34 +70,33 @@ MvgeOS is a monorepo with uv workspaces:
 | mvgeos-agent | Core loop, Mvge class, MvgeState, MvgeEvent |
 | mvgeos-provider | Realm protocol + OpenRouter provider |
 | mvgeos-tome | JSONL session persistence with file locking |
-| mvgeos-runes | Extension manifest, loader, sigil hooks |
+| mvgeos-runes | Rune/Extension manifest, loader, sigil hooks |
 | mvgeos-cli | CLI entry point (`mvgeos` command) |
 | coding-mvge | Coding agent package |
 
-Config follows dotagents protocol at `.agents/.mvgeos/`.
-Extension manifest at `.agents/.mvgeos/extensions/manifest.json`.
+Config follows dotagents protocol at `~/.agents/.mvgeos/`.
+Rune/Extension manifest at `~/.agents/.mvgeos/runes/manifest.json`.
 
-Test paths follow pattern: `<package>/tests_<package>/test_<module>.py` (e.g., `mvgeos-agent/tests_agent/test_types.py`).
+Test paths follow pattern: `<package>/tests/unit/test_<module>.py` and `<package>/tests/integration/test_<module>.py` (e.g., `mvgeos-agent/tests/unit/test_types.py`).
+
+**Terminology updates**: `ProviderRegistry` → `RealmRegistry` (Realm = provider abstraction). `Model.provider` field removed — provider derived from model ID prefix (e.g., `nvidia/nemotron` → provider = "nvidia").
 
 ## Key Types (MvgeOS Terminology)
 
 | Concept | Type |
 | --- | --- |
 | Agent | Mvge |
+| User | Summoner |
 | Tools | Spells |
-| Toolsets | Grimoire |
 | Tokens | Mana |
 | Context window | Mana Pool |
 | Provider | Realm |
 | Session | Tome |
-| Prompt | Incantation |
-| Response | Manifestation |
-| Error | Error |
+| Message | Invocation |
+| Streaming | Channeling |
 | Extension | Rune |
 | Callback | Sigil |
-| Credential | Relic |
-| API key | Arcane Key |
-| OAuth | Covenant |
+| Reasoning effort | Contemplation |
 
 ## Changelog & Releases
 
@@ -106,3 +108,17 @@ Test paths follow pattern: `<package>/tests_<package>/test_<module>.py` (e.g., `
   - `uv run git-cliff --config cliff.toml --unreleased` — preview unreleased changes
   - `uv run git-cliff --config cliff.toml --output CHANGELOG.md` — generate full changelog
   - `git tag vX.Y.Z && uv run git-cliff --config cliff.toml --tag vX.Y.Z --output CHANGELOG.md` — release
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues via `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single context — root `CONTEXT.md`. See `docs/agents/domain.md`.

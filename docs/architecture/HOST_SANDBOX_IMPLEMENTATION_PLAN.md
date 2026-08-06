@@ -9,7 +9,7 @@ Establish host sandbox ownership in `mvgeos-agent` while strictly avoiding inver
 > 1. **Structural Subtyping Contract (`typing.Protocol`)**: Convert `BaseSandboxExecutor` in `heal_my_goap.sandbox` from `abc.ABC` to `@runtime_checkable class BaseSandboxExecutor(Protocol)`. This allows any object implementing `execute_code(...)` to satisfy `heal_my_goap`'s type signatures without requiring `mvgeos` to import `heal_my_goap` (preventing core OS dependency inversion).
 > 2. **Mage Host Sandbox (`MvgeSandbox` in `mvgeos-agent`)**: Create `MvgeSandbox` in `mvgeos-agent/mvgeos_agent/sandbox.py`. The Mage (`mvgeos-agent`) becomes the single host authority over process isolation, AST allowlists, and execution timeouts without depending on any extension.
 > 3. **RuneAPI Host Sandbox Exposure**: Update `RuneRunner` and `RuneAPI` in `mvgeos-runes` to expose `api.sandbox`, allowing any loaded Rune extension to access the host Mage execution sandbox.
-> 4. **Extension Rune Dependency Injection**: Update `rune.py` in `C:\Users\ivmno\.agents\.mvgeos\extensions\heal_my_goap\rune.py` to instantiate `engine = GoapEngine(sandbox=api.sandbox)` during `rune_factory(api)`.
+> 4. **Extension Rune Dependency Injection**: Update `rune.py` in `C:\Users\ivmno\.agents\.mvgeos\runes\heal_my_goap\rune.py` to instantiate `engine = GoapEngine(sandbox=api.sandbox)` during `rune_factory(api)`.
 > 5. **Standalone Fallback Autonomy**: `heal_my_goap`'s `GoapEngine` retains its internal `SandboxExecutor` as a default fallback when instantiated standalone outside MvgeOS (`engine = GoapEngine()`).
 > 6. **Strict QA Gates**: Enforce 80-char line limit for `heal_my_goap` and 88-char line limit for `mvgeos`, alongside mypy strict mode and 100% pytest test coverage.
 
