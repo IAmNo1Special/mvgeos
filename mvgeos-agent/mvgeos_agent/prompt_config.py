@@ -43,6 +43,28 @@ DEFAULT_GUIDELINES = [
     "how you could be equipped to help.",
 ]
 
+SYSTEM_MD_FILENAME = "SYSTEM.md"
+GUIDELINES_MD_FILENAME = "GUIDELINES.md"
+
+# Seed content written when a Summoner has no config yet. Both files are meant
+# to be edited: they are the configuration surface, not internal defaults.
+DEFAULT_SYSTEM_MD = _SYSTEM_PROMPT_BODY + "\n"
+
+DEFAULT_GUIDELINES_MD = (
+    "\n".join(f"- {guideline}" for guideline in DEFAULT_GUIDELINES) + "\n"
+)
+
+
+def resolve_config_dir(name: str, config_dir: Path | None = None) -> Path:
+    """The one place a Mvge's configuration lives.
+
+    Defaults to the dotagents path `~/.agents/.mvgeos/{name}/`. An explicit
+    directory overrides it, which is what tests and embedders pass.
+    """
+    if config_dir is not None:
+        return config_dir
+    return Path(f"~/.agents/.mvgeos/{name}").expanduser()
+
 
 def _parse_guidelines(path: Path) -> list[str]:
     """Read GUIDELINES.md into bare guideline lines, dropping bullet markers."""
@@ -58,6 +80,42 @@ def _parse_guidelines(path: Path) -> list[str]:
     ]
 
 
+def _read_custom_prompt(config_dir: Path) -> str:
+    """The Summoner's SYSTEM.md, or empty when absent or unreadable."""
+    system_md = config_dir / SYSTEM_MD_FILENAME
+    if not system_md.exists():
+        return ""
+    try:
+        return system_md.read_text(encoding="utf-8").strip()
+    except OSError:
+        logger.warning("Could not read system prompt at %s", system_md)
+        return ""
+
+
+def _render_prompt(
+    body: str,
+    spells: list[str],
+    guidelines: list[str],
+    cwd: str = "",
+    append_text: str = "",
+) -> str:
+    """The single rendering every entry point goes through."""
+    parts = [body]
+
+    spell_list = "\n".join(f"  - {s}" for s in spells) if spells else "  (none)"
+    parts.append(f"\nActive spells:\n{spell_list}")
+
+    parts.append("\nGuidelines:")
+    parts.extend(f"- {guideline}" for guideline in guidelines)
+
+    if append_text:
+        parts.append(f"\n{append_text}")
+    if cwd:
+        parts.append(f"\nCurrent working directory: {cwd}")
+
+    return "\n".join(parts)
+
+
 def build_system_prompt(
     spells: list[str],
     config_dir: Path | None = None,
@@ -68,69 +126,46 @@ def build_system_prompt(
     context_files: list[dict[str, str]] | None = None,
     name: str = "coding-agent",
 ) -> str:
-    """Build a system prompt with spells, guidelines, and optional context files."""
-    guidelines = list(DEFAULT_GUIDELINES)
-    if config_dir is not None and config_dir.exists():
-        system_md = config_dir / "SYSTEM.md"
-        if system_md.exists():
-            custom_prompt = system_md.read_text(encoding="utf-8").strip()
-        guidelines_md = config_dir / "GUIDELINES.md"
-        if guidelines_md.exists():
-            custom_guidelines = _parse_guidelines(guidelines_md)
-            if custom_guidelines:
-                guidelines = custom_guidelines
+    """Build a system prompt with spells, guidelines, and optional context files.
 
-    parts = [custom_prompt or DEFAULT_SYSTEM_PROMPT]
+    An explicitly supplied prompt always wins over the Summoner's SYSTEM.md,
+    which in turn wins over the built-in default.
+    """
+    resolved = resolve_config_dir(name, config_dir)
+    body = custom_prompt or custom
+    if not body and resolved.exists():
+        body = _read_custom_prompt(resolved)
 
-    spell_list = "\n".join(f"  - {s}" for s in spells) if spells else "  (none)"
-    parts.append(f"\nActive spells:\n{spell_list}")
-
-    parts.append("\nGuidelines:")
-    for g in guidelines:
-        parts.append(f"- {g}")
-
-    if cwd:
-        parts.append(f"\nCurrent working directory: {cwd}")
-
-    return "\n".join(parts)
+    return _render_prompt(
+        body=body or _SYSTEM_PROMPT_BODY,
+        spells=spells,
+        guidelines=load_guidelines(name, config_dir),
+        cwd=cwd,
+        append_text=append_text,
+    )
 
 
-def _default_config_dir(name: str) -> Path:
-    return Path(f"~/.agents/.mvgeos/{name}").expanduser()
+def ensure_config_files(name: str, config_dir: Path | None = None) -> Path:
+    """Create SYSTEM.md and GUIDELINES.md with editable defaults if absent.
 
+    Both files are the Summoner's configuration surface, so they are seeded
+    with real content rather than left empty. Existing files are never
+    overwritten.
+    """
+    resolved = resolve_config_dir(name, config_dir)
+    resolved.mkdir(parents=True, exist_ok=True)
 
-def ensure_config_files(name: str) -> Path:
-    """Ensure SYSTEM.md and GUIDELINES.md exist for the given agent name."""
-    config_dir = _default_config_dir(name)
-    config_dir.mkdir(parents=True, exist_ok=True)
+    for filename, content in (
+        (SYSTEM_MD_FILENAME, DEFAULT_SYSTEM_MD),
+        (GUIDELINES_MD_FILENAME, DEFAULT_GUIDELINES_MD),
+    ):
+        path = resolved / filename
+        # An empty file counts as unseeded: earlier versions created
+        # GUIDELINES.md with touch(), leaving nothing to edit.
+        if not path.exists() or not path.read_text(encoding="utf-8").strip():
+            path.write_text(content, encoding="utf-8")
 
-    system_path = config_dir / "SYSTEM.md"
-
-    if not system_path.exists():
-        system_path.write_text(
-            "You are Mvge, a concise AI coding agent. "
-            "You have access to spells (tools) to read files, write code, "
-            "edit files, run shell commands, search code, and navigate the "
-            "filesystem.\n\n"
-            "Guidelines:\n"
-            "- Be concise. Give short answers unless asked for detail.\n"
-            "- Do not speculate or predict the future. "
-            "If you don't know something or lack a capability, say so in one "
-            "sentence and suggest how you could be equipped to help "
-            "(e.g. a web search tool, a new spell, a skill, etc.).\n"
-            "- Do not add fluff, filler, or cheerful commentary.\n"
-            "- Show file paths when working with files.\n"
-            "- When executing shell commands, explain what they do briefly.\n"
-            "- Use spells when you need filesystem or command access.\n"
-            "- If the user asks a coding question, write working code.\n"
-            "- If the user asks a non-coding question, answer briefly or suggest "
-            "how you could be equipped to help.",
-            encoding="utf-8",
-        )
-
-    config_dir.joinpath("GUIDELINES.md").touch(exist_ok=True)
-
-    return config_dir
+    return resolved
 
 
 def load_system_prompt(
@@ -139,65 +174,28 @@ def load_system_prompt(
     config_dir: Path | None = None,
     spells: list[str] | None = None,
 ) -> str:
-    """Load the system prompt from config directory, falling back to default."""
-    prompt: str | None = None
+    """Load the system prompt for a Mvge, falling back to the defaults.
 
-    if config_dir is not None and config_dir.exists():
-        try:
-            system_md = config_dir / "SYSTEM.md"
-            if system_md.exists():
-                prompt = system_md.read_text(encoding="utf-8").strip()
-            guidelines_md = config_dir / "GUIDELINES.md"
-            if guidelines_md.exists():
-                guidelines_text = guidelines_md.read_text(encoding="utf-8").strip()
-                if guidelines_text:
-                    return (
-                        (prompt or _SYSTEM_PROMPT_BODY)
-                        + "\n\nGuidelines:\n"
-                        + guidelines_text
-                    )
-            if prompt is not None:
-                return prompt
-        except OSError:
-            prompt = None
+    Shares one config path and one rendering with `build_system_prompt`. An
+    explicitly supplied prompt wins over the Summoner's SYSTEM.md.
+    """
+    resolved = resolve_config_dir(name, config_dir)
+    body = custom
+    if not body and resolved.exists():
+        body = _read_custom_prompt(resolved)
 
-    if custom:
-        return custom
-
-    config_path = Path(f"~/.agents/.mvgeos/{name}/SYSTEM.md").expanduser()
-
-    if not config_path.exists():
-        prompt = DEFAULT_SYSTEM_PROMPT
-    else:
-        try:
-            prompt = config_path.read_text(encoding="utf-8").strip()
-        except OSError:
-            prompt = DEFAULT_SYSTEM_PROMPT
-
-    if spells:
-        spell_list = "\n".join(f"  - {s}" for s in spells)
-        prompt += f"\n\nActive spells:\n{spell_list}"
-
-    return prompt
+    return _render_prompt(
+        body=body or _SYSTEM_PROMPT_BODY,
+        spells=spells or [],
+        guidelines=load_guidelines(name, config_dir),
+    )
 
 
-def load_guidelines(name: str) -> list[str]:
-    """Load guidelines from config directory, falling back to defaults."""
-    if not Path(f"~/.agents/.mvgeos/{name}/GUIDELINES.md").expanduser().exists():
+def load_guidelines(name: str, config_dir: Path | None = None) -> list[str]:
+    """Load guidelines from the config directory, falling back to defaults."""
+    guidelines_md = resolve_config_dir(name, config_dir) / GUIDELINES_MD_FILENAME
+    if not guidelines_md.exists():
         return list(DEFAULT_GUIDELINES)
 
-    try:
-        content = (
-            Path(f"~/.agents/.mvgeos/{name}/GUIDELINES.md")
-            .expanduser()
-            .read_text(encoding="utf-8")
-            .strip()
-        )
-        if not content:
-            return list(DEFAULT_GUIDELINES)
-        lines = [
-            line.lstrip("- ").strip() for line in content.splitlines() if line.strip()
-        ]
-        return [line for line in lines if line]
-    except OSError:
-        return list(DEFAULT_GUIDELINES)
+    parsed = _parse_guidelines(guidelines_md)
+    return parsed or list(DEFAULT_GUIDELINES)

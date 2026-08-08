@@ -89,8 +89,11 @@ def test_ensure_config_files_idempotent(tmp_path: Path) -> None:
 
 
 def test_load_system_prompt_custom_overrides() -> None:
+    # A custom body replaces the default, then goes through the same rendering
+    # as every other entry point.
     prompt = load_system_prompt("test-agent", custom="Custom prompt")
-    assert prompt == "Custom prompt"
+    assert prompt.startswith("Custom prompt")
+    assert "You are Mvge" not in prompt
 
 
 def test_load_system_prompt_with_spells() -> None:
