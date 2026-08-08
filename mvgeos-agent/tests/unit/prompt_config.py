@@ -242,8 +242,7 @@ def test_load_guidelines_empty_file(tmp_path: Path) -> None:
 
 def test_default_system_prompt_content() -> None:
     assert "You are Mvge" in DEFAULT_SYSTEM_PROMPT
-    assert "Guidelines:" in DEFAULT_SYSTEM_PROMPT
-    assert "Be concise" in DEFAULT_SYSTEM_PROMPT
+    assert "concise" in DEFAULT_SYSTEM_PROMPT
 
 
 def test_default_guidelines_content() -> None:

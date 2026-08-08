@@ -11,22 +11,7 @@ _SYSTEM_PROMPT_BODY = (
     "edit files, run shell commands, search code, and navigate the filesystem."
 )
 
-DEFAULT_SYSTEM_PROMPT = (
-    _SYSTEM_PROMPT_BODY + "\n\n"
-    "Guidelines:\n"
-    "- Be concise. Give short answers unless asked for detail.\n"
-    "- Do not speculate or predict the future. "
-    "If you don't know something or lack a capability, say so in one "
-    "sentence and suggest how you could be equipped to help "
-    "(e.g. a web search tool, a new spell, a skill, etc.).\n"
-    "- Do not add fluff, filler, or cheerful commentary.\n"
-    "- Show file paths when working with files.\n"
-    "- When executing shell commands, explain what they do briefly.\n"
-    "- Use spells when you need filesystem or command access.\n"
-    "- If the user asks a coding question, write working code.\n"
-    "- If the user asks a non-coding question, answer briefly or suggest "
-    "how you could be equipped to help."
-)
+DEFAULT_SYSTEM_PROMPT = _SYSTEM_PROMPT_BODY
 
 DEFAULT_GUIDELINES = [
     "Be concise. Give short answers unless asked for detail.",
@@ -105,11 +90,10 @@ def _render_prompt(
     spell_list = "\n".join(f"  - {s}" for s in spells) if spells else "  (none)"
     parts.append(f"\nActive spells:\n{spell_list}")
 
-    parts.append("\nGuidelines:")
-    parts.extend(f"- {guideline}" for guideline in guidelines)
+    if guidelines:
+        parts.append("\nGuidelines:")
+        parts.extend(f"- {guideline}" for guideline in guidelines)
 
-    if append_text:
-        parts.append(f"\n{append_text}")
     if cwd:
         parts.append(f"\nCurrent working directory: {cwd}")
 
@@ -182,10 +166,13 @@ def load_system_prompt(
     resolved = resolve_config_dir(name, config_dir)
     body = custom
     if not body and resolved.exists():
-        body = _read_custom_prompt(resolved)
+        try:
+            body = _read_custom_prompt(resolved)
+        except OSError:
+            return DEFAULT_SYSTEM_PROMPT
 
     return _render_prompt(
-        body=body or _SYSTEM_PROMPT_BODY,
+        body=body or DEFAULT_SYSTEM_PROMPT,
         spells=spells or [],
         guidelines=load_guidelines(name, config_dir),
     )
