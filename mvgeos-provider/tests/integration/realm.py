@@ -272,8 +272,82 @@ def test_openrouter_realm_stream_uses_retry_after_header() -> None:
             collect_responses(realm.stream(model, invocations, config))
         )
 
-    sleep.assert_awaited_once_with(5)
+    # Retry-After is seconds on the wire; the shared policy works in ms.
+    sleep.assert_awaited_once_with(5.0)
     assert responses[-1].stop_reason == "stop"
+
+
+def test_openrouter_realm_stream_rejects_excessive_retry_after() -> None:
+    from mvgeos_agent.types import SummonerRequest
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = _make_model()
+    config = ChannelConfig(model=model)
+    invocations = [SummonerRequest(role="user", content="Hello")]
+
+    # 120s exceeds the 60s cap, so the realm reports rather than stalling.
+    factory = _make_sequence_factory([(429, {"retry-after": "120"}, [])])
+    realm._client.stream = factory  # type: ignore[method-assign]
+
+    responses = asyncio.run(collect_responses(realm.stream(model, invocations, config)))
+
+    assert responses[-1].error_message is not None
+    assert "retry delay" in responses[-1].error_message
+
+
+def test_openrouter_realm_stream_honours_x_should_retry_false() -> None:
+    from mvgeos_agent.types import SummonerRequest
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = _make_model()
+    config = ChannelConfig(model=model)
+    invocations = [SummonerRequest(role="user", content="Hello")]
+
+    # 503 would normally retry, but the Realm says not to.
+    factory = _make_sequence_factory(
+        [
+            (503, {"x-should-retry": "false"}, []),
+            (200, {}, [b"data: [DONE]\n\n"]),
+        ]
+    )
+    realm._client.stream = factory  # type: ignore[method-assign]
+
+    responses = asyncio.run(collect_responses(realm.stream(model, invocations, config)))
+
+    assert responses[-1].error_message is not None
+
+
+def test_openrouter_realm_stream_backoff_is_jittered_and_capped() -> None:
+    from unittest.mock import patch
+
+    from mvgeos_agent.types import SummonerRequest
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = _make_model()
+    config = ChannelConfig(model=model)
+    invocations = [SummonerRequest(role="user", content="Hello")]
+
+    factory = _make_sequence_factory(
+        [
+            (500, {}, []),
+            (
+                200,
+                {},
+                [
+                    b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+                    b"data: [DONE]\n\n",
+                ],
+            ),
+        ]
+    )
+    realm._client.stream = factory  # type: ignore[method-assign]
+
+    with patch("asyncio.sleep", new=AsyncMock()) as sleep:
+        asyncio.run(collect_responses(realm.stream(model, invocations, config)))
+
+    slept = sleep.await_args[0][0]
+    # First retry: 0.5s base, jittered down by at most 25%.
+    assert 0.375 <= slept <= 0.5
 
 
 def test_openrouter_realm_stream_exhausts_retries_yields_rate_limited() -> None:
@@ -735,6 +809,35 @@ def test_stream_accumulates_text_into_final_invocation() -> None:
     assert final.invocation is not None
     assert final.invocation.content == [{"type": "text", "text": "Hello world"}]
     assert final.invocation.stop_reason == StopReason.STOP
+
+
+def test_stream_attaches_mana_usage_to_final_invocation() -> None:
+    from mvgeos_agent.types import SummonerRequest
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = _make_model()
+    config = ChannelConfig(model=model)
+    invocations = [SummonerRequest(role="user", content="Hello")]
+
+    realm._client.stream = _make_stream_factory(  # type: ignore[method-assign]
+        [
+            b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n',
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}],'
+            b'"usage":{"prompt_tokens":12,"completion_tokens":5,"total_tokens":17}}\n\n',
+            b"data: [DONE]\n\n",
+        ]
+    )
+
+    responses = asyncio.run(collect_responses(realm.stream(model, invocations, config)))
+    final = responses[-1]
+
+    assert final.mana_used == 17
+    assert final.invocation is not None
+    assert final.invocation.mana_usage == {
+        "input": 12,
+        "output": 5,
+        "total": 17,
+    }
 
 
 def test_stream_tool_calls_produce_spell_use_invocation() -> None:

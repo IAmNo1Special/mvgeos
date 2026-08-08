@@ -9,11 +9,32 @@ import httpx
 from mvgeos_agent.types import MvgeResponse, StopReason
 
 from mvgeos_provider.base import Realm
+from mvgeos_provider.retry import (
+    ServerRetryDelayTooLongError,
+    is_retryable_status,
+    realm_request_delay_ms,
+)
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 
 _REASONING_MODELS = ("openai/o1", "openai/o3")
-_RETRYABLE_STATUSES = (429, 500, 502, 503, 504)
-_RETRY_BACKOFF_BASE = 1.0
+
+
+def _mana_usage(usage: dict[str, Any]) -> dict[str, float]:
+    """Break a Realm usage block into the Mana figures compaction reads."""
+    if not usage:
+        return {}
+    prompt = usage.get("prompt_tokens", 0)
+    completion = usage.get("completion_tokens", 0)
+    total = usage.get("total_tokens", prompt + completion)
+    breakdown: dict[str, float] = {
+        "input": prompt,
+        "output": completion,
+        "total": total,
+    }
+    reasoning = usage.get("completion_tokens_details", {}).get("reasoning_tokens")
+    if reasoning:
+        breakdown["contemplation"] = reasoning
+    return breakdown
 
 
 def _supports_reasoning(model: Model) -> bool:
@@ -145,7 +166,6 @@ class OpenRouterRealm(Realm):
             payload["tools"] = config.tools
 
         max_attempts = max(1, config.max_retries)
-        backoff = _RETRY_BACKOFF_BASE
         for attempt in range(max_attempts):
             async with self._client.stream(
                 "POST",
@@ -159,7 +179,7 @@ class OpenRouterRealm(Realm):
                     return
 
                 message, error_code = _error_from_response(response)
-                if response.status_code not in _RETRYABLE_STATUSES:
+                if not is_retryable_status(response.status_code, response.headers):
                     yield RealmResponse(
                         model=model, error_message=message, error_code=error_code
                     )
@@ -171,9 +191,72 @@ class OpenRouterRealm(Realm):
                     )
                     return
 
-                retry_after = _retry_after_seconds(response)
-                await asyncio.sleep(retry_after if retry_after is not None else backoff)
-                backoff *= 2
+                try:
+                    delay_ms = realm_request_delay_ms(response.headers, attempt)
+                except ServerRetryDelayTooLongError as exc:
+                    yield RealmResponse(
+                        model=model,
+                        error_message=f"{exc}. {message}",
+                        error_code=error_code,
+                    )
+                    return
+
+            await asyncio.sleep(delay_ms / 1000)
+
+    async def complete(
+        self,
+        model: Model,
+        messages: list[dict[str, Any]],
+        config: ChannelConfig,
+    ) -> RealmResponse:
+        """Run one non-channelled completion.
+
+        Deliberately omits `tools`: this is used for standalone requests such
+        as compaction summaries, where Spells must not be offered.
+        """
+        payload: dict[str, Any] = {
+            "model": model.id,
+            "messages": messages,
+            "stream": False,
+            "temperature": config.temperature,
+            "max_tokens": config.max_tokens,
+        }
+
+        response = await self._client.post(
+            "/chat/completions",
+            json=payload,
+            timeout=config.timeout_ms / 1000,
+        )
+
+        if response.status_code != 200:
+            message, error_code = _error_from_response(response)
+            return RealmResponse(
+                model=model, error_message=message, error_code=error_code
+            )
+
+        data = response.json()
+        choices = data.get("choices") or []
+        if not choices:
+            return RealmResponse(
+                model=model,
+                error_message="Realm returned no choices",
+            )
+
+        content = choices[0].get("message", {}).get("content") or ""
+        usage = data.get("usage", {})
+        return RealmResponse(
+            model=model,
+            invocation=MvgeResponse(
+                role="assistant",
+                content=[{"type": "text", "text": content}],
+                realm="openrouter",
+                model=model.id,
+                stop_reason=StopReason.STOP,
+                mana_usage=_mana_usage(usage),
+            ),
+            mana_used=usage.get("total_tokens", 0),
+            stop_reason=StopReason.STOP.value,
+        )
 
     async def _consume_stream(
         self,
@@ -264,6 +347,7 @@ class OpenRouterRealm(Realm):
                     realm="openrouter",
                     model=model.id,
                     stop_reason=stop_reason,
+                    mana_usage=_mana_usage(usage),
                 )
                 yield RealmResponse(
                     model=model,

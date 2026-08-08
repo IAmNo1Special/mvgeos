@@ -15,5 +15,19 @@ class Realm:
     ) -> AsyncIterator[Any]:
         raise NotImplementedError
 
+    async def complete(
+        self,
+        model: Model,
+        messages: list[dict[str, Any]],
+        config: ChannelConfig,
+    ) -> Any:
+        """Run one non-channelled request and return the whole response.
+
+        Used for standalone calls that are not part of a Tome's transcript,
+        such as generating a compaction summary. Takes wire-format messages
+        rather than Invocations because the caller composes the prompt.
+        """
+        raise NotImplementedError
+
     async def close(self) -> None:
         pass
