@@ -88,9 +88,19 @@ class LoopCallbacks:
     # Runs after each Mvge Invocation. Return a replacement transcript to swap
     # what the next turn sends (this is how compaction takes effect), or None
     # to leave it untouched.
+    #
+    # DEPRECATED: Compaction is now owned by MvgeHarness via its own
+    # after_invocation callback. This callback is kept only for Rune-specific
+    # transcript mutations via the AFTER_INVOCATION sigil hook.
     after_invocation: (
         Callable[[list[MvgeInvocation]], Awaitable[list[MvgeInvocation] | None]] | None
     ) = None
+    # Called after each turn. Return True to gracefully stop the Mvge after the
+    # current turn completes.
+    should_stop_after_turn: Callable[[], Awaitable[bool]] | None = None
+    # Called before each new turn. Allows modifying the context (model,
+    # contemplation, spells, etc.) for the next turn.
+    prepare_next_turn: Callable[[LoopContext], Awaitable[LoopContext]] | None = None
 
 
 class _RuneSpellWrapper(MvgeSpell):
@@ -168,6 +178,10 @@ async def run_loop(
             if turns > context.max_turns:
                 raise RuntimeError("Max turns exceeded")
 
+            # Call prepare_next_turn before each turn (except the first)
+            if turns > 1 and callbacks.prepare_next_turn is not None:
+                context = await callbacks.prepare_next_turn(context)
+
             for queued in pending:
                 invocations.append(queued)
                 new_invocations.append(queued)
@@ -206,6 +220,19 @@ async def run_loop(
                     },
                 )
             )
+
+            # Check if we should stop after this turn
+            if callbacks.should_stop_after_turn is not None:
+                should_stop = await callbacks.should_stop_after_turn()
+                if should_stop:
+                    # Gracefully exit both loops
+                    await emit(
+                        MvgeEvent(
+                            type=MvgeEventType.AGENT_END,
+                            data={"stop_reason": state.last_stop_reason},
+                        )
+                    )
+                    return new_invocations
 
             keep_going = turn.cast_spells
             if not keep_going:
@@ -654,6 +681,24 @@ class MvgeLoop:
                 return result
             return data
 
+        async def should_stop_after_turn() -> bool:
+            try:
+                result = await runner.emit_first(SigilHook.SHOULD_STOP_AFTER_TURN, {})
+            except Exception:
+                return False
+            if isinstance(result, bool):
+                return result
+            return False
+
+        async def prepare_next_turn(context: LoopContext) -> LoopContext:
+            try:
+                result = await runner.emit_chain(SigilHook.PREPARE_NEXT_TURN, context)
+            except Exception:
+                return context
+            if isinstance(result, LoopContext):
+                return result
+            return context
+
         return LoopCallbacks(
             transform_context=transform_context,
             before_realm_headers=before_realm_headers,
@@ -662,6 +707,8 @@ class MvgeLoop:
             get_steering_messages=self._drain_steer_queue,
             get_follow_up_messages=self._drain_followup_queue,
             after_invocation=self._after_invocation,
+            should_stop_after_turn=should_stop_after_turn,
+            prepare_next_turn=prepare_next_turn,
         )
 
     async def _emit(self, event: MvgeEvent) -> None:

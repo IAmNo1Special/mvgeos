@@ -27,6 +27,7 @@ members = [
     "mvgeos-tome",
     "mvgeos-runes",
     "mvgeos-cli",
+    "mvgeos-harness",
     "coding-mvge",
 ]
 

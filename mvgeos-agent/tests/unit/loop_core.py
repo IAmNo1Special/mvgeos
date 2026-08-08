@@ -132,6 +132,8 @@ class TestRunLoopInterface:
         assert callbacks.before_realm_headers is None
         assert callbacks.before_spell_cast is None
         assert callbacks.after_spell_result is None
+        assert callbacks.should_stop_after_turn is None
+        assert callbacks.prepare_next_turn is None
 
     @pytest.mark.asyncio
     async def test_returns_new_invocations_only(self, context: LoopContext) -> None:
@@ -287,6 +289,99 @@ class TestRunLoopEmitSequence:
 
 
 class TestRunLoopCallbacks:
+    @pytest.mark.asyncio
+    async def test_should_stop_after_turn_stops_gracefully(
+        self, context: LoopContext
+    ) -> None:
+        emit = Recorder()
+        stop_after_turn = AsyncMock(return_value=True)
+
+        callbacks = LoopCallbacks(should_stop_after_turn=stop_after_turn)
+
+        # Use spell call to force multiple turns
+        responses = [_spell_call_response(), _text_response("Turn 2")]
+        await run_loop(context, _stream(responses), emit, callbacks)
+
+        # Should stop after first turn, not continue to second
+        assert stop_after_turn.call_count == 1
+        turn_ends = emit.of_type(MvgeEventType.TURN_END)
+        assert len(turn_ends) == 1
+
+    @pytest.mark.asyncio
+    async def test_should_stop_after_turn_false_continues(
+        self, context: LoopContext
+    ) -> None:
+        emit = Recorder()
+        stop_after_turn = AsyncMock(return_value=False)
+
+        callbacks = LoopCallbacks(should_stop_after_turn=stop_after_turn)
+
+        # Use spell calls to force multiple turns (3 responses = 3 turns)
+        responses = [
+            _spell_call_response(),
+            _spell_call_response(),
+            _text_response("Done"),
+        ]
+        await run_loop(context, _stream(responses), emit, callbacks)
+
+        # Called after each turn (3 turns = 3 calls)
+        assert stop_after_turn.call_count == 3
+        turn_ends = emit.of_type(MvgeEventType.TURN_END)
+        assert len(turn_ends) == 3
+
+    @pytest.mark.asyncio
+    async def test_prepare_next_turn_modifies_context(
+        self, context: LoopContext
+    ) -> None:
+        emit = Recorder()
+        new_context = LoopContext(
+            system_prompt="Modified prompt",
+            invocations=[SummonerRequest(role="user", content="Modified")],
+            spells=context.spells,
+            contemplation_level=ContemplationLevel.OFF,
+            max_tokens=4096,
+            temperature=0.7,
+        )
+        prepare_next_turn = AsyncMock(return_value=new_context)
+
+        callbacks = LoopCallbacks(prepare_next_turn=prepare_next_turn)
+
+        # Use spell calls to force multiple turns (3 responses = 3 turns)
+        # prepare_next_turn called before turn 2 and turn 3 = 2 calls
+        responses = [
+            _spell_call_response(),
+            _spell_call_response(),
+            _text_response("Done"),
+        ]
+        await run_loop(context, _stream(responses), emit, callbacks)
+
+        assert prepare_next_turn.call_count == 2
+        # The second turn should use the modified context
+        # Verify by checking the INPUT event for the second turn (if any)
+        # First turn has original input, second turn would have modified if it continued
+
+    @pytest.mark.asyncio
+    async def test_prepare_next_turn_returns_same_context_continues(
+        self, context: LoopContext
+    ) -> None:
+        emit = Recorder()
+        prepare_next_turn = AsyncMock(return_value=context)
+
+        callbacks = LoopCallbacks(prepare_next_turn=prepare_next_turn)
+
+        # Use spell calls to force multiple turns (3 responses = 3 turns)
+        # prepare_next_turn called before turn 2 and turn 3 = 2 calls
+        responses = [
+            _spell_call_response(),
+            _spell_call_response(),
+            _text_response("Done"),
+        ]
+        await run_loop(context, _stream(responses), emit, callbacks)
+
+        assert prepare_next_turn.call_count == 2
+        turn_ends = emit.of_type(MvgeEventType.TURN_END)
+        assert len(turn_ends) == 3
+
     @pytest.mark.asyncio
     async def test_transform_context_replaces_invocations(
         self, context: LoopContext

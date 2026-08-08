@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator, Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+from mvgeos_harness import MvgeHarness
 from mvgeos_provider.base import Realm
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
@@ -197,8 +198,26 @@ class BaseMvge:
         return self._build_system_prompt()
 
     async def _run_impl(self) -> MvgeInvocation:
-        """Override in subclass to implement turn-processing logic."""
-        raise NotImplementedError
+        """Default implementation using the harness."""
+        assert self._model is not None
+        assert self._realm is not None
+        assert self._state is not None
+        assert self._loop is not None
+        assert self._harness is not None
+
+        stream_fn = self._make_stream_fn(
+            self._model,
+            self._realm,
+            self._state,
+            self._temperature,
+            self._max_tokens,
+        )
+
+        return await self._harness.run(
+            stream_fn,
+            model=dataclasses.asdict(self._model),
+            contemplation_level=self._contemplation_level,
+        )
 
     def _make_stream_fn(
         self,
@@ -320,6 +339,7 @@ class BaseMvge:
         )
 
         self._loop = MvgeLoop(self._state)
+        self._harness: MvgeHarness | None = None
 
         if self._realm is not None and self._model is not None:
             self._compaction = CompactionRunner(
@@ -329,7 +349,10 @@ class BaseMvge:
                 settings=self._compaction_settings,
                 tome=self._agent_session,
             )
-            self._loop.set_after_invocation(self._compaction.maybe_compact)
+            # Build callbacks from the loop (includes rune sigil handlers)
+            callbacks = self._loop._build_callbacks()
+            # Create harness that wraps the loop and owns compaction/lifecycle
+            self._harness = MvgeHarness(self._loop, self._compaction, callbacks)
 
         self._initialized = True
 
@@ -411,6 +434,7 @@ class BaseMvge:
         self._agent_session = None
         self._session_manager = None
         self._loop = None
+        self._harness = None
         self._state = None
 
     async def __aenter__(self) -> BaseMvge:

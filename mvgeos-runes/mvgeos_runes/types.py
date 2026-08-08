@@ -27,6 +27,8 @@ class SigilHook(StrEnum):
     AGENT_END = "agent_end"
     BEFORE_MVGE_START = "before_mvge_start"
     INPUT = "input"
+    SHOULD_STOP_AFTER_TURN = "should_stop_after_turn"
+    PREPARE_NEXT_TURN = "prepare_next_turn"
 
 
 @dataclass
