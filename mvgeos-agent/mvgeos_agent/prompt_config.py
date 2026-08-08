@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT_BODY = (
     "You are Mvge, a concise AI coding agent. "
@@ -41,6 +44,20 @@ DEFAULT_GUIDELINES = [
 ]
 
 
+def _parse_guidelines(path: Path) -> list[str]:
+    """Read GUIDELINES.md into bare guideline lines, dropping bullet markers."""
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        logger.warning("Could not read guidelines at %s", path)
+        return []
+    return [
+        stripped.lstrip("-*").strip()
+        for line in raw.splitlines()
+        if (stripped := line.strip())
+    ]
+
+
 def build_system_prompt(
     spells: list[str],
     config_dir: Path | None = None,
@@ -52,19 +69,16 @@ def build_system_prompt(
     name: str = "coding-agent",
 ) -> str:
     """Build a system prompt with spells, guidelines, and optional context files."""
+    guidelines = list(DEFAULT_GUIDELINES)
     if config_dir is not None and config_dir.exists():
         system_md = config_dir / "SYSTEM.md"
         if system_md.exists():
             custom_prompt = system_md.read_text(encoding="utf-8").strip()
-        _ = config_dir / "GUIDELINES.md"
-        if Path("GUIDELINES.md").exists():
-            lines = (
-                config_dir.joinpath("GUIDELINES.md")
-                .read_text(encoding="utf-8")
-                .strip()
-                .splitlines()
-            )
-            _ = [line.lstrip("- ").strip() for line in lines if line.strip()]
+        guidelines_md = config_dir / "GUIDELINES.md"
+        if guidelines_md.exists():
+            custom_guidelines = _parse_guidelines(guidelines_md)
+            if custom_guidelines:
+                guidelines = custom_guidelines
 
     parts = [custom_prompt or DEFAULT_SYSTEM_PROMPT]
 
@@ -72,7 +86,7 @@ def build_system_prompt(
     parts.append(f"\nActive spells:\n{spell_list}")
 
     parts.append("\nGuidelines:")
-    for g in DEFAULT_GUIDELINES:
+    for g in guidelines:
         parts.append(f"- {g}")
 
     if cwd:

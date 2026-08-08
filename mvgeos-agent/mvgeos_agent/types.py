@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 class ContentType(StrEnum):
     TEXT = "text"
     TOOL_CALL = "tool_call"
+    CONTEMPLATION = "contemplation"
 
 
 class ContemplationLevel(StrEnum):

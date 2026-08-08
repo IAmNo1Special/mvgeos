@@ -285,6 +285,21 @@ class OpenRouterRealm(Realm):
             finish_reason = choice.get("finish_reason")
             usage = chunk.get("usage", {})
 
+            # Contemplation arrives as its own delta field. Surface it as a
+            # distinct block so it never lands in the answer text.
+            contemplation = delta.get("reasoning") or delta.get("reasoning_content")
+            if contemplation:
+                yield RealmResponse(
+                    model=model,
+                    invocation=MvgeResponse(
+                        role="assistant",
+                        content=[{"type": "contemplation", "text": contemplation}],
+                        realm="openrouter",
+                        model=model.id,
+                    ),
+                    stop_reason="pending",
+                )
+
             content = delta.get("content")
             if content:
                 text_parts.append(content)
