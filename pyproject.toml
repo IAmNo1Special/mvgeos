@@ -84,6 +84,10 @@ pythonpath = "."
 python_files = "*.py"
 python_classes = "Test*"
 python_functions = "test_*"
+# Test dirs must NOT contain __init__.py. With importlib mode, packaged test
+# dirs collapse to the same dotted path (tests.unit.types) across packages and
+# silently shadow each other. Rootdir-relative naming keeps them distinct.
+consider_namespace_packages = false
 addopts = "--import-mode=importlib"
 
 [tool.coverage.run]

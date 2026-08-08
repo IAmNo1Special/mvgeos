@@ -13,13 +13,13 @@ def test_model_has_required_fields() -> None:
         realm="openrouter",
         base_url="https://openrouter.ai/api/v1",
         api_key="test-key",
-        mana_limit=1000,
+        max_completion_mana=1000,
         context_window=128000,
         max_tokens=4096,
     )
     assert model.id == "openrouter/test-model"
     assert model.realm == "openrouter"
-    assert model.mana_limit == 1000
+    assert model.max_completion_mana == 1000
     assert model.supported_parameters == []
 
 
