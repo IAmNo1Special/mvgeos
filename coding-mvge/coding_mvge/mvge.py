@@ -65,7 +65,7 @@ class CodingMvge(BaseMvge):
         api_key: str,
         *,
         name: str = "coding-mvge",
-        model: str = "openrouter/free",
+        model: str = "nvidia/nemotron-3-ultra-550b-a55b:free",
         spells: list[str] | None = None,
         custom_system_prompt: str = "",
         extension_dir: str | None = None,
@@ -74,7 +74,6 @@ class CodingMvge(BaseMvge):
         provider_name: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 4096,
-        mana_budget: int = 10000,
         contemplation_level: str = "medium",
         contemplation_budget: int | None = None,
         exclude_contemplation: bool = False,
@@ -89,7 +88,6 @@ class CodingMvge(BaseMvge):
             provider_name=provider_name,
             temperature=temperature,
             max_tokens=max_tokens,
-            mana_budget=mana_budget,
             contemplation_level=contemplation_level,
             contemplation_budget=contemplation_budget,
             exclude_contemplation=exclude_contemplation,
@@ -173,35 +171,18 @@ class CodingMvge(BaseMvge):
         assert self._state is not None
         assert self._loop is not None
 
-        turn_count = 0
+        # The loop owns the turn cycle, including max_turns and draining the
+        # steer/followup queues, so this is a single call.
+        stream_fn = self._make_stream_fn(
+            self._model,
+            self._realm,
+            self._state,
+            self._temperature,
+            self._max_tokens,
+        )
 
-        while True:
-            if turn_count >= self._state.max_turns:
-                raise RuntimeError("Max turns exceeded")
-            turn_count += 1
-            stream_fn = self._make_stream(
-                self._model,
-                self._realm,
-                self._state,
-                self._temperature,
-                self._max_tokens,
-                self._mana_budget,
-            )
-
-            result = await self._loop.run(
-                stream_fn(),
-                model=dataclasses.asdict(self._model),
-                contemplation_level=self._contemplation_level,
-            )
-
-            if self._state.steer_queue:
-                self._state.invocations.extend(self._state.steer_queue)
-                self._state.steer_queue.clear()
-                continue
-
-            if self._state.followup_queue:
-                self._state.invocations.extend(self._state.followup_queue)
-                self._state.followup_queue.clear()
-                continue
-
-            return result
+        return await self._loop.run(
+            stream_fn,
+            model=dataclasses.asdict(self._model),
+            contemplation_level=self._contemplation_level,
+        )

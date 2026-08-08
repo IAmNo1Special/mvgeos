@@ -215,7 +215,7 @@ class TestHandleCommandOut:
 class FakeAgent:
     def __init__(self, session_id: str = "abcd1234efgh") -> None:
         self.session_id = session_id
-        self._model_id = "openrouter/free"
+        self._model_id = "nvidia/nemotron-3-ultra-550b-a55b:free"
         self._contemplation_level = "medium"
         self._initialized = False
         self.closed = False
@@ -287,7 +287,9 @@ class TestTuiApp:
             )
         assert app.application is not None
         footer = app._footer_text()
-        assert any("openrouter/free" in text for _, text in footer)
+        # The footer truncates to console width, so match the model ID prefix
+        # rather than the full slug.
+        assert any("nvidia/nemotron" in text for _, text in footer)
 
     def test_footer_shows_working_while_busy(self) -> None:
         app = self._app(FakeAgent())
@@ -376,11 +378,11 @@ class TestTuiApp:
     async def test_slash_model_switch(self) -> None:
         agent = FakeAgent()
         app = self._app(agent)
-        app._buffer.text = "/model openrouter/free"
+        app._buffer.text = "/model nvidia/nemotron-3-ultra-550b-a55b:free"
         app._on_accept(app._buffer)
         assert app._task is not None
         await app._task
-        assert agent._model_id == "openrouter/free"
+        assert agent._model_id == "nvidia/nemotron-3-ultra-550b-a55b:free"
         plain = "\n".join((e.text or "").plain for e in app.sink._entries)
         assert "Model switched" in plain
 
@@ -397,7 +399,7 @@ class TestTuiApp:
         app._on_accept(app._buffer)
         assert app._task is not None
         await app._task
-        assert agent._model_id == "openrouter/free"
+        assert agent._model_id == "nvidia/nemotron-3-ultra-550b-a55b:free"
         plain = "\n".join((e.text or "").plain for e in app.sink._entries)
         assert "Unknown model" in plain
 
@@ -409,7 +411,7 @@ class TestTuiApp:
 
         agent = FailSwitch()
         app = self._app(agent)
-        app._buffer.text = "/model openrouter/free"
+        app._buffer.text = "/model nvidia/nemotron-3-ultra-550b-a55b:free"
         app._on_accept(app._buffer)
         assert app._task is not None
         await app._task

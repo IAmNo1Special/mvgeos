@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from collections.abc import AsyncGenerator, Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +17,7 @@ from mvgeos_tome.ledger import TomeLedger
 
 from mvgeos_agent.agent_session import MvgeTome
 from mvgeos_agent.event_bus import EventBus
-from mvgeos_agent.loop import MvgeLoop
+from mvgeos_agent.loop import MvgeLoop, StreamFn
 from mvgeos_agent.types import (
     ContemplationLevel,
     MvgeEvent,
@@ -26,7 +26,6 @@ from mvgeos_agent.types import (
     MvgeSpell,
     MvgeState,
     SessionResumeError,
-    SpellResultMessage,
     SummonerRequest,
 )
 
@@ -50,14 +49,13 @@ class BaseMvge:
         api_key: str,
         *,
         name: str = "base-mvge",
-        model: str = "openrouter/free",
+        model: str = "nvidia/nemotron-3-ultra-550b-a55b:free",
         extension_dir: str | None = None,
         session_dir: Path | None = None,
         session_resume: str | None = None,
         provider_name: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 4096,
-        mana_budget: int | None = None,
         contemplation_level: str = "medium",
         contemplation_budget: int | None = None,
         exclude_contemplation: bool = False,
@@ -72,7 +70,6 @@ class BaseMvge:
         self._provider_name = provider_name
         self._temperature = temperature
         self._max_tokens = max_tokens
-        self._mana_budget = mana_budget
         self._contemplation_level = contemplation_level
         self._contemplation_budget = contemplation_budget
         self._exclude_contemplation = exclude_contemplation
@@ -198,15 +195,19 @@ class BaseMvge:
         """Override in subclass to implement turn-processing logic."""
         raise NotImplementedError
 
-    def _make_stream(
+    def _make_stream_fn(
         self,
         model: Model,
         realm: Realm,
         state: MvgeState,
         temperature: float,
         max_tokens: int,
-        mana_budget: int | None,
-    ) -> Callable[[], AsyncGenerator[RealmResponse]]:
+    ) -> StreamFn:
+        """Build the per-turn channel the loop calls to reach the Realm.
+
+        The loop owns the turn cycle, so this only channels one request. It is
+        handed the transcript for that turn rather than reading agent state.
+        """
         tools = [
             {
                 "type": "function",
@@ -220,38 +221,22 @@ class BaseMvge:
             if spell.parameters
         ]
 
-        async def stream_fn() -> AsyncGenerator[RealmResponse]:
-            turns = 0
-            while True:
-                if turns >= state.max_turns:
-                    raise RuntimeError("Max turns exceeded")
-                turns += 1
-                results_before = sum(
-                    1
-                    for inv in state.invocations
-                    if isinstance(inv, SpellResultMessage)
-                )
-                async for response in realm.stream(
+        def stream_fn(
+            invocations: list[MvgeInvocation],
+        ) -> AsyncIterator[RealmResponse]:
+            return realm.stream(
+                model=model,
+                invocations=invocations,
+                config=ChannelConfig(
                     model=model,
-                    invocations=state.invocations,
-                    config=ChannelConfig(
-                        model=model,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        contemplation_level=state.contemplation_level.value,
-                        contemplation_budget=state.contemplation_budget,
-                        exclude_contemplation=state.exclude_contemplation,
-                        tools=tools,
-                    ),
-                ):
-                    yield response
-                results_after = sum(
-                    1
-                    for inv in state.invocations
-                    if isinstance(inv, SpellResultMessage)
-                )
-                if results_after == results_before:
-                    break
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    contemplation_level=state.contemplation_level.value,
+                    contemplation_budget=state.contemplation_budget,
+                    exclude_contemplation=state.exclude_contemplation,
+                    tools=tools,
+                ),
+            )
 
         return stream_fn
 
@@ -320,7 +305,6 @@ class BaseMvge:
             contemplation_level=ContemplationLevel(self._contemplation_level),
             spells=self._build_spells(),
             invocations=[],
-            mana_budget=self._mana_budget,
             max_tokens=self._max_tokens,
             temperature=self._temperature,
             contemplation_budget=self._contemplation_budget,

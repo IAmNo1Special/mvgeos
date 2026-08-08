@@ -132,17 +132,10 @@ def _git_branch() -> str | None:
 
 def _mana_context(agent: CodingMvge) -> tuple[str, str]:
     state = getattr(agent, "_state", None)
-    if state is None or not getattr(state, "mana_budget", None):
+    if state is None:
         return "", "mana ?"
     used = getattr(state, "mana_used", 0) or 0
-    budget = state.mana_budget
-    pct = (used / budget) * 100
-    style = ""
-    if pct > 90:
-        style = "red"
-    elif pct > 70:
-        style = "yellow"
-    return style, f"mana {pct:.0f}%/{budget}"
+    return "", f"mana {used}"
 
 
 def _fit_footer(items: list[tuple[str, str]], width: int) -> list[tuple[str, str]]:
@@ -652,7 +645,6 @@ async def _create_agent(
     provider: str | None,
     temperature: float,
     max_tokens: int,
-    mana_budget: int,
     contemplation: str,
 ) -> CodingMvge:
     _validate_api_key(api_key)
@@ -667,7 +659,6 @@ async def _create_agent(
         provider_name=provider,
         temperature=temperature,
         max_tokens=max_tokens,
-        mana_budget=mana_budget,
         contemplation_level=contemplation,
     )
     await agent.initialize()
@@ -683,7 +674,6 @@ async def run_repl(
     provider: str | None = None,
     temperature: float = 0.7,
     max_tokens: int = 4096,
-    mana_budget: int = 10000,
     contemplation: str = "medium",
     session_dir: str | None = None,
 ) -> None:
@@ -706,7 +696,6 @@ async def run_repl(
             provider=provider,
             temperature=temperature,
             max_tokens=max_tokens,
-            mana_budget=mana_budget,
             contemplation=contemplation,
         )
     except ValueError as e:

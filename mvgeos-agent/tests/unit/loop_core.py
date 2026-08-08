@@ -1,0 +1,430 @@
+from __future__ import annotations
+
+from collections.abc import AsyncIterator, Callable
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from mvgeos_provider.types import Model, RealmResponse
+
+from mvgeos_agent.loop import LoopCallbacks, LoopContext, run_loop
+from mvgeos_agent.types import (
+    ContemplationLevel,
+    MvgeEvent,
+    MvgeEventType,
+    MvgeResponse,
+    MvgeSpell,
+    SpellResultMessage,
+    StopReason,
+    SummonerRequest,
+)
+
+
+def _model() -> Model:
+    return Model(
+        id="test-model",
+        name="Test Model",
+        realm="test",
+        base_url="https://api.test.com",
+        api_key="test",
+    )
+
+
+def _stream(
+    responses: list[RealmResponse],
+) -> Callable[[list[Any]], AsyncIterator[RealmResponse]]:
+    """Build a StreamFn that yields one response per turn, in order.
+
+    The final response repeats if the loop asks for more turns than supplied.
+    """
+    turn = -1
+
+    def stream_fn(invocations: list[Any]) -> AsyncIterator[RealmResponse]:
+        nonlocal turn
+        turn += 1
+        response = responses[min(turn, len(responses) - 1)]
+
+        async def gen() -> AsyncIterator[RealmResponse]:
+            yield response
+
+        return gen()
+
+    return stream_fn
+
+
+def _text_response(text: str = "Hello!") -> RealmResponse:
+    return RealmResponse(
+        model=_model(),
+        invocation=MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": text}],
+            stop_reason=StopReason.STOP,
+        ),
+    )
+
+
+def _spell_call_response(spell_name: str = "test_spell") -> RealmResponse:
+    return RealmResponse(
+        model=_model(),
+        invocation=MvgeResponse(
+            role="assistant",
+            content=[
+                {
+                    "type": "tool_call",
+                    "tool_call": {
+                        "id": "call-1",
+                        "name": spell_name,
+                        "arguments": {},
+                    },
+                }
+            ],
+            stop_reason=StopReason.SPELL_USE,
+        ),
+    )
+
+
+class Recorder:
+    """Recording emit sink standing in for the MvgeLoop wrapper."""
+
+    def __init__(self) -> None:
+        self.events: list[MvgeEvent] = []
+
+    async def __call__(self, event: MvgeEvent) -> None:
+        self.events.append(event)
+
+    def types(self) -> list[MvgeEventType]:
+        return [event.type for event in self.events]
+
+    def of_type(self, event_type: MvgeEventType) -> list[MvgeEvent]:
+        return [event for event in self.events if event.type == event_type]
+
+
+@pytest.fixture
+def spell() -> MvgeSpell:
+    stub = MagicMock(spec=MvgeSpell)
+    stub.name = "test_spell"
+    stub.description = "A test spell"
+    stub.parameters = {"type": "object", "properties": {}}
+    stub.execute = AsyncMock(return_value={"result": "success"})
+    return stub
+
+
+@pytest.fixture
+def context(spell: MvgeSpell) -> LoopContext:
+    return LoopContext(
+        system_prompt="You are a helpful assistant.",
+        invocations=[SummonerRequest(role="user", content="Hello")],
+        spells=[spell],
+        contemplation_level=ContemplationLevel.OFF,
+        max_tokens=4096,
+        temperature=0.7,
+    )
+
+
+class TestRunLoopInterface:
+    def test_loop_context_is_frozen(self, context: LoopContext) -> None:
+        with pytest.raises(AttributeError):
+            context.system_prompt = "mutated"  # type: ignore[misc]
+
+    def test_callbacks_default_to_none(self) -> None:
+        callbacks = LoopCallbacks()
+        assert callbacks.transform_context is None
+        assert callbacks.before_realm_headers is None
+        assert callbacks.before_spell_cast is None
+        assert callbacks.after_spell_result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_new_invocations_only(self, context: LoopContext) -> None:
+        emit = Recorder()
+
+        new_invocations = await run_loop(
+            context, _stream([_text_response()]), emit, LoopCallbacks()
+        )
+
+        assert all(not isinstance(inv, SummonerRequest) for inv in new_invocations)
+        assert isinstance(new_invocations[-1], MvgeResponse)
+        assert new_invocations[-1].stop_reason == StopReason.STOP
+
+    @pytest.mark.asyncio
+    async def test_does_not_mutate_context_invocations(
+        self, context: LoopContext
+    ) -> None:
+        emit = Recorder()
+        before = list(context.invocations)
+
+        await run_loop(context, _stream([_text_response()]), emit, LoopCallbacks())
+
+        assert context.invocations == before
+
+    @pytest.mark.asyncio
+    async def test_runs_without_callbacks(self, context: LoopContext) -> None:
+        emit = Recorder()
+
+        new_invocations = await run_loop(
+            context, _stream([_text_response()]), emit, LoopCallbacks()
+        )
+
+        assert len(new_invocations) == 1
+
+
+class TestRunLoopEmitSequence:
+    @pytest.mark.asyncio
+    async def test_emits_agent_start_and_agent_end(self, context: LoopContext) -> None:
+        emit = Recorder()
+
+        await run_loop(context, _stream([_text_response()]), emit, LoopCallbacks())
+
+        types = emit.types()
+        assert types[0] == MvgeEventType.AGENT_START
+        assert types[-1] == MvgeEventType.AGENT_END
+
+    @pytest.mark.asyncio
+    async def test_emits_input_event_for_summoner_request(
+        self, context: LoopContext
+    ) -> None:
+        emit = Recorder()
+
+        await run_loop(context, _stream([_text_response()]), emit, LoopCallbacks())
+
+        input_events = emit.of_type(MvgeEventType.INPUT)
+        assert len(input_events) == 1
+        assert input_events[0].data["content"] == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_emits_realm_request_and_response_events(
+        self, context: LoopContext
+    ) -> None:
+        emit = Recorder()
+
+        await run_loop(context, _stream([_text_response()]), emit, LoopCallbacks())
+
+        types = emit.types()
+        assert MvgeEventType.BEFORE_PROVIDER_REQUEST in types
+        assert MvgeEventType.AFTER_PROVIDER_RESPONSE in types
+
+    @pytest.mark.asyncio
+    async def test_emits_invocation_lifecycle_events(
+        self, context: LoopContext
+    ) -> None:
+        emit = Recorder()
+
+        await run_loop(context, _stream([_text_response()]), emit, LoopCallbacks())
+
+        types = emit.types()
+        assert MvgeEventType.BEFORE_INVOCATION in types
+        assert MvgeEventType.AFTER_INVOCATION in types
+
+    @pytest.mark.asyncio
+    async def test_message_end_emitted_for_summoner_request(
+        self, context: LoopContext
+    ) -> None:
+        emit = Recorder()
+
+        await run_loop(context, _stream([_text_response()]), emit, LoopCallbacks())
+
+        roles = [
+            event.data["invocation"].role
+            for event in emit.of_type(MvgeEventType.MESSAGE_END)
+        ]
+        assert "user" in roles
+
+    @pytest.mark.asyncio
+    async def test_message_end_emitted_for_assistant_response(
+        self, context: LoopContext
+    ) -> None:
+        emit = Recorder()
+
+        await run_loop(context, _stream([_text_response()]), emit, LoopCallbacks())
+
+        roles = [
+            event.data["invocation"].role
+            for event in emit.of_type(MvgeEventType.MESSAGE_END)
+        ]
+        assert "assistant" in roles
+
+    @pytest.mark.asyncio
+    async def test_message_end_emitted_for_spell_result(
+        self, context: LoopContext
+    ) -> None:
+        emit = Recorder()
+        responses = [_spell_call_response(), _text_response("Done")]
+
+        await run_loop(context, _stream(responses), emit, LoopCallbacks())
+
+        invocations = [
+            event.data["invocation"]
+            for event in emit.of_type(MvgeEventType.MESSAGE_END)
+        ]
+        assert any(isinstance(inv, SpellResultMessage) for inv in invocations)
+
+    @pytest.mark.asyncio
+    async def test_mana_used_carried_on_message_end(self, context: LoopContext) -> None:
+        emit = Recorder()
+        response = _text_response()
+        response.mana_used = 42
+
+        await run_loop(context, _stream([response]), emit, LoopCallbacks())
+
+        message_end = emit.of_type(MvgeEventType.MESSAGE_END)
+        assert message_end[-1].data["mana_used"] == 42
+
+    @pytest.mark.asyncio
+    async def test_merged_model_carried_on_realm_request(
+        self, context: LoopContext
+    ) -> None:
+        emit = Recorder()
+
+        async def add_header(headers: dict[str, str]) -> dict[str, str]:
+            return {**headers, "X-Custom": "value"}
+
+        callbacks = LoopCallbacks(before_realm_headers=add_header)
+
+        await run_loop(context, _stream([_text_response()]), emit, callbacks)
+
+        request_events = emit.of_type(MvgeEventType.BEFORE_PROVIDER_REQUEST)
+        model = request_events[-1].data["model"]
+        assert model["headers"]["X-Custom"] == "value"
+
+
+class TestRunLoopCallbacks:
+    @pytest.mark.asyncio
+    async def test_transform_context_replaces_invocations(
+        self, context: LoopContext
+    ) -> None:
+        emit = Recorder()
+
+        async def transform(invocations: list[Any]) -> list[Any]:
+            return [SummonerRequest(role="user", content="transformed")]
+
+        callbacks = LoopCallbacks(transform_context=transform)
+
+        await run_loop(context, _stream([_text_response()]), emit, callbacks)
+
+        input_events = emit.of_type(MvgeEventType.INPUT)
+        assert input_events[0].data["content"] == "transformed"
+
+    @pytest.mark.asyncio
+    async def test_before_spell_cast_veto_blocks_execution(
+        self, context: LoopContext, spell: MvgeSpell
+    ) -> None:
+        emit = Recorder()
+
+        async def veto(data: dict[str, Any]) -> dict[str, Any]:
+            return {"block": True, "reason": "denied"}
+
+        callbacks = LoopCallbacks(before_spell_cast=veto)
+        responses = [_spell_call_response(), _text_response("Done")]
+
+        await run_loop(context, _stream(responses), emit, callbacks)
+
+        spell.execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_after_spell_result_transforms_result(
+        self, context: LoopContext
+    ) -> None:
+        emit = Recorder()
+
+        async def rewrite(data: dict[str, Any]) -> dict[str, Any]:
+            return {**data, "result": "rewritten"}
+
+        callbacks = LoopCallbacks(after_spell_result=rewrite)
+        responses = [_spell_call_response(), _text_response("Done")]
+
+        new_invocations = await run_loop(context, _stream(responses), emit, callbacks)
+
+        spell_results = [
+            inv for inv in new_invocations if isinstance(inv, SpellResultMessage)
+        ]
+        assert "rewritten" in spell_results[0].content[0]["text"]
+
+    @pytest.mark.asyncio
+    async def test_core_never_imports_rune_runner(self) -> None:
+        import inspect
+
+        from mvgeos_agent import loop as loop_module
+
+        source = inspect.getsource(run_loop)
+        assert "RuneRunner" not in source
+        assert "SigilHook" not in source
+        assert "rune_runner" not in source
+        assert "agent_session" not in source
+        assert hasattr(loop_module, "run_loop")
+
+
+class TestRunLoopSpellExecution:
+    @pytest.mark.asyncio
+    async def test_executes_spell_and_returns_result(
+        self, context: LoopContext, spell: MvgeSpell
+    ) -> None:
+        emit = Recorder()
+        responses = [_spell_call_response(), _text_response("Done")]
+
+        new_invocations = await run_loop(
+            context, _stream(responses), emit, LoopCallbacks()
+        )
+
+        spell.execute.assert_called_once()
+        assert any(isinstance(inv, SpellResultMessage) for inv in new_invocations)
+
+    @pytest.mark.asyncio
+    async def test_unknown_spell_emits_error_without_raising(
+        self, context: LoopContext
+    ) -> None:
+        emit = Recorder()
+        responses = [_spell_call_response("missing_spell"), _text_response("Done")]
+
+        await run_loop(context, _stream(responses), emit, LoopCallbacks())
+
+        casting_end = emit.of_type(MvgeEventType.SPELL_CASTING_END)
+        assert any("error" in event.data for event in casting_end)
+
+
+class TestRunLoopErrors:
+    @pytest.mark.asyncio
+    async def test_rate_limit_error_raised(self, context: LoopContext) -> None:
+        from mvgeos_agent.errors import RateLimitError
+
+        emit = Recorder()
+        responses = [
+            RealmResponse(
+                model=_model(),
+                error_message="You are being rate limited",
+                error_code="rate_limited",
+            )
+        ]
+
+        with pytest.raises(RateLimitError, match="rate limited"):
+            await run_loop(context, _stream(responses), emit, LoopCallbacks())
+
+    @pytest.mark.asyncio
+    async def test_auth_error_raised(self, context: LoopContext) -> None:
+        from mvgeos_agent.errors import AuthenticationError
+
+        emit = Recorder()
+        responses = [
+            RealmResponse(
+                model=_model(),
+                error_message="User not found",
+                error_code="auth_failed",
+            )
+        ]
+
+        with pytest.raises(AuthenticationError, match="User not found"):
+            await run_loop(context, _stream(responses), emit, LoopCallbacks())
+
+    @pytest.mark.asyncio
+    async def test_no_invocations_raises(self) -> None:
+        emit = Recorder()
+        empty = LoopContext(system_prompt="test", invocations=[])
+
+        async def empty_stream() -> AsyncIterator[RealmResponse]:
+            if False:
+                yield
+
+        with pytest.raises(RuntimeError, match="No invocations to process"):
+            await run_loop(empty, empty_stream(), emit, LoopCallbacks())
+
+    @pytest.mark.asyncio
+    async def test_no_mana_exhausted_stop_reason(self) -> None:
+        assert not hasattr(StopReason, "MANA_EXHAUSTED")

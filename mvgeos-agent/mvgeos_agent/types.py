@@ -40,6 +40,11 @@ class MvgeEventType(StrEnum):
     AGENT_SETTLED = "agent_settled"
     TURN_START = "turn_start"
     TURN_END = "turn_end"
+    INPUT = "input"
+    BEFORE_PROVIDER_REQUEST = "before_provider_request"
+    AFTER_PROVIDER_RESPONSE = "after_provider_response"
+    BEFORE_INVOCATION = "before_invocation"
+    AFTER_INVOCATION = "after_invocation"
     MESSAGE_START = "message_start"
     MESSAGE_UPDATE = "message_update"
     MESSAGE_END = "message_end"
@@ -62,7 +67,6 @@ class StopReason(StrEnum):
     SPELL_USE = "spellUse"
     ERROR = "error"
     ABORTED = "aborted"
-    MANA_EXHAUSTED = "mana_exhausted"
 
 
 @dataclass
@@ -205,7 +209,6 @@ class MvgeState:
     streaming_manifestation: MvgeInvocation | None = None
     pending_spell_casts: set[str] = field(default_factory=set)
     error_message: str | None = None
-    mana_budget: int | None = None
     mana_used: int = 0
     max_tokens: int | None = None
     temperature: float | None = None

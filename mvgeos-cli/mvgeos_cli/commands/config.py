@@ -15,8 +15,7 @@ CONFIG_DIR = Path(".agents/.mvgeos")
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULT_CONFIG = {
-    "model": "openrouter/free",
-    "mana_budget": 10000,
+    "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "max_tokens": 4096,
     "temperature": 0.7,
     "contemplation_level": "medium",

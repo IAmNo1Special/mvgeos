@@ -93,8 +93,6 @@ def test_repl_callback_with_options(mock_run_agent: AsyncMock) -> None:
             "0.5",
             "--max-tokens",
             "2048",
-            "--mana",
-            "5000",
             "--contemplation",
             "high",
             "--spells",
@@ -118,7 +116,6 @@ def test_repl_callback_with_options(mock_run_agent: AsyncMock) -> None:
     assert call_kwargs["model_id"] == "test/model"
     assert call_kwargs["temperature"] == 0.5
     assert call_kwargs["max_tokens"] == 2048
-    assert call_kwargs["mana_budget"] == 5000
     assert call_kwargs["contemplation_level"] == "high"
     assert call_kwargs["spells_enabled"] == ["bash", "read"]
     assert call_kwargs["extension_dir"] == "/tmp/ext"

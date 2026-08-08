@@ -22,7 +22,7 @@ class TestConfigCommands:
 
     def test_default_config_contains_expected_keys(self) -> None:
         assert "model" in DEFAULT_CONFIG
-        assert "mana_budget" in DEFAULT_CONFIG
+        assert "max_tokens" in DEFAULT_CONFIG
         assert "spells_enabled" in DEFAULT_CONFIG
 
     def test_load_config_no_file(self) -> None:
@@ -34,7 +34,7 @@ class TestConfigCommands:
             assert config == DEFAULT_CONFIG.copy()
 
     def test_load_config_with_file(self) -> None:
-        test_config = {"model": "test-model", "mana_budget": 5000}
+        test_config = {"model": "test-model", "max_tokens": 5000}
         cfg_path = Path("/tmp/test_config.json")
         with (
             patch("mvgeos_cli.commands.config.CONFIG_FILE", cfg_path),
@@ -45,7 +45,7 @@ class TestConfigCommands:
             assert config == test_config
 
     def test_save_config(self) -> None:
-        config = {"model": "test", "mana_budget": 100}
+        config = {"model": "test", "max_tokens": 100}
         with (
             patch("mvgeos_cli.commands.config.CONFIG_DIR", Path("/tmp")),
             patch("mvgeos_cli.commands.config.CONFIG_FILE", Path("/tmp/config.json")),
@@ -60,7 +60,7 @@ class TestConfigCommands:
     @patch("mvgeos_cli.commands.config.load_config")
     def test_config_show(self, mock_load: MagicMock) -> None:
         runner = CliRunner()
-        mock_load.return_value = {"model": "test-model", "mana_budget": 5000}
+        mock_load.return_value = {"model": "test-model", "max_tokens": 5000}
 
         result = runner.invoke(config_app, ["show"])
         assert result.exit_code == 0

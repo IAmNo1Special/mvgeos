@@ -136,12 +136,12 @@ class TestEventBusIntegration:
             ),
         ]
 
-        async def stream():
+        async def stream(invocations=None):
             for r in responses:
                 yield r
 
         loop = MvgeLoop(state)
-        await loop.run(stream(), {"id": "test-model"}, "none")
+        await loop.run(stream, {"id": "test-model"}, "none")
 
         assert handler.called
         assert state.events  # old path still works
@@ -184,11 +184,11 @@ class TestEventBusIntegration:
             ),
         ]
 
-        async def stream():
+        async def stream(invocations=None):
             for r in responses:
                 yield r
 
         loop = MvgeLoop(state)
-        result = await loop.run(stream(), {"id": "test-model"}, "none")
+        result = await loop.run(stream, {"id": "test-model"}, "none")
         assert result is not None
         assert state.events  # old path still works fine

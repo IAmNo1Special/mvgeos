@@ -61,7 +61,7 @@ class TestSlashCommands:
     def test_model_invalid(self, agent: CodingMvge, registry: ModelRegistry) -> None:
         result = _handle_command("/model unknown/model", agent, registry)
         assert result == ReplAction.CONTINUE
-        assert agent._model_id == "openrouter/free"
+        assert agent._model_id == "nvidia/nemotron-3-ultra-550b-a55b:free"
 
     def test_spells_no_args(self, agent: CodingMvge, registry: ModelRegistry) -> None:
         result = _handle_command("/spells", agent, registry)
@@ -144,35 +144,29 @@ class TestReplHelpers:
 
         class _State:
             mana_used = 9500
-            mana_budget = 10000
 
         agent = CodingMvge(api_key="test-key")
         agent._state = _State()  # type: ignore[attr-defined]
         info = _format_session_info(agent, branch="main")
         parts = " ".join(text for _, text in info)
         assert "~/proj (main)" in parts
-        assert "mana 95%/10000" in parts
-        assert "openrouter/free" in parts
-        assert "medium" in parts
-        styles = {text: style for style, text in info}
-        mana_entry = next(text for text in styles if text.strip().startswith("mana "))
-        assert styles[mana_entry] == "red"
+        assert "mana 9500" in parts
+        # Footer truncates to console width; match the model ID prefix.
+        assert "nvidia/nemotron" in parts
 
-    def test_format_session_info_mana_warning(
+    def test_format_session_info_reports_mana_used(
         self,
     ) -> None:
         from mvgeos_cli.commands.repl import _format_session_info
 
         class _State:
             mana_used = 7500
-            mana_budget = 10000
 
         agent = CodingMvge(api_key="test-key")
         agent._state = _State()  # type: ignore[attr-defined]
         info = _format_session_info(agent)
-        styles = {text: style for style, text in info}
-        mana_entry = next(text for text in styles if text.strip().startswith("mana "))
-        assert styles[mana_entry] == "yellow"
+        parts = " ".join(text for _, text in info)
+        assert "mana 7500" in parts
 
     def test_format_session_info_without_state(self) -> None:
         from mvgeos_cli.commands.repl import _format_session_info
@@ -194,7 +188,7 @@ class TestReplHelpers:
         items = [
             ("bold", " ~/proj (main)"),
             ("dim", "  session abc12345"),
-            ("", "  openrouter/free • medium"),
+            ("", "  nvidia/nemotron-3-ultra-550b-a55b:free • medium"),
         ]
         fitted = _fit_footer(items, 40)
         plain = "".join(text for _, text in fitted)
@@ -204,7 +198,7 @@ class TestReplHelpers:
     def test_fit_footer_no_truncation_when_fits(self) -> None:
         from mvgeos_cli.commands.repl import _fit_footer
 
-        items = [("bold", " ~/proj"), ("", "  openrouter/free")]
+        items = [("bold", " ~/proj"), ("", "  nvidia/nemotron-3-ultra-550b-a55b:free")]
         fitted = _fit_footer(items, 80)
         assert fitted == items
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import tempfile
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -43,19 +43,27 @@ class TestMvgeLoop:
             invocations=[
                 SummonerRequest(role="user", content="Hello"),
             ],
-            mana_budget=1000,
             max_tokens=4096,
             temperature=0.7,
         )
 
     def _make_realm_stream(
         self, responses: list[RealmResponse]
-    ) -> AsyncIterator[RealmResponse]:
-        async def gen() -> AsyncIterator[RealmResponse]:
-            for r in responses:
-                yield r
+    ) -> Callable[[list[Any]], AsyncIterator[RealmResponse]]:
+        """Build a StreamFn yielding one response per turn, in order."""
+        turn = -1
 
-        return gen()
+        def stream_fn(invocations: list[Any]) -> AsyncIterator[RealmResponse]:
+            nonlocal turn
+            turn += 1
+            response = responses[min(turn, len(responses) - 1)]
+
+            async def gen() -> AsyncIterator[RealmResponse]:
+                yield response
+
+            return gen()
+
+        return stream_fn
 
     @pytest.mark.asyncio
     async def test_loop_single_turn_no_spells(self, state: MvgeState) -> None:
@@ -254,10 +262,8 @@ class TestMvgeLoop:
         assert tool_call_msgs[0].stop_reason == StopReason.SPELL_USE
 
     @pytest.mark.asyncio
-    async def test_loop_mana_exhaustion(self, state: MvgeState) -> None:
+    async def test_loop_accumulates_mana_used(self, state: MvgeState) -> None:
         from mvgeos_agent.loop import MvgeLoop
-
-        state.mana_budget = 10
 
         model_obj = Model(
             id="test-model",
@@ -269,11 +275,11 @@ class TestMvgeLoop:
         responses = [
             RealmResponse(
                 model=model_obj,
+                mana_used=20,
                 invocation=MvgeResponse(
                     role="assistant",
                     content=[{"type": "text", "text": "This uses a lot of mana"}],
                     stop_reason=StopReason.LENGTH,
-                    mana_usage={"input": 15, "output": 5},
                 ),
             ),
         ]
@@ -283,18 +289,21 @@ class TestMvgeLoop:
         result = await loop.run(stream_fn, {"id": "test-model"}, "none")
 
         assert result.stop_reason == StopReason.LENGTH
+        assert state.mana_used == 20
 
     @pytest.mark.asyncio
     async def test_loop_error_handling(self, state: MvgeState) -> None:
         from mvgeos_agent.loop import MvgeLoop
 
-        async def error_stream_gen() -> AsyncIterator[RealmResponse]:
+        async def error_stream_gen(
+            invocations: list[Any] | None = None,
+        ) -> AsyncIterator[RealmResponse]:
             raise RuntimeError("API error")
             yield  # Never reached
 
         loop = MvgeLoop(state)
         with pytest.raises(RuntimeError, match="API error"):
-            await loop.run(error_stream_gen(), {"id": "test-model"}, "none")
+            await loop.run(error_stream_gen, {"id": "test-model"}, "none")
 
     @pytest.mark.asyncio
     async def test_loop_raises_rate_limit_error(self, state: MvgeState) -> None:
@@ -309,7 +318,9 @@ class TestMvgeLoop:
             api_key="",
         )
 
-        async def rate_limit_stream() -> AsyncIterator[RealmResponse]:
+        async def rate_limit_stream(
+            invocations: list[Any] | None = None,
+        ) -> AsyncIterator[RealmResponse]:
             yield RealmResponse(
                 model=model_obj,
                 error_message="You are being rate limited",
@@ -318,7 +329,7 @@ class TestMvgeLoop:
 
         loop = MvgeLoop(state)
         with pytest.raises(RateLimitError, match="rate limited"):
-            await loop.run(rate_limit_stream(), {"id": "test-model"}, "none")
+            await loop.run(rate_limit_stream, {"id": "test-model"}, "none")
 
     @pytest.mark.asyncio
     async def test_loop_raises_auth_error(self, state: MvgeState) -> None:
@@ -333,7 +344,9 @@ class TestMvgeLoop:
             api_key="",
         )
 
-        async def auth_stream() -> AsyncIterator[RealmResponse]:
+        async def auth_stream(
+            invocations: list[Any] | None = None,
+        ) -> AsyncIterator[RealmResponse]:
             yield RealmResponse(
                 model=model_obj,
                 error_message="User not found",
@@ -342,7 +355,7 @@ class TestMvgeLoop:
 
         loop = MvgeLoop(state)
         with pytest.raises(AuthenticationError, match="User not found"):
-            await loop.run(auth_stream(), {"id": "test-model"}, "none")
+            await loop.run(auth_stream, {"id": "test-model"}, "none")
 
     @pytest.mark.asyncio
     async def test_loop_generic_provider_error_stays_runtime_error(
@@ -358,7 +371,9 @@ class TestMvgeLoop:
             api_key="",
         )
 
-        async def bad_request_stream() -> AsyncIterator[RealmResponse]:
+        async def bad_request_stream(
+            invocations: list[Any] | None = None,
+        ) -> AsyncIterator[RealmResponse]:
             yield RealmResponse(
                 model=model_obj,
                 error_message="Bad request",
@@ -367,7 +382,7 @@ class TestMvgeLoop:
 
         loop = MvgeLoop(state)
         with pytest.raises(RuntimeError, match="Bad request"):
-            await loop.run(bad_request_stream(), {"id": "test-model"}, "none")
+            await loop.run(bad_request_stream, {"id": "test-model"}, "none")
 
     @pytest.mark.asyncio
     async def test_loop_no_initial_invocation(self) -> None:
@@ -375,11 +390,13 @@ class TestMvgeLoop:
 
         state = MvgeState(system_prompt="test")
 
-        async def empty_stream() -> AsyncIterator[RealmResponse]:
+        async def empty_stream(
+            invocations: list[Any] | None = None,
+        ) -> AsyncIterator[RealmResponse]:
             if False:
                 yield
 
-        stream_fn = empty_stream()
+        stream_fn = empty_stream
 
         loop = MvgeLoop(state)
         with pytest.raises(RuntimeError, match="No invocations to process"):
@@ -419,12 +436,14 @@ class TestMvgeLoopProviderHooks:
             ),
         ]
 
-        async def stream() -> AsyncIterator[RealmResponse]:
+        async def stream(
+            invocations: list[Any] | None = None,
+        ) -> AsyncIterator[RealmResponse]:
             for r in responses:
                 yield r
 
         loop = MvgeLoop(state)
-        await loop.run(stream(), {"id": "test-model"}, "none")
+        await loop.run(stream, {"id": "test-model"}, "none")
         handler.assert_called_once()
 
     @pytest.mark.asyncio
@@ -459,12 +478,14 @@ class TestMvgeLoopProviderHooks:
             ),
         ]
 
-        async def stream() -> AsyncIterator[RealmResponse]:
+        async def stream(
+            invocations: list[Any] | None = None,
+        ) -> AsyncIterator[RealmResponse]:
             for r in responses:
                 yield r
 
         loop = MvgeLoop(state)
-        await loop.run(stream(), {"id": "test-model"}, "none")
+        await loop.run(stream, {"id": "test-model"}, "none")
         handler.assert_called_once()
 
     @pytest.mark.asyncio
@@ -503,12 +524,14 @@ class TestMvgeLoopProviderHooks:
             ),
         ]
 
-        async def stream() -> AsyncIterator[RealmResponse]:
+        async def stream(
+            invocations: list[Any] | None = None,
+        ) -> AsyncIterator[RealmResponse]:
             for r in responses:
                 yield r
 
         loop = MvgeLoop(state)
-        await loop.run(stream(), {"id": "test-model"}, "none")
+        await loop.run(stream, {"id": "test-model"}, "none")
 
         assert "headers" in state.model
         assert state.model["headers"].get("X-Custom") == "value"
@@ -548,13 +571,15 @@ class TestMvgeLoopProviderHooks:
             ),
         ]
 
-        async def stream() -> AsyncIterator[RealmResponse]:
+        async def stream(
+            invocations: list[Any] | None = None,
+        ) -> AsyncIterator[RealmResponse]:
             for r in responses:
                 yield r
 
         loop = MvgeLoop(state)
         with pytest.raises(ValueError, match="oops"):
-            await loop.run(stream(), {"id": "test-model"}, "none")
+            await loop.run(stream, {"id": "test-model"}, "none")
 
 
 class TestMvgeLoopContextTransform:
@@ -594,12 +619,14 @@ class TestMvgeLoopContextTransform:
             ),
         ]
 
-        async def stream() -> AsyncIterator[RealmResponse]:
+        async def stream(
+            invocations: list[Any] | None = None,
+        ) -> AsyncIterator[RealmResponse]:
             for r in responses:
                 yield r
 
         loop = MvgeLoop(state)
-        await loop.run(stream(), {"id": "test-model"}, "none")
+        await loop.run(stream, {"id": "test-model"}, "none")
 
         assert state.invocations[0].content == "transformed"
 
@@ -637,12 +664,14 @@ class TestMvgeLoopInputHook:
             ),
         ]
 
-        async def stream() -> AsyncIterator[RealmResponse]:
+        async def stream(
+            invocations: list[Any] | None = None,
+        ) -> AsyncIterator[RealmResponse]:
             for r in responses:
                 yield r
 
         loop = MvgeLoop(state)
-        await loop.run(stream(), {"id": "test-model"}, "none")
+        await loop.run(stream, {"id": "test-model"}, "none")
 
         handler.assert_called_once()
         call_data = handler.call_args[0][0]
@@ -693,13 +722,15 @@ class TestMvgeLoopSessionHooks:
                 ),
             ]
 
-            async def stream() -> AsyncIterator[RealmResponse]:
+            async def stream(
+                invocations: list[Any] | None = None,
+            ) -> AsyncIterator[RealmResponse]:
                 for r in responses:
                     yield r
 
             loop = MvgeLoop(state)
             await session.start()
-            await loop.run(stream(), {"id": "test-model"}, "none")
+            await loop.run(stream, {"id": "test-model"}, "none")
 
             handler.assert_called_once()
             call_data = handler.call_args[0][0]
@@ -748,13 +779,15 @@ class TestMvgeLoopSessionHooks:
                 ),
             ]
 
-            async def stream() -> AsyncIterator[RealmResponse]:
+            async def stream(
+                invocations: list[Any] | None = None,
+            ) -> AsyncIterator[RealmResponse]:
                 for r in responses:
                     yield r
 
             loop = MvgeLoop(state)
             await session.start()
-            await loop.run(stream(), {"id": "test-model"}, "none")
+            await loop.run(stream, {"id": "test-model"}, "none")
             await session.shutdown()
 
             handler.assert_called_once()

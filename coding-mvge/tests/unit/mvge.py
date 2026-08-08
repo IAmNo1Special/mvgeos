@@ -104,7 +104,6 @@ class TestCodingMvgeInit:
             custom_system_prompt="Custom prompt",
             temperature=0.5,
             max_tokens=2048,
-            mana_budget=5000,
             contemplation_level="high",
         )
         assert agent._api_key == "k"
@@ -113,17 +112,15 @@ class TestCodingMvgeInit:
         assert agent._custom_system_prompt == "Custom prompt"
         assert agent._temperature == 0.5
         assert agent._max_tokens == 2048
-        assert agent._mana_budget == 5000
         assert agent._contemplation_level == "high"
 
     def test_defaults(self) -> None:
         agent = CodingMvge(api_key="k")
-        assert agent._model_id == "openrouter/free"
+        assert agent._model_id == "nvidia/nemotron-3-ultra-550b-a55b:free"
         assert agent._spell_names == list(DEFAULT_SPELL_MAP)
         assert agent._custom_system_prompt == ""
         assert agent._temperature == 0.7
         assert agent._max_tokens == 4096
-        assert agent._mana_budget == 10000
         assert agent._contemplation_level == "medium"
 
     def test_default_session_dir(self) -> None:
@@ -348,11 +345,15 @@ class TestCodingMvgeSwitchModel:
     async def test_switch_model_preserves_session(self) -> None:
         from mvgeos_provider.models import list_models
 
-        target = next(m.id for m in list_models() if m.id != "openrouter/free")
+        target = next(
+            m.id
+            for m in list_models()
+            if m.id != "nvidia/nemotron-3-ultra-550b-a55b:free"
+        )
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="openrouter/free",
+                model="nvidia/nemotron-3-ultra-550b-a55b:free",
                 session_dir=Path(tmpdir),
                 spells=[],
             )
@@ -376,7 +377,7 @@ class TestCodingMvgeSwitchModel:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="openrouter/free",
+                model="nvidia/nemotron-3-ultra-550b-a55b:free",
                 session_dir=Path(tmpdir),
                 spells=[],
             )
@@ -389,7 +390,7 @@ class TestCodingMvgeSwitchModel:
             assert agent.session_id == session_before
             assert agent._model_id == "unknown/model"
             assert agent._model is not None
-            assert agent._model.id == "openrouter/free"
+            assert agent._model.id == "nvidia/nemotron-3-ultra-550b-a55b:free"
             await agent.close()
 
     @pytest.mark.asyncio
@@ -397,21 +398,27 @@ class TestCodingMvgeSwitchModel:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="openrouter/free",
+                model="nvidia/nemotron-3-ultra-550b-a55b:free",
                 session_dir=Path(tmpdir),
                 spells=[],
             )
             await agent.initialize()
-            await agent.switch_model("openrouter/free")
-            assert agent._model_id == "openrouter/free"
+            await agent.switch_model("nvidia/nemotron-3-ultra-550b-a55b:free")
+            assert agent._model_id == "nvidia/nemotron-3-ultra-550b-a55b:free"
             await agent.close()
 
     @pytest.mark.asyncio
     async def test_switch_model_before_init(self) -> None:
         from mvgeos_provider.models import list_models
 
-        target = next(m.id for m in list_models() if m.id != "openrouter/free")
-        agent = CodingMvge(api_key="test-key", model="openrouter/free")
+        target = next(
+            m.id
+            for m in list_models()
+            if m.id != "nvidia/nemotron-3-ultra-550b-a55b:free"
+        )
+        agent = CodingMvge(
+            api_key="test-key", model="nvidia/nemotron-3-ultra-550b-a55b:free"
+        )
         await agent.switch_model(target)
         assert agent._model_id == target
 
@@ -428,7 +435,7 @@ class TestCodingMvgeToolCalls:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="openrouter/free",
+                model="nvidia/nemotron-3-ultra-550b-a55b:free",
                 session_dir=Path(tmpdir),
                 spells=["bash"],
             )
@@ -498,7 +505,7 @@ class TestCodingMvgeToolCalls:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="openrouter/free",
+                model="nvidia/nemotron-3-ultra-550b-a55b:free",
                 session_dir=Path(tmpdir),
                 spells=["bash", "read"],
             )
@@ -524,16 +531,15 @@ class TestCodingMvgeToolCalls:
                         yield
 
             agent._realm = CaptureRealm()  # type: ignore[assignment]
-            stream_fn = agent._make_stream(
+            stream_fn = agent._make_stream_fn(
                 agent._model,  # type: ignore[arg-type]
                 agent._realm,  # type: ignore[arg-type]
                 agent._state,
                 0.7,
                 4096,
-                None,
             )
 
-            async for _ in stream_fn():
+            async for _ in stream_fn(agent._state.invocations):
                 pass
 
             assert captured.get("tools")

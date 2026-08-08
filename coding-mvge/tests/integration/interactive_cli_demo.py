@@ -8,7 +8,6 @@ import json
 from pathlib import Path
 
 import pytest
-from mvgeos_agent.loop import _safe_emit_chain
 from mvgeos_runes.types import SigilHook
 from rich.console import Console
 from rich.table import Table
@@ -72,8 +71,8 @@ async def test_interactive_demo() -> None:
     }
 
     # Step 1: Rune catches error, synthesizes action, registers new Spell
-    flow2_instruction = await _safe_emit_chain(
-        runner, SigilHook.AFTER_SPELL_RESULT, missing_opera_payload
+    flow2_instruction = await runner.emit_chain(
+        SigilHook.AFTER_SPELL_RESULT, missing_opera_payload
     )
     console.print(
         "\n[bold cyan]Step 1: Sigil registers spell and instructs Agent:[/bold cyan]"

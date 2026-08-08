@@ -4,7 +4,7 @@ import asyncio
 import dataclasses
 import json
 import os
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 from typing import cast
 
@@ -26,6 +26,7 @@ from mvgeos_agent.prompt_config import (
 )
 from mvgeos_agent.types import (
     ContemplationLevel,
+    MvgeInvocation,
     MvgeResponse,
     MvgeSpell,
     MvgeState,
@@ -71,7 +72,6 @@ async def _run_agent(
     api_key: str,
     temperature: float,
     max_tokens: int,
-    mana_budget: int,
     contemplation_level: str,
     spells_enabled: list[str],
     extension_dir: str | None,
@@ -94,7 +94,6 @@ async def _run_agent(
                 provider=provider_name,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                mana_budget=mana_budget,
                 contemplation=contemplation_level,
                 session_dir=session_dir,
             )
@@ -111,7 +110,6 @@ async def _run_agent(
             provider=provider_name,
             temperature=temperature,
             max_tokens=max_tokens,
-            mana_budget=mana_budget,
             contemplation=contemplation_level,
             session_dir=session_dir,
         )
@@ -243,7 +241,6 @@ async def _run_agent(
         contemplation_level=ContemplationLevel(contemplation_level),
         spells=spells,
         invocations=[initial_invocation],
-        mana_budget=mana_budget,
         max_tokens=max_tokens,
         temperature=temperature,
         rune_runner=runner,
@@ -252,21 +249,20 @@ async def _run_agent(
 
     loop = MvgeLoop(state)
 
-    async def stream_fn() -> AsyncGenerator[RealmResponse]:
-        async for response in realm.stream(
+    def stream_fn(invocations: list[MvgeInvocation]) -> AsyncIterator[RealmResponse]:
+        return realm.stream(
             model=model,
-            invocations=state.invocations,
+            invocations=invocations,
             config=ChannelConfig(
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
             ),
-        ):
-            yield response
+        )
 
     try:
         result = await loop.run(
-            stream_fn=stream_fn(),
+            stream_fn=stream_fn,
             model=dataclasses.asdict(model),
             contemplation_level=contemplation_level,
         )
@@ -334,7 +330,6 @@ def _repl_callback(
         0.7, "--temperature", "-t", help="Sampling temperature"
     ),
     max_tokens: int = typer.Option(4096, "--max-tokens", help="Maximum tokens"),
-    mana_budget: int = typer.Option(10000, "--mana", help="Mana budget"),
     contemplation: str = typer.Option(
         "medium", "--contemplation", "-c", help="Contemplation level"
     ),
@@ -400,7 +395,6 @@ def _repl_callback(
             api_key=api_key,
             temperature=temperature,
             max_tokens=max_tokens,
-            mana_budget=mana_budget,
             contemplation_level=contemplation,
             spells_enabled=[s.strip() for s in spells.split(",") if s.strip()],
             extension_dir=extension_dir,
