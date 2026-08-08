@@ -16,6 +16,8 @@ from mvgeos_runes.watcher import RuneWatcher
 from mvgeos_tome.ledger import TomeLedger
 
 from mvgeos_agent.agent_session import MvgeTome
+from mvgeos_agent.compaction import DEFAULT_COMPACTION_SETTINGS, CompactionSettings
+from mvgeos_agent.compaction_runner import CompactionRunner
 from mvgeos_agent.event_bus import EventBus
 from mvgeos_agent.loop import MvgeLoop, StreamFn
 from mvgeos_agent.types import (
@@ -60,6 +62,7 @@ class BaseMvge:
         contemplation_budget: int | None = None,
         exclude_contemplation: bool = False,
         runes_paths: Sequence[str] | None = None,
+        compaction: CompactionSettings = DEFAULT_COMPACTION_SETTINGS,
     ) -> None:
         self._api_key = api_key
         self._name = name
@@ -73,6 +76,7 @@ class BaseMvge:
         self._contemplation_level = contemplation_level
         self._contemplation_budget = contemplation_budget
         self._exclude_contemplation = exclude_contemplation
+        self._compaction_settings = compaction
         self._runes_paths: Sequence[str] = runes_paths or [
             "~/.agents/.mvgeos/runes",
             f"~/.agents/.mvgeos/{name}/runes",
@@ -87,6 +91,7 @@ class BaseMvge:
         self._agent_session: MvgeTome | None = None
         self._tome_ledger: TomeLedger | None = None
         self._loop: MvgeLoop | None = None
+        self._compaction: CompactionRunner | None = None
         self._state: MvgeState | None = None
         self._event_bus = EventBus()
         self._initialized = False
@@ -315,6 +320,17 @@ class BaseMvge:
         )
 
         self._loop = MvgeLoop(self._state)
+
+        if self._realm is not None and self._model is not None:
+            self._compaction = CompactionRunner(
+                realm=self._realm,
+                model=self._model,
+                emit=self._loop.emit,
+                settings=self._compaction_settings,
+                tome=self._agent_session,
+            )
+            self._loop.set_after_invocation(self._compaction.maybe_compact)
+
         self._initialized = True
 
     async def _load_runes(self) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,13 @@ from mvgeos_tome.ledger import TomeLedger
 from mvgeos_tome.types import TomeEntry, TomeMetadata
 
 logger = logging.getLogger(__name__)
+
+
+def _serialise_invocation(invocation: Any) -> dict[str, Any]:
+    """Flatten an Invocation to JSON-safe primitives for the Tome file."""
+    if dataclasses.is_dataclass(invocation) and not isinstance(invocation, type):
+        return dataclasses.asdict(invocation)
+    return {"role": getattr(invocation, "role", "unknown")}
 
 
 class MvgeTome:
@@ -176,6 +184,33 @@ class MvgeTome:
             parent_id=parent_id,
             model=model,
             provider=provider,
+        )
+
+    def record_compaction(
+        self,
+        summary: str,
+        mana_before: int,
+        retained_tail: list[Any],
+        first_kept_entry_id: str | None = None,
+    ) -> TomeEntry | None:
+        """Record a compaction so the Tome can rebuild context without replaying
+        the Invocations the summary replaced."""
+        if not self._started:
+            logger.warning(
+                "record_compaction dropped: tome %s not started",
+                self._metadata.id,
+            )
+            return None
+        payload: dict[str, Any] = {
+            "summary": summary,
+            "manaBefore": mana_before,
+            "retainedTail": [_serialise_invocation(inv) for inv in retained_tail],
+        }
+        if first_kept_entry_id is not None:
+            payload["firstKeptEntryId"] = first_kept_entry_id
+        return self._ledger.append_compaction(
+            tome_id=self._metadata.id,
+            payload=payload,
         )
 
     def record_custom(
