@@ -29,7 +29,10 @@ The model's context window — the maximum number of Mana (tokens) that fit in a
 _Avoid_: Context window (as a spoken term)
 
 **Mana Budget**:
-The cap on total Mana the Mvge can spend during a single run. Renamed from `mana_budget` in code.
+The cap on total Mana the Mvge can spend during a single run. **Not currently implemented.** Enforcement was removed from the loop because Pi has no equivalent — Pi handles context pressure with compaction, not by aborting the run. It will return as a user-installed Rune once the loop inversion adds a stop-capable sigil (no sigil can halt a run today; only `BEFORE_SPELL_CAST` can veto). Distinct from Contemplation Budget, which is a per-request Realm parameter, not a run-level cap.
+
+**Mana Used**:
+Cumulative Mana consumed during a run (`mana_used`). Carried on every `MESSAGE_END` and `TURN_END` event; reduced into `MvgeState` by `MvgeLoop`. Read by compaction to size the Mana Pool.
 
 **Tome**:
 A single persisted conversation between a Summoner and a Mvge, recorded as an append-only sequence of Invocations. The on-disk format is a tree of entries (Pi-compatible JSONL v3).
@@ -72,5 +75,56 @@ A callback a Rune registers on a lifecycle hook. The hook points themselves are 
 _Avoid_: Callback (as a spoken term), hook (for the callback — the hook is the lifecycle point)
 
 **Contemplation**:
-The depth of reasoning the Mvge applies during a run, requested by the Summoner (or set by the Mvge's defaults) and conveyed to the Realm as reasoning effort. Optionally capped by a reasoning Mana budget (`contemplation_budget`).
+The depth of reasoning the Mvge applies during a run, requested by the Summoner (or set by the Mvge's defaults) and conveyed to the Realm as reasoning effort. Optionally capped by `contemplation_budget` — a per-request parameter sent to the Realm (Pi's `ThinkingBudgets`), not a run-level cap. Do not conflate with Mana Budget.
 _Avoid_: Reasoning (as a spoken term), thinking (for the concept)
+
+## Loop architecture
+
+**Loop Core** (`run_loop`):
+The stateless heart of the turn cycle. Takes a frozen `LoopContext`, a `StreamFn`, an `emit` sink, and `LoopCallbacks`; returns the new Invocations. The loop **drives** the Realm: it calls `StreamFn` once per turn with the running transcript, channels the response, casts Spells, and goes round again while Spell results, steering, or follow-ups remain. Imports no `Realm`, no `RuneRunner`, no `SigilHook`, no `MvgeTome`, no `EventBus` — all outside contact flows through `emit` and the callbacks. Mirrors Pi's `runAgentLoop`.
+
+**Stream Fn**:
+`Callable[[list[MvgeInvocation]], AsyncIterator[RealmResponse]]` — one Realm request per call. Built by `BaseMvge._make_stream_fn` from a Realm and Model. Keeps the provider layer out of the core; tests supply a plain function returning canned responses. Mirrors Pi's `StreamFn`.
+
+**Loop Context**:
+Frozen snapshot of everything the core reads (~9 fields). Diverges from Pi, which passes a mutable `AgentContext`; the frozen dataclass is what enforces the seam.
+
+**Loop Callbacks**:
+The value-returning extension points: `transform_context`, `before_realm_headers`, `before_spell_cast` (veto), `after_spell_result`, plus the queue drains `get_steering_messages` and `get_follow_up_messages`. Every callback is optional and must not raise — return a safe fallback instead. `MvgeLoop` honours this contract when building them from a Rune runner. Mirrors Pi's `AgentLoopConfig` callbacks.
+
+**Steering** / **Follow-up**:
+Steering Invocations are injected between turns while the Mvge is still working; follow-ups resume it after it would otherwise settle. The loop drains `MvgeState.steer_queue` after each turn that cast no Spells, and `followup_queue` at the outer-loop boundary. Queue modes (`all` / `one-at-a-time`) are not implemented — both queues always drain in full.
+
+**Emit Sink**:
+The single async channel out of the core: `Callable[[MvgeEvent], Awaitable[None]]`. `MvgeLoop._emit` fans one event out to four effects — `MvgeState` reduction, the event bus, the mapped Sigil, and Tome recording. Recording happens only on `MESSAGE_END`, which the core emits for Summoner, Mvge, and Spell-result Invocations alike (Pi's one-recording-point model).
+
+## Compaction
+
+**Compaction**:
+Replacing the earlier part of a transcript with a summary once it crowds the Mana Pool. Triggered after each Mvge Invocation, matching where Pi checks it. Pure measuring and splitting live in `mvgeos_agent/compaction.py`; the side effects (Realm call, events, Tome record) live in `CompactionRunner`. On any failure the run continues uncompacted — compaction is a recovery mechanism and must never become a new failure mode.
+
+**Cut Point**:
+Where a transcript is split. A Spell result is never a valid cut point: it must stay with the Invocation that requested it.
+
+**Retained Tail**:
+The recent Invocations kept verbatim after compaction. Persisted on the Tome's compaction entry alongside the summary and `manaBefore`, so context can be rebuilt without replaying what the summary replaced.
+
+**Realm.complete()**:
+A non-channelled Realm request, used for standalone calls that are not part of a Tome's transcript. Takes wire-format messages rather than Invocations, and deliberately offers no Spells. Compaction summaries use it.
+
+## Retry
+
+Two layers in `mvgeos_provider/retry.py`, mirroring Pi:
+
+- **`retry_realm_request`** — one HTTP request. Retries 408/409/429/5xx, honours `Retry-After` (failing hard beyond 60s rather than stalling), backs off exponentially capped at 8s with downward jitter, and respects an `x-should-retry` header.
+- **`retry_invocation`** — a whole Invocation. Realms report transient trouble as a `RealmResponse` carrying an error rather than raising, so this layer classifies the response: a Realm-set `error_code` is authoritative, otherwise the error prose is matched against deterministic patterns (quota, billing) before transient ones.
+
+Both accept a `signal` that is currently ignored, reserved so the abort work does not reshape the interfaces.
+
+## Known gaps
+
+- **Parallel Spell casting** — Spells in one Invocation are cast serially. Pi runs them concurrently unless a Spell declares `sequential`. `SpellExecutionMode` exists but nothing reads it.
+- **Abort** — `signal` parameters exist on `MvgeSpell.execute` but are always `None`; there is no `abort()` on the Mvge. Pi threads an `AbortSignal` end to end.
+- **Spell result `terminate`** — Pi lets a Spell result request an early stop when every result in the batch agrees. No equivalent field exists.
+- **`shouldStopAfterTurn` / `prepareNextTurn`** — Pi can stop or re-aim between turns. The nested loop now has the seam for both; neither is wired. The Mana Budget Rune needs the former.
+- **Queue modes** — steering and follow-up queues always drain in full; Pi supports `one-at-a-time`.

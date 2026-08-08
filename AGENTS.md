@@ -52,6 +52,9 @@ MVGEOS IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https:/
 - **Add coverage omit patterns for temp directories** in pyproject.toml to avoid "couldn't parse" warnings
 - **90% is practical ceiling** — 100% requires brittle mocks of external dependencies
 - **Test file naming**: use flat `*.py` naming (no `test_` prefix) in `tests/unit/` and `tests/integration/`. Configure pytest with `python_files = "*.py"`.
+- **Never add `__init__.py` to test directories** — with `--import-mode=importlib` every package's `tests/unit/types.py` collapses to the same dotted path and they silently shadow each other (one file's tests get collected three times, the others never run).
+- **E2E tests must use `nvidia/nemotron-3-ultra-550b-a55b:free`** — this is also the default model everywhere it applies (`mvgeos_cli.DEFAULT_MODEL`, `BaseMvge`, `CodingMvge`, CLI config default).
+- **Footer/status-line assertions must match a model-ID prefix**, not the full slug — `_fit_footer` truncates to console width.
 - **`_build_spells()` interface**: must use `self._runner` (not `self._state.rune_runner`) and return all spell types (rune spells from enabled runes only + builtin spells). Seeker is a rune — it only works through the rune/extension system, not as a built-in category.
 - **Test cleanup**: use `_watchers` (plural), not `_watcher` (singular).
 
