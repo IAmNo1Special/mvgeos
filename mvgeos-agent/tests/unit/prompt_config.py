@@ -145,23 +145,17 @@ def test_ensure_config_files_creates_guidelines_file(tmp_path: Path) -> None:
 
 
 def test_load_system_prompt_oserror_fallback(tmp_path: Path) -> None:
-    import sys
-
-    if sys.platform == "win32":
-        import pytest
-
-        pytest.skip("File permissions not enforced on Windows")
+    from unittest.mock import patch
 
     config_path = tmp_path / "SYSTEM.md"
     config_path.write_text("Original prompt", encoding="utf-8")
 
-    config_path.chmod(0o000)
-
-    try:
+    with patch(
+        "mvgeos_agent.prompt_config._read_custom_prompt",
+        side_effect=OSError("Permission denied"),
+    ):
         prompt = load_system_prompt("test-agent", config_dir=tmp_path)
         assert prompt == DEFAULT_SYSTEM_PROMPT
-    finally:
-        config_path.chmod(0o644)
 
 
 def test_load_guidelines_oserror_fallback(tmp_path: Path) -> None:
