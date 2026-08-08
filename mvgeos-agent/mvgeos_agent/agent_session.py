@@ -177,7 +177,7 @@ class MvgeTome:
                 self._metadata.id,
             )
             return None
-        return self._ledger.append_message(
+        entry = self._ledger.append_message(
             tome_id=self._metadata.id,
             role=role,
             content=content,
@@ -185,6 +185,23 @@ class MvgeTome:
             model=model,
             provider=provider,
         )
+        self._advance_leaf(entry)
+        return entry
+
+    def _advance_leaf(self, entry: TomeEntry | None) -> None:
+        """Move the Tome's Leaf to the entry just appended.
+
+        The Leaf marks the current tip of the branch, so it advances on every
+        recorded entry. Forking reads it to decide where to branch from.
+        """
+        if entry is None:
+            return
+        try:
+            self._ledger.append_leaf(self._metadata.id, entry.id)
+        except Exception:
+            logger.exception(
+                "Failed to advance the Leaf for tome %s", self._metadata.id
+            )
 
     def record_compaction(
         self,

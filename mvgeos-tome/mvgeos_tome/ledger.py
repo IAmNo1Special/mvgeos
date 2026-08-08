@@ -214,17 +214,21 @@ class TomeLedger:
             return entries
 
     def get_entry(self, tome_id: str, entry_id: str) -> TomeEntry | None:
+        # Entry ids are short and only unique within a Tome, and the index
+        # spans every Tome, so scope the lookup to this Tome's own entries.
         with self._lock:
-            for entry in self._index.all():
-                if entry.id == entry_id and entry.id.startswith(f"{tome_id}_"):
+            for entry in self._read_tome_entries(tome_id):
+                if entry.id == entry_id:
                     return entry
             return None
 
     def get_leaf_id(self, tome_id: str) -> str | None:
+        """The entry the Tome's Leaf currently points at."""
         with self._lock:
-            for entry in self._index.leaves():
-                if entry.id.startswith(f"{tome_id}_"):
-                    return entry.id
+            for entry in reversed(self._read_tome_entries(tome_id)):
+                if entry.type == TomeEntryType.LEAF:
+                    target = entry.payload.get("targetId")
+                    return str(target) if target is not None else None
             return None
 
     def create_branched_tome(
