@@ -80,6 +80,7 @@ testpaths = [
     "mvgeos-runes/tests",
     "mvgeos-tome/tests",
     "mvgeos-cli/tests",
+    "mvgeos-harness/tests",
 ]
 pythonpath = "."
 python_files = "*.py"
