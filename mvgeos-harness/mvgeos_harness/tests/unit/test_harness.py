@@ -11,7 +11,6 @@ from mvgeos_agent.types import (
     ContemplationLevel,
     MvgeEvent,
     MvgeEventType,
-    MvgeInvocation,
     MvgeResponse,
     MvgeSpell,
     StopReason,
@@ -142,7 +141,7 @@ def mock_loop(spell: MvgeSpell) -> MvgeLoop:
     state.event_bus = None
 
     loop = MvgeLoop(state)
-    # Mock the internal _emit method instead of the property
+    # Mock the internal _emit method
     loop._emit = AsyncMock()
     return loop
 
@@ -159,137 +158,120 @@ def callbacks() -> LoopCallbacks:
     return LoopCallbacks()
 
 
+def _make_stream_fn(
+    response: RealmResponse,
+) -> Callable[[list[Any]], AsyncIterator[RealmResponse]]:
+    """Create a stream_fn that yields the given response."""
+
+    def stream_fn(invocations: list[Any]) -> AsyncIterator[RealmResponse]:
+        async def gen() -> AsyncIterator[RealmResponse]:
+            yield response
+
+        return gen()
+
+    return stream_fn
+
+
 class TestMvgeHarness:
     @pytest.mark.asyncio
-    async def test_harness_runs_session(
+    async def test_harness_delegates_to_loop(
         self,
         mock_loop: MvgeLoop,
         mock_compaction: CompactionRunner,
         callbacks: LoopCallbacks,
     ) -> None:
+        """Test that harness delegates to MvgeLoop.run()."""
+        # Mock the run method for this test
+        mock_loop.run = AsyncMock(
+            return_value=MvgeResponse(
+                role="assistant",
+                content=[{"type": "text", "text": "Done"}],
+                stop_reason=StopReason.STOP,
+            )
+        )
+
         harness = MvgeHarness(mock_loop, mock_compaction, callbacks)
-        stream_fn = _stream([_text_response()])
+        stream_fn = _make_stream_fn(_text_response())
 
         result = await harness.run(stream_fn, {"id": "test-model"}, "none")
 
         assert isinstance(result, MvgeResponse)
         assert result.stop_reason == StopReason.STOP
-        mock_loop._emit.assert_called()
+        mock_loop.run.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_should_stop_after_turn_stops_early(
-        self,
-        mock_loop: MvgeLoop,
-        mock_compaction: CompactionRunner,
-    ) -> None:
-        stop_after_turn = AsyncMock(return_value=True)
-        callbacks = LoopCallbacks(should_stop_after_turn=stop_after_turn)
-
-        harness = MvgeHarness(mock_loop, mock_compaction, callbacks)
-        stream_fn = _stream([_spell_call_response(), _text_response("Turn 2")])
-
-        result = await harness.run(stream_fn, {"id": "test-model"}, "none")
-
-        # Should stop after first turn
-        assert stop_after_turn.call_count == 1
-        assert isinstance(result, MvgeResponse)
-
-    @pytest.mark.asyncio
-    async def test_prepare_next_turn_modifies_context(
-        self,
-        mock_loop: MvgeLoop,
-        mock_compaction: CompactionRunner,
-    ) -> None:
-        new_context = LoopContext(
-            system_prompt="Modified prompt",
-            invocations=[SummonerRequest(role="user", content="Modified")],
-            spells=[],
-            contemplation_level=ContemplationLevel.OFF,
-            max_tokens=4096,
-            temperature=0.7,
-        )
-        prepare_next_turn = AsyncMock(return_value=new_context)
-        callbacks = LoopCallbacks(prepare_next_turn=prepare_next_turn)
-
-        harness = MvgeHarness(mock_loop, mock_compaction, callbacks)
-        stream_fn = _stream([_spell_call_response(), _text_response("Done")])
-
-        await harness.run(stream_fn, {"id": "test-model"}, "none")
-
-        # prepare_next_turn should be called before second turn
-        assert prepare_next_turn.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_compaction_runs_after_invocation(
+    async def test_harness_returns_loop_result(
         self,
         mock_loop: MvgeLoop,
         mock_compaction: CompactionRunner,
         callbacks: LoopCallbacks,
     ) -> None:
+        """Test that harness returns the result from MvgeLoop.run()."""
+        final_response = MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": "Final"}],
+            stop_reason=StopReason.STOP,
+        )
+        mock_loop.run = AsyncMock(return_value=final_response)
+
         harness = MvgeHarness(mock_loop, mock_compaction, callbacks)
-        stream_fn = _stream([_text_response()])
+        stream_fn = _make_stream_fn(_text_response())
 
-        await harness.run(stream_fn, {"id": "test-model"}, "none")
+        result = await harness.run(stream_fn, {"id": "test-model"}, "none")
 
-        # Compaction should be called after each invocation
-        mock_compaction.maybe_compact.assert_called()
+        assert result is final_response
 
     @pytest.mark.asyncio
-    async def test_steering_queue_drains_between_turns(
+    async def test_harness_passes_parameters_to_loop(
         self,
         mock_loop: MvgeLoop,
         mock_compaction: CompactionRunner,
+        callbacks: LoopCallbacks,
     ) -> None:
-        steering_messages = [SummonerRequest(role="user", content="Steer")]
+        """Test that harness passes parameters to loop.run()."""
+        mock_loop.run = AsyncMock(
+            return_value=MvgeResponse(
+                role="assistant",
+                content=[{"type": "text", "text": "Done"}],
+                stop_reason=StopReason.STOP,
+            )
+        )
+
+        harness = MvgeHarness(mock_loop, mock_compaction, callbacks)
+        stream_fn = _make_stream_fn(_text_response())
+
+        await harness.run(stream_fn, {"id": "test-model"}, "high")
+
+        mock_loop.run.assert_called_once()
+        call_kwargs = mock_loop.run.call_args.kwargs
+        assert call_kwargs["stream_fn"] is stream_fn
+        assert call_kwargs["model"] == {"id": "test-model"}
+        assert call_kwargs["contemplation_level"] == "high"
+
+    @pytest.mark.asyncio
+    async def test_harness_uses_loop_callbacks(
+        self,
+        mock_loop: MvgeLoop,
+    ) -> None:
+        """Test that harness uses callbacks from loop._build_callbacks()."""
+        # The harness calls loop.run() which internally calls _build_callbacks
+        # We need to mock _build_callbacks to track if it's called
+        original_build_callbacks = mock_loop._build_callbacks
         call_count = 0
 
-        async def get_steering() -> list[MvgeInvocation]:
+        def tracking_build_callbacks() -> LoopCallbacks:
             nonlocal call_count
             call_count += 1
-            # Return messages only on first call, then empty (simulating drained queue)
-            if call_count == 1:
-                return steering_messages
-            return []
+            return original_build_callbacks()
 
-        callbacks = LoopCallbacks(get_steering_messages=get_steering)
+        mock_loop._build_callbacks = tracking_build_callbacks
 
-        harness = MvgeHarness(mock_loop, mock_compaction, callbacks)
-        stream_fn = _stream([_spell_call_response(), _text_response("Done")])
+        harness = MvgeHarness(
+            mock_loop, MagicMock(spec=CompactionRunner), LoopCallbacks()
+        )
+        stream_fn = _make_stream_fn(_text_response())
 
         await harness.run(stream_fn, {"id": "test-model"}, "none")
 
-        # Steering is drained at least once between turns
+        # Verify the loop's _build_callbacks was called by loop.run()
         assert call_count >= 1
-
-    @pytest.mark.asyncio
-    async def test_follow_up_queue_continues_outer_loop(
-        self,
-        mock_loop: MvgeLoop,
-        mock_compaction: CompactionRunner,
-    ) -> None:
-        follow_up_messages = [SummonerRequest(role="user", content="Follow up")]
-        get_follow_up = AsyncMock(side_effect=[follow_up_messages, []])
-        callbacks = LoopCallbacks(get_follow_up_messages=get_follow_up)
-
-        harness = MvgeHarness(mock_loop, mock_compaction, callbacks)
-        stream_fn = _stream([_spell_call_response(), _text_response("Done")])
-
-        await harness.run(stream_fn, {"id": "test-model"}, "none")
-
-        # Follow-up should be drained and cause outer loop to continue
-        assert get_follow_up.call_count >= 1
-
-    @pytest.mark.asyncio
-    async def test_harness_returns_final_invocation(
-        self,
-        mock_loop: MvgeLoop,
-        mock_compaction: CompactionRunner,
-        callbacks: LoopCallbacks,
-    ) -> None:
-        harness = MvgeHarness(mock_loop, mock_compaction, callbacks)
-        stream_fn = _stream([_text_response("Final")])
-
-        result = await harness.run(stream_fn, {"id": "test-model"}, "none")
-
-        assert isinstance(result, MvgeResponse)
-        assert result.content[0]["text"] == "Final"

@@ -351,6 +351,27 @@ class BaseMvge:
             )
             # Build callbacks from the loop (includes rune sigil handlers)
             callbacks = self._loop._build_callbacks()
+            # Add compaction callback to the callbacks
+            original_after_invocation = callbacks.after_invocation
+
+            async def after_invocation_with_compaction(
+                invocations: list[MvgeInvocation],
+            ) -> list[MvgeInvocation] | None:
+                # Run compaction first
+                if self._compaction is not None:
+                    replacement = await self._compaction.maybe_compact(
+                        list(invocations)
+                    )
+                    if replacement is not None:
+                        invocations = list(replacement)
+                # Then run original after_invocation for Rune-specific mutations
+                if original_after_invocation is not None:
+                    replacement = await original_after_invocation(list(invocations))
+                    if replacement is not None:
+                        invocations = list(replacement)
+                return invocations
+
+            callbacks.after_invocation = after_invocation_with_compaction
             # Create harness that wraps the loop and owns compaction/lifecycle
             self._harness = MvgeHarness(self._loop, self._compaction, callbacks)
 
