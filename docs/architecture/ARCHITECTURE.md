@@ -93,6 +93,18 @@ and system prompt configuration.
 **Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-tome,
 mvgeos-runes
 
+### mvgeos-harness
+
+Harness package wrapping `MvgeLoop` and owning the session lifecycle
+(matching Pi's `AgentHarness`). Owns compaction, steering/follow-up
+queues, and turn callbacks (`should_stop_after_turn`,
+`prepare_next_turn`). Delegates to `MvgeLoop.run()` for the nested
+outer/inner loop structure.
+
+**Entry point**: `MvgeHarness(loop, compaction, callbacks).run(...)`
+
+**Dependencies**: mvgeos-agent, mvgeos-provider
+
 ## Data Flow
 
 ### Invocation Flow
@@ -100,13 +112,16 @@ mvgeos-runes
 1. User provides input via CLI or TUI
 2. CLI creates `BaseMvge`/`CodingMvge` instance with configured realms
 3. `BaseMvge.run(prompt)` → normalizes input to `SummonerRequest`
-4. `MvgeLoop.run()` adds invocation to `MvgeState.invocations`
-5. Loop calls `Realm.channel(model, invocations, config)` on configured realm
-6. Provider channels `RealmResponse` events (text deltas, tool calls, etc.)
-7. `MvgeLoop` processes events → updates `MvgeState` → emits `MvgeEvent` to subscribers
-8. Tool calls detected → `Spell.execute()` → results appended to invocations
-9. Loop continues until no more tool calls and no steering/follow-up invocations
-10. Final `MvgeResponse` emitted with `done` event
+4. `BaseMvge.initialize()` creates `MvgeHarness` (wraps `MvgeLoop`, owns lifecycle)
+5. `MvgeHarness.run()` delegates to `MvgeLoop.run()` (nested outer/inner loops)
+6. Loop calls `Realm.channel(model, invocations, config)` on configured realm
+7. Provider channels `RealmResponse` events (text deltas, tool calls, etc.)
+8. `MvgeLoop` processes events → updates `MvgeState` → emits `MvgeEvent` to subscribers
+9. Tool calls detected → `Spell.execute()` → results appended to invocations
+10. Loop continues until no more tool calls and no steering/follow-up invocations
+11. `MvgeHarness` handles compaction (after each invocation), `should_stop_after_turn`,
+    `prepare_next_turn`, steering/follow-up queue drainage
+12. Final `MvgeResponse` emitted with `done` event
 
 ### Tome Persistence Flow
 
