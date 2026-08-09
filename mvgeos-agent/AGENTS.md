@@ -51,8 +51,15 @@ Test paths follow pattern: `mvgeos-agent/tests_agent/test_<module>.py`
 
 The core loop flows:
 1. `BaseMvge.run(prompt)` → lazy `initialize()` → appends `SummonerRequest` to `state.invocations`
-2. `MvgeLoop.run()` channels `RealmResponse`s from the Realm
-3. On `StopReason.SPELL_USE`: fires `BEFORE_SPELL_CAST` sigil, executes spell, fires `AFTER_SPELL_RESULT`
-4. On `STOP/LENGTH/ERROR`: appends response, emits `MESSAGE_END`, `TURN_END`, `AGENT_END`
+2. `BaseMvge.initialize()` creates `MvgeHarness` (wraps `MvgeLoop`, owns lifecycle)
+3. `BaseMvge._run_impl()` delegates to `MvgeHarness.run()`
+4. `MvgeHarness.run()` delegates to `MvgeLoop.run()` (nested outer/inner loops)
+5. `MvgeLoop.run()` channels `RealmResponse`s from the Realm
+6. On `StopReason.SPELL_USE`: fires `BEFORE_SPELL_CAST` sigil, executes spell, fires `AFTER_SPELL_RESULT`
+7. On `STOP/LENGTH/ERROR`: appends response, emits `MESSAGE_END`, `TURN_END`, `AGENT_END`
 
-Mana enforcement: the loop tracks cumulative `mana_used` vs `mana_budget` and returns `StopReason.MANA_EXHAUSTED` when the budget is exceeded.
+Harness-owned lifecycle (via callbacks):
+- `after_invocation` → compaction (`CompactionRunner.maybe_compact`)
+- `should_stop_after_turn` → graceful stop after turn
+- `prepare_next_turn` → modify context/model for next turn
+- `get_steering_messages` / `get_follow_up_messages` → queue drainage
