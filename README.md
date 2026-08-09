@@ -27,6 +27,7 @@ MvgeOS is a monorepo with uv workspaces:
 | `mvgeos-runes` | Extension system: manifest, loader, sigil hooks |
 | `mvgeos-cli` | CLI entry point (`mvgeos` command) |
 | `coding-mvge` | Coding agent package (BaseMvge subclass) |
+| `mvgeos-harness` | Session lifecycle harness (compaction, steering, turn callbacks) |
 
 ## Quick Start
 

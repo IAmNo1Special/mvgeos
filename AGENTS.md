@@ -75,6 +75,7 @@ MvgeOS is a monorepo with uv workspaces:
 | mvgeos-tome | JSONL session persistence with file locking |
 | mvgeos-runes | Rune/Extension manifest, loader, sigil hooks |
 | mvgeos-cli | CLI entry point (`mvgeos` command) |
+| mvgeos-harness | Session lifecycle harness (compaction, steering, turn callbacks) |
 | coding-mvge | Coding agent package |
 
 Config follows dotagents protocol at `~/.agents/.mvgeos/`.
