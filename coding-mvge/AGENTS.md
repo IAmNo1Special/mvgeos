@@ -51,6 +51,6 @@ Test paths follow pattern: `coding-mvge/tests_coding_mvge/test_<module>.py`
 
 - `CodingMvge._build_spells()` returns the list of enabled spells
 - `_build_system_prompt()` loads `SYSTEM.md`/`GUIDELINES.md` from `~/.agents/.mvgeos/{name}/`
-- `_run_impl()` loops up to `max_turns`, building a stream factory and calling `MvgeLoop.run()`
-- After the loop, drains `steer_queue`/`followup_queue` for multi-turn interactions
+- `BaseMvge._run_impl()` delegates to `MvgeHarness.run()` which calls `MvgeLoop.run()` (nested outer/inner loops)
+- Harness owns compaction, `should_stop_after_turn`, `prepare_next_turn`, steering/follow-up queues
 - Spell schemas are generated from type hints via `generate_spell_schema()` (from `mvgeos_agent.spell_schema`)
