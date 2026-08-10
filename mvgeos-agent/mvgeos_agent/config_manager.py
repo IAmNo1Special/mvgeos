@@ -1,0 +1,184 @@
+from __future__ import annotations
+
+import copy
+import json
+import logging
+from enum import Enum
+from pathlib import Path
+from typing import Any, NamedTuple
+
+from mvgeos_agent.constants import DEFAULT_AGENT_NAME, DEFAULT_MODEL
+
+logger = logging.getLogger(__name__)
+
+
+class ConfigLayer(Enum):
+    """Indicates which layer a resolved config value came from.
+
+    Precedence from lowest to highest:
+    DEFAULTS < AGENT < LEGACY < CONSTRUCTOR
+    """
+
+    DEFAULTS = "defaults"
+    AGENT = "agent"
+    LEGACY = "legacy"
+    CONSTRUCTOR = "constructor"
+
+
+class ConfigValue(NamedTuple):
+    """A resolved config value with provenance."""
+
+    value: Any
+    layer: ConfigLayer
+
+
+class ConfigManager:
+    """Layered config loader with deep-merge and provenance tracking.
+
+    Precedence (highest to lowest):
+    1. Constructor overrides (via ``with_overrides()``)
+    2. Legacy project config (``.agents/.mvgeos/config.json``)
+    3. Agent-scope file (``~/.agents/.mvgeos/{name}/config.json``)
+    4. Defaults
+
+    Each resolved value carries the layer it came from.
+    """
+
+    DEFAULTS: dict[str, Any] = {
+        "model": DEFAULT_MODEL,
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "contemplation_level": "medium",
+        "spells_enabled": ["bash", "read", "write", "edit", "find", "list", "grep"],
+    }
+
+    def __init__(
+        self,
+        agent_name: str = DEFAULT_AGENT_NAME,
+        project_dir: Path | None = None,
+        defaults: dict[str, Any] | None = None,
+        agent_config_base: Path | None = None,
+    ) -> None:
+        self._agent_name = agent_name
+        self._project_dir = project_dir or Path.cwd()
+        self._defaults = defaults if defaults is not None else self.DEFAULTS
+        self._constructor_overrides: dict[str, Any] = {}
+        self._agent_config_base = (
+            agent_config_base.expanduser()
+            if agent_config_base is not None
+            else Path("~/.agents/.mvgeos").expanduser()
+        )
+
+    @property
+    def agent_config_path(self) -> Path:
+        """Path to the agent-scope config file."""
+        return self._agent_config_base / self._agent_name / "config.json"
+
+    @property
+    def legacy_config_path(self) -> Path:
+        """Path to the legacy project config file."""
+        return self._project_dir / ".agents" / ".mvgeos" / "config.json"
+
+    def with_overrides(self, **kwargs: Any) -> ConfigManager:
+        """Return a new manager with constructor-level overrides applied.
+
+        These take precedence over all file-based layers.
+        """
+        new_mgr = copy.copy(self)
+        new_mgr._constructor_overrides = dict(kwargs)
+        return new_mgr
+
+    def load(self) -> dict[str, ConfigValue]:
+        """Load and merge config from all layers, returning provenance.
+
+        Nested dicts are deep-merged: a higher layer only overrides the
+        leaf keys it provides, preserving sibling keys from lower layers.
+        Provenance is tracked per top-level key using the highest layer
+        that contributed to that key.
+        """
+        # Layer 1: Defaults (lowest precedence)
+        merged: dict[str, Any] = self._deep_merge({}, self._defaults)
+        layers: dict[str, ConfigLayer] = dict.fromkeys(
+            self._defaults, ConfigLayer.DEFAULTS
+        )
+
+        # Layer 2: Agent-scope file
+        agent_data = self._load_json(self.agent_config_path)
+        merged = self._deep_merge(merged, agent_data)
+        for key in agent_data:
+            layers[key] = ConfigLayer.AGENT
+
+        # Layer 3: Legacy project config
+        legacy_data = self._load_json(self.legacy_config_path)
+        merged = self._deep_merge(merged, legacy_data)
+        for key in legacy_data:
+            layers[key] = ConfigLayer.LEGACY
+
+        # Layer 4: Constructor overrides (highest precedence)
+        merged = self._deep_merge(merged, self._constructor_overrides)
+        for key in self._constructor_overrides:
+            layers[key] = ConfigLayer.CONSTRUCTOR
+
+        return {key: ConfigValue(merged[key], layers[key]) for key in merged}
+
+    @staticmethod
+    def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+        """Recursively merge override into base, returning a new dict."""
+        result = dict(base)
+        for key, value in override.items():
+            if (
+                key in result
+                and isinstance(result[key], dict)
+                and isinstance(value, dict)
+            ):
+                result[key] = ConfigManager._deep_merge(result[key], value)
+            else:
+                result[key] = value
+        return result
+
+    def get(self, key: str, default: Any = None) -> ConfigValue:
+        """Get a single config value with provenance."""
+        merged = self.load()
+        if key in merged:
+            return merged[key]
+        return ConfigValue(default, ConfigLayer.DEFAULTS)
+
+    def set(self, key: str, value: Any) -> None:
+        """Set a value in the agent-scope config file."""
+        self.agent_config_path.parent.mkdir(parents=True, exist_ok=True)
+        data = self._load_json(self.agent_config_path)
+        data[key] = value
+        self.agent_config_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def reset(self) -> None:
+        """Reset agent-scope config to defaults."""
+        self.agent_config_path.parent.mkdir(parents=True, exist_ok=True)
+        self.agent_config_path.write_text(
+            json.dumps(self._defaults, indent=2), encoding="utf-8"
+        )
+
+    def ensure_agent_config(self) -> Path:
+        """Create agent-scope config with seeded defaults if absent.
+
+        Returns the path to the config file.
+        """
+        if self.agent_config_path.exists():
+            return self.agent_config_path
+        self.agent_config_path.parent.mkdir(parents=True, exist_ok=True)
+        self.agent_config_path.write_text(
+            json.dumps(self._defaults, indent=2), encoding="utf-8"
+        )
+        return self.agent_config_path
+
+    @staticmethod
+    def _load_json(path: Path) -> dict[str, Any]:
+        """Load JSON from a path, returning empty dict on any error."""
+        if not path.exists():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return {}
+            return data
+        except json.JSONDecodeError, OSError:
+            return {}
