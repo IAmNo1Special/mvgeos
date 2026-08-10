@@ -6,12 +6,11 @@ from pathlib import Path
 from typing import Any, cast
 
 from mvgeos_agent.base_mvge import BaseMvge
-from mvgeos_agent.constants import DEFAULT_AGENT_NAME, DEFAULT_MODEL
-from mvgeos_agent.prompt_config import _SYSTEM_PROMPT_BODY
-from mvgeos_agent.prompt_loader import PromptLoader, PromptSource
+from mvgeos_agent.config_manager import ConfigManager
+from mvgeos_agent.constants import DEFAULT_AGENT_NAME
+from mvgeos_agent.prompt_loader import PromptSource
 from mvgeos_agent.spell_schema import generate_spell_schema
 from mvgeos_agent.types import MvgeInvocation, MvgeSpell, SpellResult
-from mvgeos_runes.types import SigilHook
 
 from coding_mvge.spells import (
     cast_bash,
@@ -24,14 +23,6 @@ from coding_mvge.spells import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _render_with_spells(body: str, spells: list[str]) -> str:
-    """Render a prompt body with the active spell list."""
-    parts = [body]
-    spell_list = "\n".join(f"  - {s}" for s in spells) if spells else "  (none)"
-    parts.append(f"\nActive spells:\n{spell_list}")
-    return "\n".join(parts)
 
 
 DEFAULT_SPELL_MAP: dict[str, Any] = {
@@ -75,18 +66,19 @@ class CodingMvge(BaseMvge):
         api_key: str,
         *,
         name: str = DEFAULT_AGENT_NAME,
-        model: str = DEFAULT_MODEL,
+        model: str | None = None,
         spells: list[str] | None = None,
         custom_system_prompt: str = "",
         extension_dir: str | None = None,
         session_dir: Path | None = None,
         session_resume: str | None = None,
         provider_name: str | None = None,
-        temperature: float = 0.7,
-        max_tokens: int = 4096,
-        contemplation_level: str = "medium",
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        contemplation_level: str | None = None,
         contemplation_budget: int | None = None,
-        exclude_contemplation: bool = False,
+        exclude_contemplation: bool | None = None,
+        config_manager: ConfigManager | None = None,
     ) -> None:
         super().__init__(
             api_key=api_key,
@@ -101,14 +93,20 @@ class CodingMvge(BaseMvge):
             contemplation_level=contemplation_level,
             contemplation_budget=contemplation_budget,
             exclude_contemplation=exclude_contemplation,
+            config_manager=config_manager,
         )
-        self._spell_names = spells if spells is not None else list(DEFAULT_SPELL_MAP)
+        # Use spells from config if not explicitly provided, otherwise
+        # default to all builtin spells
+        if spells is not None:
+            self._spell_names = spells
+        elif self._spell_names is None:
+            self._spell_names = list(DEFAULT_SPELL_MAP.keys())
         self._custom_system_prompt = custom_system_prompt
         self._prompt_source = PromptSource.BUILTIN
 
     @property
     def enabled_spells(self) -> list[str]:
-        return list(self._spell_names)
+        return list(self._spell_names or [])
 
     def _build_spells(self) -> list[MvgeSpell]:
         # Seekers (meta-tools) - always included
@@ -144,38 +142,12 @@ class CodingMvge(BaseMvge):
 
         return seeker_spells + rune_spells + builtin_spells
 
-    async def _build_system_prompt_async(self) -> str:
-        # Build base prompt through the loader, capturing the source
+    def _render_prompt(
+        self, body: str, spell_names: list[str], guidelines: list[str]
+    ) -> str:
+        """Render prompt with only seeker spell names."""
         seeker_names = ["tool_search", "skill_search", "skill_execute", "mcp_search"]
-        loader = PromptLoader(agent_name=self._name, config_dir=self.config_dir)
-        resolved = loader.resolve_system_prompt(
-            custom=self._custom_system_prompt,
-            default=_SYSTEM_PROMPT_BODY,
-        )
-        self._prompt_source = resolved.source
-        base_prompt = _render_with_spells(resolved.text, seeker_names)
-
-        # Allow runes to inject additional prompt content
-        if self._runner is not None:
-            prompt_data = {
-                "base_prompt": base_prompt,
-                "seeker_names": [
-                    "tool_search",
-                    "skill_search",
-                    "skill_execute",
-                    "mcp_search",
-                ],
-                "config_dir": str(self.config_dir) if self.config_dir else "",
-                "custom_prompt": self._custom_system_prompt,
-                "agent_name": self._name,
-                "cwd": str(Path.cwd()),
-            }
-            prompt_data = await self._runner.emit_chain(
-                SigilHook.BEFORE_MVGE_START, prompt_data
-            )
-            base_prompt = prompt_data.get("base_prompt", base_prompt)
-
-        return f"{base_prompt}\n\nCurrent working directory: {Path.cwd()}"
+        return super()._render_prompt(body, seeker_names, guidelines)
 
     async def _run_impl(self) -> MvgeInvocation:
         assert self._model is not None

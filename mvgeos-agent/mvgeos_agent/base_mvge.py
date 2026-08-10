@@ -23,7 +23,7 @@ from mvgeos_tome.ledger import TomeLedger
 from mvgeos_agent.agent_session import MvgeTome
 from mvgeos_agent.compaction import DEFAULT_COMPACTION_SETTINGS, CompactionSettings
 from mvgeos_agent.compaction_runner import CompactionRunner
-from mvgeos_agent.config_manager import ConfigManager, ConfigValue
+from mvgeos_agent.config_manager import ConfigLayer, ConfigManager, ConfigValue
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
     DEFAULT_MODEL,
@@ -85,52 +85,45 @@ class BaseMvge:
         self._provider_name = provider_name
         self._compaction_settings = compaction
 
+        self._config_manager: ConfigManager | None = None
+
         # Use ConfigManager to resolve defaults if provided
         if config_manager is not None:
             self._config_manager = config_manager
             resolved = config_manager.load()
-            self._model_id = (
-                model or resolved.get("model", ConfigValue(DEFAULT_MODEL, None)).value
-            )
+
+            def _get(
+                key: str, default: Any, layer: ConfigLayer = ConfigLayer.DEFAULTS
+            ) -> Any:
+                return resolved.get(key, ConfigValue(default, layer)).value
+
+            self._model_id = model or _get("model", DEFAULT_MODEL)
             self._temperature = (
-                temperature
-                if temperature is not None
-                else resolved.get("temperature", ConfigValue(0.7, None)).value
+                temperature if temperature is not None else _get("temperature", 0.7)
             )
             self._max_tokens = (
-                max_tokens
-                if max_tokens is not None
-                else resolved.get("max_tokens", ConfigValue(4096, None)).value
+                max_tokens if max_tokens is not None else _get("max_tokens", 4096)
             )
-            self._contemplation_level = (
-                contemplation_level
-                or resolved.get(
-                    "contemplation_level", ConfigValue("medium", None)
-                ).value
+            self._contemplation_level = contemplation_level or _get(
+                "contemplation_level", "medium"
             )
             self._contemplation_budget = (
                 contemplation_budget
                 if contemplation_budget is not None
-                else resolved.get("contemplation_budget", ConfigValue(None, None)).value
+                else _get("contemplation_budget", None)
             )
             self._exclude_contemplation = (
                 exclude_contemplation
                 if exclude_contemplation is not None
-                else resolved.get(
-                    "exclude_contemplation", ConfigValue(False, None)
-                ).value
+                else _get("exclude_contemplation", False)
             )
-            spells_enabled = resolved.get("spells_enabled", ConfigValue([], None)).value
+            spells_enabled = _get("spells_enabled", [])
             self._spell_names = list(spells_enabled) if spells_enabled else None
             # Rune paths from config if not explicitly provided
             if runes_paths is not None:
-                self._runes_paths: list[Path] = [
-                    Path(str(p)).expanduser() for p in runes_paths
-                ]
+                self._runes_paths = [Path(str(p)).expanduser() for p in runes_paths]
             else:
-                rune_paths_config = resolved.get(
-                    "rune_paths", ConfigValue(None, None)
-                ).value
+                rune_paths_config = _get("rune_paths", None)
                 if rune_paths_config:
                     self._runes_paths = [
                         Path(str(p)).expanduser() for p in rune_paths_config
@@ -139,7 +132,6 @@ class BaseMvge:
                     self._runes_paths = resolve_rune_paths(name, extension_dir)
         else:
             # Backward compatibility: use explicit params or hardcoded defaults
-            self._config_manager = None
             self._model_id = model if model is not None else DEFAULT_MODEL
             self._temperature = temperature if temperature is not None else 0.7
             self._max_tokens = max_tokens if max_tokens is not None else 4096
@@ -152,9 +144,7 @@ class BaseMvge:
             )
             self._spell_names = None
             if runes_paths is not None:
-                self._runes_paths: list[Path] = [
-                    Path(str(p)).expanduser() for p in runes_paths
-                ]
+                self._runes_paths = [Path(str(p)).expanduser() for p in runes_paths]
             else:
                 self._runes_paths = resolve_rune_paths(name, extension_dir)
 
@@ -251,6 +241,22 @@ class BaseMvge:
     def _build_system_prompt(self) -> str:
         """Override in subclass to provide agent-specific system prompt."""
         return "You are a helpful AI agent."
+
+    def _render_prompt(
+        self, body: str, spell_names: list[str], guidelines: list[str]
+    ) -> str:
+        """Render a prompt with body, spells, and guidelines."""
+        parts = [body]
+        if spell_names:
+            spell_list = "\n".join(f"  - {s}" for s in spell_names)
+        else:
+            spell_list = "  (none)"
+        parts.append(f"\nActive spells:\n{spell_list}")
+        if guidelines:
+            parts.append("\nGuidelines:")
+            parts.extend(f"- {g}" for g in guidelines)
+        parts.append(f"\nCurrent working directory: {Path.cwd()}")
+        return "\n".join(parts)
 
     async def _build_system_prompt_async(self) -> str:
         """Async version that supports rune prompt injection via sigil hooks.

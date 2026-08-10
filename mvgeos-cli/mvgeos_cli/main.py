@@ -19,9 +19,9 @@ from coding_mvge.spells import (
     cast_write,
 )
 from mvgeos_agent.agent_session import MvgeTome
+from mvgeos_agent.config_manager import ConfigManager
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
-    DEFAULT_MODEL,
     resolve_rune_paths,
 )
 from mvgeos_agent.loop import MvgeLoop
@@ -81,12 +81,12 @@ def _scope_for_path(path: Path) -> RuneScope:
 
 async def _run_agent(
     incantation: str | None,
-    model_id: str,
+    model_id: str | None,
     api_key: str,
-    temperature: float,
-    max_tokens: int,
-    contemplation_level: str,
-    spells_enabled: list[str],
+    temperature: float | None,
+    max_tokens: int | None,
+    contemplation_level: str | None,
+    spells_enabled: list[str] | None,
     extension_dir: str | None,
     resume: str | None,
     provider_name: str | None,
@@ -94,6 +94,33 @@ async def _run_agent(
     tui: bool,
     agent_name: str = DEFAULT_AGENT_NAME,
 ) -> None:
+    # Create ConfigManager to resolve config from all layers
+    config_manager = ConfigManager(agent_name=agent_name)
+
+    # Apply CLI overrides if provided
+    if model_id is not None:
+        config_manager = config_manager.with_overrides(model=model_id)
+    if temperature is not None:
+        config_manager = config_manager.with_overrides(temperature=temperature)
+    if max_tokens is not None:
+        config_manager = config_manager.with_overrides(max_tokens=max_tokens)
+    if contemplation_level is not None:
+        config_manager = config_manager.with_overrides(
+            contemplation_level=contemplation_level
+        )
+    if spells_enabled is not None:
+        config_manager = config_manager.with_overrides(spells_enabled=spells_enabled)
+
+    # Get resolved config
+    resolved = config_manager.load()
+    model_id = model_id or resolved["model"].value
+    temperature = (
+        temperature if temperature is not None else resolved["temperature"].value
+    )
+    max_tokens = max_tokens if max_tokens is not None else resolved["max_tokens"].value
+    contemplation_level = contemplation_level or resolved["contemplation_level"].value
+    spells_enabled = spells_enabled or resolved["spells_enabled"].value
+
     if incantation is None:
         if tui:
             from mvgeos_cli.commands.tui import run_tui
@@ -319,26 +346,21 @@ def _repl_callback(
     incantation: str | None = typer.Option(
         None, "--incantation", help="Prompt to send (if omitted, starts REPL)"
     ),
-    model: str = typer.Option(
-        DEFAULT_MODEL,
-        "--model",
-        "-m",
-        help="Model to use",
-    ),
+    model: str | None = typer.Option(None, "--model", "-m", help="Model to use"),
     api_key: str | None = typer.Option(
         None,
         "--api-key",
         help="OpenRouter API key (or set OPENROUTER_API_KEY env)",
     ),
-    temperature: float = typer.Option(
-        0.7, "--temperature", "-t", help="Sampling temperature"
+    temperature: float | None = typer.Option(
+        None, "--temperature", "-t", help="Sampling temperature"
     ),
-    max_tokens: int = typer.Option(4096, "--max-tokens", help="Maximum tokens"),
-    contemplation: str = typer.Option(
-        "medium", "--contemplation", "-c", help="Contemplation level"
+    max_tokens: int | None = typer.Option(None, "--max-tokens", help="Maximum tokens"),
+    contemplation: str | None = typer.Option(
+        None, "--contemplation", "-c", help="Contemplation level"
     ),
-    spells: str = typer.Option(
-        "bash,read,write,edit,find,list,grep",
+    spells: str | None = typer.Option(
+        None,
         "--spells",
         "-s",
         help="Comma-separated list of enabled spells",
@@ -392,6 +414,10 @@ def _repl_callback(
         )
         raise typer.Exit(1)
 
+    spells_list = (
+        [s.strip() for s in spells.split(",") if s.strip()] if spells else None
+    )
+
     asyncio.run(
         _run_agent(
             incantation=ctx.params.get("incantation"),
@@ -400,7 +426,7 @@ def _repl_callback(
             temperature=temperature,
             max_tokens=max_tokens,
             contemplation_level=contemplation,
-            spells_enabled=[s.strip() for s in spells.split(",") if s.strip()],
+            spells_enabled=spells_list,
             extension_dir=extension_dir,
             resume=resume,
             provider_name=provider,
