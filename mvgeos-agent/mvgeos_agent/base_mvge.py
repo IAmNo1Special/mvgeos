@@ -19,6 +19,11 @@ from mvgeos_tome.ledger import TomeLedger
 from mvgeos_agent.agent_session import MvgeTome
 from mvgeos_agent.compaction import DEFAULT_COMPACTION_SETTINGS, CompactionSettings
 from mvgeos_agent.compaction_runner import CompactionRunner
+from mvgeos_agent.constants import (
+    DEFAULT_AGENT_NAME,
+    DEFAULT_MODEL,
+    resolve_rune_paths,
+)
 from mvgeos_agent.event_bus import EventBus
 from mvgeos_agent.loop import MvgeLoop, StreamFn
 from mvgeos_agent.types import (
@@ -51,8 +56,8 @@ class BaseMvge:
         self,
         api_key: str,
         *,
-        name: str = "base-mvge",
-        model: str = "nvidia/nemotron-3-ultra-550b-a55b:free",
+        name: str = DEFAULT_AGENT_NAME,
+        model: str = DEFAULT_MODEL,
         extension_dir: str | None = None,
         session_dir: Path | None = None,
         session_resume: str | None = None,
@@ -78,11 +83,12 @@ class BaseMvge:
         self._contemplation_budget = contemplation_budget
         self._exclude_contemplation = exclude_contemplation
         self._compaction_settings = compaction
-        self._runes_paths: Sequence[str] = runes_paths or [
-            "~/.agents/.mvgeos/runes",
-            f"~/.agents/.mvgeos/{name}/runes",
-            ".agents/.mvgeos/runes",
-        ]
+        if runes_paths is not None:
+            self._runes_paths: list[Path] = [
+                Path(str(p)).expanduser() for p in runes_paths
+            ]
+        else:
+            self._runes_paths = resolve_rune_paths(name)
 
         self._provider_registry = RealmRegistry()
         self._runner: RuneRunner | None = None
@@ -397,10 +403,7 @@ class BaseMvge:
             if isinstance(pconfig, dict):
                 self._provider_registry.register_provider(pname, pconfig)
 
-        # Start a watcher for each path that exists
-        for path_str in self._runes_paths:
-            expanded = str(path_str).replace("{agent_name}", self._name)
-            path = Path(expanded).expanduser()
+        for path in self._runes_paths:
             if path.exists():
                 watcher = RuneWatcher(path, self._runner)
                 await watcher.start()

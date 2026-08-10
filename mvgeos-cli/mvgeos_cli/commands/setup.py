@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 import typer
+from mvgeos_agent.constants import DEFAULT_AGENT_NAME, resolve_rune_paths
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.types import RuneManifest
 from rich.console import Console
@@ -165,25 +166,13 @@ async def install_rune_python_deps(
         return False, f"uv pip install error: {e}"
 
 
-def get_rune_paths(agent_name: str, extension_dir: str | None) -> list[Path]:
-    """Return expanded rune search paths in precedence order."""
-    paths: list[str | Path] = [
-        "~/.agents/.mvgeos/runes",
-        f"~/.agents/.mvgeos/{agent_name}/runes",
-        ".agents/.mvgeos/runes",
-    ]
-    if extension_dir:
-        paths = [*paths, extension_dir]
-    return [Path(str(p)).expanduser() for p in paths]
-
-
 def collect_rune_dirs(
     agent_name: str, extension_dir: str | None
 ) -> list[tuple[RuneManifest, Path]]:
     """Load enabled runes and return (manifest, rune_dir) pairs."""
     results: list[tuple[RuneManifest, Path]] = []
     seen_names: set[str] = set()
-    for base in get_rune_paths(agent_name, extension_dir):
+    for base in resolve_rune_paths(agent_name, extension_dir):
         if not base.exists():
             continue
         for entry in base.iterdir():
@@ -202,7 +191,7 @@ def collect_rune_dirs(
 @setup_app.command("check")
 def setup_check(
     agent_name: str = typer.Option(
-        "coding-agent",
+        DEFAULT_AGENT_NAME,
         "--agent-name",
         help="Agent name for agent-specific rune directory",
     ),
@@ -260,7 +249,7 @@ def setup_check(
 @setup_app.command("install")
 def setup_install(
     agent_name: str = typer.Option(
-        "coding-agent",
+        DEFAULT_AGENT_NAME,
         "--agent-name",
         help="Agent name for agent-specific rune directory",
     ),

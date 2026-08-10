@@ -103,9 +103,10 @@ def test_collect_rune_dirs_with_manifest() -> None:
         (rune_dir / "manifest.json").write_text(manifest_data, encoding="utf-8")
 
         with patch(
-            "mvgeos_cli.commands.setup.get_rune_paths", return_value=[runes_dir]
+            "mvgeos_cli.commands.setup.resolve_rune_paths",
+            return_value=[runes_dir],
         ):
-            results = collect_rune_dirs("coding-agent", None)
+            results = collect_rune_dirs("coding-mvge", None)
             assert len(results) == 1
             manifest, path = results[0]
             assert manifest.name == "my_rune"
@@ -126,9 +127,10 @@ def test_collect_rune_dirs_skips_disabled() -> None:
         (rune_dir / "manifest.json").write_text(manifest_data, encoding="utf-8")
 
         with patch(
-            "mvgeos_cli.commands.setup.get_rune_paths", return_value=[runes_dir]
+            "mvgeos_cli.commands.setup.resolve_rune_paths",
+            return_value=[runes_dir],
         ):
-            results = collect_rune_dirs("coding-agent", None)
+            results = collect_rune_dirs("coding-mvge", None)
             assert results == []
 
 

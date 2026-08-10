@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from mvgeos_agent.base_mvge import BaseMvge
+from mvgeos_agent.constants import DEFAULT_AGENT_NAME, DEFAULT_MODEL
 from mvgeos_agent.prompt_config import load_system_prompt
 from mvgeos_agent.spell_schema import generate_spell_schema
 from mvgeos_agent.types import MvgeInvocation, MvgeSpell, SpellResult
@@ -64,8 +65,8 @@ class CodingMvge(BaseMvge):
         self,
         api_key: str,
         *,
-        name: str = "coding-mvge",
-        model: str = "nvidia/nemotron-3-ultra-550b-a55b:free",
+        name: str = DEFAULT_AGENT_NAME,
+        model: str = DEFAULT_MODEL,
         spells: list[str] | None = None,
         custom_system_prompt: str = "",
         extension_dir: str | None = None,

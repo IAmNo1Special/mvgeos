@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from mvgeos_agent.constants import DEFAULT_AGENT_NAME
+
 logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT_BODY = (
@@ -108,7 +110,7 @@ def build_system_prompt(
     custom: str = "",
     append_text: str = "",
     context_files: list[dict[str, str]] | None = None,
-    name: str = "coding-agent",
+    name: str = DEFAULT_AGENT_NAME,
 ) -> str:
     """Build a system prompt with spells, guidelines, and optional context files.
 

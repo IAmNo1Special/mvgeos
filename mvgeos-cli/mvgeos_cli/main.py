@@ -4,7 +4,7 @@ import asyncio
 import dataclasses
 import json
 import os
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import cast
 
@@ -19,6 +19,11 @@ from coding_mvge.spells import (
     cast_write,
 )
 from mvgeos_agent.agent_session import MvgeTome
+from mvgeos_agent.constants import (
+    DEFAULT_AGENT_NAME,
+    DEFAULT_MODEL,
+    resolve_rune_paths,
+)
 from mvgeos_agent.loop import MvgeLoop
 from mvgeos_agent.prompt_config import (
     build_system_prompt,
@@ -42,7 +47,6 @@ from mvgeos_runes.watcher import RuneWatcher
 from mvgeos_tome.ledger import TomeLedger
 from rich.console import Console
 
-from mvgeos_cli import DEFAULT_MODEL
 from mvgeos_cli.commands.config import config_app
 from mvgeos_cli.commands.setup import setup_app
 from mvgeos_cli.commands.tome import tome_app
@@ -79,7 +83,7 @@ async def _run_agent(
     provider_name: str | None,
     session_dir: str | None,
     tui: bool,
-    agent_name: str = "coding-agent",
+    agent_name: str = DEFAULT_AGENT_NAME,
 ) -> None:
     if incantation is None:
         if tui:
@@ -122,14 +126,7 @@ async def _run_agent(
     runner: RuneRunner | None = None
     watchers: list[RuneWatcher] = []
 
-    # Load runes from three levels: global, agent, project
-    runes_paths: Sequence[str | Path] = [
-        "~/.agents/.mvgeos/runes",
-        f"~/.agents/.mvgeos/{agent_name}/runes",
-        ".agents/.mvgeos/runes",
-    ]
-    if extension_dir:
-        runes_paths = [*runes_paths, extension_dir]
+    runes_paths = resolve_rune_paths(agent_name, extension_dir)
 
     factories, manifests = load_runes_from_paths(runes_paths, agent_name)
     if factories or manifests:
@@ -147,10 +144,7 @@ async def _run_agent(
             if isinstance(pconfig, dict):
                 provider_registry.register_provider(pname, pconfig)
 
-        # Start watchers for each path that exists
-        for path_str in runes_paths:
-            expanded = str(path_str).replace("{agent_name}", agent_name)
-            path = Path(expanded).expanduser()
+        for path in runes_paths:
             if path.exists():
                 watcher = RuneWatcher(path, runner)
                 await watcher.start()
@@ -368,7 +362,7 @@ def _repl_callback(
         help="Use the full-screen TUI instead of the streaming REPL",
     ),
     agent_name: str = typer.Option(
-        "coding-agent",
+        DEFAULT_AGENT_NAME,
         "--agent-name",
         help="Agent name for agent-specific rune directory",
     ),

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import typer
+from mvgeos_agent.constants import DEFAULT_MODEL, DEFAULT_RUNE_PATHS
 from rich.console import Console
 
 console = Console()
@@ -15,16 +16,12 @@ CONFIG_DIR = Path(".agents/.mvgeos")
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULT_CONFIG = {
-    "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "model": DEFAULT_MODEL,
     "max_tokens": 4096,
     "temperature": 0.7,
     "contemplation_level": "medium",
     "spells_enabled": ["bash", "read", "write", "edit", "find", "list", "grep"],
-    "runes_paths": [
-        "~/.agents/.mvgeos/runes",
-        "~/.agents/.mvgeos/{agent_name}/runes",
-        ".agents/.mvgeos/runes",
-    ],
+    "runes_paths": DEFAULT_RUNE_PATHS,
 }
 
 

@@ -1,1 +1,3 @@
-DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
+from mvgeos_agent.constants import DEFAULT_MODEL
+
+__all__ = ["DEFAULT_MODEL"]
