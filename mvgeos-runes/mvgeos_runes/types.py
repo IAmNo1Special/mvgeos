@@ -31,11 +31,19 @@ class SigilHook(StrEnum):
     PREPARE_NEXT_TURN = "prepare_next_turn"
 
 
+class RuneScope(StrEnum):
+    PROJECT = "project"
+    USER = "user"
+    AGENT = "agent"
+
+
 @dataclass
 class RuneManifest:
     name: str
     version: str
     description: str
+    scope: RuneScope = RuneScope.PROJECT
+    path: str = ""
     hooks: list[SigilHook] = field(default_factory=list)
     entry_point: str = ""
     shortcuts: list[RuneShortcut] = field(default_factory=list)
@@ -72,6 +80,27 @@ class RuneShortcut:
     handler: Any = None
 
 
+class DiagnosticKind(StrEnum):
+    SHADOWED_RUNE = "shadowed_rune"
+    LOAD_FAILURE = "load_failure"
+    PARSE_WARNING = "parse_warning"
+
+
+@dataclass
+class Diagnostic:
+    kind: DiagnosticKind
+    rune_name: str
+    message: str
+    scope: RuneScope | None = None
+    path: str = ""
+
+
+@dataclass
+class RuneLoad:
+    manifest: RuneManifest
+    factory: Any = None
+
+
 class SpellDefinition:
     def __init__(
         self,
@@ -81,6 +110,7 @@ class SpellDefinition:
         execution_mode: ExecutionMode = ExecutionMode.PARALLEL,
         prompt_snippet: str | None = None,
         prompt_guidelines: list[str] | None = None,
+        source_rune: str | None = None,
     ) -> None:
         self.name = name
         self.description = description
@@ -88,6 +118,7 @@ class SpellDefinition:
         self.execution_mode = execution_mode
         self.prompt_snippet = prompt_snippet
         self.prompt_guidelines = prompt_guidelines or []
+        self.source_rune = source_rune
 
     async def execute(
         self,

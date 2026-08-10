@@ -24,7 +24,7 @@ from mvgeos_provider.base import Realm
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 from mvgeos_runes.loader import load_runes_from_paths
 from mvgeos_runes.rune_runner import RuneRunner
-from mvgeos_runes.types import RuneContext
+from mvgeos_runes.types import RuneContext, RuneScope
 from mvgeos_tome.ledger import TomeLedger
 
 from mvgeos_harness import MvgeHarness
@@ -180,8 +180,9 @@ class _MockMvge(BaseMvge):
         if self._initialized:
             return
 
-        factories, manifests = load_runes_from_paths(self._runes_paths, self._name)
-        if factories or manifests:
+        paths_with_scope = [(p, RuneScope.PROJECT) for p in self._runes_paths]
+        loads, diagnostics = load_runes_from_paths(paths_with_scope, self._name)
+        if loads:
             self._runner = RuneRunner()
             self._runner.bind_context(
                 RuneContext(
@@ -191,7 +192,7 @@ class _MockMvge(BaseMvge):
                     api_key=self._api_key,
                 )
             )
-            await self._runner.load_runes(factories, manifests)
+            await self._runner.load_rune_loads(loads, diagnostics)
 
         self._model = self._compose_model(self._model_id)
 

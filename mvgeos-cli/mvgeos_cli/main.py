@@ -42,7 +42,7 @@ from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 from mvgeos_runes.loader import load_runes_from_paths
 from mvgeos_runes.rune_runner import RuneRunner
-from mvgeos_runes.types import RuneContext
+from mvgeos_runes.types import RuneContext, RuneScope
 from mvgeos_runes.watcher import RuneWatcher
 from mvgeos_tome.ledger import TomeLedger
 from rich.console import Console
@@ -68,6 +68,15 @@ def _load_api_key_from_auth() -> str | None:
 
 
 app = typer.Typer(name="mvgeos", help="MvgeOS — a Python-based AI coding agent")
+
+
+def _scope_for_path(path: Path) -> RuneScope:
+    path_str = str(path)
+    if ".mvgeos/runes" in path_str and "{agent_name}" not in path_str:
+        return RuneScope.USER
+    if "{agent_name}" in path_str:
+        return RuneScope.AGENT
+    return RuneScope.PROJECT
 
 
 async def _run_agent(
@@ -127,9 +136,10 @@ async def _run_agent(
     watchers: list[RuneWatcher] = []
 
     runes_paths = resolve_rune_paths(agent_name, extension_dir)
+    paths_with_scope = [(p, _scope_for_path(p)) for p in runes_paths]
 
-    factories, manifests = load_runes_from_paths(runes_paths, agent_name)
-    if factories or manifests:
+    loads, diagnostics = load_runes_from_paths(paths_with_scope, agent_name)
+    if loads:
         runner = RuneRunner()
         runner.bind_context(
             RuneContext(
@@ -139,12 +149,12 @@ async def _run_agent(
                 api_key=api_key,
             )
         )
-        await runner.load_runes(factories, manifests)
+        await runner.load_rune_loads(loads, diagnostics)
         for pname, pconfig in runner.get_registered_providers().items():
             if isinstance(pconfig, dict):
                 provider_registry.register_provider(pname, pconfig)
 
-        for path in runes_paths:
+        for path, _ in paths_with_scope:
             if path.exists():
                 watcher = RuneWatcher(path, runner)
                 await watcher.start()

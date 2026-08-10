@@ -12,7 +12,7 @@ from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 from mvgeos_runes.loader import load_runes_from_paths
 from mvgeos_runes.rune_runner import RuneRunner
-from mvgeos_runes.types import RuneContext, RuneShortcut, SigilHook
+from mvgeos_runes.types import RuneContext, RuneScope, RuneShortcut, SigilHook
 from mvgeos_runes.watcher import RuneWatcher
 from mvgeos_tome.ledger import TomeLedger
 
@@ -385,8 +385,9 @@ class BaseMvge:
 
     async def _load_runes(self) -> None:
         """Load runes from all three levels (global, agent, project)."""
-        factories, manifests = load_runes_from_paths(self._runes_paths, self._name)
-        if not factories and not manifests:
+        paths_with_scope = self._build_rune_paths_with_scope()
+        loads, diagnostics = load_runes_from_paths(paths_with_scope, self._name)
+        if not loads:
             return
 
         self._runner = RuneRunner()
@@ -398,16 +399,29 @@ class BaseMvge:
                 api_key=self._api_key,
             )
         )
-        await self._runner.load_runes(factories, manifests)
+        await self._runner.load_rune_loads(loads, diagnostics)
         for pname, pconfig in self._runner.get_registered_providers().items():
             if isinstance(pconfig, dict):
                 self._provider_registry.register_provider(pname, pconfig)
 
-        for path in self._runes_paths:
+        for path, _ in paths_with_scope:
             if path.exists():
                 watcher = RuneWatcher(path, self._runner)
                 await watcher.start()
                 self._watchers.append(watcher)
+
+    def _build_rune_paths_with_scope(self) -> list[tuple[Path, RuneScope]]:
+        result: list[tuple[Path, RuneScope]] = []
+        for path in self._runes_paths:
+            resolved = Path(str(path).replace("{agent_name}", self._name)).expanduser()
+            if ".mvgeos/runes" in str(path) and "{agent_name}" not in str(path):
+                scope = RuneScope.USER
+            elif "{agent_name}" in str(path):
+                scope = RuneScope.AGENT
+            else:
+                scope = RuneScope.PROJECT
+            result.append((resolved, scope))
+        return result
 
     async def switch_model(self, model_id: str) -> None:
         """Switch the active model, preserving the current session context."""

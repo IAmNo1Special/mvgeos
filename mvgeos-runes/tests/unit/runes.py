@@ -6,10 +6,13 @@ from mvgeos_runes.loader import (
     load_factories,
     load_factory_from_manifest,
     load_manifests,
+    load_runes_from_paths,
 )
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.types import (
+    DiagnosticKind,
     RuneManifest,
+    RuneScope,
     SigilHook,
 )
 
@@ -459,3 +462,124 @@ def test_spell_definition_execute_not_implemented() -> None:
 
     with pytest.raises(NotImplementedError):
         asyncio.run(spell.execute("cast-1", {}))
+
+
+class TestLoadRunesFromPaths:
+    def test_dedup_by_name_first_wins(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as tmpdir1,
+            tempfile.TemporaryDirectory() as tmpdir2,
+        ):
+            rune1_dir = Path(tmpdir1) / "shared_name"
+            rune1_dir.mkdir()
+            (rune1_dir / "manifest.json").write_text(
+                '{"name": "shared_name", "version": "1.0.0", '
+                '"description": "First", "hooks": []}',
+                encoding="utf-8",
+            )
+
+            rune2_dir = Path(tmpdir2) / "shared_name"
+            rune2_dir.mkdir()
+            (rune2_dir / "manifest.json").write_text(
+                '{"name": "shared_name", "version": "2.0.0", '
+                '"description": "Second", "hooks": []}',
+                encoding="utf-8",
+            )
+
+            loads, diagnostics = load_runes_from_paths(
+                [
+                    (Path(tmpdir1), RuneScope.PROJECT),
+                    (Path(tmpdir2), RuneScope.USER),
+                ]
+            )
+            assert len(loads) == 1
+            assert loads[0].manifest.version == "1.0.0"
+            assert loads[0].manifest.scope == RuneScope.PROJECT
+
+            shadowed = [
+                d for d in diagnostics if d.kind == DiagnosticKind.SHADOWED_RUNE
+            ]
+            assert len(shadowed) == 1
+            assert shadowed[0].rune_name == "shared_name"
+
+    def test_winner_scope_recorded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rune_dir = Path(tmpdir) / "my_rune"
+            rune_dir.mkdir()
+            (rune_dir / "manifest.json").write_text(
+                '{"name": "my_rune", "version": "1.0.0", '
+                '"description": "Test", "hooks": []}',
+                encoding="utf-8",
+            )
+
+            loads, diagnostics = load_runes_from_paths(
+                [(Path(tmpdir), RuneScope.AGENT)]
+            )
+            assert len(loads) == 1
+            assert loads[0].manifest.scope == RuneScope.AGENT
+            assert loads[0].manifest.path == str(rune_dir)
+
+    def test_parse_warning_for_invalid_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rune_dir = Path(tmpdir) / "bad_rune"
+            rune_dir.mkdir()
+            (rune_dir / "manifest.json").write_text("{invalid json}", encoding="utf-8")
+
+            loads, diagnostics = load_runes_from_paths([(Path(tmpdir), RuneScope.USER)])
+            assert len(loads) == 0
+            parse_warnings = [
+                d for d in diagnostics if d.kind == DiagnosticKind.PARSE_WARNING
+            ]
+            assert len(parse_warnings) == 1
+            assert parse_warnings[0].rune_name == "bad_rune"
+
+    def test_load_failure_for_missing_entry_point(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rune_dir = Path(tmpdir) / "broken_rune"
+            rune_dir.mkdir()
+            (rune_dir / "manifest.json").write_text(
+                '{"name": "broken_rune", "version": "1.0.0", '
+                '"description": "Broken", "hooks": [], '
+                '"entry_point": "nonexistent.py"}',
+                encoding="utf-8",
+            )
+
+            loads, diagnostics = load_runes_from_paths([(Path(tmpdir), RuneScope.USER)])
+            assert len(loads) == 1
+            assert loads[0].factory is None
+            load_failures = [
+                d for d in diagnostics if d.kind == DiagnosticKind.LOAD_FAILURE
+            ]
+            assert len(load_failures) == 1
+            assert load_failures[0].rune_name == "broken_rune"
+
+    def test_multiple_scopes_no_duplicates(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as tmpdir1,
+            tempfile.TemporaryDirectory() as tmpdir2,
+        ):
+            rune1_dir = Path(tmpdir1) / "rune_a"
+            rune1_dir.mkdir()
+            (rune1_dir / "manifest.json").write_text(
+                '{"name": "rune_a", "version": "1.0.0", '
+                '"description": "A", "hooks": []}',
+                encoding="utf-8",
+            )
+
+            rune2_dir = Path(tmpdir2) / "rune_b"
+            rune2_dir.mkdir()
+            (rune2_dir / "manifest.json").write_text(
+                '{"name": "rune_b", "version": "1.0.0", '
+                '"description": "B", "hooks": []}',
+                encoding="utf-8",
+            )
+
+            loads, diagnostics = load_runes_from_paths(
+                [
+                    (Path(tmpdir1), RuneScope.PROJECT),
+                    (Path(tmpdir2), RuneScope.USER),
+                ]
+            )
+            assert len(loads) == 2
+            names = {load.manifest.name for load in loads}
+            assert names == {"rune_a", "rune_b"}

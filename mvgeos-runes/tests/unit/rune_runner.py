@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -7,7 +8,9 @@ import pytest
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     RegisteredCommand,
+    RuneLoad,
     RuneManifest,
+    RuneScope,
     RuneShortcut,
     SigilHook,
     SpellDefinition,
@@ -310,3 +313,136 @@ class TestRuneRunnerLifecycle:
 
         await runner.load_runes([factory], None)
         assert runner.get_shortcuts() == []
+
+
+class TestRuneRunnerProvenance:
+    @pytest.mark.asyncio
+    async def test_spell_provenance_set_from_loading_rune(self) -> None:
+        runner = RuneRunner()
+        manifest = RuneManifest(
+            name="my_rune",
+            version="1.0.0",
+            description="Test",
+            scope=RuneScope.USER,
+            path="/tmp/my_rune",
+        )
+
+        def factory(api: Any) -> None:
+            api.register_spell(
+                SpellDefinition(name="rune_spell", description="From rune")
+            )
+
+        load = RuneLoad(manifest=manifest, factory=factory)
+        await runner.load_rune_loads([load])
+        spells = runner.get_all_registered_spells()
+        assert len(spells) == 1
+        assert spells[0].source_rune == "my_rune"
+
+    @pytest.mark.asyncio
+    async def test_spell_provenance_none_without_rune(self) -> None:
+        runner = RuneRunner()
+        spell = SpellDefinition(name="builtin_spell", description="Builtin")
+        runner.register_spell(spell)
+        assert spell.source_rune is None
+
+    @pytest.mark.asyncio
+    async def test_loaded_manifests_retained(self) -> None:
+        runner = RuneRunner()
+        manifest = RuneManifest(
+            name="retained_rune",
+            version="1.0.0",
+            description="Test",
+            scope=RuneScope.PROJECT,
+            path="/tmp/retained",
+        )
+
+        def factory(api: Any) -> None:
+            pass
+
+        load = RuneLoad(manifest=manifest, factory=factory)
+        await runner.load_rune_loads([load])
+        assert len(runner.loaded_manifests) == 1
+        assert runner.loaded_manifests[0].name == "retained_rune"
+        assert runner.loaded_manifests[0].scope == RuneScope.PROJECT
+        assert runner.loaded_manifests[0].path == "/tmp/retained"
+
+    @pytest.mark.asyncio
+    async def test_manifest_scope_recorded(self) -> None:
+        runner = RuneRunner()
+        manifest = RuneManifest(
+            name="scoped_rune",
+            version="1.0.0",
+            description="Test",
+            scope=RuneScope.AGENT,
+            path="/tmp/scoped",
+        )
+
+        def factory(api: Any) -> None:
+            pass
+
+        load = RuneLoad(manifest=manifest, factory=factory)
+        await runner.load_rune_loads([load])
+        assert runner.loaded_manifests[0].scope == RuneScope.AGENT
+
+
+class TestRuneRunnerDedup:
+    @pytest.mark.asyncio
+    async def test_duplicate_rune_skips_factory(self) -> None:
+        runner = RuneRunner()
+        call_count = 0
+
+        def factory(api: Any) -> None:
+            nonlocal call_count
+            call_count += 1
+
+        manifest1 = RuneManifest(
+            name="dup_rune",
+            version="1.0.0",
+            description="First",
+            scope=RuneScope.PROJECT,
+            path="/tmp/first",
+        )
+        manifest2 = RuneManifest(
+            name="dup_rune",
+            version="2.0.0",
+            description="Second",
+            scope=RuneScope.USER,
+            path="/tmp/second",
+        )
+        loads = [
+            RuneLoad(manifest=manifest1, factory=factory),
+            RuneLoad(manifest=manifest2, factory=factory),
+        ]
+        await runner.load_rune_loads(loads)
+        assert call_count == 1
+        assert len(runner.loaded_manifests) == 1
+        assert runner.loaded_manifests[0].version == "1.0.0"
+
+    @pytest.mark.asyncio
+    async def test_duplicate_rune_no_double_sigil_registration(self) -> None:
+        runner = RuneRunner()
+        handler = MagicMock()
+
+        def factory(api: Any) -> None:
+            api.on(SigilHook.TURN_START, handler)
+
+        manifest1 = RuneManifest(
+            name="sigil_rune",
+            version="1.0.0",
+            description="First",
+            scope=RuneScope.PROJECT,
+            path="/tmp/first",
+        )
+        manifest2 = RuneManifest(
+            name="sigil_rune",
+            version="2.0.0",
+            description="Second",
+            scope=RuneScope.USER,
+            path="/tmp/second",
+        )
+        loads = [
+            RuneLoad(manifest=manifest1, factory=factory),
+            RuneLoad(manifest=manifest2, factory=factory),
+        ]
+        await runner.load_rune_loads(loads)
+        assert len(runner._sigils.get_handlers(SigilHook.TURN_START)) == 1

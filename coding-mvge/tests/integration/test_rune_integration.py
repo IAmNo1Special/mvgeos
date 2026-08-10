@@ -6,7 +6,6 @@ import json
 from typing import Any
 
 import pytest
-from mvgeos_agent.types import MvgeSpell
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.sigils import SigilRegistry
@@ -18,7 +17,7 @@ from mvgeos_runes.types import (
 )
 
 
-class _TestSpell(MvgeSpell):
+class _TestSpell(SpellDefinition):
     """Test spell that tracks execution."""
 
     def __init__(self, name: str, description: str = "Test spell"):

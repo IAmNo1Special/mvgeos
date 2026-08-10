@@ -9,8 +9,10 @@ from mvgeos_agent import MvgeSandbox
 from mvgeos_runes.rune_api import RuneAPI, RuneFactory
 from mvgeos_runes.sigils import SigilRegistry
 from mvgeos_runes.types import (
+    Diagnostic,
     RegisteredCommand,
     RuneContext,
+    RuneLoad,
     RuneManifest,
     RuneShortcut,
     SigilHook,
@@ -54,6 +56,10 @@ class RuneRunner:
         self._session_name: str | None = None
         self._event_handlers: dict[str, list[Any]] = {}
         self._sandbox = MvgeSandbox()
+        self._loaded_manifests: list[RuneManifest] = []
+        self._diagnostics: list[Diagnostic] = []
+        self._loaded_rune_names: set[str] = set()
+        self._current_loading_rune: str | None = None
 
     @property
     def context(self) -> RuneContext:
@@ -63,6 +69,14 @@ class RuneRunner:
     def sandbox(self) -> MvgeSandbox:
         return self._sandbox
 
+    @property
+    def loaded_manifests(self) -> list[RuneManifest]:
+        return list(self._loaded_manifests)
+
+    @property
+    def diagnostics(self) -> list[Diagnostic]:
+        return list(self._diagnostics)
+
     def bind_context(self, context: RuneContext) -> None:
         self._context = context
 
@@ -71,6 +85,8 @@ class RuneRunner:
 
     def register_spell(self, spell: SpellDefinition) -> None:
         if spell.name not in self._spells:
+            if spell.source_rune is None and self._current_loading_rune is not None:
+                spell.source_rune = self._current_loading_rune
             self._spells[spell.name] = spell
         else:
             logger.warning("Duplicate spell registration skipped: %s", spell.name)
@@ -122,15 +138,40 @@ class RuneRunner:
         factories: list[RuneFactory],
         manifests: list[RuneManifest] | None = None,
     ) -> None:
-        if manifests:
-            for manifest in manifests:
-                for sc in manifest.shortcuts:
-                    self.register_shortcut(sc)
+        for manifest in manifests or []:
+            if manifest.name not in self._loaded_rune_names:
+                self._loaded_manifests.append(manifest)
+                self._loaded_rune_names.add(manifest.name)
+            for sc in manifest.shortcuts:
+                self.register_shortcut(sc)
         for factory in factories:
             api = self.create_api()
             result = factory(api)
             if isinstance(result, Awaitable):
                 await result
+
+    async def load_rune_loads(
+        self,
+        loads: list[RuneLoad],
+        diagnostics: list[Diagnostic] | None = None,
+    ) -> None:
+        if diagnostics is not None:
+            self._diagnostics.extend(diagnostics)
+        for load in loads:
+            if load.manifest.name not in self._loaded_rune_names:
+                self._loaded_manifests.append(load.manifest)
+                self._loaded_rune_names.add(load.manifest.name)
+            else:
+                continue
+            for sc in load.manifest.shortcuts:
+                self.register_shortcut(sc)
+            if load.factory is not None:
+                self._current_loading_rune = load.manifest.name
+                api = self.create_api()
+                result = load.factory(api)
+                if isinstance(result, Awaitable):
+                    await result
+                self._current_loading_rune = None
 
     async def emit_async(self, hook: SigilHook, data: Any) -> None:
         for handler in self._sigils.get_handlers(hook):

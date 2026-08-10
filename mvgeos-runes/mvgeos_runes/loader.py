@@ -7,7 +7,13 @@ from typing import cast
 
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_api import RuneFactory
-from mvgeos_runes.types import RuneManifest
+from mvgeos_runes.types import (
+    Diagnostic,
+    DiagnosticKind,
+    RuneLoad,
+    RuneManifest,
+    RuneScope,
+)
 
 
 class RuneLoader:
@@ -70,7 +76,11 @@ def load_factories(extensions_dir: Path) -> list[RuneFactory]:
     return factories
 
 
-def load_manifests(extensions_dir: Path) -> list[RuneManifest]:
+def load_manifests(
+    extensions_dir: Path,
+    scope: RuneScope = RuneScope.PROJECT,
+    diagnostics: list[Diagnostic] | None = None,
+) -> list[RuneManifest]:
     if not extensions_dir.exists():
         return []
     manifests: list[RuneManifest] = []
@@ -78,35 +88,86 @@ def load_manifests(extensions_dir: Path) -> list[RuneManifest]:
         if not entry.is_dir():
             continue
         manifest = load_manifest(entry)
-        if manifest is not None and manifest.enabled:
-            manifests.append(manifest)
+        if manifest is None:
+            if diagnostics is not None:
+                diagnostics.append(
+                    Diagnostic(
+                        kind=DiagnosticKind.PARSE_WARNING,
+                        rune_name=entry.name,
+                        message=f"Could not parse manifest in {entry.name}",
+                        scope=scope,
+                        path=str(entry),
+                    )
+                )
+            continue
+        if not manifest.enabled:
+            continue
+        manifest.scope = scope
+        manifest.path = str(entry)
+        manifests.append(manifest)
     return manifests
 
 
 def load_runes_from_paths(
-    paths: Sequence[str | Path],
+    paths: Sequence[tuple[str | Path, RuneScope]],
     agent_name: str | None = None,
-) -> tuple[list[RuneFactory], list[RuneManifest]]:
+) -> tuple[list[RuneLoad], list[Diagnostic]]:
     """Load runes from multiple paths in precedence order (first wins).
 
     Args:
-        paths: List of path strings, can include ~ and {agent_name} placeholder
+        paths: List of (path, scope) tuples, paths can include ~ and
+            {agent_name} placeholder
         agent_name: Agent name to substitute {agent_name} placeholder
 
     Returns:
-        Tuple of (factories, manifests) merged from all paths
+        Tuple of (rune_loads, diagnostics). RuneLoads are deduped
+        by manifest name (first-wins), with the winner's scope recorded.
     """
-    all_factories: list[RuneFactory] = []
-    all_manifests: list[RuneManifest] = []
+    loads: list[RuneLoad] = []
+    diagnostics: list[Diagnostic] = []
+    seen_names: dict[str, tuple[RuneScope, str]] = {}
 
-    for path_str in paths:
+    for path_str, scope in paths:
         expanded = str(path_str).replace("{agent_name}", agent_name or "")
         path = Path(expanded).expanduser()
         if not path.exists():
             continue
-        factories = load_factories(path)
-        manifests = load_manifests(path)
-        all_factories.extend(factories)
-        all_manifests.extend(manifests)
+        manifests = load_manifests(path, scope=scope, diagnostics=diagnostics)
+        for manifest in manifests:
+            factory = None
+            if manifest.path:
+                factory = load_factory_from_manifest(manifest, Path(manifest.path))
+                if factory is None and manifest.entry_point:
+                    diagnostics.append(
+                        Diagnostic(
+                            kind=DiagnosticKind.LOAD_FAILURE,
+                            rune_name=manifest.name,
+                            message=(
+                                f"Failed to load factory for rune "
+                                f"'{manifest.name}' from "
+                                f"{manifest.entry_point}"
+                            ),
+                            scope=manifest.scope,
+                            path=manifest.path,
+                        )
+                    )
+            if manifest.name in seen_names:
+                winner_scope, winner_path = seen_names[manifest.name]
+                diagnostics.append(
+                    Diagnostic(
+                        kind=DiagnosticKind.SHADOWED_RUNE,
+                        rune_name=manifest.name,
+                        message=(
+                            f"Rune '{manifest.name}' from {scope.value} "
+                            f"({path}) shadowed by {winner_scope.value} "
+                            f"({winner_path})"
+                        ),
+                        scope=scope,
+                        path=str(path),
+                    )
+                )
+                continue
+            seen_names[manifest.name] = (scope, str(path))
+            loads.append(RuneLoad(manifest=manifest, factory=factory))
 
-    return all_factories, all_manifests
+    return loads, diagnostics
