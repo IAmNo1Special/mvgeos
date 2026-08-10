@@ -18,6 +18,7 @@ from mvgeos_agent.errors import (
     SpellTimeoutError,
     to_error,
 )
+from mvgeos_agent.prompt_loader import PromptSource
 from mvgeos_agent.types import (
     ContemplationLevel,
     ContentType,
@@ -51,6 +52,7 @@ class LoopContext:
     """
 
     system_prompt: str = ""
+    prompt_source: PromptSource = PromptSource.BUILTIN
     invocations: list[MvgeInvocation] = field(default_factory=list)
     spells: list[MvgeSpell] = field(default_factory=list)
     contemplation_level: ContemplationLevel = ContemplationLevel.MEDIUM
@@ -585,6 +587,7 @@ class MvgeLoop:
 
         context = LoopContext(
             system_prompt=self._state.system_prompt,
+            prompt_source=self._state.prompt_source,
             invocations=list(self._state.invocations),
             spells=self._resolve_spells(),
             contemplation_level=self._state.contemplation_level,

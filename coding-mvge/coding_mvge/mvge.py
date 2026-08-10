@@ -7,7 +7,8 @@ from typing import Any, cast
 
 from mvgeos_agent.base_mvge import BaseMvge
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME, DEFAULT_MODEL
-from mvgeos_agent.prompt_config import load_system_prompt
+from mvgeos_agent.prompt_config import _SYSTEM_PROMPT_BODY
+from mvgeos_agent.prompt_loader import PromptLoader, PromptSource
 from mvgeos_agent.spell_schema import generate_spell_schema
 from mvgeos_agent.types import MvgeInvocation, MvgeSpell, SpellResult
 from mvgeos_runes.types import SigilHook
@@ -23,6 +24,14 @@ from coding_mvge.spells import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _render_with_spells(body: str, spells: list[str]) -> str:
+    """Render a prompt body with the active spell list."""
+    parts = [body]
+    spell_list = "\n".join(f"  - {s}" for s in spells) if spells else "  (none)"
+    parts.append(f"\nActive spells:\n{spell_list}")
+    return "\n".join(parts)
 
 
 DEFAULT_SPELL_MAP: dict[str, Any] = {
@@ -95,6 +104,7 @@ class CodingMvge(BaseMvge):
         )
         self._spell_names = spells if spells is not None else list(DEFAULT_SPELL_MAP)
         self._custom_system_prompt = custom_system_prompt
+        self._prompt_source = PromptSource.BUILTIN
 
     @property
     def enabled_spells(self) -> list[str]:
@@ -135,14 +145,15 @@ class CodingMvge(BaseMvge):
         return seeker_spells + rune_spells + builtin_spells
 
     async def _build_system_prompt_async(self) -> str:
-        # Build base prompt with seeker spell names for display
+        # Build base prompt through the loader, capturing the source
         seeker_names = ["tool_search", "skill_search", "skill_execute", "mcp_search"]
-        base_prompt = load_system_prompt(
-            name=self._name,
+        loader = PromptLoader(agent_name=self._name, config_dir=self.config_dir)
+        resolved = loader.resolve_system_prompt(
             custom=self._custom_system_prompt,
-            config_dir=self.config_dir,
-            spells=seeker_names,
+            default=_SYSTEM_PROMPT_BODY,
         )
+        self._prompt_source = resolved.source
+        base_prompt = _render_with_spells(resolved.text, seeker_names)
 
         # Allow runes to inject additional prompt content
         if self._runner is not None:

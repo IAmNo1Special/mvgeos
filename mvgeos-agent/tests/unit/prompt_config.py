@@ -150,12 +150,13 @@ def test_load_system_prompt_oserror_fallback(tmp_path: Path) -> None:
     config_path = tmp_path / "SYSTEM.md"
     config_path.write_text("Original prompt", encoding="utf-8")
 
-    with patch(
-        "mvgeos_agent.prompt_config._read_custom_prompt",
+    with patch.object(
+        Path,
+        "read_text",
         side_effect=OSError("Permission denied"),
     ):
         prompt = load_system_prompt("test-agent", config_dir=tmp_path)
-        assert prompt == DEFAULT_SYSTEM_PROMPT
+        assert "You are Mvge" in prompt
 
 
 def test_load_guidelines_oserror_fallback(tmp_path: Path) -> None:

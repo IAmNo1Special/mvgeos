@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from pydantic import BaseModel, ValidationError
 
+from mvgeos_agent.prompt_loader import PromptSource
+
 if TYPE_CHECKING:
     from mvgeos_runes.rune_runner import RuneRunner
 
@@ -199,6 +201,7 @@ class MvgeSpell:
 @dataclass
 class MvgeState:
     system_prompt: str = ""
+    prompt_source: PromptSource = PromptSource.BUILTIN
     model: dict[str, Any] | None = None
     contemplation_level: ContemplationLevel = ContemplationLevel.MEDIUM
     spells: list[MvgeSpell] = field(default_factory=list)

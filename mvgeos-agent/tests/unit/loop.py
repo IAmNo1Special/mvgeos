@@ -12,6 +12,7 @@ from mvgeos_provider.types import Model, RealmResponse
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import SigilHook
 
+from mvgeos_agent.prompt_loader import PromptSource
 from mvgeos_agent.types import (
     ContemplationLevel,
     MvgeResponse,
@@ -791,3 +792,81 @@ class TestMvgeLoopSessionHooks:
             await session.shutdown()
 
             handler.assert_called_once()
+
+
+class TestPromptSourceIntrospection:
+    """prompt_source flows from MvgeState through MvgeLoop to LoopContext."""
+
+    def test_mvge_state_has_prompt_source_default(self) -> None:
+        state = MvgeState(system_prompt="test")
+        assert state.prompt_source == PromptSource.BUILTIN
+
+    def test_mvge_state_prompt_source_can_be_set(self) -> None:
+        state = MvgeState(system_prompt="test", prompt_source=PromptSource.AGENT_MD)
+        assert state.prompt_source == PromptSource.AGENT_MD
+
+    def test_loop_context_has_prompt_source_default(self) -> None:
+        from mvgeos_agent.loop import LoopContext
+
+        ctx = LoopContext(system_prompt="test")
+        assert ctx.prompt_source == PromptSource.BUILTIN
+
+    def test_loop_context_prompt_source_from_state(self) -> None:
+        from mvgeos_agent.loop import LoopContext
+
+        ctx = LoopContext(system_prompt="test", prompt_source=PromptSource.PROJECT_MD)
+        assert ctx.prompt_source == PromptSource.PROJECT_MD
+
+    @pytest.mark.asyncio
+    async def test_loop_passes_prompt_source_to_context(self) -> None:
+        from unittest.mock import patch
+
+        from mvgeos_agent.loop import LoopContext, MvgeLoop
+
+        state = MvgeState(
+            system_prompt="test",
+            prompt_source=PromptSource.AGENT_MD,
+            invocations=[SummonerRequest(role="user", content="hi")],
+        )
+        loop = MvgeLoop(state)
+
+        model_obj = Model(
+            id="test-model",
+            name="Test Model",
+            realm="test",
+            base_url="https://api.test.com",
+            api_key="test",
+        )
+        responses = [
+            RealmResponse(
+                model=model_obj,
+                invocation=MvgeResponse(
+                    role="assistant",
+                    content=[{"type": "text", "text": "ok"}],
+                    stop_reason=StopReason.STOP,
+                ),
+            ),
+        ]
+
+        captured: dict[str, LoopContext] = {}
+
+        async def fake_run_loop(context, *args, **kwargs):
+            captured["context"] = context
+            return []
+
+        with patch("mvgeos_agent.loop.run_loop", side_effect=fake_run_loop):
+            await loop.run(
+                lambda inv: _make_stream(responses), {"id": "test-model"}, "none"
+            )
+
+        assert captured["context"].prompt_source == PromptSource.AGENT_MD
+
+
+async def _make_stream(
+    responses: list[RealmResponse],
+):
+    async def gen():
+        for r in responses:
+            yield r
+
+    return gen()

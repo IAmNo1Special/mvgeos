@@ -26,6 +26,7 @@ from mvgeos_agent.constants import (
 )
 from mvgeos_agent.event_bus import EventBus
 from mvgeos_agent.loop import MvgeLoop, StreamFn
+from mvgeos_agent.prompt_loader import PromptSource
 from mvgeos_agent.types import (
     ContemplationLevel,
     MvgeEvent,
@@ -93,6 +94,7 @@ class BaseMvge:
         self._provider_registry = RealmRegistry()
         self._runner: RuneRunner | None = None
         self._watchers: list[RuneWatcher] = []
+        self._prompt_source = PromptSource.BUILTIN
         self._model: Model | None = None
         self._realm: Realm | None = None
         self._agent_session: MvgeTome | None = None
@@ -331,6 +333,7 @@ class BaseMvge:
 
         self._state = MvgeState(
             system_prompt=final_prompt,
+            prompt_source=self._prompt_source,
             model=dataclasses.asdict(self._model),
             contemplation_level=ContemplationLevel(self._contemplation_level),
             spells=self._build_spells(),
@@ -455,6 +458,7 @@ class BaseMvge:
 
         self._state.invocations.append(SummonerRequest(role="user", content=prompt))
         self._state.system_prompt = await self._build_system_prompt_async()
+        self._state.prompt_source = self._prompt_source
 
         return await self._run_impl()
 
