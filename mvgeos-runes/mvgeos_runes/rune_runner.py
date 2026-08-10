@@ -16,6 +16,8 @@ from mvgeos_runes.types import (
     RuneManifest,
     RuneShortcut,
     SigilHook,
+    SkillLoad,
+    SkillManifest,
     SpellDefinition,
 )
 
@@ -60,6 +62,8 @@ class RuneRunner:
         self._diagnostics: list[Diagnostic] = []
         self._loaded_rune_names: set[str] = set()
         self._current_loading_rune: str | None = None
+        self._loaded_skills: list[SkillLoad] = []
+        self._suppress_skill_catalog: bool = False
 
     @property
     def context(self) -> RuneContext:
@@ -123,6 +127,57 @@ class RuneRunner:
 
     def get_active_spells(self) -> list[str]:
         return list(self._spells.keys())
+
+    def load_skills(self, loads: list[SkillLoad]) -> None:
+        """Load skills from discovery."""
+        self._loaded_skills.extend(loads)
+
+    def get_skills(self) -> list[SkillManifest]:
+        """Get all loaded skill manifests."""
+        return [load.manifest for load in self._loaded_skills]
+
+    def get_skill_catalog(self) -> str:
+        """Get the skill catalog formatted for system prompt injection.
+
+        Returns a formatted string listing all discovered skills with their
+        name, description, and location (source scope and path).
+        """
+        if self._suppress_skill_catalog:
+            return ""
+
+        if not self._loaded_skills:
+            return ""
+
+        lines = ["## Available Skills"]
+        lines.append("")
+        lines.append("The following skills are available for use. To activate a skill,")
+        lines.append(
+            "read its SKILL.md file using the `read` spell with the path shown below."
+        )
+        lines.append("")
+
+        for skill_load in self._loaded_skills:
+            manifest = skill_load.manifest
+            lines.append(f"### {manifest.name}")
+            lines.append(f"**Description:** {manifest.description}")
+            lines.append(f"**Source:** {manifest.scope.value} ({manifest.path})")
+            if manifest.version:
+                lines.append(f"**Version:** {manifest.version}")
+            lines.append("")
+
+        return "\n".join(lines).strip()
+
+    def suppress_skill_catalog(self, suppress: bool = True) -> None:
+        """Suppress or enable skill catalog injection into system prompt.
+
+        When suppressed, the skill catalog will not be included in the system
+        prompt, allowing a rune (e.g., seeker) to own the skill surface.
+        """
+        self._suppress_skill_catalog = suppress
+
+    def is_skill_catalog_suppressed(self) -> bool:
+        """Check if skill catalog injection is suppressed."""
+        return self._suppress_skill_catalog
 
     def send_message(self, content: str) -> None:
         self._message_queue.append(content)

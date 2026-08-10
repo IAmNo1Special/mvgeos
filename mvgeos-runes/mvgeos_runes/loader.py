@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
+
+import yaml
 
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_api import RuneFactory
@@ -13,6 +16,11 @@ from mvgeos_runes.types import (
     RuneLoad,
     RuneManifest,
     RuneScope,
+    SkillDiagnostic,
+    SkillDiagnosticKind,
+    SkillLoad,
+    SkillManifest,
+    SkillScope,
 )
 
 
@@ -171,3 +179,186 @@ def load_runes_from_paths(
             loads.append(RuneLoad(manifest=manifest, factory=factory))
 
     return loads, diagnostics
+
+
+# Skill discovery constants
+SKILL_SCOPES = [
+    (SkillScope.PROJECT, Path(".agents/.mvgeos/skills")),
+    (SkillScope.USER, Path("~/.agents/.mvgeos/skills")),
+    (SkillScope.AGENT, Path("~/.agents/.mvgeos/{agent_name}/skills")),
+    (SkillScope.LEGACY, Path(".agents/skills")),
+]
+
+NAME_REGEX = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+
+
+def load_skill_manifest(path: Path) -> SkillManifest | None:
+    """Load a skill manifest from a SKILL.md file with YAML frontmatter."""
+    skill_md_path = path / "SKILL.md"
+    if not skill_md_path.exists():
+        return None
+    try:
+        content = skill_md_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    if not content.startswith("---"):
+        return None
+
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        return None
+
+    try:
+        frontmatter = yaml.safe_load(parts[1])
+    except Exception:
+        return None
+
+    if not isinstance(frontmatter, dict):
+        return None
+
+    name = frontmatter.get("name")
+    if not name or not isinstance(name, str):
+        return None
+
+    if not (1 <= len(name) <= 64):
+        return None
+
+    if not NAME_REGEX.match(name):
+        return None
+
+    if name != path.name:
+        return None
+
+    description = frontmatter.get("description")
+    if not description or not isinstance(description, str):
+        return None
+
+    if not (1 <= len(description) <= 1024):
+        return None
+
+    license_val = frontmatter.get("license", "")
+    if not isinstance(license_val, str):
+        license_val = ""
+
+    compatibility = frontmatter.get("compatibility", "")
+    if not isinstance(compatibility, str):
+        compatibility = ""
+
+    metadata = frontmatter.get("metadata", {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    allowed_tools = frontmatter.get("allowed-tools", "")
+    if not isinstance(allowed_tools, str):
+        allowed_tools = ""
+
+    disable_model_invocation = frontmatter.get("disable-model-invocation", False)
+    if not isinstance(disable_model_invocation, bool):
+        disable_model_invocation = False
+
+    version = frontmatter.get("version", "")
+    if not isinstance(version, str):
+        version = ""
+
+    return SkillManifest(
+        name=name,
+        description=description,
+        scope=SkillScope.PROJECT,  # Will be set by caller
+        path=str(path),
+        version=version,
+        license=license_val,
+        compatibility=compatibility,
+        metadata=metadata,
+        allowed_tools=allowed_tools,
+        disable_model_invocation=disable_model_invocation,
+    )
+
+
+def load_skill_manifests(
+    skills_dir: Path,
+    scope: SkillScope = SkillScope.PROJECT,
+    diagnostics: list[SkillDiagnostic] | None = None,
+) -> list[SkillManifest]:
+    """Load all skill manifests from a skills directory."""
+    if not skills_dir.exists():
+        return []
+    manifests: list[SkillManifest] = []
+    for entry in skills_dir.iterdir():
+        if not entry.is_dir():
+            continue
+        manifest = load_skill_manifest(entry)
+        if manifest is None:
+            if diagnostics is not None:
+                diagnostics.append(
+                    SkillDiagnostic(
+                        kind=SkillDiagnosticKind.PARSE_WARNING,
+                        skill_name=entry.name,
+                        message=f"Could not parse skill manifest in {entry.name}",
+                        scope=scope,
+                        path=str(entry),
+                    )
+                )
+            continue
+        manifest.scope = scope
+        manifest.path = str(entry)
+        manifests.append(manifest)
+    return manifests
+
+
+def load_skills_from_paths(
+    paths: Sequence[tuple[str | Path, SkillScope]],
+    agent_name: str | None = None,
+) -> tuple[list[SkillLoad], list[SkillDiagnostic]]:
+    """Load skills from multiple paths in precedence order (first wins).
+
+    Args:
+        paths: List of (path, scope) tuples, paths can include ~ and
+            {agent_name} placeholder
+        agent_name: Agent name to substitute {agent_name} placeholder
+
+    Returns:
+        Tuple of (skill_loads, diagnostics). SkillLoads are deduped
+        by manifest name (first-wins), with the winner's scope recorded.
+    """
+    loads: list[SkillLoad] = []
+    diagnostics: list[SkillDiagnostic] = []
+    seen_names: dict[str, tuple[SkillScope, str]] = {}
+
+    for path_str, scope in paths:
+        expanded = str(path_str).replace("{agent_name}", agent_name or "")
+        path = Path(expanded).expanduser()
+        if not path.exists():
+            continue
+        manifests = load_skill_manifests(path, scope=scope, diagnostics=diagnostics)
+        for manifest in manifests:
+            if manifest.name in seen_names:
+                winner_scope, winner_path = seen_names[manifest.name]
+                diagnostics.append(
+                    SkillDiagnostic(
+                        kind=SkillDiagnosticKind.SHADOWED_SKILL,
+                        skill_name=manifest.name,
+                        message=(
+                            f"Skill '{manifest.name}' from {scope.value} "
+                            f"({path}) shadowed by {winner_scope.value} "
+                            f"({winner_path})"
+                        ),
+                        scope=scope,
+                        path=str(path),
+                    )
+                )
+                continue
+            seen_names[manifest.name] = (scope, str(path))
+            loads.append(SkillLoad(manifest=manifest))
+
+    return loads, diagnostics
+
+
+def get_default_skill_paths(agent_name: str) -> list[tuple[Path, SkillScope]]:
+    """Get the default skill discovery paths in precedence order (highest first)."""
+    result: list[tuple[Path, SkillScope]] = []
+    for scope, path_template in SKILL_SCOPES:
+        path_str = str(path_template).replace("{agent_name}", agent_name)
+        path = Path(path_str).expanduser()
+        result.append((path, scope))
+    return result

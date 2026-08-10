@@ -10,7 +10,11 @@ from mvgeos_harness import MvgeHarness
 from mvgeos_provider.base import Realm
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
-from mvgeos_runes.loader import load_runes_from_paths
+from mvgeos_runes.loader import (
+    get_default_skill_paths,
+    load_runes_from_paths,
+    load_skills_from_paths,
+)
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import RuneContext, RuneScope, RuneShortcut, SigilHook
 from mvgeos_runes.watcher import RuneWatcher
@@ -19,6 +23,7 @@ from mvgeos_tome.ledger import TomeLedger
 from mvgeos_agent.agent_session import MvgeTome
 from mvgeos_agent.compaction import DEFAULT_COMPACTION_SETTINGS, CompactionSettings
 from mvgeos_agent.compaction_runner import CompactionRunner
+from mvgeos_agent.config_manager import ConfigManager, ConfigValue
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
     DEFAULT_MODEL,
@@ -58,38 +63,100 @@ class BaseMvge:
         api_key: str,
         *,
         name: str = DEFAULT_AGENT_NAME,
-        model: str = DEFAULT_MODEL,
+        model: str | None = None,
         extension_dir: str | None = None,
         session_dir: Path | None = None,
         session_resume: str | None = None,
         provider_name: str | None = None,
-        temperature: float = 0.7,
-        max_tokens: int = 4096,
-        contemplation_level: str = "medium",
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        contemplation_level: str | None = None,
         contemplation_budget: int | None = None,
-        exclude_contemplation: bool = False,
+        exclude_contemplation: bool | None = None,
         runes_paths: Sequence[str] | None = None,
         compaction: CompactionSettings = DEFAULT_COMPACTION_SETTINGS,
+        config_manager: ConfigManager | None = None,
     ) -> None:
         self._api_key = api_key
         self._name = name
-        self._model_id = model
         self._extension_dir = extension_dir
         self._session_dir = session_dir or Path("~/.agents/.mvgeos/tomes").expanduser()
         self._session_resume = session_resume
         self._provider_name = provider_name
-        self._temperature = temperature
-        self._max_tokens = max_tokens
-        self._contemplation_level = contemplation_level
-        self._contemplation_budget = contemplation_budget
-        self._exclude_contemplation = exclude_contemplation
         self._compaction_settings = compaction
-        if runes_paths is not None:
-            self._runes_paths: list[Path] = [
-                Path(str(p)).expanduser() for p in runes_paths
-            ]
+
+        # Use ConfigManager to resolve defaults if provided
+        if config_manager is not None:
+            self._config_manager = config_manager
+            resolved = config_manager.load()
+            self._model_id = (
+                model or resolved.get("model", ConfigValue(DEFAULT_MODEL, None)).value
+            )
+            self._temperature = (
+                temperature
+                if temperature is not None
+                else resolved.get("temperature", ConfigValue(0.7, None)).value
+            )
+            self._max_tokens = (
+                max_tokens
+                if max_tokens is not None
+                else resolved.get("max_tokens", ConfigValue(4096, None)).value
+            )
+            self._contemplation_level = (
+                contemplation_level
+                or resolved.get(
+                    "contemplation_level", ConfigValue("medium", None)
+                ).value
+            )
+            self._contemplation_budget = (
+                contemplation_budget
+                if contemplation_budget is not None
+                else resolved.get("contemplation_budget", ConfigValue(None, None)).value
+            )
+            self._exclude_contemplation = (
+                exclude_contemplation
+                if exclude_contemplation is not None
+                else resolved.get(
+                    "exclude_contemplation", ConfigValue(False, None)
+                ).value
+            )
+            spells_enabled = resolved.get("spells_enabled", ConfigValue([], None)).value
+            self._spell_names = list(spells_enabled) if spells_enabled else None
+            # Rune paths from config if not explicitly provided
+            if runes_paths is not None:
+                self._runes_paths: list[Path] = [
+                    Path(str(p)).expanduser() for p in runes_paths
+                ]
+            else:
+                rune_paths_config = resolved.get(
+                    "rune_paths", ConfigValue(None, None)
+                ).value
+                if rune_paths_config:
+                    self._runes_paths = [
+                        Path(str(p)).expanduser() for p in rune_paths_config
+                    ]
+                else:
+                    self._runes_paths = resolve_rune_paths(name, extension_dir)
         else:
-            self._runes_paths = resolve_rune_paths(name)
+            # Backward compatibility: use explicit params or hardcoded defaults
+            self._config_manager = None
+            self._model_id = model if model is not None else DEFAULT_MODEL
+            self._temperature = temperature if temperature is not None else 0.7
+            self._max_tokens = max_tokens if max_tokens is not None else 4096
+            self._contemplation_level = (
+                contemplation_level if contemplation_level is not None else "medium"
+            )
+            self._contemplation_budget = contemplation_budget
+            self._exclude_contemplation = (
+                exclude_contemplation if exclude_contemplation is not None else False
+            )
+            self._spell_names = None
+            if runes_paths is not None:
+                self._runes_paths: list[Path] = [
+                    Path(str(p)).expanduser() for p in runes_paths
+                ]
+            else:
+                self._runes_paths = resolve_rune_paths(name, extension_dir)
 
         self._provider_registry = RealmRegistry()
         self._runner: RuneRunner | None = None
@@ -202,7 +269,17 @@ class BaseMvge:
             prompt_data = await self._runner.emit_chain(
                 SigilHook.BEFORE_MVGE_START, prompt_data
             )
-            return str(prompt_data.get("base_prompt", self._build_system_prompt()))
+            base_prompt = str(
+                prompt_data.get("base_prompt", self._build_system_prompt())
+            )
+
+            # Inject skill catalog if not suppressed
+            if not self._runner.is_skill_catalog_suppressed():
+                skill_catalog = self._runner.get_skill_catalog()
+                if skill_catalog:
+                    base_prompt = f"{base_prompt}\n\n{skill_catalog}"
+
+            return base_prompt
         return self._build_system_prompt()
 
     async def _run_impl(self) -> MvgeInvocation:
@@ -406,6 +483,21 @@ class BaseMvge:
         for pname, pconfig in self._runner.get_registered_providers().items():
             if isinstance(pconfig, dict):
                 self._provider_registry.register_provider(pname, pconfig)
+
+        # Load skills from standard scopes
+        skill_paths = get_default_skill_paths(self._name)
+        skill_loads, skill_diagnostics = load_skills_from_paths(skill_paths, self._name)
+        if skill_loads:
+            self._runner.load_skills(skill_loads)
+        if skill_diagnostics:
+            for diag in skill_diagnostics:
+                logger.warning(
+                    "Skill diagnostic: %s (skill=%s, scope=%s, path=%s)",
+                    diag.message,
+                    diag.skill_name,
+                    diag.scope.value if diag.scope else "unknown",
+                    diag.path,
+                )
 
         for path, _ in paths_with_scope:
             if path.exists():

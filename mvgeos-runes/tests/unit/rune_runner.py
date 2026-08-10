@@ -13,6 +13,9 @@ from mvgeos_runes.types import (
     RuneScope,
     RuneShortcut,
     SigilHook,
+    SkillLoad,
+    SkillManifest,
+    SkillScope,
     SpellDefinition,
 )
 
@@ -446,3 +449,88 @@ class TestRuneRunnerDedup:
         ]
         await runner.load_rune_loads(loads)
         assert len(runner._sigils.get_handlers(SigilHook.TURN_START)) == 1
+
+
+class TestRuneRunnerSkills:
+    def test_load_skills(self) -> None:
+        runner = RuneRunner()
+        skill1 = SkillManifest(
+            name="skill-one",
+            description="First skill",
+            scope=SkillScope.PROJECT,
+            path="/tmp/skill-one",
+        )
+        skill2 = SkillManifest(
+            name="skill-two",
+            description="Second skill",
+            scope=SkillScope.USER,
+            path="/tmp/skill-two",
+        )
+        loads = [SkillLoad(manifest=skill1), SkillLoad(manifest=skill2)]
+        runner.load_skills(loads)
+
+        skills = runner.get_skills()
+        assert len(skills) == 2
+        names = {s.name for s in skills}
+        assert names == {"skill-one", "skill-two"}
+
+    def test_get_skills_empty(self) -> None:
+        runner = RuneRunner()
+        assert runner.get_skills() == []
+
+    def test_get_skill_catalog(self) -> None:
+        runner = RuneRunner()
+        skill1 = SkillManifest(
+            name="skill-one",
+            description="First skill",
+            scope=SkillScope.PROJECT,
+            path="/tmp/skill-one",
+            version="1.0.0",
+        )
+        skill2 = SkillManifest(
+            name="skill-two",
+            description="Second skill",
+            scope=SkillScope.USER,
+            path="/tmp/skill-two",
+        )
+        runner.load_skills([SkillLoad(manifest=skill1), SkillLoad(manifest=skill2)])
+
+        catalog = runner.get_skill_catalog()
+        assert "## Available Skills" in catalog
+        assert "skill-one" in catalog
+        assert "First skill" in catalog
+        assert "project" in catalog
+        assert "/tmp/skill-one" in catalog
+        assert "1.0.0" in catalog
+        assert "skill-two" in catalog
+        assert "Second skill" in catalog
+        assert "user" in catalog
+        assert "/tmp/skill-two" in catalog
+
+    def test_get_skill_catalog_empty(self) -> None:
+        runner = RuneRunner()
+        assert runner.get_skill_catalog() == ""
+
+    def test_suppress_skill_catalog(self) -> None:
+        runner = RuneRunner()
+        skill = SkillManifest(
+            name="test-skill",
+            description="Test skill",
+            scope=SkillScope.PROJECT,
+            path="/tmp/test",
+        )
+        runner.load_skills([SkillLoad(manifest=skill)])
+
+        # By default, not suppressed
+        assert not runner.is_skill_catalog_suppressed()
+        assert runner.get_skill_catalog() != ""
+
+        # Suppress it
+        runner.suppress_skill_catalog(True)
+        assert runner.is_skill_catalog_suppressed()
+        assert runner.get_skill_catalog() == ""
+
+        # Unsuppress it
+        runner.suppress_skill_catalog(False)
+        assert not runner.is_skill_catalog_suppressed()
+        assert runner.get_skill_catalog() != ""

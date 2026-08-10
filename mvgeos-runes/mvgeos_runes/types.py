@@ -37,6 +37,46 @@ class RuneScope(StrEnum):
     AGENT = "agent"
 
 
+class SkillScope(StrEnum):
+    PROJECT = "project"
+    USER = "user"
+    AGENT = "agent"
+    LEGACY = "legacy"
+
+
+@dataclass
+class SkillManifest:
+    name: str
+    description: str
+    scope: SkillScope = SkillScope.PROJECT
+    path: str = ""
+    version: str = ""
+    license: str = ""
+    compatibility: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+    allowed_tools: str = ""
+    disable_model_invocation: bool = False
+
+
+@dataclass
+class SkillLoad:
+    manifest: SkillManifest
+
+
+class SkillDiagnosticKind(StrEnum):
+    SHADOWED_SKILL = "shadowed_skill"
+    PARSE_WARNING = "parse_warning"
+
+
+@dataclass
+class SkillDiagnostic:
+    kind: SkillDiagnosticKind
+    skill_name: str
+    message: str
+    scope: SkillScope | None = None
+    path: str = ""
+
+
 @dataclass
 class RuneManifest:
     name: str

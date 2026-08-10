@@ -12,6 +12,7 @@ from mvgeos_runes.types import (
     RegisteredCommand,
     RuneShortcut,
     SigilHook,
+    SkillManifest,
     SpellDefinition,
 )
 
@@ -68,6 +69,14 @@ class RuneAPI:
 
     def get_shortcuts(self) -> list[RuneShortcut]:
         return self._runner.get_shortcuts()
+
+    def get_skills(self) -> list[SkillManifest]:
+        """Get all registered skills."""
+        return self._runner.get_skills()
+
+    def get_skill_catalog(self) -> str:
+        """Get the skill catalog formatted for system prompt injection."""
+        return self._runner.get_skill_catalog()
 
     def send_message(self, content: str) -> None:
         self._runner.send_message(content)

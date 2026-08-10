@@ -3,10 +3,14 @@ from pathlib import Path
 
 from mvgeos_runes.loader import (
     RuneLoader,
+    get_default_skill_paths,
     load_factories,
     load_factory_from_manifest,
     load_manifests,
     load_runes_from_paths,
+    load_skill_manifest,
+    load_skill_manifests,
+    load_skills_from_paths,
 )
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.types import (
@@ -14,6 +18,8 @@ from mvgeos_runes.types import (
     RuneManifest,
     RuneScope,
     SigilHook,
+    SkillDiagnosticKind,
+    SkillScope,
 )
 
 
@@ -583,3 +589,367 @@ class TestLoadRunesFromPaths:
             assert len(loads) == 2
             names = {load.manifest.name for load in loads}
             assert names == {"rune_a", "rune_b"}
+
+
+class TestLoadSkillManifest:
+    def test_load_skill_manifest_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_dir = Path(tmpdir) / "test-skill"
+            skill_dir.mkdir()
+            skill_md = skill_dir / "SKILL.md"
+            skill_data = """---
+name: test-skill
+description: Test skill for testing
+version: "1.0.0"
+license: MIT
+compatibility: "Requires Python 3.10+"
+metadata:
+  author: test
+---
+# Test Skill
+
+This is a test skill."""
+            skill_md.write_text(skill_data, encoding="utf-8")
+
+            manifest = load_skill_manifest(skill_dir)
+
+            assert manifest is not None
+            assert manifest.name == "test-skill"
+            assert manifest.description == "Test skill for testing"
+            assert manifest.version == "1.0.0"
+            assert manifest.license == "MIT"
+            assert manifest.compatibility == "Requires Python 3.10+"
+            assert manifest.metadata == {"author": "test"}
+
+    def test_load_skill_manifest_missing_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_dir = Path(tmpdir) / "test_skill"
+            skill_dir.mkdir()
+
+            manifest = load_skill_manifest(skill_dir)
+
+            assert manifest is None
+
+    def test_load_skill_manifest_missing_frontmatter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_dir = Path(tmpdir) / "test-skill"
+            skill_dir.mkdir()
+            skill_md = skill_dir / "SKILL.md"
+            skill_data = "# Test Skill\n\nNo frontmatter here."
+            skill_md.write_text(skill_data, encoding="utf-8")
+
+            manifest = load_skill_manifest(skill_dir)
+
+            assert manifest is None
+
+    def test_load_skill_manifest_invalid_yaml(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_dir = Path(tmpdir) / "test-skill"
+            skill_dir.mkdir()
+            skill_md = skill_dir / "SKILL.md"
+            skill_data = """---
+name: test-skill
+description: Test
+invalid yaml: [unclosed
+---
+Content"""
+            skill_md.write_text(skill_data, encoding="utf-8")
+
+            manifest = load_skill_manifest(skill_dir)
+
+            assert manifest is None
+
+    def test_load_skill_manifest_missing_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_dir = Path(tmpdir) / "test-skill"
+            skill_dir.mkdir()
+            skill_md = skill_dir / "SKILL.md"
+            skill_data = """---
+description: Test skill
+---
+Content"""
+            skill_md.write_text(skill_data, encoding="utf-8")
+
+            manifest = load_skill_manifest(skill_dir)
+
+            assert manifest is None
+
+    def test_load_skill_manifest_name_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_dir = Path(tmpdir) / "different-name"
+            skill_dir.mkdir()
+            skill_md = skill_dir / "SKILL.md"
+            skill_data = """---
+name: test-skill
+description: Test skill
+---
+Content"""
+            skill_md.write_text(skill_data, encoding="utf-8")
+
+            manifest = load_skill_manifest(skill_dir)
+
+            assert manifest is None
+
+    def test_load_skill_manifest_invalid_name_format(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_dir = Path(tmpdir) / "test-skill"
+            skill_dir.mkdir()
+            skill_md = skill_dir / "SKILL.md"
+            skill_data = """---
+name: Test_Skill
+description: Test skill
+---
+Content"""
+            skill_md.write_text(skill_data, encoding="utf-8")
+
+            manifest = load_skill_manifest(skill_dir)
+
+            assert manifest is None
+
+    def test_load_skill_manifest_with_allowed_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_dir = Path(tmpdir) / "test-skill"
+            skill_dir.mkdir()
+            skill_md = skill_dir / "SKILL.md"
+            skill_data = """---
+name: test-skill
+description: Test skill
+allowed-tools: "read write edit"
+---
+Content"""
+            skill_md.write_text(skill_data, encoding="utf-8")
+
+            manifest = load_skill_manifest(skill_dir)
+
+            assert manifest is not None
+            assert manifest.allowed_tools == "read write edit"
+
+    def test_load_skill_manifest_with_disable_model_invocation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_dir = Path(tmpdir) / "test-skill"
+            skill_dir.mkdir()
+            skill_md = skill_dir / "SKILL.md"
+            skill_data = """---
+name: test-skill
+description: Test skill
+disable-model-invocation: true
+---
+Content"""
+            skill_md.write_text(skill_data, encoding="utf-8")
+
+            manifest = load_skill_manifest(skill_dir)
+
+            assert manifest is not None
+            assert manifest.disable_model_invocation is True
+
+
+class TestLoadSkillManifests:
+    def test_load_skill_manifests_multiple(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skills_dir = Path(tmpdir)
+
+            skill1_dir = skills_dir / "skill-one"
+            skill1_dir.mkdir()
+            (skill1_dir / "SKILL.md").write_text(
+                """---
+name: skill-one
+description: First skill
+---
+Content""",
+                encoding="utf-8",
+            )
+
+            skill2_dir = skills_dir / "skill-two"
+            skill2_dir.mkdir()
+            (skill2_dir / "SKILL.md").write_text(
+                """---
+name: skill-two
+description: Second skill
+---
+Content""",
+                encoding="utf-8",
+            )
+
+            manifests = load_skill_manifests(skills_dir)
+            assert len(manifests) == 2
+            names = {m.name for m in manifests}
+            assert names == {"skill-one", "skill-two"}
+
+    def test_load_skill_manifests_empty_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skills_dir = Path(tmpdir)
+
+            manifests = load_skill_manifests(skills_dir)
+            assert manifests == []
+
+    def test_load_skill_manifests_nonexistent_dir(self) -> None:
+        manifests = load_skill_manifests(Path("/nonexistent/path"))
+        assert manifests == []
+
+    def test_load_skill_manifests_parse_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skills_dir = Path(tmpdir)
+
+            bad_dir = skills_dir / "bad-skill"
+            bad_dir.mkdir()
+            (bad_dir / "SKILL.md").write_text("no frontmatter", encoding="utf-8")
+
+            diagnostics: list = []
+            manifests = load_skill_manifests(skills_dir, diagnostics=diagnostics)
+            assert len(manifests) == 0
+            assert len(diagnostics) == 1
+            assert diagnostics[0].kind == SkillDiagnosticKind.PARSE_WARNING
+            assert diagnostics[0].skill_name == "bad-skill"
+
+
+class TestLoadSkillsFromPaths:
+    def test_dedup_by_name_first_wins(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as tmpdir1,
+            tempfile.TemporaryDirectory() as tmpdir2,
+        ):
+            skill1_dir = Path(tmpdir1) / "shared-name"
+            skill1_dir.mkdir()
+            (skill1_dir / "SKILL.md").write_text(
+                """---
+name: shared-name
+description: First skill
+---
+Content""",
+                encoding="utf-8",
+            )
+
+            skill2_dir = Path(tmpdir2) / "shared-name"
+            skill2_dir.mkdir()
+            (skill2_dir / "SKILL.md").write_text(
+                """---
+name: shared-name
+description: Second skill
+---
+Content""",
+                encoding="utf-8",
+            )
+
+            loads, diagnostics = load_skills_from_paths(
+                [
+                    (Path(tmpdir1), SkillScope.PROJECT),
+                    (Path(tmpdir2), SkillScope.USER),
+                ]
+            )
+            assert len(loads) == 1
+            assert loads[0].manifest.description == "First skill"
+            assert loads[0].manifest.scope == SkillScope.PROJECT
+
+            shadowed = [
+                d for d in diagnostics if d.kind == SkillDiagnosticKind.SHADOWED_SKILL
+            ]
+            assert len(shadowed) == 1
+            assert shadowed[0].skill_name == "shared-name"
+
+    def test_winner_scope_recorded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_dir = Path(tmpdir) / "my-skill"
+            skill_dir.mkdir()
+            (skill_dir / "SKILL.md").write_text(
+                """---
+name: my-skill
+description: Test skill
+---
+Content""",
+                encoding="utf-8",
+            )
+
+            loads, diagnostics = load_skills_from_paths(
+                [(Path(tmpdir), SkillScope.AGENT)]
+            )
+            assert len(loads) == 1
+            assert loads[0].manifest.scope == SkillScope.AGENT
+            assert loads[0].manifest.path == str(skill_dir)
+
+    def test_parse_warning_for_invalid_skill(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_dir = Path(tmpdir) / "bad-skill"
+            skill_dir.mkdir()
+            (skill_dir / "SKILL.md").write_text("no frontmatter", encoding="utf-8")
+
+            loads, diagnostics = load_skills_from_paths(
+                [(Path(tmpdir), SkillScope.USER)]
+            )
+            assert len(loads) == 0
+            parse_warnings = [
+                d for d in diagnostics if d.kind == SkillDiagnosticKind.PARSE_WARNING
+            ]
+            assert len(parse_warnings) == 1
+            assert parse_warnings[0].skill_name == "bad-skill"
+
+    def test_multiple_scopes_no_duplicates(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as tmpdir1,
+            tempfile.TemporaryDirectory() as tmpdir2,
+        ):
+            skill1_dir = Path(tmpdir1) / "skill-a"
+            skill1_dir.mkdir()
+            (skill1_dir / "SKILL.md").write_text(
+                """---
+name: skill-a
+description: Skill A
+---
+Content""",
+                encoding="utf-8",
+            )
+
+            skill2_dir = Path(tmpdir2) / "skill-b"
+            skill2_dir.mkdir()
+            (skill2_dir / "SKILL.md").write_text(
+                """---
+name: skill-b
+description: Skill B
+---
+Content""",
+                encoding="utf-8",
+            )
+
+            loads, diagnostics = load_skills_from_paths(
+                [
+                    (Path(tmpdir1), SkillScope.PROJECT),
+                    (Path(tmpdir2), SkillScope.USER),
+                ]
+            )
+            assert len(loads) == 2
+            names = {load.manifest.name for load in loads}
+            assert names == {"skill-a", "skill-b"}
+
+    def test_legacy_scope_included(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_dir = Path(tmpdir) / "legacy-skill"
+            skill_dir.mkdir()
+            (skill_dir / "SKILL.md").write_text(
+                """---
+name: legacy-skill
+description: Legacy skill
+---
+Content""",
+                encoding="utf-8",
+            )
+
+            loads, diagnostics = load_skills_from_paths(
+                [(Path(tmpdir), SkillScope.LEGACY)]
+            )
+            assert len(loads) == 1
+            assert loads[0].manifest.scope == SkillScope.LEGACY
+
+
+class TestGetDefaultSkillPaths:
+    def test_get_default_skill_paths_order(self) -> None:
+        paths = get_default_skill_paths("test_agent")
+
+        assert len(paths) == 4
+        # Order: project, user, agent, legacy
+        assert paths[0][1] == SkillScope.PROJECT
+        assert paths[1][1] == SkillScope.USER
+        assert paths[2][1] == SkillScope.AGENT
+        assert paths[3][1] == SkillScope.LEGACY
+
+        # Agent path should have agent name substituted
+        agent_path = paths[2][0]
+        assert "test_agent" in str(agent_path)
