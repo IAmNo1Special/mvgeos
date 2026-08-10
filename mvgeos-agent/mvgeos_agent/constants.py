@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-DEFAULT_AGENT_NAME = "coding-mvge"
+DEFAULT_AGENT_NAME = "default-mvge"
 
 DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 

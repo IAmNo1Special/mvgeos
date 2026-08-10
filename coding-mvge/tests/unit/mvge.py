@@ -620,7 +620,7 @@ class TestBuildSystemPrompt:
 class TestCodingMvgeConfig:
     def test_default_name(self) -> None:
         agent = CodingMvge(api_key="k")
-        assert agent._name == "coding-mvge"
+        assert agent._name == "default-mvge"
 
     def test_custom_name(self) -> None:
         agent = CodingMvge(api_key="k", name="my-agent")
