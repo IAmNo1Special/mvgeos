@@ -1,3 +1,4 @@
+from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.harness import MvgeHarness
 from mvgeos_agent.sandbox import MvgeSandbox
 from mvgeos_agent.snapshot import (
@@ -28,6 +29,7 @@ from mvgeos_agent.types import (
 
 __all__ = [
     "ContemplationLevel",
+    "MvgeEnvironment",
     "MvgeEvent",
     "MvgeEventType",
     "MvgeHarness",

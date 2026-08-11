@@ -5,8 +5,8 @@ from pathlib import Path
 
 import typer
 from coding_mvge.mvge import CodingMvge
-from mvgeos_agent.config_manager import ConfigManager
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
+from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.snapshot import RuntimeSnapshot
 from rich.console import Console
 
@@ -24,16 +24,16 @@ async def _assemble(
 ) -> RuntimeSnapshot:
     """Load runes and assemble the runtime snapshot (read-only).
 
-    Creates a CodingMvge with a ConfigManager, loads runes and skills
-    from disk, and returns a serialisable RuntimeSnapshot.  No API key
+    Creates a CodingMvge with an MvgeEnvironment, loads runes and skills
+    from disk, and returns a serialisable RuntimeSnapshot. No API key
     or realm is required — this is a static introspection path.
     """
-    config_manager = ConfigManager(agent_name=agent_name)
+    env = MvgeEnvironment.resolve(agent_name=agent_name)
     agent = CodingMvge(
         api_key="",
         name=agent_name,
         extension_dir=extension_dir,
-        config_manager=config_manager,
+        environment=env,
     )
     await agent._load_runes()
     return agent.build_snapshot()

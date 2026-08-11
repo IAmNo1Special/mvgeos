@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from coding_mvge import CodingMvge
+from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.errors import AuthenticationError, RateLimitError
 from mvgeos_agent.types import MvgeEvent, MvgeResponse
 from mvgeos_provider.model_registry import ModelRegistry
@@ -649,17 +650,27 @@ async def _create_agent(
 ) -> CodingMvge:
     _validate_api_key(api_key)
     spells_list = [s.strip() for s in spells.split(",") if s.strip()]
+    overrides: dict[str, Any] = {}
+    if model:
+        overrides["model"] = model
+    if temperature is not None:
+        overrides["temperature"] = temperature
+    if max_tokens is not None:
+        overrides["max_tokens"] = max_tokens
+    if contemplation:
+        overrides["contemplation_level"] = contemplation
+
+    env = MvgeEnvironment.resolve(
+        "default-mvge", overrides=overrides if overrides else None
+    )
     agent = CodingMvge(
         api_key=api_key,
-        model=model,
         spells=spells_list,
         extension_dir=extension_dir,
         session_dir=Path(session_dir) if session_dir else None,
         session_resume=resume,
         provider_name=provider,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        contemplation_level=contemplation,
+        environment=env,
     )
     await agent.initialize()
     return agent

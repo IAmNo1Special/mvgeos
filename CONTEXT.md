@@ -104,6 +104,10 @@ The single async channel out of the core: `Callable[[MvgeEvent], Awaitable[None]
 **Spell Dispatcher** (`SpellDispatcher`):
 The deep module responsible for executing tool call batches concurrently (`asyncio.gather`) or fallback sequential execution (`mvgeos_agent/dispatcher.py`). Evaluates `before_spell_cast` vetoes and `after_spell_result` transforms per task, preserves assistant request order, isolates exceptions into `SpellResultMessage(is_error=True)`, and evaluates batch termination (`terminate` flag) matching Pi's `executeToolCalls`.
 
+**MvgeEnvironment**:
+The deep module responsible for resolving agent configuration, system prompts, guidelines, and runtime snapshot introspection (`mvgeos_agent/environment.py`). Consolidates layered config loading, prompt resolution, and diagnostic collection behind a single `resolve()` seam. Mirrors Pi's `AgentSessionServices` + `ResourceLoader`.
+
+
 ## Compaction
 
 **Compaction**:

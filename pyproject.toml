@@ -8,7 +8,13 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+    "coding-mvge",
     "git-cliff>=2.13.1",
+    "mvgeos-agent",
+    "mvgeos-cli",
+    "mvgeos-provider",
+    "mvgeos-runes",
+    "mvgeos-tome",
     "mypy>=2.3.0",
     "pre-commit>=4.6.1",
     "pytest>=9.1.1",
@@ -30,6 +36,14 @@ members = [
     "mvgeos-cli",
     "coding-mvge",
 ]
+
+[tool.uv.sources]
+mvgeos-agent = { workspace = true, editable = true }
+mvgeos-provider = { workspace = true, editable = true }
+mvgeos-tome = { workspace = true, editable = true }
+mvgeos-runes = { workspace = true, editable = true }
+mvgeos-cli = { workspace = true, editable = true }
+coding-mvge = { workspace = true, editable = true }
 
 [tool.ruff]
 line-length = 88

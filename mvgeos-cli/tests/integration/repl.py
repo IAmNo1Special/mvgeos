@@ -208,6 +208,8 @@ class TestReplHelpers:
         from mvgeos_cli.commands import repl as repl_mod
 
         monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("GIT_DIR", raising=False)
+        monkeypatch.delenv("GIT_WORK_TREE", raising=False)
         assert repl_mod._git_branch() is None
 
     def test_slash_completer(self) -> None:

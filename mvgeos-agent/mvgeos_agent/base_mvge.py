@@ -16,27 +16,24 @@ from mvgeos_runes.loader import (
 )
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
-    Diagnostic,
     RuneContext,
-    RuneManifest,
     RuneScope,
     RuneShortcut,
     SigilHook,
-    SkillDiagnostic,
-    SkillManifest,
     SpellDefinition,
 )
 from mvgeos_runes.watcher import RuneWatcher
 from mvgeos_tome.ledger import TomeLedger
 
 from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.config_manager import ConfigLayer, ConfigManager, ConfigValue
+from mvgeos_agent.config_manager import ConfigLayer, ConfigValue
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
     DEFAULT_MODEL,
     DEFAULT_TOME_DIR,
     resolve_rune_paths,
 )
+from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.event_bus import EventBus
 from mvgeos_agent.harness import (
     DEFAULT_COMPACTION_SETTINGS,
@@ -45,9 +42,7 @@ from mvgeos_agent.harness import (
     MvgeHarness,
 )
 from mvgeos_agent.loop import MvgeLoop, StreamFn
-from mvgeos_agent.prompt_config import DEFAULT_GUIDELINES, DEFAULT_SYSTEM_PROMPT
-from mvgeos_agent.prompt_loader import PromptLoader, PromptSource
-from mvgeos_agent.snapshot import RuntimeSnapshot, assemble_snapshot
+from mvgeos_agent.snapshot import RuntimeSnapshot
 from mvgeos_agent.types import (
     ContemplationLevel,
     MvgeEvent,
@@ -79,19 +74,13 @@ class BaseMvge:
         api_key: str,
         *,
         name: str = DEFAULT_AGENT_NAME,
-        model: str | None = None,
         extension_dir: str | None = None,
         session_dir: Path | None = None,
         session_resume: str | None = None,
         provider_name: str | None = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-        contemplation_level: str | None = None,
-        contemplation_budget: int | None = None,
-        exclude_contemplation: bool | None = None,
         runes_paths: Sequence[str] | None = None,
         compaction: CompactionSettings = DEFAULT_COMPACTION_SETTINGS,
-        config_manager: ConfigManager | None = None,
+        environment: MvgeEnvironment | None = None,
     ) -> None:
         self._api_key = api_key
         self._name = name
@@ -101,73 +90,45 @@ class BaseMvge:
         self._provider_name = provider_name
         self._compaction_settings = compaction
 
-        self._config_manager: ConfigManager | None = None
+        if environment is None:
+            environment = MvgeEnvironment.resolve(
+                name,
+                config_dir=Path(f"~/.agents/.mvgeos/{name}").expanduser(),
+            )
 
-        # Use ConfigManager to resolve defaults if provided
-        if config_manager is not None:
-            self._config_manager = config_manager
-            resolved = config_manager.load()
+        self._environment = environment
+        self._config_manager = environment.config_manager
 
-            def _get(
-                key: str, default: Any, layer: ConfigLayer = ConfigLayer.DEFAULTS
-            ) -> Any:
-                return resolved.get(key, ConfigValue(default, layer)).value
+        def _get(
+            key: str, default: Any, layer: ConfigLayer = ConfigLayer.DEFAULTS
+        ) -> Any:
+            return environment.config.get(key, ConfigValue(default, layer)).value
 
-            self._model_id = model or _get("model", DEFAULT_MODEL)
-            self._temperature = (
-                temperature if temperature is not None else _get("temperature", 0.7)
-            )
-            self._max_tokens = (
-                max_tokens if max_tokens is not None else _get("max_tokens", 4096)
-            )
-            self._contemplation_level = contemplation_level or _get(
-                "contemplation_level", "medium"
-            )
-            self._contemplation_budget = (
-                contemplation_budget
-                if contemplation_budget is not None
-                else _get("contemplation_budget", None)
-            )
-            self._exclude_contemplation = (
-                exclude_contemplation
-                if exclude_contemplation is not None
-                else _get("exclude_contemplation", False)
-            )
-            spells_enabled = _get("spells_enabled", [])
-            self._spell_names = list(spells_enabled) if spells_enabled else None
-            # Rune paths from config if not explicitly provided
-            if runes_paths is not None:
-                self._runes_paths = [Path(str(p)).expanduser() for p in runes_paths]
-            else:
-                rune_paths_config = _get("rune_paths", None)
-                if rune_paths_config:
-                    self._runes_paths = [
-                        Path(str(p)).expanduser() for p in rune_paths_config
-                    ]
-                else:
-                    self._runes_paths = resolve_rune_paths(name, extension_dir)
+        self._model_id = str(_get("model", DEFAULT_MODEL))
+        self._temperature = float(_get("temperature", 0.7))
+        self._max_tokens = int(_get("max_tokens", 4096))
+        self._contemplation_level = str(_get("contemplation_level", "medium"))
+        self._contemplation_budget = _get("contemplation_budget", None)
+        self._exclude_contemplation = bool(_get("exclude_contemplation", False))
+
+        spells_enabled = _get("spells_enabled", [])
+        self._spell_names = list(spells_enabled) if spells_enabled else None
+
+        if runes_paths is not None:
+            self._runes_paths = [Path(str(p)).expanduser() for p in runes_paths]
         else:
-            # Backward compatibility: use explicit params or hardcoded defaults
-            self._model_id = model if model is not None else DEFAULT_MODEL
-            self._temperature = temperature if temperature is not None else 0.7
-            self._max_tokens = max_tokens if max_tokens is not None else 4096
-            self._contemplation_level = (
-                contemplation_level if contemplation_level is not None else "medium"
-            )
-            self._contemplation_budget = contemplation_budget
-            self._exclude_contemplation = (
-                exclude_contemplation if exclude_contemplation is not None else False
-            )
-            self._spell_names = None
-            if runes_paths is not None:
-                self._runes_paths = [Path(str(p)).expanduser() for p in runes_paths]
+            rune_paths_config = _get("rune_paths", None)
+            if rune_paths_config:
+                self._runes_paths = [
+                    Path(str(p)).expanduser() for p in rune_paths_config
+                ]
             else:
                 self._runes_paths = resolve_rune_paths(name, extension_dir)
 
         self._provider_registry = RealmRegistry()
         self._runner: RuneRunner | None = None
         self._watchers: list[RuneWatcher] = []
-        self._prompt_source = PromptSource.BUILTIN
+        self._prompt_source = environment.resolved_prompt.source
         self._model: Model | None = None
         self._realm: Realm | None = None
         self._agent_session: MvgeTome | None = None
@@ -209,63 +170,21 @@ class BaseMvge:
         return Path(f"~/.agents/.mvgeos/{self._name}").expanduser()
 
     def build_snapshot(self) -> RuntimeSnapshot:
-        """Assemble a resolved runtime snapshot of the agent's surface.
-
-        Pulls spells (with rune-vs-builtin provenance), runes per scope,
-        config values with provenance layers, resolved prompt source,
-        loaded skills with source, and accumulated diagnostics into a single
-        serializable ``RuntimeSnapshot``.
-
-        Works both before and after ``initialize()`` — absent components
-        contribute empty collections.
-        """
+        """Assemble a resolved runtime snapshot of the agent's surface."""
         spells: list[MvgeSpell | SpellDefinition] = cast(
             list[MvgeSpell | SpellDefinition], self._build_spells()
         )
-
-        rune_manifests: list[RuneManifest] = (
-            self._runner.loaded_manifests if self._runner is not None else []
-        )
-        skills: list[SkillManifest] = (
-            self._runner.get_skills() if self._runner is not None else []
-        )
-        rune_diagnostics: list[Diagnostic] = (
-            self._runner.diagnostics if self._runner is not None else []
-        )
-        skill_diagnostics: list[SkillDiagnostic] = (
-            self._runner.skill_diagnostics if self._runner is not None else []
-        )
-
-        config_values: dict[str, ConfigValue] = (
-            self._config_manager.load() if self._config_manager is not None else {}
-        )
-        config_source_files: dict[ConfigLayer, Path | None] = {}
-        if self._config_manager is not None:
-            config_source_files = {
-                ConfigLayer.AGENT: self._config_manager.agent_config_path,
-                ConfigLayer.LEGACY: self._config_manager.legacy_config_path,
-            }
-
-        loader = PromptLoader(agent_name=self._name, config_dir=self.config_dir)
-        custom_prompt = getattr(self, "_custom_system_prompt", "")
-        resolved_prompt = loader.resolve_system_prompt(
-            custom=custom_prompt, default=DEFAULT_SYSTEM_PROMPT
-        )
-        resolved_guidelines = loader.resolve_guidelines(default=DEFAULT_GUIDELINES)
-
-        return assemble_snapshot(
-            agent_name=self._name,
-            model=self._model_id,
+        env = MvgeEnvironment.resolve(
+            self._name,
+            config_dir=self.config_dir,
+            project_dir=getattr(self._config_manager, "_project_dir", None),
+            custom_prompt=getattr(self, "_custom_system_prompt", ""),
             spells=spells,
-            rune_manifests=rune_manifests,
-            config_values=config_values,
-            config_source_files=config_source_files,
-            resolved_prompt=resolved_prompt,
-            resolved_guidelines=resolved_guidelines,
-            skills=skills,
-            rune_diagnostics=rune_diagnostics,
-            skill_diagnostics=skill_diagnostics,
+            runner=self._runner,
+            config_manager=self._config_manager,
+            has_config_manager=(self._config_manager is not None),
         )
+        return env.build_snapshot()
 
     def on(
         self,

@@ -359,7 +359,13 @@ source = { virtual = "." }
 
 [package.dev-dependencies]
 dev = [
+    { name = "coding-mvge" },
     { name = "git-cliff" },
+    { name = "mvgeos-agent" },
+    { name = "mvgeos-cli" },
+    { name = "mvgeos-provider" },
+    { name = "mvgeos-runes" },
+    { name = "mvgeos-tome" },
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "pytest" },
@@ -373,7 +379,13 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "coding-mvge", editable = "coding-mvge" },
     { name = "git-cliff", specifier = ">=2.13.1" },
+    { name = "mvgeos-agent", editable = "mvgeos-agent" },
+    { name = "mvgeos-cli", editable = "mvgeos-cli" },
+    { name = "mvgeos-provider", editable = "mvgeos-provider" },
+    { name = "mvgeos-runes", editable = "mvgeos-runes" },
+    { name = "mvgeos-tome", editable = "mvgeos-tome" },
     { name = "mypy", specifier = ">=2.3.0" },
     { name = "pre-commit", specifier = ">=4.6.1" },
     { name = "pytest", specifier = ">=9.1.1" },

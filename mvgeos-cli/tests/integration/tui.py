@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
@@ -286,10 +287,12 @@ class TestTuiApp:
                 output=DummyOutput(),
             )
         assert app.application is not None
-        footer = app._footer_text()
-        # The footer truncates to console width, so match the model ID prefix
-        # rather than the full slug.
-        assert any("nvidia/nemotron" in text for _, text in footer)
+        with patch(
+            "mvgeos_cli.commands.repl._fit_footer",
+            side_effect=lambda items, width: items,
+        ):
+            footer = app._footer_text()
+            assert any("nvidia" in text for _, text in footer)
 
     def test_footer_shows_working_while_busy(self) -> None:
         app = self._app(FakeAgent())

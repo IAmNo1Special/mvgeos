@@ -8,6 +8,7 @@ import pytest
 from mvgeos_agent.base_mvge import BaseMvge
 from mvgeos_agent.config_manager import ConfigManager
 from mvgeos_agent.constants import DEFAULT_MODEL
+from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.prompt_loader import PromptSource
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
@@ -219,10 +220,11 @@ class TestBuildSnapshotWithConfig:
         )
         config_mgr.set("model", "custom-model")
 
+        env = MvgeEnvironment.resolve("test-agent", config_manager=config_mgr)
         agent = CodingMvge(
             api_key="key",
             name="test-agent",
-            config_manager=config_mgr,
+            environment=env,
         )
 
         snap = agent.build_snapshot()
@@ -239,11 +241,12 @@ class TestBuildSnapshotWithConfig:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(BaseMvge, "config_dir", property(lambda self: tmp_path))
+        env = MvgeEnvironment.resolve("test-agent", has_config_manager=False)
         agent = CodingMvge(
             api_key="key",
             name="test-agent",
             spells=[],
-            config_manager=None,
+            environment=env,
         )
         snap = agent.build_snapshot()
         assert snap.config == []

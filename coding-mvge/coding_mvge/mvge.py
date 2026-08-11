@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any, cast
 
 from mvgeos_agent.base_mvge import BaseMvge
-from mvgeos_agent.config_manager import ConfigManager
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
+from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.prompt_loader import PromptSource
 from mvgeos_agent.spell_schema import generate_spell_schema
 from mvgeos_agent.types import MvgeInvocation, MvgeSpell, SpellResult
@@ -66,34 +66,22 @@ class CodingMvge(BaseMvge):
         api_key: str,
         *,
         name: str = DEFAULT_AGENT_NAME,
-        model: str | None = None,
         spells: list[str] | None = None,
         custom_system_prompt: str = "",
         extension_dir: str | None = None,
         session_dir: Path | None = None,
         session_resume: str | None = None,
         provider_name: str | None = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-        contemplation_level: str | None = None,
-        contemplation_budget: int | None = None,
-        exclude_contemplation: bool | None = None,
-        config_manager: ConfigManager | None = None,
+        environment: MvgeEnvironment | None = None,
     ) -> None:
         super().__init__(
             api_key=api_key,
             name=name,
-            model=model,
             extension_dir=extension_dir,
             session_dir=session_dir,
             session_resume=session_resume,
             provider_name=provider_name,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            contemplation_level=contemplation_level,
-            contemplation_budget=contemplation_budget,
-            exclude_contemplation=exclude_contemplation,
-            config_manager=config_manager,
+            environment=environment,
         )
         # Use spells from config if not explicitly provided, otherwise
         # default to all builtin spells

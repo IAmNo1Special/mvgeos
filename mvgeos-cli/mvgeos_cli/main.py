@@ -6,7 +6,7 @@ import json
 import os
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import typer
 from coding_mvge.spells import (
@@ -19,12 +19,12 @@ from coding_mvge.spells import (
     cast_write,
 )
 from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.config_manager import ConfigManager
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
     DEFAULT_TOME_DIR,
     resolve_rune_paths,
 )
+from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.loop import MvgeLoop
 from mvgeos_agent.prompt_config import (
     build_system_prompt,
@@ -97,25 +97,20 @@ async def _run_agent(
     tui: bool,
     agent_name: str = DEFAULT_AGENT_NAME,
 ) -> None:
-    # Create ConfigManager to resolve config from all layers
-    config_manager = ConfigManager(agent_name=agent_name)
-
-    # Apply CLI overrides if provided
+    overrides: dict[str, Any] = {}
     if model_id is not None:
-        config_manager = config_manager.with_overrides(model=model_id)
+        overrides["model"] = model_id
     if temperature is not None:
-        config_manager = config_manager.with_overrides(temperature=temperature)
+        overrides["temperature"] = temperature
     if max_tokens is not None:
-        config_manager = config_manager.with_overrides(max_tokens=max_tokens)
+        overrides["max_tokens"] = max_tokens
     if contemplation_level is not None:
-        config_manager = config_manager.with_overrides(
-            contemplation_level=contemplation_level
-        )
+        overrides["contemplation_level"] = contemplation_level
     if spells_enabled is not None:
-        config_manager = config_manager.with_overrides(spells_enabled=spells_enabled)
+        overrides["spells_enabled"] = spells_enabled
 
-    # Get resolved config
-    resolved = config_manager.load()
+    env = MvgeEnvironment.resolve(agent_name=agent_name, overrides=overrides)
+    resolved = env.config
     model_id = model_id or resolved["model"].value
     temperature = (
         temperature if temperature is not None else resolved["temperature"].value

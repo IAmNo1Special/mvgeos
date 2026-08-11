@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.prompt_config import load_system_prompt
 from mvgeos_agent.types import (
     ContemplationLevel,
@@ -97,14 +98,21 @@ class _Iter:
 
 class TestCodingMvgeInit:
     def test_stores_config(self) -> None:
+        env = MvgeEnvironment.resolve(
+            "test-agent",
+            overrides={
+                "model": "test-model",
+                "temperature": 0.5,
+                "max_tokens": 2048,
+                "contemplation_level": "high",
+            },
+            custom_prompt="Custom prompt",
+        )
         agent = CodingMvge(
             api_key="k",
-            model="test-model",
             spells=["bash", "read"],
             custom_system_prompt="Custom prompt",
-            temperature=0.5,
-            max_tokens=2048,
-            contemplation_level="high",
+            environment=env,
         )
         assert agent._api_key == "k"
         assert agent._model_id == "test-model"
@@ -200,7 +208,6 @@ class TestCodingMvgeRun:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="openrouter/anthropic/claude-3.5-sonnet",
                 session_dir=Path(tmpdir),
                 spells=[],
             )
@@ -212,10 +219,13 @@ class TestCodingMvgeRun:
 
     @pytest.mark.asyncio
     async def test_raises_on_unknown_model(self) -> None:
+        env = MvgeEnvironment.resolve(
+            "test-agent", overrides={"model": "unknown/model"}
+        )
         agent = CodingMvge(
             api_key="test-key",
-            model="unknown/model",
             spells=[],
+            environment=env,
         )
         with pytest.raises(ValueError, match="Unknown model"):
             await agent.initialize()
@@ -225,7 +235,6 @@ class TestCodingMvgeRun:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="openrouter/anthropic/claude-3.5-sonnet",
                 session_dir=Path(tmpdir),
                 spells=[],
             )
@@ -240,7 +249,6 @@ class TestCodingMvgeRun:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="openrouter/anthropic/claude-3.5-sonnet",
                 session_dir=Path(tmpdir),
                 spells=[],
             )
@@ -256,7 +264,6 @@ class TestCodingMvgeRun:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="openrouter/anthropic/claude-3.5-sonnet",
                 session_dir=Path(tmpdir),
                 spells=[],
             )
@@ -272,7 +279,6 @@ class TestCodingMvgeRun:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="openrouter/anthropic/claude-3.5-sonnet",
                 session_dir=Path(tmpdir),
                 spells=["bash", "read"],
             )
@@ -287,7 +293,6 @@ class TestCodingMvgeRun:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="openrouter/anthropic/claude-3.5-sonnet",
                 session_dir=Path(tmpdir),
             )
             mock = _install_mock(agent)
@@ -302,7 +307,6 @@ class TestCodingMvgeRun:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="openrouter/anthropic/claude-3.5-sonnet",
                 session_dir=Path(tmpdir),
                 spells=[],
             )
@@ -323,7 +327,6 @@ class TestCodingMvgeRun:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="openrouter/anthropic/claude-3.5-sonnet",
                 session_dir=Path(tmpdir),
                 spells=[],
             )
@@ -353,7 +356,6 @@ class TestCodingMvgeSwitchModel:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="nvidia/nemotron-3-ultra-550b-a55b:free",
                 session_dir=Path(tmpdir),
                 spells=[],
             )
@@ -377,7 +379,6 @@ class TestCodingMvgeSwitchModel:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="nvidia/nemotron-3-ultra-550b-a55b:free",
                 session_dir=Path(tmpdir),
                 spells=[],
             )
@@ -398,7 +399,6 @@ class TestCodingMvgeSwitchModel:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="nvidia/nemotron-3-ultra-550b-a55b:free",
                 session_dir=Path(tmpdir),
                 spells=[],
             )
@@ -416,9 +416,7 @@ class TestCodingMvgeSwitchModel:
             for m in list_models()
             if m.id != "nvidia/nemotron-3-ultra-550b-a55b:free"
         )
-        agent = CodingMvge(
-            api_key="test-key", model="nvidia/nemotron-3-ultra-550b-a55b:free"
-        )
+        agent = CodingMvge(api_key="test-key")
         await agent.switch_model(target)
         assert agent._model_id == target
 
@@ -435,7 +433,6 @@ class TestCodingMvgeToolCalls:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="nvidia/nemotron-3-ultra-550b-a55b:free",
                 session_dir=Path(tmpdir),
                 spells=["bash"],
             )
@@ -505,7 +502,6 @@ class TestCodingMvgeToolCalls:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                model="nvidia/nemotron-3-ultra-550b-a55b:free",
                 session_dir=Path(tmpdir),
                 spells=["bash", "read"],
             )
