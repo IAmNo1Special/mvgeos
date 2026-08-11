@@ -356,12 +356,6 @@ class BaseMvge:
 
         await self._load_runes()
 
-        self._model = self._compose_model(self._model_id)
-
-        self._realm = self._provider_registry.create_realm(
-            self._model, self._api_key, self._provider_name
-        )
-
         # Initialize tome ledger (needed for both new and resumed sessions)
         self._tome_ledger = TomeLedger(self._session_dir)
 
