@@ -61,6 +61,12 @@ def test_app_tome_help() -> None:
     assert "tome" in result.output.lower()
 
 
+def test_app_build_help() -> None:
+    result = runner.invoke(app, ["build", "--help"])
+    assert result.exit_code == 0
+    assert "manifest" in result.output.lower()
+
+
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"})
 @patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
 def test_repl_callback_no_incantation_runs_repl(mock_run_agent: AsyncMock) -> None:

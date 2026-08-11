@@ -47,6 +47,7 @@ from mvgeos_runes.watcher import RuneWatcher
 from mvgeos_tome.ledger import TomeLedger
 from rich.console import Console
 
+from mvgeos_cli.commands.build import build_app
 from mvgeos_cli.commands.config import config_app
 from mvgeos_cli.commands.setup import setup_app
 from mvgeos_cli.commands.tome import tome_app
@@ -437,6 +438,7 @@ def _repl_callback(
     )
 
 
+app.add_typer(build_app, name="build")
 app.add_typer(config_app, name="config")
 app.add_typer(tome_app, name="tome")
 app.add_typer(setup_app, name="setup")
