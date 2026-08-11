@@ -10,13 +10,7 @@ from typing import Any, cast
 
 import typer
 from coding_mvge.spells import (
-    cast_bash,
-    cast_edit,
-    cast_find,
-    cast_grep,
-    cast_list,
-    cast_read,
-    cast_write,
+    BUILTIN_SPELL_MAP as SPELL_MAP,
 )
 from mvgeos_agent.agent_session import MvgeTome
 from mvgeos_agent.constants import (
@@ -322,16 +316,6 @@ def _build_spells(enabled: list[str]) -> list[MvgeSpell]:
             )
     return spells
 
-
-SPELL_MAP = {
-    "bash": cast_bash,
-    "read": cast_read,
-    "write": cast_write,
-    "edit": cast_edit,
-    "find": cast_find,
-    "list": cast_list,
-    "grep": cast_grep,
-}
 
 console = Console()
 
