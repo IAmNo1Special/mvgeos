@@ -71,7 +71,6 @@ class TomeLedger:
 
             self._tomles[tome_id] = metadata
             self._write_tome_file(metadata, [])
-            self._rebuild_index()
             return metadata
 
     def open_tome(self, tome_id: str) -> TomeMetadata | None:
@@ -103,9 +102,7 @@ class TomeLedger:
                 if metadata is None:
                     raise ValueError(f"Tome not found: {tome_id}")
 
-            entries = self._read_tome_entries(tome_id)
-            entries.append(entry)
-            self._write_tome_file(metadata, entries)
+            self._append_entry_to_file(tome_id, entry)
             self._index.add(entry)
 
     def append_message(
@@ -263,7 +260,8 @@ class TomeLedger:
                 )
 
             self._write_tome_file(metadata, parent_entries)
-            self._rebuild_index()
+            for entry in parent_entries:
+                self._index.add(entry)
             return metadata
 
     def get_entries_for_context(
@@ -282,6 +280,20 @@ class TomeLedger:
 
     def _tome_file_path(self, tome_id: str) -> Path:
         return self._tome_dir / f"{tome_id}.jsonl"
+
+    def _append_entry_to_file(self, tome_id: str, entry: TomeEntry) -> None:
+        tome_file = self._tome_file_path(tome_id)
+        line = json.dumps(
+            {
+                "id": entry.id,
+                "parentId": entry.parent_id,
+                "type": entry.type.value,
+                "timestamp": entry.timestamp,
+                "payload": entry.payload,
+            }
+        )
+        with tome_file.open("a", encoding="utf-8") as f:
+            f.write(line + "\n")
 
     def _load_all_tomes(self) -> None:
         if not self._tome_dir.exists():
