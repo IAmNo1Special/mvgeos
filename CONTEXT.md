@@ -95,6 +95,9 @@ The value-returning extension points: `transform_context`, `before_realm_headers
 **Steering** / **Follow-up**:
 Steering Invocations are injected between turns while the Mvge is still working; follow-ups resume it after it would otherwise settle. The loop drains `MvgeState.steer_queue` after each turn that cast no Spells, and `followup_queue` at the outer-loop boundary. Queue modes (`all` / `one-at-a-time`) are not implemented — both queues always drain in full.
 
+**MvgeHarness**:
+The session-aware operational owner of the agent loop. Wraps `MvgeLoop`, `MvgeTome`, and `CompactionRunner`, orchestrating session startup, prompt dispatch, compaction history synchronization, and turn driving behind a deep interface. Mirrors Pi's `AgentHarness`.
+
 **Emit Sink**:
 The single async channel out of the core: `Callable[[MvgeEvent], Awaitable[None]]`. `MvgeLoop._emit` fans one event out to four effects — `MvgeState` reduction, the event bus, the mapped Sigil, and Tome recording. Recording happens only on `MESSAGE_END`, which the core emits for Summoner, Mvge, and Spell-result Invocations alike (Pi's one-recording-point model).
 

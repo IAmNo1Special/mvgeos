@@ -173,6 +173,7 @@ class BaseMvge:
         self._agent_session: MvgeTome | None = None
         self._tome_ledger: TomeLedger | None = None
         self._loop: MvgeLoop | None = None
+        self._harness: MvgeHarness | None = None
         self._compaction: CompactionRunner | None = None
         self._state: MvgeState | None = None
         self._event_bus = EventBus()
@@ -505,18 +506,16 @@ class BaseMvge:
             event_bus=self._event_bus,
         )
 
-        self._loop = MvgeLoop(self._state)
-        self._harness: MvgeHarness | None = None
-
-        if self._realm is not None and self._model is not None:
-            self._compaction = CompactionRunner(
-                realm=self._realm,
-                model=self._model,
-                emit=self._loop.emit,
-                settings=self._compaction_settings,
-                tome=self._agent_session,
-            )
-            self._harness = MvgeHarness(self._loop, self._compaction)
+        assert self._agent_session is not None
+        self._harness = MvgeHarness(
+            state=self._state,
+            tome=self._agent_session,
+            realm=self._realm,
+            model=self._model,
+            compaction_settings=self._compaction_settings,
+        )
+        self._loop = self._harness.loop
+        self._compaction = self._harness.compaction
 
         self._initialized = True
 
@@ -594,6 +593,9 @@ class BaseMvge:
         self._model = new_model
         assert self._state is not None
         self._state.model = dataclasses.asdict(new_model)
+        if self._harness is not None and self._realm is not None:
+            self._harness.set_model_and_realm(new_model, self._realm)
+            self._compaction = self._harness.compaction
 
     async def run(self, prompt: str) -> MvgeInvocation:
         """Template method. Sealed entry point for all agents."""

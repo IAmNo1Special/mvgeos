@@ -4,9 +4,9 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from mvgeos_runes.rune_runner import RuneRunner
+    from mvgeos_agent.sandbox import MvgeSandbox
 
-from mvgeos_agent.sandbox import MvgeSandbox
+    from mvgeos_runes.rune_runner import RuneRunner
 
 from mvgeos_runes.types import (
     RegisteredCommand,

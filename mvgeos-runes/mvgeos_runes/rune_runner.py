@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from mvgeos_agent.sandbox import MvgeSandbox
+if TYPE_CHECKING:
+    from mvgeos_agent.sandbox import MvgeSandbox
 
-from mvgeos_runes.rune_api import RuneAPI, RuneFactory
+    from mvgeos_runes.rune_api import RuneAPI, RuneFactory
+else:
+    from mvgeos_runes.rune_api import RuneAPI, RuneFactory
+
 from mvgeos_runes.sigils import SigilRegistry
 from mvgeos_runes.types import (
     Diagnostic,
@@ -58,7 +62,7 @@ class RuneRunner:
         self._message_queue: list[str] = []
         self._session_name: str | None = None
         self._event_handlers: dict[str, list[Any]] = {}
-        self._sandbox = MvgeSandbox()
+        self._sandbox: Any | None = None
         self._loaded_manifests: list[RuneManifest] = []
         self._diagnostics: list[Diagnostic] = []
         self._loaded_rune_names: set[str] = set()
@@ -73,6 +77,10 @@ class RuneRunner:
 
     @property
     def sandbox(self) -> MvgeSandbox:
+        if self._sandbox is None:
+            from mvgeos_agent.sandbox import MvgeSandbox
+
+            self._sandbox = MvgeSandbox()
         return self._sandbox
 
     @property
