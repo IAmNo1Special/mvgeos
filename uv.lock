@@ -12,7 +12,6 @@ members = [
     "mvgeos",
     "mvgeos-agent",
     "mvgeos-cli",
-    "mvgeos-harness",
     "mvgeos-provider",
     "mvgeos-runes",
     "mvgeos-tome",
@@ -390,7 +389,6 @@ version = "0.1.0"
 source = { editable = "mvgeos-agent" }
 dependencies = [
     { name = "filelock" },
-    { name = "mvgeos-harness" },
     { name = "mvgeos-provider" },
     { name = "mvgeos-runes" },
     { name = "mvgeos-tome" },
@@ -406,7 +404,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "filelock", specifier = ">=3.14" },
-    { name = "mvgeos-harness", editable = "mvgeos-harness" },
     { name = "mvgeos-provider", editable = "mvgeos-provider" },
     { name = "mvgeos-runes", editable = "mvgeos-runes" },
     { name = "mvgeos-tome", editable = "mvgeos-tome" },
@@ -447,30 +444,6 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "rich", specifier = ">=13.0" },
     { name = "typer", specifier = ">=0.12.0" },
-]
-provides-extras = ["dev"]
-
-[[package]]
-name = "mvgeos-harness"
-version = "0.1.0"
-source = { editable = "mvgeos-harness" }
-dependencies = [
-    { name = "mvgeos-agent" },
-    { name = "mvgeos-provider" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "mvgeos-agent", editable = "mvgeos-agent" },
-    { name = "mvgeos-provider", editable = "mvgeos-provider" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
 ]
 provides-extras = ["dev"]
 

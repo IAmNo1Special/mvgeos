@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from mvgeos_agent.compaction import (
+from mvgeos_agent.harness.compaction import (
     DEFAULT_COMPACTION_SETTINGS,
     SUMMARIZATION_SYSTEM_PROMPT,
     CompactionSettings,

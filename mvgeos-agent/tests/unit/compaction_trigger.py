@@ -6,8 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from mvgeos_provider.types import Model, RealmResponse
 
-from mvgeos_agent.compaction import CompactionSettings
-from mvgeos_agent.compaction_runner import CompactionRunner
+from mvgeos_agent.harness.compaction import CompactionRunner, CompactionSettings
 from mvgeos_agent.types import (
     MvgeEvent,
     MvgeEventType,

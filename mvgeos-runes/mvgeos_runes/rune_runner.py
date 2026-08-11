@@ -4,7 +4,7 @@ import logging
 from collections.abc import Awaitable
 from typing import Any
 
-from mvgeos_agent import MvgeSandbox
+from mvgeos_agent.sandbox import MvgeSandbox
 
 from mvgeos_runes.rune_api import RuneAPI, RuneFactory
 from mvgeos_runes.sigils import SigilRegistry

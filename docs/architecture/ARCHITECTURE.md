@@ -93,17 +93,16 @@ and system prompt configuration.
 **Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-tome,
 mvgeos-runes
 
-### mvgeos-harness
+### coding-mvge
 
-Harness package wrapping `MvgeLoop` and owning the session lifecycle
-(matching Pi's `AgentHarness`). Owns compaction, steering/follow-up
-queues, and turn callbacks (`should_stop_after_turn`,
-`prepare_next_turn`). Delegates to `MvgeLoop.run()` for the nested
-outer/inner loop structure.
+Coding agent package implementing `BaseMvge`. Provides `CodingMvge`
+class with built-in spells (bash, read, write, edit, find, list, grep)
+and system prompt configuration.
 
-**Entry point**: `MvgeHarness(loop, compaction, callbacks).run(...)`
+**Entry point**: `CodingMvge(api_key).run(prompt)`
 
-**Dependencies**: mvgeos-agent, mvgeos-provider
+**Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-tome,
+mvgeos-runes
 
 ## Data Flow
 
@@ -112,7 +111,7 @@ outer/inner loop structure.
 1. User provides input via CLI or TUI
 2. CLI creates `BaseMvge`/`CodingMvge` instance with configured realms
 3. `BaseMvge.run(prompt)` → normalizes input to `SummonerRequest`
-4. `BaseMvge.initialize()` creates `MvgeHarness` (wraps `MvgeLoop`, owns lifecycle)
+4. `BaseMvge.initialize()` creates `MvgeHarness` (wraps `MvgeLoop`, owns lifecycle and compaction)
 5. `MvgeHarness.run()` delegates to `MvgeLoop.run()` (nested outer/inner loops)
 6. Loop calls `Realm.channel(model, invocations, config)` on configured realm
 7. Provider channels `RealmResponse` events (text deltas, tool calls, etc.)

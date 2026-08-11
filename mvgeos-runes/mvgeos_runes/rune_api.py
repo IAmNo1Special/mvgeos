@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from mvgeos_runes.rune_runner import RuneRunner
 
-from mvgeos_agent import MvgeSandbox
+from mvgeos_agent.sandbox import MvgeSandbox
 
 from mvgeos_runes.types import (
     RegisteredCommand,

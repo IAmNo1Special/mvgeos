@@ -21,13 +21,12 @@ MvgeOS is a monorepo with uv workspaces:
 
 | Package | Purpose |
 | --- | --- |
-| `mvgeos-agent` | Core Mvge loop, invocations, state, spell execution, spell types |
+| `mvgeos-agent` | Core Mvge loop, invocations, state, spell execution, and MvgeHarness session lifecycle |
 | `mvgeos-provider` | Realm protocol and OpenRouter provider |
 | `mvgeos-tome` | JSONL session persistence with file locking and in-memory index |
 | `mvgeos-runes` | Extension system: manifest, loader, sigil hooks |
 | `mvgeos-cli` | CLI entry point (`mvgeos` command) |
 | `coding-mvge` | Coding agent package (BaseMvge subclass) |
-| `mvgeos-harness` | Session lifecycle harness (compaction, steering, turn callbacks) |
 
 ## Quick Start
 

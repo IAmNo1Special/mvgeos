@@ -8,13 +8,17 @@ recording the compaction on the Tome.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from mvgeos_provider.base import Realm
 from mvgeos_provider.retry import DEFAULT_RETRY_POLICY, RetryPolicy, retry_invocation
 from mvgeos_provider.types import ChannelConfig, Model
 
-from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.compaction import (
+if TYPE_CHECKING:
+    from mvgeos_agent.agent_session import MvgeTome
+    from mvgeos_agent.loop import EmitSink
+
+from mvgeos_agent.harness.compaction.compaction import (
     DEFAULT_COMPACTION_SETTINGS,
     CompactionSettings,
     estimate_context_mana,
@@ -22,7 +26,6 @@ from mvgeos_agent.compaction import (
     prepare_compaction,
     should_compact,
 )
-from mvgeos_agent.loop import EmitSink
 from mvgeos_agent.types import (
     ContentType,
     MvgeEvent,

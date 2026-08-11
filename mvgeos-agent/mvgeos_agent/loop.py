@@ -580,6 +580,7 @@ class MvgeLoop:
         stream_fn: StreamFn,
         model: dict[str, Any],
         contemplation_level: str = "medium",
+        callbacks: LoopCallbacks | None = None,
     ) -> MvgeInvocation:
         self._state.is_streaming = True
         self._state.model = model
@@ -604,7 +605,7 @@ class MvgeLoop:
                 context,
                 stream_fn,
                 self._emit,
-                self._build_callbacks(),
+                callbacks if callbacks is not None else self._build_callbacks(),
             )
         finally:
             self._state.is_streaming = False

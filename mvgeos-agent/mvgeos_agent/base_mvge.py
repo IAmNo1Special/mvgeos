@@ -6,7 +6,6 @@ from collections.abc import AsyncIterator, Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
-from mvgeos_harness import MvgeHarness
 from mvgeos_provider.base import Realm
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
@@ -31,8 +30,6 @@ from mvgeos_runes.watcher import RuneWatcher
 from mvgeos_tome.ledger import TomeLedger
 
 from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.compaction import DEFAULT_COMPACTION_SETTINGS, CompactionSettings
-from mvgeos_agent.compaction_runner import CompactionRunner
 from mvgeos_agent.config_manager import ConfigLayer, ConfigManager, ConfigValue
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
@@ -41,6 +38,12 @@ from mvgeos_agent.constants import (
     resolve_rune_paths,
 )
 from mvgeos_agent.event_bus import EventBus
+from mvgeos_agent.harness import (
+    DEFAULT_COMPACTION_SETTINGS,
+    CompactionRunner,
+    CompactionSettings,
+    MvgeHarness,
+)
 from mvgeos_agent.loop import MvgeLoop, StreamFn
 from mvgeos_agent.prompt_config import DEFAULT_GUIDELINES, DEFAULT_SYSTEM_PROMPT
 from mvgeos_agent.prompt_loader import PromptLoader, PromptSource
@@ -513,31 +516,7 @@ class BaseMvge:
                 settings=self._compaction_settings,
                 tome=self._agent_session,
             )
-            # Build callbacks from the loop (includes rune sigil handlers)
-            callbacks = self._loop._build_callbacks()
-            # Add compaction callback to the callbacks
-            original_after_invocation = callbacks.after_invocation
-
-            async def after_invocation_with_compaction(
-                invocations: list[MvgeInvocation],
-            ) -> list[MvgeInvocation] | None:
-                # Run compaction first
-                if self._compaction is not None:
-                    replacement = await self._compaction.maybe_compact(
-                        list(invocations)
-                    )
-                    if replacement is not None:
-                        invocations = list(replacement)
-                # Then run original after_invocation for Rune-specific mutations
-                if original_after_invocation is not None:
-                    replacement = await original_after_invocation(list(invocations))
-                    if replacement is not None:
-                        invocations = list(replacement)
-                return invocations
-
-            callbacks.after_invocation = after_invocation_with_compaction
-            # Create harness that wraps the loop and owns compaction/lifecycle
-            self._harness = MvgeHarness(self._loop, self._compaction, callbacks)
+            self._harness = MvgeHarness(self._loop, self._compaction)
 
         self._initialized = True
 
