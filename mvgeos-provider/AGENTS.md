@@ -13,19 +13,19 @@ This package implements the Realm protocol (provider interface) and OpenRouter p
 
 ```bash
 # Run this package's tests
-uv run pytest mvgeos-provider/tests_provider/
+uv run pytest mvgeos-provider/tests/
 
 # Run with coverage
-uv run pytest mvgeos-provider/tests_provider/ --cov
+uv run pytest mvgeos-provider/tests/ --cov
 ```
 
-Test paths follow pattern: `mvgeos-provider/tests_provider/test_<module>.py`
+Test paths follow pattern: `mvgeos-provider/tests/unit/<module>.py` and `mvgeos-provider/tests/integration/<module>.py`
 
 ## Key Types
 
 | Type | Purpose |
 | --- | --- |
-| `Realm` | Abstract provider protocol (`channel()`, `close()`) |
+| `Realm` | Abstract provider protocol (`stream()`, `close()`) |
 | `OpenRouterRealm` | OpenRouter SSE channeling implementation |
 | `Model` | Model descriptor (has `realm`, `max_completion_mana`, `context_window`) |
 | `ChannelConfig` | Per-request config (temperature, `max_tokens`, `max_output_mana`, contemplation, tools) |
@@ -49,7 +49,7 @@ Test paths follow pattern: `mvgeos-provider/tests_provider/test_<module>.py`
 
 ## Architecture
 
-- `Realm.channel(model, invocations, config)` → async generator of `RealmResponse`
+- `Realm.stream(model, invocations, config)` → async generator of `RealmResponse`
 - `OpenRouterRealm` implements OpenRouter SSE streaming with retry/backoff
 - `RealmRegistry` creates realms and registers rune-provided providers
 - `ModelRegistry` maintains a catalog with disk cache and OpenRouter API refresh

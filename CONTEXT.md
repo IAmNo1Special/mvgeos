@@ -90,7 +90,7 @@ The stateless heart of the turn cycle. Takes a frozen `LoopContext`, a `StreamFn
 Frozen snapshot of everything the core reads (~9 fields). Diverges from Pi, which passes a mutable `AgentContext`; the frozen dataclass is what enforces the seam.
 
 **Loop Callbacks**:
-The value-returning extension points: `transform_context`, `before_realm_headers`, `before_spell_cast` (veto), `after_spell_result`, plus the queue drains `get_steering_messages` and `get_follow_up_messages`. Every callback is optional and must not raise — return a safe fallback instead. `MvgeLoop` honours this contract when building them from a Rune runner. Mirrors Pi's `AgentLoopConfig` callbacks.
+The value-returning extension points: `transform_context`, `before_realm_headers`, `before_spell_cast` (veto), `after_spell_result`, `should_stop_after_turn`, `prepare_next_turn`, plus the queue drains `get_steering_messages` and `get_follow_up_messages`. Every callback is optional and must not raise — return a safe fallback instead. `MvgeLoop` honours this contract when building them from a Rune runner. Mirrors Pi's `AgentLoopConfig` callbacks.
 
 **Steering** / **Follow-up**:
 Steering Invocations are injected between turns while the Mvge is still working; follow-ups resume it after it would otherwise settle. The loop drains `MvgeState.steer_queue` after each turn that cast no Spells, and `followup_queue` at the outer-loop boundary. Queue modes (`all` / `one-at-a-time`) are not implemented — both queues always drain in full.
@@ -124,10 +124,14 @@ Two layers in `mvgeos_provider/retry.py`, mirroring Pi:
 
 Both accept a `signal` that is currently ignored, reserved so the abort work does not reshape the interfaces.
 
+## Default Model
+
+The system-wide default model across all MvgeOS packages and test suites is `nvidia/nemotron-3-ultra-550b-a55b:free` (`DEFAULT_MODEL` in `mvgeos_agent.constants`).
+
 ## Known gaps
 
 - **Parallel Spell casting** — Spells in one Invocation are cast serially. Pi runs them concurrently unless a Spell declares `sequential`. `SpellExecutionMode` exists but nothing reads it.
 - **Abort** — `signal` parameters exist on `MvgeSpell.execute` but are always `None`; there is no `abort()` on the Mvge. Pi threads an `AbortSignal` end to end.
 - **Spell result `terminate`** — Pi lets a Spell result request an early stop when every result in the batch agrees. No equivalent field exists.
-- **`shouldStopAfterTurn` / `prepareNextTurn`** — Pi can stop or re-aim between turns. The nested loop now has the seam for both; neither is wired. The Mana Budget Rune needs the former.
 - **Queue modes** — steering and follow-up queues always drain in full; Pi supports `one-at-a-time`.
+

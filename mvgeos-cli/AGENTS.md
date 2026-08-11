@@ -13,13 +13,13 @@ This package implements the CLI entry point (`mvgeos` command): one-shot prompt 
 
 ```bash
 # Run this package's tests
-uv run pytest mvgeos-cli/tests_cli/
+uv run pytest mvgeos-cli/tests/
 
 # Run with coverage
-uv run pytest mvgeos-cli/tests_cli/ --cov
+uv run pytest mvgeos-cli/tests/ --cov
 ```
 
-Test paths follow pattern: `mvgeos-cli/tests_cli/test_<module>.py`
+Test paths follow pattern: `mvgeos-cli/tests/unit/<module>.py` and `mvgeos-cli/tests/integration/<module>.py`
 
 ## Key Types
 

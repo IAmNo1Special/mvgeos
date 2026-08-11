@@ -32,7 +32,7 @@ MvgeOS is a monorepo with uv workspaces:
 
 ```bash
 uv sync
-uv run pytest --import-mode=importlib --cov
+uv run pytest --cov
 uv run mypy
 uv run ruff check
 uv run ruff format --check

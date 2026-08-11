@@ -13,13 +13,13 @@ This package implements the core BaseMvge: the `BaseMvge` class (agent), `MvgeLo
 
 ```bash
 # Run this package's tests
-uv run pytest mvgeos-agent/tests_agent/
+uv run pytest mvgeos-agent/tests/
 
 # Run with coverage
-uv run pytest mvgeos-agent/tests_agent/ --cov
+uv run pytest mvgeos-agent/tests/ --cov
 ```
 
-Test paths follow pattern: `mvgeos-agent/tests_agent/test_<module>.py`
+Test paths follow pattern: `mvgeos-agent/tests/unit/<module>.py` and `mvgeos-agent/tests/integration/<module>.py`
 
 ## Key Types
 

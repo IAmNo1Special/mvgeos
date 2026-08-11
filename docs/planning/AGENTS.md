@@ -1,8 +1,7 @@
 # MvgeOS TODO — Agent Task Tracker
 
-**Last Updated**: 2026-07-31
-**Current Status**: Scaffold complete, core loop implemented,
-all quality gates passing
+**Last Updated**: 2026-08-11
+**Current Status**: Core engine, provider, tome persistence, rune loader, CLI, and coding agent implemented with 823 passing tests and 92.87% coverage.
 **Location**: `C:\Users\ivmno\Desktop\mvgeos\`
 
 ---
@@ -11,13 +10,13 @@ all quality gates passing
 
 | Package | Tests | Coverage | Mypy | Ruff |
 |---------|-------|----------|------|------|
-| mvgeos-agent | 10 passed | 76-99% | ✅ | ✅ |
-| mvgeos-provider | 9 passed | 67-100% | ✅ | ✅ |
-| mvgeos-tome | 4 passed | 65-100% | ✅ | ✅ |
-| mvgeos-runes | 5 passed | 85-100% | ✅ | ✅ |
-| mvgeos-cli | 6 passed | 70-100% | ✅ | ✅ |
-| coding-mvge | 8 passed | 87-100% | ✅ | ✅ |
-| **TOTAL** | **42 passed** | **87%** | ✅ | ✅ |
+| mvgeos-agent | 338 passed | 89-100% | ✅ | ✅ |
+| mvgeos-provider | 64 passed | 82-100% | ✅ | ✅ |
+| mvgeos-tome | 11 passed | 65-100% | ✅ | ✅ |
+| mvgeos-runes | 240 passed | 87-100% | ✅ | ✅ |
+| mvgeos-cli | 160 passed | 57-100% | ✅ | ✅ |
+| coding-mvge | 10 passed | 90-100% | ✅ | ✅ |
+| **TOTAL** | **823 passed** | **92.87%** | ✅ | ✅ |
 
 ---
 
@@ -42,11 +41,10 @@ Package the three Seekers as an `mvgeos-runes-seeker` extension:
 cd C:\Users\ivmno\Desktop\mvgeos
 
 # Tests (must pass, 90%+ coverage target)
-uv run pytest --import-mode=importlib --cov
+uv run pytest --cov
 
 # Type checking (must pass)
-uv run mypy -p mvgeos_agent -p mvgeos_provider -p mvgeos_tome
--p mvgeos_spells -p mvgeos_runes -p mvgeos -p coding_mvge
+uv run mypy -p mvgeos_agent -p mvgeos_provider -p mvgeos_tome -p mvgeos_runes -p mvgeos_cli -p coding_mvge
 
 # Linting (must pass)
 uv run ruff check
@@ -73,7 +71,6 @@ mvgeos/
 ├── coding-mvge/      # Coding agent package
 ├── docs/adr/          # ADRs
 ├── .github/workflows/ci.yml
-├── ARCHITECTURE.md    # Architecture doc
 ├── CHANGELOG.md       # Version history
 ├── README.md          # Project overview
 ├── AGENTS.md          # Project rules
@@ -86,8 +83,8 @@ mvgeos/
 
 ## 🧪 TDD WORKFLOW (Required)
 
-1. **RED** — Write failing test in `tests/test_<module>.py`
-2. **GREEN** — Implement minimal code in `src/.mvgeos_<pkg>/<module>.py`
+1. **RED** — Write failing test in `<package>/tests/unit/<module>.py` or `<package>/tests/integration/<module>.py`
+2. **GREEN** — Implement minimal code in `<package>/<package_name>/<module>.py`
 3. **REFACTOR** — Clean up, ensure types pass
 4. **VERIFY** — Run all quality gates above
 
@@ -137,9 +134,8 @@ mvgeos/
 
 ## 📚 KEY REFERENCES
 
-- `SPEC.md` — Full technical specification
-- `HANDOFF.md` — Quick reference for continuation
-- `ARCHITECTURE.md` — Architecture diagrams & data flows
+- `docs/architecture/SPEC.md` — Full technical specification
+- `docs/architecture/ARCHITECTURE.md` — Architecture diagrams & data flows
 - `AGENTS.md` — Project rules & conventions
 - `docs/adr/` — Architecture Decision Records
 

@@ -156,13 +156,17 @@ class Model:
     id: str
     name: str
     realm: str
-    provider: str
     base_url: str
     api_key: str
     max_completion_mana: int = 0
     context_window: int = 128000
     max_tokens: int = 4096
     headers: dict[str, str] = field(default_factory=dict)
+    supported_parameters: list[str] = field(default_factory=list)
+
+    @property
+    def provider(self) -> str:
+        return self.id.split("/")[0] if "/" in self.id else self.realm
 
 
 @dataclass
@@ -173,16 +177,21 @@ class ChannelConfig:
     max_output_mana: int | None = None
     timeout_ms: int = 60000
     max_retries: int = 3
+    contemplation_level: str = "medium"
+    contemplation_budget: int | None = None
+    exclude_contemplation: bool = False
+    tools: list[dict[str, Any]] = field(default_factory=list)
     meta_data: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class RealmResponse:
     model: Model
-    invocation: MvgeResponse | None = None
+    invocation: Any | None = None
     mana_used: int = 0
     stop_reason: str = "stop"
     error_message: str | None = None
+    error_code: str | None = None
 ```
 
 ### mvgeos-tome/types.py
@@ -383,8 +392,8 @@ Config at `.agents/.mvgeos/`:
 
 ```bash
 # All must pass before committing
-uv run pytest --import-mode=importlib --cov
-uv run mypy -p mvgeos_agent -p mvgeos_provider -p mvgeos_tome -p mvgeos_spells -p mvgeos_runes -p mvgeos
+uv run pytest --cov
+uv run mypy
 uv run ruff check
 uv run ruff format --check
 ```

@@ -13,13 +13,13 @@ This package implements Tome persistence: JSONL session storage with file lockin
 
 ```bash
 # Run this package's tests
-uv run pytest mvgeos-tome/tests_tome/
+uv run pytest mvgeos-tome/tests/
 
 # Run with coverage
-uv run pytest mvgeos-tome/tests_tome/ --cov
+uv run pytest mvgeos-tome/tests/ --cov
 ```
 
-Test paths follow pattern: `mvgeos-tome/tests_tome/test_<module>.py`
+Test paths follow pattern: `mvgeos-tome/tests/unit/<module>.py` and `mvgeos-tome/tests/integration/<module>.py`
 
 ## Key Types
 

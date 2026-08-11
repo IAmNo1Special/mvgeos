@@ -38,7 +38,7 @@ Manages the connection to LLM providers (Realms). Defines the `Realm` protocol
 (the OpenRouter provider). The provider handles channeling (streaming),
 authentication resolution, and response delivery.
 
-**Entry point**: `Realm.channel(model, invocations, config)`
+**Entry point**: `Realm.stream(model, invocations, config)`
 → returns async generator of `RealmResponse`
 
 **Dependencies**: httpx, filelock
@@ -80,18 +80,7 @@ orchestrating the other packages.
 - `mvgeos config <command>` → Manage configuration
 
 **Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-tome,
-mvgeos-runes, rich, typer
-
-### coding-mvge
-
-Coding agent package implementing `BaseMvge`. Provides `CodingMvge`
-class with built-in spells (bash, read, write, edit, find, list, grep)
-and system prompt configuration.
-
-**Entry point**: `CodingMvge(api_key).run(prompt)`
-
-**Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-tome,
-mvgeos-runes
+mvgeos-runes, rich, typer, prompt-toolkit
 
 ### coding-mvge
 

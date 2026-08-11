@@ -19,7 +19,7 @@ uv run pytest mvgeos-runes/tests/
 uv run pytest mvgeos-runes/tests/ --cov
 ```
 
-Test paths follow pattern: `mvgeos-runes/tests/test_<module>.py`
+Test paths follow pattern: `mvgeos-runes/tests/unit/<module>.py` and `mvgeos-runes/tests/integration/<module>.py`
 
 ## Key Types
 
