@@ -104,6 +104,7 @@ class SpellResult:
     content: str = ""
     details: dict[str, Any] = field(default_factory=dict)
     error_message: str | None = None
+    terminate: bool = False
 
 
 @dataclass
@@ -115,6 +116,7 @@ class SpellResultMessage:
     details: dict[str, Any] | None = None
     is_error: bool = False
     timestamp: float = 0.0
+    terminate: bool = False
 
 
 MvgeInvocation = SummonerRequest | MvgeResponse | SpellResultMessage

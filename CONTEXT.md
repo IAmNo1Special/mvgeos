@@ -101,6 +101,9 @@ The session-aware operational owner of the agent loop. Wraps `MvgeLoop`, `MvgeTo
 **Emit Sink**:
 The single async channel out of the core: `Callable[[MvgeEvent], Awaitable[None]]`. `MvgeLoop._emit` fans one event out to four effects — `MvgeState` reduction, the event bus, the mapped Sigil, and Tome recording. Recording happens only on `MESSAGE_END`, which the core emits for Summoner, Mvge, and Spell-result Invocations alike (Pi's one-recording-point model).
 
+**Spell Dispatcher** (`SpellDispatcher`):
+The deep module responsible for executing tool call batches concurrently (`asyncio.gather`) or fallback sequential execution (`mvgeos_agent/dispatcher.py`). Evaluates `before_spell_cast` vetoes and `after_spell_result` transforms per task, preserves assistant request order, isolates exceptions into `SpellResultMessage(is_error=True)`, and evaluates batch termination (`terminate` flag) matching Pi's `executeToolCalls`.
+
 ## Compaction
 
 **Compaction**:
@@ -130,8 +133,6 @@ The system-wide default model across all MvgeOS packages and test suites is `nvi
 
 ## Known gaps
 
-- **Parallel Spell casting** — Spells in one Invocation are cast serially. Pi runs them concurrently unless a Spell declares `sequential`. `SpellExecutionMode` exists but nothing reads it.
 - **Abort** — `signal` parameters exist on `MvgeSpell.execute` but are always `None`; there is no `abort()` on the Mvge. Pi threads an `AbortSignal` end to end.
-- **Spell result `terminate`** — Pi lets a Spell result request an early stop when every result in the batch agrees. No equivalent field exists.
 - **Queue modes** — steering and follow-up queues always drain in full; Pi supports `one-at-a-time`.
 

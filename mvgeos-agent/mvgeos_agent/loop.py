@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -10,13 +9,10 @@ from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import SigilHook, SpellDefinition
 
 from mvgeos_agent.agent_session import MvgeTome
+from mvgeos_agent.dispatcher import SpellDispatcher
 from mvgeos_agent.errors import (
     AuthenticationError,
-    MvgeError,
     RateLimitError,
-    SpellNotFoundError,
-    SpellTimeoutError,
-    to_error,
 )
 from mvgeos_agent.prompt_loader import PromptSource
 from mvgeos_agent.types import (
@@ -339,9 +335,14 @@ async def _run_turn(
             MvgeEvent(type=MvgeEventType.BEFORE_INVOCATION, data={"invocation": inv})
         )
 
-        spell_results = await _cast_requested_spells(
-            context, inv, emit, callbacks, state
+        _dispatcher = SpellDispatcher()
+        batch_result = await _dispatcher.dispatch_batch(
+            inv=inv,
+            context=context,
+            callbacks=callbacks,
+            emit=emit,
         )
+        spell_results = batch_result.messages
 
         await emit(
             MvgeEvent(
@@ -370,159 +371,15 @@ async def _run_turn(
             )
 
         # Truncated calls were refused, not cast, so they do not earn a turn.
+        # Also, if all spells requested termination, do not continue casting.
         outcome.cast_spells = (
-            bool(spell_results) and inv.stop_reason == StopReason.SPELL_USE
+            bool(spell_results)
+            and inv.stop_reason == StopReason.SPELL_USE
+            and not batch_result.terminate
         )
         return outcome
 
     return outcome
-
-
-async def _cast_requested_spells(
-    context: LoopContext,
-    inv: MvgeResponse,
-    emit: EmitSink,
-    callbacks: LoopCallbacks,
-    state: _RunState,
-) -> list[SpellResultMessage]:
-    tool_calls = [
-        item["tool_call"]
-        for item in inv.content or []
-        if item.get("type") == ContentType.TOOL_CALL
-    ]
-    if not tool_calls:
-        return []
-
-    # A LENGTH stop means the response was cut off mid-stream, so every Spell
-    # call in it may carry truncated arguments. None are safe to cast; report
-    # each as an error so the Mvge can re-issue it.
-    if inv.stop_reason == StopReason.LENGTH:
-        truncated: list[SpellResultMessage] = []
-        for tool_call in tool_calls:
-            await _emit_truncated(tool_call, emit)
-            truncated.append(_truncated_result(tool_call))
-        return truncated
-
-    results: list[SpellResultMessage] = []
-    for tool_call in tool_calls:
-        if callbacks.before_spell_cast is not None:
-            blocked = await callbacks.before_spell_cast(
-                {"tool_call": tool_call, "spell_name": tool_call["name"]}
-            )
-            if blocked:
-                continue
-        result = await _cast_spell(context, tool_call, emit, callbacks)
-        if result is not None:
-            results.append(result)
-    return results
-
-
-async def _emit_truncated(tool_call: dict[str, Any], emit: EmitSink) -> None:
-    message = _TRUNCATED_SPELL_CALL.format(name=tool_call["name"])
-    await emit(
-        MvgeEvent(
-            type=MvgeEventType.SPELL_CASTING_START,
-            data={"spellCastId": tool_call["id"], "spellName": tool_call["name"]},
-        )
-    )
-    await emit(
-        MvgeEvent(
-            type=MvgeEventType.SPELL_CASTING_END,
-            data={"spellCastId": tool_call["id"], "error": message},
-        )
-    )
-
-
-def _truncated_result(tool_call: dict[str, Any]) -> SpellResultMessage:
-    return SpellResultMessage(
-        spell_cast_id=tool_call["id"],
-        spell_name=tool_call["name"],
-        content=[
-            {
-                "type": "text",
-                "text": _TRUNCATED_SPELL_CALL.format(name=tool_call["name"]),
-            }
-        ],
-        is_error=True,
-    )
-
-
-async def _cast_spell(
-    context: LoopContext,
-    tool_call: dict[str, Any],
-    emit: EmitSink,
-    callbacks: LoopCallbacks,
-) -> SpellResultMessage | None:
-    spell_name = tool_call["name"]
-    spell = next((s for s in context.spells if s.name == spell_name), None)
-
-    if spell is None:
-        err: MvgeError = SpellNotFoundError(spell_name)
-        await emit(
-            MvgeEvent(
-                type=MvgeEventType.SPELL_CASTING_END,
-                data={
-                    "spellCastId": tool_call["id"],
-                    "error": err.code,
-                    "message": str(err),
-                },
-            )
-        )
-        return None
-
-    await emit(
-        MvgeEvent(
-            type=MvgeEventType.SPELL_CASTING_START,
-            data={"spellCastId": tool_call["id"], "spellName": spell_name},
-        )
-    )
-
-    try:
-        result = await asyncio.wait_for(
-            spell.execute(tool_call["id"], tool_call.get("arguments", {})),
-            timeout=context.spell_timeout_ms / 1000,
-        )
-        result_content: Any = result
-        if callbacks.after_spell_result is not None:
-            chained = await callbacks.after_spell_result(
-                {
-                    "spell_name": spell_name,
-                    "spell_cast_id": tool_call["id"],
-                    "result": result,
-                }
-            )
-            if isinstance(chained, dict):
-                result_content = chained.get("result", result)
-
-        await emit(
-            MvgeEvent(
-                type=MvgeEventType.SPELL_CASTING_END,
-                data={"spellCastId": tool_call["id"], "result": result_content},
-            )
-        )
-        return SpellResultMessage(
-            spell_cast_id=tool_call["id"],
-            spell_name=spell_name,
-            content=[{"type": "text", "text": str(result_content)}],
-            is_error=False,
-        )
-    except TimeoutError:
-        err = SpellTimeoutError(spell_name, context.spell_timeout_ms)
-    except Exception as exc:
-        err = to_error(exc)
-
-    await emit(
-        MvgeEvent(
-            type=MvgeEventType.SPELL_CASTING_END,
-            data={"spellCastId": tool_call["id"], "error": str(err)},
-        )
-    )
-    return SpellResultMessage(
-        spell_cast_id=tool_call["id"],
-        spell_name=spell_name,
-        content=[{"type": "text", "text": str(err)}],
-        is_error=True,
-    )
 
 
 _EVENT_TO_SIGIL: dict[MvgeEventType, SigilHook] = {
