@@ -16,6 +16,7 @@ from mvgeos_runes.types import (
     RuneManifest,
     RuneShortcut,
     SigilHook,
+    SkillDiagnostic,
     SkillLoad,
     SkillManifest,
     SpellDefinition,
@@ -63,6 +64,7 @@ class RuneRunner:
         self._loaded_rune_names: set[str] = set()
         self._current_loading_rune: str | None = None
         self._loaded_skills: list[SkillLoad] = []
+        self._skill_diagnostics: list[SkillDiagnostic] = []
         self._suppress_skill_catalog: bool = False
 
     @property
@@ -128,13 +130,30 @@ class RuneRunner:
     def get_active_spells(self) -> list[str]:
         return list(self._spells.keys())
 
-    def load_skills(self, loads: list[SkillLoad]) -> None:
-        """Load skills from discovery."""
+    def load_skills(
+        self,
+        loads: list[SkillLoad],
+        diagnostics: list[SkillDiagnostic] | None = None,
+    ) -> None:
+        """Load skills from discovery.
+
+        Args:
+            loads: List of skill loads (manifests) from discovery.
+            diagnostics: Optional list of skill diagnostics to retain for
+                the runtime snapshot.
+        """
         self._loaded_skills.extend(loads)
+        if diagnostics is not None:
+            self._skill_diagnostics.extend(diagnostics)
 
     def get_skills(self) -> list[SkillManifest]:
         """Get all loaded skill manifests."""
         return [load.manifest for load in self._loaded_skills]
+
+    @property
+    def skill_diagnostics(self) -> list[SkillDiagnostic]:
+        """Diagnostics accumulated during skill discovery."""
+        return list(self._skill_diagnostics)
 
     def get_skill_catalog(self) -> str:
         """Get the skill catalog formatted for system prompt injection.

@@ -1,4 +1,14 @@
 from mvgeos_agent.sandbox import MvgeSandbox
+from mvgeos_agent.snapshot import (
+    RuntimeSnapshot,
+    SnapshotConfigEntry,
+    SnapshotDiagnostic,
+    SnapshotPrompt,
+    SnapshotRune,
+    SnapshotSkill,
+    SnapshotSpell,
+    SpellSource,
+)
 from mvgeos_agent.types import (
     ContemplationLevel,
     MvgeEvent,
@@ -23,10 +33,18 @@ __all__ = [
     "MvgeSandbox",
     "MvgeSpell",
     "MvgeState",
+    "RuntimeSnapshot",
+    "SnapshotConfigEntry",
+    "SnapshotDiagnostic",
+    "SnapshotPrompt",
+    "SnapshotRune",
+    "SnapshotSkill",
+    "SnapshotSpell",
     "SandboxTimeoutError",
     "SessionResumeError",
     "SpellExecutionMode",
     "SpellSignal",
+    "SpellSource",
     "SpellUpdateCallback",
     "StopReason",
     "SummonerRequest",

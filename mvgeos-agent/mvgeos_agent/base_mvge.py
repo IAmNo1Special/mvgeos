@@ -4,7 +4,7 @@ import dataclasses
 import logging
 from collections.abc import AsyncIterator, Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from mvgeos_harness import MvgeHarness
 from mvgeos_provider.base import Realm
@@ -16,7 +16,17 @@ from mvgeos_runes.loader import (
     load_skills_from_paths,
 )
 from mvgeos_runes.rune_runner import RuneRunner
-from mvgeos_runes.types import RuneContext, RuneScope, RuneShortcut, SigilHook
+from mvgeos_runes.types import (
+    Diagnostic,
+    RuneContext,
+    RuneManifest,
+    RuneScope,
+    RuneShortcut,
+    SigilHook,
+    SkillDiagnostic,
+    SkillManifest,
+    SpellDefinition,
+)
 from mvgeos_runes.watcher import RuneWatcher
 from mvgeos_tome.ledger import TomeLedger
 
@@ -31,7 +41,9 @@ from mvgeos_agent.constants import (
 )
 from mvgeos_agent.event_bus import EventBus
 from mvgeos_agent.loop import MvgeLoop, StreamFn
-from mvgeos_agent.prompt_loader import PromptSource
+from mvgeos_agent.prompt_config import DEFAULT_GUIDELINES, DEFAULT_SYSTEM_PROMPT
+from mvgeos_agent.prompt_loader import PromptLoader, PromptSource
+from mvgeos_agent.snapshot import RuntimeSnapshot, assemble_snapshot
 from mvgeos_agent.types import (
     ContemplationLevel,
     MvgeEvent,
@@ -190,6 +202,65 @@ class BaseMvge:
     @property
     def config_dir(self) -> Path:
         return Path(f"~/.agents/.mvgeos/{self._name}").expanduser()
+
+    def build_snapshot(self) -> RuntimeSnapshot:
+        """Assemble a resolved runtime snapshot of the agent's surface.
+
+        Pulls spells (with rune-vs-builtin provenance), runes per scope,
+        config values with provenance layers, resolved prompt source,
+        loaded skills with source, and accumulated diagnostics into a single
+        serializable ``RuntimeSnapshot``.
+
+        Works both before and after ``initialize()`` — absent components
+        contribute empty collections.
+        """
+        spells: list[MvgeSpell | SpellDefinition] = cast(
+            list[MvgeSpell | SpellDefinition], self._build_spells()
+        )
+
+        rune_manifests: list[RuneManifest] = (
+            self._runner.loaded_manifests if self._runner is not None else []
+        )
+        skills: list[SkillManifest] = (
+            self._runner.get_skills() if self._runner is not None else []
+        )
+        rune_diagnostics: list[Diagnostic] = (
+            self._runner.diagnostics if self._runner is not None else []
+        )
+        skill_diagnostics: list[SkillDiagnostic] = (
+            self._runner.skill_diagnostics if self._runner is not None else []
+        )
+
+        config_values: dict[str, ConfigValue] = (
+            self._config_manager.load() if self._config_manager is not None else {}
+        )
+        config_source_files: dict[ConfigLayer, Path | None] = {}
+        if self._config_manager is not None:
+            config_source_files = {
+                ConfigLayer.AGENT: self._config_manager.agent_config_path,
+                ConfigLayer.LEGACY: self._config_manager.legacy_config_path,
+            }
+
+        loader = PromptLoader(agent_name=self._name, config_dir=self.config_dir)
+        custom_prompt = getattr(self, "_custom_system_prompt", "")
+        resolved_prompt = loader.resolve_system_prompt(
+            custom=custom_prompt, default=DEFAULT_SYSTEM_PROMPT
+        )
+        resolved_guidelines = loader.resolve_guidelines(default=DEFAULT_GUIDELINES)
+
+        return assemble_snapshot(
+            agent_name=self._name,
+            model=self._model_id,
+            spells=spells,
+            rune_manifests=rune_manifests,
+            config_values=config_values,
+            config_source_files=config_source_files,
+            resolved_prompt=resolved_prompt,
+            resolved_guidelines=resolved_guidelines,
+            skills=skills,
+            rune_diagnostics=rune_diagnostics,
+            skill_diagnostics=skill_diagnostics,
+        )
 
     def on(
         self,
@@ -494,7 +565,7 @@ class BaseMvge:
         skill_paths = get_default_skill_paths(self._name)
         skill_loads, skill_diagnostics = load_skills_from_paths(skill_paths, self._name)
         if skill_loads:
-            self._runner.load_skills(skill_loads)
+            self._runner.load_skills(skill_loads, diagnostics=skill_diagnostics)
         if skill_diagnostics:
             for diag in skill_diagnostics:
                 logger.warning(

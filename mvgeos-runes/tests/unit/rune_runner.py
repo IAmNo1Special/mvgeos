@@ -13,6 +13,8 @@ from mvgeos_runes.types import (
     RuneScope,
     RuneShortcut,
     SigilHook,
+    SkillDiagnostic,
+    SkillDiagnosticKind,
     SkillLoad,
     SkillManifest,
     SkillScope,
@@ -506,6 +508,54 @@ class TestRuneRunnerSkills:
         assert "Second skill" in catalog
         assert "user" in catalog
         assert "/tmp/skill-two" in catalog
+
+    def test_load_skills_stores_diagnostics(self) -> None:
+        runner = RuneRunner()
+        skill = SkillManifest(
+            name="loaded-skill",
+            description="Loaded",
+            scope=SkillScope.PROJECT,
+            path="/tmp/loaded",
+        )
+        diag = SkillDiagnostic(
+            kind=SkillDiagnosticKind.SHADOWED_SKILL,
+            skill_name="dup-skill",
+            message="shadowed",
+            scope=SkillScope.USER,
+            path="/tmp/dup",
+        )
+        runner.load_skills([SkillLoad(manifest=skill)], diagnostics=[diag])
+
+        assert runner.skill_diagnostics == [diag]
+
+    def test_skill_diagnostics_empty_by_default(self) -> None:
+        runner = RuneRunner()
+        assert runner.skill_diagnostics == []
+
+    def test_load_skills_without_diagnostics_still_works(self) -> None:
+        runner = RuneRunner()
+        skill = SkillManifest(
+            name="no-diag", description="d", scope=SkillScope.PROJECT, path="/x"
+        )
+        runner.load_skills([SkillLoad(manifest=skill)])
+        assert runner.skill_diagnostics == []
+        assert len(runner.get_skills()) == 1
+
+    def test_load_skills_diagnostics_accumulate(self) -> None:
+        runner = RuneRunner()
+        diag1 = SkillDiagnostic(
+            kind=SkillDiagnosticKind.PARSE_WARNING,
+            skill_name="s1",
+            message="bad",
+        )
+        diag2 = SkillDiagnostic(
+            kind=SkillDiagnosticKind.SHADOWED_SKILL,
+            skill_name="s2",
+            message="dup",
+        )
+        runner.load_skills([], diagnostics=[diag1])
+        runner.load_skills([], diagnostics=[diag2])
+        assert runner.skill_diagnostics == [diag1, diag2]
 
     def test_get_skill_catalog_empty(self) -> None:
         runner = RuneRunner()
