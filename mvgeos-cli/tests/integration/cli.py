@@ -20,7 +20,7 @@ def test_get_session_dir() -> None:
     from pathlib import Path
 
     path = _get_session_dir()
-    assert path == Path("~/.agents/.mvgeos/tomes")
+    assert path == Path.home() / ".agents" / ".mvgeos" / "tomes"
 
 
 def test_build_spells() -> None:

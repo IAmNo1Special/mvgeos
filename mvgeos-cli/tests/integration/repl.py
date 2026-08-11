@@ -78,10 +78,10 @@ class TestSlashCommands:
 
     def test_resume_with_args(self, agent: CodingMvge, registry: ModelRegistry) -> None:
         result = _handle_command(
-            "/resume .agents/.mvgeos/sessions/test.jsonl", agent, registry
+            "/resume .agents/.mvgeos/tomes/test.jsonl", agent, registry
         )
         assert result == ReplAction.NEW_SESSION
-        assert agent._session_resume == ".agents/.mvgeos/sessions/test.jsonl"
+        assert agent._session_resume == ".agents/.mvgeos/tomes/test.jsonl"
 
     def test_resume_no_args(self, agent: CodingMvge, registry: ModelRegistry) -> None:
         result = _handle_command("/resume", agent, registry)

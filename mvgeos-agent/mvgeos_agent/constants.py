@@ -6,6 +6,8 @@ DEFAULT_AGENT_NAME = "default-mvge"
 
 DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 
+DEFAULT_TOME_DIR = Path("~/.agents/.mvgeos/tomes").expanduser()
+
 DEFAULT_RUNE_PATHS: list[str] = [
     "~/.agents/.mvgeos/runes",
     "~/.agents/.mvgeos/{agent_name}/runes",

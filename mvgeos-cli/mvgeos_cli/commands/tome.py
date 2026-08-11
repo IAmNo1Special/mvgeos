@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import typer
+from mvgeos_agent.constants import DEFAULT_TOME_DIR
 from mvgeos_tome.ledger import TomeLedger
 from rich.console import Console
 from rich.table import Table
@@ -13,11 +14,9 @@ tome_app = typer.Typer()
 
 
 def get_tome_dir() -> Path:
-    agents_dir = Path(".agents/.mvgeos")
-    agents_dir.mkdir(parents=True, exist_ok=True)
-    sessions_dir = agents_dir / "sessions"
-    sessions_dir.mkdir(parents=True, exist_ok=True)
-    return sessions_dir
+    tome_dir = DEFAULT_TOME_DIR
+    tome_dir.mkdir(parents=True, exist_ok=True)
+    return tome_dir
 
 
 @tome_app.command("list")

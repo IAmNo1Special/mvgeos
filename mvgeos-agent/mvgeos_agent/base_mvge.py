@@ -37,6 +37,7 @@ from mvgeos_agent.config_manager import ConfigLayer, ConfigManager, ConfigValue
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
     DEFAULT_MODEL,
+    DEFAULT_TOME_DIR,
     resolve_rune_paths,
 )
 from mvgeos_agent.event_bus import EventBus
@@ -92,7 +93,7 @@ class BaseMvge:
         self._api_key = api_key
         self._name = name
         self._extension_dir = extension_dir
-        self._session_dir = session_dir or Path("~/.agents/.mvgeos/tomes").expanduser()
+        self._session_dir = session_dir or DEFAULT_TOME_DIR
         self._session_resume = session_resume
         self._provider_name = provider_name
         self._compaction_settings = compaction

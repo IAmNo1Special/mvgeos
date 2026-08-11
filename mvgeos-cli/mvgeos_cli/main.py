@@ -22,6 +22,7 @@ from mvgeos_agent.agent_session import MvgeTome
 from mvgeos_agent.config_manager import ConfigManager
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
+    DEFAULT_TOME_DIR,
     resolve_rune_paths,
 )
 from mvgeos_agent.loop import MvgeLoop
@@ -310,7 +311,7 @@ async def _run_agent(
 
 
 def _get_session_dir() -> Path:
-    return Path("~/.agents/.mvgeos/tomes")
+    return DEFAULT_TOME_DIR
 
 
 def _build_spells(enabled: list[str]) -> list[MvgeSpell]:

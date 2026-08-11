@@ -8,6 +8,7 @@ import typer
 from typer.testing import CliRunner
 
 from mvgeos_cli.commands.tome import (
+    get_tome_dir,
     tome_app,
 )
 
@@ -18,6 +19,10 @@ class TestTomeCommands:
     def test_tome_app_exists(self) -> None:
         assert tome_app is not None
         assert isinstance(tome_app, typer.Typer)
+
+    def test_get_tome_dir(self) -> None:
+        result = get_tome_dir()
+        assert result == Path.home() / ".agents" / ".mvgeos" / "tomes"
 
     def test_tome_list_help(self) -> None:
         result = runner.invoke(tome_app, ["list", "--help"])

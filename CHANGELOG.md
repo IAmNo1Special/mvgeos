@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### fix
+
+- **cli**: unify the tome/session directory across `BaseMvge`, the one-shot runner (`_get_session_dir`), and `tome` subcommands onto a single `DEFAULT_TOME_DIR` (`~/.agents/.mvgeos/tomes`, expanded). Previously `tome.py` read/wrote project-local `.agents/.mvgeos/sessions` while the agent and runner wrote to the home `~/` path, and `main.py` returned an un-expanded literal `~/...` — so `mvgeos tome list` never saw tomes created by `mvgeos`. Added `DEFAULT_TOME_DIR` to the shared `constants` module; added red-first tests `test_get_session_dir` and `test_get_tome_dir`; updated the `/resume` repl test example to `tomes/`.
+- **cli**: delete dead `mvge_config.py` (`MvgeOSConfig` / `mvge.json` / `mvges/{name}/` scheme). It had no production imports and conflicted with the live `ConfigManager` (`~/.agents/.mvgeos/{name}/config.json`).
+
+### refactor
+
+- **agent**: rename session-dir constant `DEFAULT_SESSION_DIR` → `DEFAULT_TOME_DIR` to match MvgeOS "Tome" terminology and the `get_tome_dir()` API.
+
 
 ### Bug Fixes
 
