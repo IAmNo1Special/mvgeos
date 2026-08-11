@@ -13,27 +13,10 @@ from mvgeos_agent.spell_schema import generate_spell_schema
 from mvgeos_agent.types import MvgeInvocation, MvgeSpell, SpellResult
 
 from coding_mvge.spells import (
-    cast_bash,
-    cast_edit,
-    cast_find,
-    cast_grep,
-    cast_list,
-    cast_read,
-    cast_write,
+    BUILTIN_SPELL_MAP as DEFAULT_SPELL_MAP,
 )
 
 logger = logging.getLogger(__name__)
-
-
-DEFAULT_SPELL_MAP: dict[str, Any] = {
-    "bash": cast_bash,
-    "read": cast_read,
-    "write": cast_write,
-    "edit": cast_edit,
-    "find": cast_find,
-    "list": cast_list,
-    "grep": cast_grep,
-}
 
 
 class _BuiltinSpell(MvgeSpell):
