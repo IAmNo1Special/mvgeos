@@ -110,6 +110,7 @@ class BaseMvge:
         self._contemplation_level = str(_get("contemplation_level", "medium"))
         self._contemplation_budget = _get("contemplation_budget", None)
         self._exclude_contemplation = bool(_get("exclude_contemplation", False))
+        self._queue_mode: str = "steer"
 
         spells_enabled = _get("spells_enabled", [])
         self._spell_names = list(spells_enabled) if spells_enabled else None
@@ -195,6 +196,15 @@ class BaseMvge:
             event_type = MvgeEventType(event_type)
         return self._event_bus.on(event_type, callback)
 
+    @property
+    def queue_mode(self) -> str:
+        return getattr(self, "_queue_mode", "steer")
+
+    @queue_mode.setter
+    def queue_mode(self, mode: str) -> None:
+        if mode in ("steer", "followup"):
+            self._queue_mode = mode
+
     def steer(self, text: str) -> None:
         if self._state is not None:
             self._state.steer_queue.append(SummonerRequest(role="user", content=text))
@@ -204,6 +214,12 @@ class BaseMvge:
             self._state.followup_queue.append(
                 SummonerRequest(role="user", content=text)
             )
+
+    def queue(self, text: str) -> None:
+        if self.queue_mode == "followup":
+            self.follow_up(text)
+        else:
+            self.steer(text)
 
     def _compose_model(self, model_id: str) -> Model:
         model = self._provider_registry.compose_model(

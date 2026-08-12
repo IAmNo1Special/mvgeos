@@ -870,3 +870,94 @@ async def _make_stream(
             yield r
 
     return gen()
+
+
+@pytest.mark.asyncio
+async def test_loop_streaming_deduplication_and_contemplation() -> None:
+    from mvgeos_agent.event_bus import EventBus
+    from mvgeos_agent.loop import MvgeLoop
+    from mvgeos_agent.types import ContentType, MvgeEvent, MvgeEventType
+
+    event_bus = EventBus()
+    emitted_updates: list[dict[str, Any]] = []
+
+    def on_update(event: MvgeEvent) -> None:
+        emitted_updates.append(event.data)
+
+    event_bus.on(MvgeEventType.MESSAGE_UPDATE, on_update)
+
+    state = MvgeState(
+        system_prompt="test",
+        invocations=[SummonerRequest(role="user", content="hi")],
+        event_bus=event_bus,
+    )
+    loop = MvgeLoop(state)
+    model_obj = Model(
+        id="test-model",
+        name="Test Model",
+        realm="test",
+        base_url="https://api.test.com",
+        api_key="test",
+    )
+
+    responses = [
+        # Contemplation chunk
+        RealmResponse(
+            model=model_obj,
+            invocation=MvgeResponse(
+                role="assistant",
+                content=[{"type": ContentType.CONTEMPLATION, "text": "Thinking..."}],
+                stop_reason=StopReason.PENDING,
+            ),
+        ),
+        # Text chunk 1
+        RealmResponse(
+            model=model_obj,
+            invocation=MvgeResponse(
+                role="assistant",
+                content=[{"type": ContentType.TEXT, "text": "Hello"}],
+                stop_reason=StopReason.PENDING,
+            ),
+        ),
+        # Text chunk 2
+        RealmResponse(
+            model=model_obj,
+            invocation=MvgeResponse(
+                role="assistant",
+                content=[{"type": ContentType.TEXT, "text": " world!"}],
+                stop_reason=StopReason.PENDING,
+            ),
+        ),
+        # Final accumulated summary
+        RealmResponse(
+            model=model_obj,
+            invocation=MvgeResponse(
+                role="assistant",
+                content=[{"type": ContentType.TEXT, "text": "Hello world!"}],
+                stop_reason=StopReason.STOP,
+            ),
+        ),
+    ]
+
+    def stream_fn(invs: list[Any]) -> Any:
+        async def gen():
+            for r in responses:
+                yield r
+
+        return gen()
+
+    await loop.run(stream_fn, {"id": "test-model"}, "none")
+
+    # Verify contemplation chunk was emitted
+    contemplation_events = [
+        e for e in emitted_updates if e.get("kind") == "contemplation"
+    ]
+    assert len(contemplation_events) == 1
+    assert contemplation_events[0]["text"] == "Thinking..."
+
+    # Verify text chunks were emitted incrementally and NOT duplicated on final summary
+    text_events = [
+        e for e in emitted_updates if "kind" not in e or e.get("kind") == "text"
+    ]
+    text_contents = [e.get("text") for e in text_events]
+    assert text_contents == ["Hello", " world!"]

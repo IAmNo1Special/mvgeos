@@ -244,6 +244,56 @@ class TestReplHelpers:
         )
         _display_response(response)
 
+    def test_handle_command_steer(self) -> None:
+        from unittest.mock import MagicMock
+
+        from mvgeos_provider.model_registry import ModelRegistry
+
+        from mvgeos_cli.commands.repl import _handle_command
+
+        agent = MagicMock()
+        registry = ModelRegistry()
+        out_messages: list[str] = []
+
+        _handle_command("/steer msg", agent, registry, out=out_messages.append)
+        agent.steer.assert_called_once_with("msg")
+        assert any("Steering queued" in m for m in out_messages)
+
+    def test_handle_command_followup(self) -> None:
+        from unittest.mock import MagicMock
+
+        from mvgeos_provider.model_registry import ModelRegistry
+
+        from mvgeos_cli.commands.repl import _handle_command
+
+        agent = MagicMock()
+        registry = ModelRegistry()
+        out_messages: list[str] = []
+
+        _handle_command("/followup msg", agent, registry, out=out_messages.append)
+        agent.follow_up.assert_called_once_with("msg")
+        assert any("Follow-up queued" in m for m in out_messages)
+
+    def test_handle_command_mode_toggle(self) -> None:
+        from unittest.mock import MagicMock
+
+        from mvgeos_provider.model_registry import ModelRegistry
+
+        from mvgeos_cli.commands.repl import _handle_command
+
+        agent = MagicMock()
+        agent.queue_mode = "steer"
+        registry = ModelRegistry()
+        out_messages: list[str] = []
+
+        _handle_command("/mode", agent, registry, out=out_messages.append)
+        assert agent.queue_mode == "followup"
+        assert any("Queue mode toggled to followup" in m for m in out_messages)
+
+        _handle_command("/m", agent, registry, out=out_messages.append)
+        assert agent.queue_mode == "steer"
+        assert any("Queue mode toggled to steer" in m for m in out_messages)
+
 
 class TestStreamFilter:
     def test_channel_tag_stripped(self) -> None:

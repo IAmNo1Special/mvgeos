@@ -296,6 +296,7 @@ async def _run_turn(
 ) -> _TurnOutcome:
     """Channel one Realm response and cast any Spells it requests."""
     outcome = _TurnOutcome()
+    streamed_any_chunk = False
 
     async for response in stream_fn(list(invocations)):
         if response.error_message:
@@ -319,17 +320,49 @@ async def _run_turn(
             continue
 
         inv: MvgeResponse = response.invocation
-        for item in inv.content or []:
-            if item.get("type") == ContentType.TEXT:
-                await emit(
-                    MvgeEvent(
-                        type=MvgeEventType.MESSAGE_UPDATE,
-                        data={"text": item.get("text", "")},
-                    )
-                )
 
         if inv.stop_reason == StopReason.PENDING:
+            for item in inv.content or []:
+                if item.get("type") == ContentType.TEXT:
+                    streamed_any_chunk = True
+                    await emit(
+                        MvgeEvent(
+                            type=MvgeEventType.MESSAGE_UPDATE,
+                            data={"text": item.get("text", "")},
+                        )
+                    )
+                elif item.get("type") == ContentType.CONTEMPLATION:
+                    streamed_any_chunk = True
+                    await emit(
+                        MvgeEvent(
+                            type=MvgeEventType.MESSAGE_UPDATE,
+                            data={
+                                "text": item.get("text", ""),
+                                "kind": "contemplation",
+                            },
+                        )
+                    )
             continue
+
+        if not streamed_any_chunk:
+            for item in inv.content or []:
+                if item.get("type") == ContentType.TEXT:
+                    await emit(
+                        MvgeEvent(
+                            type=MvgeEventType.MESSAGE_UPDATE,
+                            data={"text": item.get("text", "")},
+                        )
+                    )
+                elif item.get("type") == ContentType.CONTEMPLATION:
+                    await emit(
+                        MvgeEvent(
+                            type=MvgeEventType.MESSAGE_UPDATE,
+                            data={
+                                "text": item.get("text", ""),
+                                "kind": "contemplation",
+                            },
+                        )
+                    )
 
         await emit(
             MvgeEvent(type=MvgeEventType.BEFORE_INVOCATION, data={"invocation": inv})

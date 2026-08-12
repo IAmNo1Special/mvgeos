@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
@@ -218,6 +218,7 @@ class FakeAgent:
         self.session_id = session_id
         self._model_id = "nvidia/nemotron-3-ultra-550b-a55b:free"
         self._contemplation_level = "medium"
+        self.queue_mode = "steer"
         self._initialized = False
         self.closed = False
         self.initialize_calls = 0
@@ -226,6 +227,18 @@ class FakeAgent:
 
     def on(self, name: str, cb: Any) -> Any:
         return lambda: None
+
+    def steer(self, text: str) -> None:
+        self.run_calls.append(f"steer:{text}")
+
+    def follow_up(self, text: str) -> None:
+        self.run_calls.append(f"follow_up:{text}")
+
+    def queue(self, text: str) -> None:
+        if self.queue_mode == "followup":
+            self.follow_up(text)
+        else:
+            self.steer(text)
 
     async def run(self, text: str) -> None:
         self.run_calls.append(text)
@@ -244,6 +257,9 @@ class FakeAgent:
 
 
 class FakeRegistry:
+    async def refresh(self) -> int:
+        return 0
+
     def get(self, model_id: str) -> object | None:
         return object() if model_id else None
 
@@ -296,9 +312,9 @@ class TestTuiApp:
 
     def test_footer_shows_working_while_busy(self) -> None:
         app = self._app(FakeAgent())
-        assert not any("(working)" in t for _, t in app._footer_text())
+        assert not any("working" in t for _, t in app._footer_text())
         app._busy = True
-        assert any("(working)" in t for _, t in app._footer_text())
+        assert any("working" in t for _, t in app._footer_text())
 
     def test_out_writes_card_line(self) -> None:
         sink = TuiSink()
@@ -315,14 +331,15 @@ class TestTuiApp:
         assert app._on_accept(app._buffer) is False
         assert app._task is None
 
-    def test_accept_busy_ignores_input(self) -> None:
+    def test_accept_busy_queues_input(self) -> None:
         sink = TuiSink()
-        app = self._app(FakeAgent(), sink)
+        agent = FakeAgent()
+        app = self._app(agent, sink)
         app._busy = True
         app._buffer.text = "hello"
         assert app._on_accept(app._buffer) is True
         assert app._task is None
-        assert any("Busy" in (e.text or "").plain for e in sink._entries)
+        assert any("hello" in (e.text or "").plain for e in sink._entries)
 
     @pytest.mark.asyncio
     async def test_accept_runs_turn(self) -> None:
@@ -422,6 +439,17 @@ class TestTuiApp:
         assert "bad model" in plain
 
     @pytest.mark.asyncio
+    async def test_slash_refresh_models(self) -> None:
+        agent = FakeAgent()
+        app = self._app(agent)
+        app._buffer.text = "/refresh-models"
+        app._on_accept(app._buffer)
+        assert app._task is not None
+        await app._task
+        plain = "\n".join((e.text or "").plain for e in app.sink._entries)
+        assert "Models refreshed" in plain
+
+    @pytest.mark.asyncio
     async def test_slash_exit(self) -> None:
         app = self._app(FakeAgent())
         exits: list[Any] = []
@@ -518,3 +546,26 @@ class TestTuiApp:
         assert ctrl.following is False
         ctrl._update_scroll(10, 4)
         assert ctrl.following is True
+
+    @pytest.mark.asyncio
+    async def test_tui_on_accept_queues_message_when_busy(self) -> None:
+        from prompt_toolkit.output import DummyOutput
+
+        from mvgeos_cli.commands.tui import TuiApp
+
+        mock_agent = MagicMock()
+        sink = TuiSink()
+        registry = MagicMock()
+        renderer = MagicMock()
+        app = TuiApp(mock_agent, sink, registry, renderer, output=DummyOutput())
+        app._busy = True
+
+        app._buffer.text = "follow up prompt"
+        handled = app._on_accept(app._buffer)
+
+        assert handled is True
+        mock_agent.queue.assert_called_once_with("follow up prompt")
+        assert any(
+            "follow up prompt" in (e.text.plain if e.text else "")
+            for e in sink._entries
+        )

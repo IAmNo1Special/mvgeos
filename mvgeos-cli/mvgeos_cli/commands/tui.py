@@ -133,7 +133,11 @@ class TuiSink:
             encoder.print(text, end="", soft_wrap=True, highlight=False)
             return buf.getvalue()
 
-        for entry in self._entries:
+        entries_to_render = list(self._entries)
+        if self._pending_md is not None:
+            entries_to_render.append(_Entry("md", md=self._pending_md))
+
+        for entry in entries_to_render:
             if entry.kind == "md":
                 md_lines: list[str] = []
                 for seg_line in render_console.render_lines(
@@ -351,8 +355,11 @@ class TuiApp:
 
     def _footer_text(self) -> FormattedText:
         items = list(_format_session_info(self.agent, self._branch))
+        mode = getattr(self.agent, "queue_mode", "steer")
         if self._busy:
-            items.append(("", "  (working)"))
+            items.append(("", f"  (working • mode: {mode})"))
+        else:
+            items.append(("", f"  (mode: {mode})"))
         return FormattedText(items)
 
     def _out(self, text: str) -> None:
@@ -364,16 +371,15 @@ class TuiApp:
         buffer.text = ""
         if not text:
             return False
-        if self._busy:
-            self._out("[yellow]Busy — wait for the current turn to finish.[/yellow]")
-            return True
-        # Display user's message in transcript
-        self.sink.write(f"> {text}\n")
-        self.application.invalidate()
         if text.startswith("/"):
             self._task = asyncio.get_event_loop().create_task(self._handle_slash(text))
-        else:
-            self._task = asyncio.get_event_loop().create_task(self._run_turn(text))
+            return True
+        self.sink.write(f"> {text}\n")
+        self.application.invalidate()
+        if self._busy:
+            self.agent.queue(text)
+            return True
+        self._task = asyncio.get_event_loop().create_task(self._run_turn(text))
         return True
 
     async def _run_turn(self, text: str) -> None:
@@ -408,6 +414,14 @@ class TuiApp:
                 self._out(f"[red]{e}[/red]")
                 return
             self._out(f"[green]Model switched: {self.agent._model_id}[/green]")
+        elif action == ReplAction.REFRESH_MODELS:
+            self._out("[yellow]Fetching latest models from OpenRouter...[/yellow]")
+            try:
+                count = await self.registry.refresh()
+            except Exception as e:
+                self._out(f"[red]Failed to refresh models: {e}[/red]")
+            else:
+                self._out(f"[green]Models refreshed ({count} new models).[/green]")
         elif action == ReplAction.NEW_SESSION:
             self._out("[yellow]Starting a new session...[/yellow]")
             await self.agent.close()

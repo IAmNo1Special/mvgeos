@@ -43,6 +43,7 @@ class ReplAction(StrEnum):
     EXIT = "exit"
     NEW_SESSION = "new_session"
     SWITCH_MODEL = "switch_model"
+    REFRESH_MODELS = "refresh_models"
 
 
 SLASH_COMMANDS: dict[str, str] = {
@@ -50,10 +51,13 @@ SLASH_COMMANDS: dict[str, str] = {
     "/quit": "Exit the REPL",
     "/exit": "Exit the REPL",
     "/model": "Switch model: /model <model-id>",
+    "/mode": "Toggle queue mode (steer/followup): /mode or /m",
     "/new": "Start a new session",
     "/session": "Show current session info",
     "/resume": "Resume a previous session: /resume <path>",
     "/spells": "List or set enabled spells: /spells [comma-separated]",
+    "/steer": "Steer agent mid-run: /steer <message>",
+    "/followup": "Queue follow-up for post-run: /followup <message>",
     "/refresh-models": "Refresh model catalog from OpenRouter API",
 }
 
@@ -254,8 +258,7 @@ def _handle_command(
         return ReplAction.SWITCH_MODEL
 
     if cmd == "/refresh-models":
-        out("[yellow]Fetching latest models from OpenRouter...[/yellow]")
-        return ReplAction.CONTINUE  # handled in REPL loop
+        return ReplAction.REFRESH_MODELS
 
     if cmd == "/spells":
         if args:
@@ -276,6 +279,29 @@ def _handle_command(
                 out(f"[bold]Rune spells:[/bold] {', '.join(rune_spells)}")
             if not builtin and not rune_spells:
                 out("[dim]No spells available[/dim]")
+        return ReplAction.CONTINUE
+
+    if cmd in ("/mode", "/m"):
+        agent.queue_mode = "followup" if agent.queue_mode == "steer" else "steer"
+        out(f"[dim]Queue mode toggled to {agent.queue_mode}[/dim]")
+        return ReplAction.CONTINUE
+
+    if cmd in ("/steer", "/s"):
+        agent.queue_mode = "steer"
+        if args:
+            agent.steer(args.strip())
+            out(f"[dim]Queue mode: steer. Steering queued: {args.strip()}[/dim]")
+        else:
+            out("[dim]Queue mode set to steer[/dim]")
+        return ReplAction.CONTINUE
+
+    if cmd in ("/followup", "/f", "/follow"):
+        agent.queue_mode = "followup"
+        if args:
+            agent.follow_up(args.strip())
+            out(f"[dim]Queue mode: followup. Follow-up queued: {args.strip()}[/dim]")
+        else:
+            out("[dim]Queue mode set to followup[/dim]")
         return ReplAction.CONTINUE
 
     if cmd == "/new":
@@ -509,6 +535,7 @@ class StreamRenderer:
         self._sink = sink or ConsoleSink()
         self._text_parts: list[str] = []
         self._markdown_buffer = ""
+        self._contemplation_buffer = ""
         self._started = False
         self._filter = _StreamFilter()
         self._tool_line_open = False
@@ -568,17 +595,33 @@ class StreamRenderer:
             return json.dumps(result, ensure_ascii=False)
         return str(result)
 
+    def _get_full_md(self) -> str:
+        if self._contemplation_buffer.strip():
+            thinking = f"> *Thinking: {self._contemplation_buffer.strip()}*"
+            if self._markdown_buffer:
+                return f"{thinking}\n\n{self._markdown_buffer}"
+            return thinking
+        return self._markdown_buffer
+
     def on_message_update(self, event: MvgeEvent) -> None:
+        kind = event.data.get("kind")
         text = str(event.data.get("text", ""))
         if not text:
             return
+        if kind == "contemplation":
+            self._contemplation_buffer += text
+            self._ensure_started()
+            self._sink.stream_narration(text, self._get_full_md())
+            self._narration_finalized = False
+            return
+
         clean = self._filter.feed(text)
         if not clean:
             return
         self._markdown_buffer += clean
         self._text_parts.append(clean)
         self._ensure_started()
-        self._sink.stream_narration(clean, self._markdown_buffer)
+        self._sink.stream_narration(clean, self._get_full_md())
         self._narration_finalized = False
 
     def on_tool_start(self, event: MvgeEvent) -> None:
@@ -586,7 +629,7 @@ class StreamRenderer:
         if pending:
             self._markdown_buffer += pending
             self._ensure_started()
-            self._sink.stream_narration(pending, self._markdown_buffer)
+            self._sink.stream_narration(pending, self._get_full_md())
         self._sink.finalize_narration()
         self._narration_finalized = True
         name = str(event.data.get("spellName", "?"))
@@ -623,7 +666,7 @@ class StreamRenderer:
             if pending:
                 self._markdown_buffer += pending
                 self._ensure_started()
-                self._sink.stream_narration(pending, self._markdown_buffer)
+                self._sink.stream_narration(pending, self._get_full_md())
             if not self._narration_finalized:
                 self._sink.finalize_narration()
                 self._narration_finalized = True
@@ -635,6 +678,7 @@ class StreamRenderer:
         if not self._narration_finalized:
             self._sink.finalize_narration()
         self._markdown_buffer = ""
+        self._contemplation_buffer = ""
         self._text_parts.clear()
         self._started = False
         self._filter.reset()
@@ -793,6 +837,19 @@ async def run_repl(
                     console.print(f"[red]{e}[/red]")
                     continue
                 console.print(f"[green]Model switched: {agent._model_id}[/green]")
+                continue
+            if action == ReplAction.REFRESH_MODELS:
+                console.print(
+                    "[yellow]Fetching latest models from OpenRouter...[/yellow]"
+                )
+                try:
+                    count = await registry.refresh()
+                except Exception as exc:
+                    console.print(f"[red]Failed to refresh models: {exc}[/red]")
+                else:
+                    console.print(
+                        f"[green]Models refreshed ({count} new models).[/green]"
+                    )
                 continue
             if action == ReplAction.NEW_SESSION:
                 console.print("[yellow]Starting a new session...[/yellow]")
