@@ -686,6 +686,19 @@ class StreamRenderer:
         self._tool_start_time = None
         self._narration_finalized = False
 
+    def on_turn_start(self, event: MvgeEvent) -> None:
+        self.reset()
+
+    def on_turn_end(self, event: MvgeEvent) -> None:
+        pending = self._filter.flush()
+        if pending:
+            self._markdown_buffer += pending
+            self._ensure_started()
+            self._sink.stream_narration(pending, self._get_full_md())
+        if not self._narration_finalized:
+            self._sink.finalize_narration()
+            self._narration_finalized = True
+
 
 def _validate_api_key(api_key: str) -> None:
     """Validate OpenRouter API key format. Raises ValueError if invalid."""
@@ -803,6 +816,8 @@ async def run_repl(
         agent.on("message_update", renderer.on_message_update),
         agent.on("spell_casting_start", renderer.on_tool_start),
         agent.on("spell_casting_end", renderer.on_tool_end),
+        agent.on("turn_start", renderer.on_turn_start),
+        agent.on("turn_end", renderer.on_turn_end),
     ]
 
     agent_task: asyncio.Task[Any] | None = None

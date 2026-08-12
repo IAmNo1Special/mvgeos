@@ -420,6 +420,56 @@ class TestStreamRenderer:
         assert "<channel|>" not in captured.out
         assert "Result text" in captured.out
 
+    def test_turn_start_resets_contemplation_buffer(self) -> None:
+        from mvgeos_agent.types import MvgeEvent, MvgeEventType
+
+        from mvgeos_cli.commands.repl import StreamRenderer
+        from mvgeos_cli.commands.tui import TuiSink
+
+        sink = TuiSink()
+        renderer = StreamRenderer(sink)
+
+        # Turn 1
+        renderer.on_turn_start(MvgeEvent(type=MvgeEventType.TURN_START, data={}))
+        renderer.on_message_update(
+            MvgeEvent(
+                type=MvgeEventType.MESSAGE_UPDATE,
+                data={"text": "Thinking 1", "kind": "contemplation"},
+            )
+        )
+        renderer.on_message_update(
+            MvgeEvent(
+                type=MvgeEventType.MESSAGE_UPDATE,
+                data={"text": "Response 1", "kind": "text"},
+            )
+        )
+        renderer.on_turn_end(MvgeEvent(type=MvgeEventType.TURN_END, data={}))
+
+        # Turn 2 (steer/followup)
+        renderer.on_turn_start(MvgeEvent(type=MvgeEventType.TURN_START, data={}))
+        renderer.on_message_update(
+            MvgeEvent(
+                type=MvgeEventType.MESSAGE_UPDATE,
+                data={"text": "Thinking 2", "kind": "contemplation"},
+            )
+        )
+        renderer.on_message_update(
+            MvgeEvent(
+                type=MvgeEventType.MESSAGE_UPDATE,
+                data={"text": "Response 2", "kind": "text"},
+            )
+        )
+        renderer.on_turn_end(MvgeEvent(type=MvgeEventType.TURN_END, data={}))
+
+        md_entries = [e.md for e in sink._entries if e.kind == "md"]
+        assert len(md_entries) == 2
+        assert "> *Thinking: Thinking 1*" in md_entries[0]
+        assert "Response 1" in md_entries[0]
+
+        assert "> *Thinking: Thinking 2*" in md_entries[1]
+        assert "Thinking 1" not in md_entries[1]
+        assert "Response 2" in md_entries[1]
+
     def test_tool_cycle_shows_call_and_response(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
