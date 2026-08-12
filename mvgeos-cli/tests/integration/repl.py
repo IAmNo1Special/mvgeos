@@ -61,7 +61,7 @@ class TestSlashCommands:
     def test_model_invalid(self, agent: CodingMvge, registry: ModelRegistry) -> None:
         result = _handle_command("/model unknown/model", agent, registry)
         assert result == ReplAction.CONTINUE
-        assert agent._model_id == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        assert agent._model_id == "openrouter/free"
 
     def test_spells_no_args(self, agent: CodingMvge, registry: ModelRegistry) -> None:
         result = _handle_command("/spells", agent, registry)
@@ -102,6 +102,40 @@ class TestReplHelpers:
         assert markup is not None
         assert "Rate limited by the provider" in markup
         assert "[yellow]" in markup
+
+    def test_models_free_filter(
+        self,
+        agent: CodingMvge,
+        registry: ModelRegistry,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        result = _handle_command("/models --free", agent, registry)
+        assert result == ReplAction.CONTINUE
+        captured = capsys.readouterr()
+        for m in registry.list_all():
+            if m.free:
+                assert m.id in captured.out
+
+    def test_render_live_rate_limit_countdown(self) -> None:
+        import asyncio
+
+        from mvgeos_agent.errors import RateLimitError
+
+        from mvgeos_cli.commands.repl import _render_live_rate_limit
+
+        outputs: list[str] = []
+
+        async def dummy_sleep(sec: float) -> None:
+            pass
+
+        exc = RateLimitError("limited", retry_after=3)
+        asyncio.run(
+            _render_live_rate_limit(exc, out=outputs.append, sleep_fn=dummy_sleep)
+        )
+        assert len(outputs) == 3
+        assert "Retry in 3s..." in outputs[0]
+        assert "Retry in 2s..." in outputs[1]
+        assert "Retry in 1s..." in outputs[2]
 
     def test_render_exception_rate_limit_with_retry_after(self) -> None:
         from mvgeos_agent.errors import RateLimitError
@@ -152,7 +186,7 @@ class TestReplHelpers:
         assert "~/proj (main)" in parts
         assert "mana 9500" in parts
         # Footer truncates to console width; match the model ID prefix.
-        assert "nvidia/nemotron" in parts
+        assert "openrouter/free" in parts
 
     def test_format_session_info_reports_mana_used(
         self,
@@ -188,7 +222,7 @@ class TestReplHelpers:
         items = [
             ("bold", " ~/proj (main)"),
             ("dim", "  session abc12345"),
-            ("", "  nvidia/nemotron-3-ultra-550b-a55b:free • medium"),
+            ("", "  openrouter/free • medium"),
         ]
         fitted = _fit_footer(items, 40)
         plain = "".join(text for _, text in fitted)
@@ -198,7 +232,7 @@ class TestReplHelpers:
     def test_fit_footer_no_truncation_when_fits(self) -> None:
         from mvgeos_cli.commands.repl import _fit_footer
 
-        items = [("bold", " ~/proj"), ("", "  nvidia/nemotron-3-ultra-550b-a55b:free")]
+        items = [("bold", " ~/proj"), ("", "  openrouter/free")]
         fitted = _fit_footer(items, 80)
         assert fitted == items
 

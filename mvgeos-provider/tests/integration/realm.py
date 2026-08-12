@@ -27,10 +27,13 @@ async def collect_responses(iterator):
 
 
 def _mock_response(status_code, headers, body):
+    import json as _json
+
     resp = MagicMock()
     resp.status_code = status_code
     resp.headers = headers
     resp.json.return_value = body
+    resp.read.return_value = _json.dumps(body).encode("utf-8")
     return resp
 
 

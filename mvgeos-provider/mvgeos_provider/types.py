@@ -16,6 +16,12 @@ class Model:
     max_tokens: int = 4096
     headers: dict[str, str] = field(default_factory=dict)
     supported_parameters: list[str] = field(default_factory=list)
+    is_free: bool = False
+
+    @property
+    def free(self) -> bool:
+        """Return True if the model is free of charge."""
+        return self.is_free or self.id.endswith(":free") or self.id == "openrouter/free"
 
     @property
     def provider(self) -> str:

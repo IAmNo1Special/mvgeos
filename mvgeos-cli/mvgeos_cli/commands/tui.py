@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import io
 import os
 from collections.abc import Callable
@@ -8,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from coding_mvge import CodingMvge
+from mvgeos_agent.errors import RateLimitError
 from mvgeos_provider.model_registry import ModelRegistry
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
@@ -40,6 +42,7 @@ from mvgeos_cli.commands.repl import (
     _git_branch,
     _handle_command,
     _render_exception,
+    _render_live_rate_limit,
     console,
 )
 
@@ -393,8 +396,13 @@ class TuiApp:
             self._out("\n[yellow]Interrupted.[/yellow]")
         except Exception as exc:
             self.renderer.finish(error=True)
-            markup = _render_exception(exc) or f"[red]Error: {exc}[/red]"
-            self._out(f"\n{markup}")
+            if isinstance(exc, RateLimitError):
+                await _render_live_rate_limit(
+                    exc, out=self._out, invalidate=self.application.invalidate
+                )
+            else:
+                markup = _render_exception(exc) or f"[red]Error: {exc}[/red]"
+                self._out(f"\n{markup}")
         else:
             self.renderer.finish()
         finally:
@@ -477,6 +485,9 @@ async def run_tui(
 
     registry = ModelRegistry()
     registry.load_cache()
+    if registry.needs_refresh():
+        with contextlib.suppress(Exception):
+            await registry.auto_refresh()
 
     sink = TuiSink()
     renderer = StreamRenderer(sink)

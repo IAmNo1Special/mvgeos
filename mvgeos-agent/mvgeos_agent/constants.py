@@ -4,7 +4,7 @@ from pathlib import Path
 
 DEFAULT_AGENT_NAME = "default-mvge"
 
-DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
+DEFAULT_MODEL = "openrouter/free"
 
 DEFAULT_TOME_DIR = Path("~/.agents/.mvgeos/tomes").expanduser()
 

@@ -124,7 +124,7 @@ class TestCodingMvgeInit:
 
     def test_defaults(self) -> None:
         agent = CodingMvge(api_key="k")
-        assert agent._model_id == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        assert agent._model_id == "openrouter/free"
         assert agent._spell_names == list(DEFAULT_SPELL_MAP)
         assert agent._custom_system_prompt == ""
         assert agent._temperature == 0.7
@@ -391,7 +391,7 @@ class TestCodingMvgeSwitchModel:
             assert agent.session_id == session_before
             assert agent._model_id == "unknown/model"
             assert agent._model is not None
-            assert agent._model.id == "nvidia/nemotron-3-ultra-550b-a55b:free"
+            assert agent._model.id == "openrouter/free"
             await agent.close()
 
     @pytest.mark.asyncio
@@ -403,19 +403,15 @@ class TestCodingMvgeSwitchModel:
                 spells=[],
             )
             await agent.initialize()
-            await agent.switch_model("nvidia/nemotron-3-ultra-550b-a55b:free")
-            assert agent._model_id == "nvidia/nemotron-3-ultra-550b-a55b:free"
+            await agent.switch_model("openrouter/free")
+            assert agent._model_id == "openrouter/free"
             await agent.close()
 
     @pytest.mark.asyncio
     async def test_switch_model_before_init(self) -> None:
         from mvgeos_provider.models import list_models
 
-        target = next(
-            m.id
-            for m in list_models()
-            if m.id != "nvidia/nemotron-3-ultra-550b-a55b:free"
-        )
+        target = next(m.id for m in list_models() if m.id != "openrouter/free")
         agent = CodingMvge(api_key="test-key")
         await agent.switch_model(target)
         assert agent._model_id == target

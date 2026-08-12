@@ -15,7 +15,7 @@ def test_mvge_environment_resolve_defaults(tmp_path: Path) -> None:
     )
 
     assert env.agent_name == "test-agent"
-    assert env.model_id == "nvidia/nemotron-3-ultra-550b-a55b:free"
+    assert env.model_id == "openrouter/free"
     assert env.resolved_prompt.source == PromptSource.BUILTIN
     assert env.resolved_guidelines.source == PromptSource.BUILTIN
     assert "model" in env.config

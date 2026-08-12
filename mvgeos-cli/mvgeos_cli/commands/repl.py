@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -50,7 +51,8 @@ SLASH_COMMANDS: dict[str, str] = {
     "/help": "Show this help message",
     "/quit": "Exit the REPL",
     "/exit": "Exit the REPL",
-    "/model": "Switch model: /model <model-id>",
+    "/model": "Switch or list models: /model [id] or /model --free",
+    "/models": "List available models: /models [--free]",
     "/mode": "Toggle queue mode (steer/followup): /mode or /m",
     "/new": "Start a new session",
     "/session": "Show current session info",
@@ -205,6 +207,21 @@ def _render_exception(exc: Exception) -> str | None:
     return None
 
 
+async def _render_live_rate_limit(
+    exc: RateLimitError,
+    out: Callable[[str], None] = console.print,
+    invalidate: Callable[[], None] | None = None,
+    sleep_fn: Any = asyncio.sleep,
+) -> None:
+    seconds = int(exc.retry_after or 60)
+    for sec in range(seconds, 0, -1):
+        msg = f"[yellow]Rate limited by the provider. Retry in {sec}s...[/yellow]"
+        out(msg)
+        if invalidate is not None:
+            invalidate()
+        await sleep_fn(1)
+
+
 def _handle_command(
     command: str,
     agent: CodingMvge,
@@ -241,15 +258,20 @@ def _handle_command(
         out(f"[dim]Providers: {', '.join(agent.registered_providers) or 'none'}[/dim]")
         return ReplAction.CONTINUE
 
-    if cmd == "/model":
-        if not args:
+    if cmd in ("/model", "/models"):
+        stripped = args.strip()
+        if not stripped or stripped in ("--free", "-f"):
             out(f"[bold]Current model:[/bold] {agent._model_id}")
             out("[bold]Available models:[/bold]")
-            for m in registry.list_all():
-                out(f"  {m.id}")
+            all_models = registry.list_all()
+            if stripped in ("--free", "-f"):
+                all_models = [m for m in all_models if m.free]
+            for m in all_models:
+                tag = " [green](free)[/green]" if m.free else ""
+                out(f"  {m.id}{tag}")
             out("[dim]Try /refresh-models to fetch the latest catalog[/dim]")
             return ReplAction.CONTINUE
-        candidate = args.strip()
+        candidate = stripped
         if registry.get(candidate) is None:
             out(f"[red]Unknown model: {candidate}[/red]")
             out("[dim]Try /refresh-models to fetch the latest catalog[/dim]")
@@ -808,6 +830,9 @@ async def run_repl(
 
     registry = ModelRegistry()
     registry.load_cache()
+    if registry.needs_refresh():
+        with contextlib.suppress(Exception):
+            await registry.auto_refresh()
 
     console.print("[green]MvgeOS REPL[/green]")
     console.print(f"[dim]Model: {model}[/dim]")
@@ -903,8 +928,11 @@ async def run_repl(
             console.print("\n[yellow]Interrupted.[/yellow]")
         except Exception as exc:
             renderer.finish(error=True)
-            markup = _render_exception(exc) or f"[red]Error: {exc}[/red]"
-            console.print(f"\n{markup}")
+            if isinstance(exc, RateLimitError):
+                await _render_live_rate_limit(exc, out=console.print)
+            else:
+                markup = _render_exception(exc) or f"[red]Error: {exc}[/red]"
+                console.print(f"\n{markup}")
         else:
             renderer.finish()
         finally:

@@ -44,10 +44,9 @@ def _supports_reasoning(model: Model) -> bool:
 
 
 def _error_from_response(response: Any) -> tuple[str, str | None]:
-    content_type = response.headers.get("content-type", "")
-    is_json = content_type.startswith("application/json")
     try:
-        error_data = response.json() if is_json else {}
+        body = response.read()
+        error_data = json.loads(body.decode("utf-8")) if body else {}
     except Exception:
         error_data = {}
     message = error_data.get("error", {}).get("message", f"HTTP {response.status_code}")
