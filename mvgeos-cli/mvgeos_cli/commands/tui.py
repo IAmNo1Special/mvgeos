@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from coding_mvge import CodingMvge
+from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_agent.errors import RateLimitError
 from mvgeos_provider.model_registry import ModelRegistry
 from prompt_toolkit.application import Application
@@ -457,6 +458,7 @@ async def run_tui(
     max_tokens: int = 4096,
     contemplation: str = "medium",
     session_dir: str | None = None,
+    agent_name: str = DEFAULT_AGENT_NAME,
 ) -> None:
     if api_key is None:
         api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -478,6 +480,7 @@ async def run_tui(
             temperature=temperature,
             max_tokens=max_tokens,
             contemplation=contemplation,
+            agent_name=agent_name,
         )
     except ValueError as e:
         console.print(f"[red]{e}[/red]")

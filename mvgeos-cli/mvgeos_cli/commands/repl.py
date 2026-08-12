@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from coding_mvge import CodingMvge
+from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.errors import AuthenticationError, RateLimitError
 from mvgeos_agent.types import MvgeEvent, MvgeResponse
@@ -349,7 +350,8 @@ def _display_response(result: Any) -> None:
                 md = Markdown(str(item.get("text", "")))
                 console.print(md)
         if result.stop_reason:
-            console.print(f"[dim]Stop reason: {result.stop_reason.value}[/dim]")
+            reason = getattr(result.stop_reason, "value", result.stop_reason)
+            console.print(f"[dim]Stop reason: {reason}[/dim]")
 
 
 async def _read_initial_prompt(
@@ -762,6 +764,7 @@ async def _create_agent(
     temperature: float,
     max_tokens: int,
     contemplation: str,
+    agent_name: str = DEFAULT_AGENT_NAME,
 ) -> CodingMvge:
     _validate_api_key(api_key)
     spells_list = [s.strip() for s in spells.split(",") if s.strip()]
@@ -776,7 +779,7 @@ async def _create_agent(
         overrides["contemplation_level"] = contemplation
 
     env = MvgeEnvironment.resolve(
-        "default-mvge", overrides=overrides if overrides else None
+        agent_name, overrides=overrides if overrides else None
     )
     agent = CodingMvge(
         api_key=api_key,
@@ -802,6 +805,7 @@ async def run_repl(
     max_tokens: int = 4096,
     contemplation: str = "medium",
     session_dir: str | None = None,
+    agent_name: str = DEFAULT_AGENT_NAME,
 ) -> None:
     if api_key is None:
         api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -823,6 +827,7 @@ async def run_repl(
             temperature=temperature,
             max_tokens=max_tokens,
             contemplation=contemplation,
+            agent_name=agent_name,
         )
     except ValueError as e:
         console.print(f"[red]{e}[/red]")

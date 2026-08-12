@@ -1,52 +1,37 @@
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import json
 import os
-from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, cast
 
 import typer
-from coding_mvge.spells import (
-    BUILTIN_SPELL_MAP as SPELL_MAP,
-)
-from mvgeos_agent.agent_session import MvgeTome
+import typer._click as _click
+from coding_mvge import CodingMvge
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
     DEFAULT_TOME_DIR,
-    resolve_rune_paths,
 )
 from mvgeos_agent.environment import MvgeEnvironment
-from mvgeos_agent.loop import MvgeLoop
-from mvgeos_agent.prompt_config import (
-    build_system_prompt,
-    ensure_config_files,
-)
-from mvgeos_agent.types import (
-    ContemplationLevel,
-    MvgeInvocation,
-    MvgeResponse,
-    MvgeSpell,
-    MvgeState,
-    SummonerRequest,
-)
-from mvgeos_provider.models import get_model
-from mvgeos_provider.registry import RealmRegistry
-from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
-from mvgeos_runes.loader import load_runes_from_paths
-from mvgeos_runes.rune_runner import RuneRunner
-from mvgeos_runes.types import RuneContext, RuneScope
-from mvgeos_runes.watcher import RuneWatcher
-from mvgeos_tome.ledger import TomeLedger
+from mvgeos_agent.errors import AuthenticationError, RateLimitError
 from rich.console import Console
+from typer._click.parser import _split_opt
+from typer.core import TyperGroup
 
 from mvgeos_cli.commands.build import build_app
 from mvgeos_cli.commands.config import config_app
 from mvgeos_cli.commands.info import info_app
+from mvgeos_cli.commands.repl import (
+    _create_agent,
+    _display_response,
+    _render_exception,
+    _validate_api_key,
+    run_repl,
+)
 from mvgeos_cli.commands.setup import setup_app
 from mvgeos_cli.commands.tome import tome_app
+from mvgeos_cli.commands.tui import run_tui
 
 console = Console()
 
@@ -64,16 +49,25 @@ def _load_api_key_from_auth() -> str | None:
     return None
 
 
-app = typer.Typer(name="mvgeos", help="MvgeOS — a Python-based AI coding agent")
+def _default_spells_from_config(resolved: dict[str, Any]) -> str:
+    val = resolved["spells_enabled"].value
+    if isinstance(val, list):
+        return ",".join(val)
+    return str(val)
 
 
-def _scope_for_path(path: Path) -> RuneScope:
-    path_str = str(path)
-    if ".mvgeos/runes" in path_str and "{agent_name}" not in path_str:
-        return RuneScope.USER
-    if "{agent_name}" in path_str:
-        return RuneScope.AGENT
-    return RuneScope.PROJECT
+async def _run_print_mode(agent: CodingMvge, prompts: list[str]) -> int:
+    try:
+        for prompt in prompts:
+            result = await agent.run(prompt)
+            _display_response(result)
+        return 0
+    except (RateLimitError, AuthenticationError) as exc:
+        console.print(_render_exception(exc) or "")
+        return 1
+    except Exception as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        return 1
 
 
 async def _run_agent(
@@ -90,7 +84,10 @@ async def _run_agent(
     session_dir: str | None,
     tui: bool,
     agent_name: str = DEFAULT_AGENT_NAME,
-) -> None:
+    prompts: list[str] | None = None,
+) -> int:
+    prompts_out = ([incantation] if incantation else []) + (prompts or [])
+
     overrides: dict[str, Any] = {}
     if model_id is not None:
         overrides["model"] = model_id
@@ -105,22 +102,28 @@ async def _run_agent(
 
     env = MvgeEnvironment.resolve(agent_name=agent_name, overrides=overrides)
     resolved = env.config
-    model_id = model_id or resolved["model"].value
+    model_id = model_id or str(resolved["model"].value)
     temperature = (
-        temperature if temperature is not None else resolved["temperature"].value
+        temperature if temperature is not None else float(resolved["temperature"].value)
     )
-    max_tokens = max_tokens if max_tokens is not None else resolved["max_tokens"].value
-    contemplation_level = contemplation_level or resolved["contemplation_level"].value
-    spells_enabled = spells_enabled or resolved["spells_enabled"].value
+    max_tokens = (
+        max_tokens if max_tokens is not None else int(resolved["max_tokens"].value)
+    )
+    contemplation_level = contemplation_level or str(
+        resolved["contemplation_level"].value
+    )
+    spells_joined = (
+        ",".join(spells_enabled)
+        if spells_enabled is not None
+        else _default_spells_from_config(resolved)
+    )
 
-    if incantation is None:
+    if not prompts_out:
         if tui:
-            from mvgeos_cli.commands.tui import run_tui
-
             await run_tui(
                 model=model_id,
                 api_key=api_key,
-                spells=",".join(spells_enabled),
+                spells=spells_joined,
                 extension_dir=extension_dir,
                 resume=resume,
                 provider=provider_name,
@@ -128,15 +131,14 @@ async def _run_agent(
                 max_tokens=max_tokens,
                 contemplation=contemplation_level,
                 session_dir=session_dir,
+                agent_name=agent_name,
             )
-            return
-
-        from mvgeos_cli.commands.repl import run_repl
+            return 0
 
         await run_repl(
             model=model_id,
             api_key=api_key,
-            spells=",".join(spells_enabled),
+            spells=spells_joined,
             extension_dir=extension_dir,
             resume=resume,
             provider=provider_name,
@@ -144,185 +146,64 @@ async def _run_agent(
             max_tokens=max_tokens,
             contemplation=contemplation_level,
             session_dir=session_dir,
+            agent_name=agent_name,
         )
-        return
+        return 0
 
-    provider_registry = RealmRegistry()
-
-    ensure_config_files(agent_name)
-
-    runner: RuneRunner | None = None
-    watchers: list[RuneWatcher] = []
-
-    runes_paths = resolve_rune_paths(agent_name, extension_dir)
-    paths_with_scope = [(p, _scope_for_path(p)) for p in runes_paths]
-
-    loads, diagnostics = load_runes_from_paths(paths_with_scope, agent_name)
-    if loads:
-        runner = RuneRunner()
-        runner.bind_context(
-            RuneContext(
-                cwd=str(Path.cwd()),
-                mode="cli",
-                agent_name=agent_name,
-                api_key=api_key,
-            )
-        )
-        await runner.load_rune_loads(loads, diagnostics)
-        for pname, pconfig in runner.get_registered_providers().items():
-            if isinstance(pconfig, dict):
-                provider_registry.register_provider(pname, pconfig)
-
-        for path, _ in paths_with_scope:
-            if path.exists():
-                watcher = RuneWatcher(path, runner)
-                await watcher.start()
-                watchers.append(watcher)
-
-    model_info = get_model(model_id)
-    if model_info is None:
-        console.print(f"[red]Unknown model: {model_id}[/red]")
-        raise typer.Exit(1)
-
-    model = Model(
-        id=model_info.id,
-        name=model_info.name,
-        realm=model_info.realm,
-        base_url=model_info.base_url,
-        api_key=api_key,
-        max_completion_mana=model_info.max_completion_mana,
-        context_window=model_info.context_window,
-        max_tokens=model_info.max_tokens,
-        headers=dict(model_info.headers or {}),
-    )
-
-    provider_registry = RealmRegistry()
-    realm = provider_registry.create_realm(model, api_key, provider_name)
-
-    spells = []
-
-    if runner is not None:
-        # Only load seeker meta-tools, no preloaded spells
-        rune_spells = runner.get_all_registered_spells()
-        for rs in rune_spells:
-            if rs.name in (
-                "tool_search",
-                "skill_search",
-                "skill_execute",
-                "mcp_search",
-            ):
-                spells.append(cast(MvgeSpell, rs))
-        commands = runner.get_commands()
-        if commands:
-            cmd_names = ", ".join(c.name for c in commands)
-            console.print(f"[dim]Registered commands: {cmd_names}[/dim]")
-        shortcuts = runner.get_shortcuts()
-        if shortcuts:
-            sc_names = ", ".join(s.key for s in shortcuts)
-            console.print(f"[dim]Registered shortcuts: {sc_names}[/dim]")
-        ext_providers = provider_registry.get_registered_providers()
-        if ext_providers:
-            console.print(
-                f"[dim]Registered providers: {', '.join(ext_providers)}[/dim]"
-            )
-
-    session_dir_path = Path(session_dir) if session_dir else _get_session_dir()
-    ledger = TomeLedger(session_dir_path)
-    agent_session: MvgeTome | None = None
-
-    if resume:
-        resume_path = Path(resume)
-        if resume_path.exists():
-            try:
-                meta = ledger.open_tome(resume_path.stem)
-                if meta is None:
-                    raise ValueError("Tome not found")
-                agent_session = MvgeTome(ledger, meta, runner)
-                await agent_session.start(reason="resume")
-                console.print(f"[dim]Resumed session: {meta.id}[/dim]")
-            except (ValueError, FileNotFoundError) as e:
-                console.print(
-                    f"[yellow]Failed to resume session: {e}; creating new[/yellow]"
-                )
-
-    if agent_session is None:
-        meta = ledger.create_tome(str(Path.cwd()))
-        agent_session = MvgeTome(ledger, meta, runner)
-        await agent_session.start(reason="startup")
-        console.print(f"[dim]New session: {meta.id}[/dim]")
-
-    initial_invocation = SummonerRequest(
-        role="user",
-        content=incantation,
-    )
-
-    state = MvgeState(
-        system_prompt=build_system_prompt(
-            spells=spells_enabled or [], cwd=str(Path.cwd())
-        ),
-        model=dataclasses.asdict(model),
-        contemplation_level=ContemplationLevel(contemplation_level),
-        spells=spells,
-        invocations=[initial_invocation],
-        max_tokens=max_tokens,
-        temperature=temperature,
-        rune_runner=runner,
-        agent_session=agent_session,
-    )
-
-    loop = MvgeLoop(state)
-
-    def stream_fn(invocations: list[MvgeInvocation]) -> AsyncIterator[RealmResponse]:
-        return realm.stream(
-            model=model,
-            invocations=invocations,
-            config=ChannelConfig(
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            ),
-        )
-
+    agent: CodingMvge | None = None
     try:
-        result = await loop.run(
-            stream_fn=stream_fn,
-            model=dataclasses.asdict(model),
-            contemplation_level=contemplation_level,
+        _validate_api_key(api_key)
+        agent = await _create_agent(
+            model=model_id,
+            api_key=api_key,
+            spells=spells_joined,
+            extension_dir=extension_dir,
+            session_dir=session_dir,
+            resume=resume,
+            provider=provider_name,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            contemplation=contemplation_level,
+            agent_name=agent_name,
         )
-        if isinstance(result, MvgeResponse):
-            console.print(f"\n[green]Done. Stop reason: {result.stop_reason}[/green]")
+        return await _run_print_mode(agent, prompts_out)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        return 1
+    except Exception as exc:
+        console.print(_render_exception(exc) or f"[red]{exc}[/red]")
+        return 1
     finally:
-        for watcher in watchers:
-            await watcher.stop()
-        if agent_session is not None:
-            await agent_session.shutdown(reason="quit")
-        await realm.close()
+        if agent is not None:
+            await agent.close()
 
 
 def _get_session_dir() -> Path:
     return DEFAULT_TOME_DIR
 
 
-def _build_spells(enabled: list[str]) -> list[MvgeSpell]:
-    spells = []
-    for name in enabled:
-        if name in SPELL_MAP:
-            spells.append(
-                MvgeSpell(
-                    name=name,
-                    description=f"Spell: {name}",
-                    parameters={},
-                )
-            )
-    return spells
+class MvgeosGroup(TyperGroup):
+    def invoke(self, ctx: _click.Context) -> Any:
+        if ctx._protected_args:
+            args = [*ctx._protected_args, *ctx.args]
+            first = args[0] if args else ""
+            if not _split_opt(first)[0] and first not in self.commands:
+                ctx.meta["prompts"] = list(args)
+                ctx.args = []
+                ctx._protected_args = []
+                with ctx:
+                    return _click.Command.invoke(self, ctx)
+        return TyperGroup.invoke(self, ctx)
 
 
-console = Console()
+app = typer.Typer(
+    name="mvgeos",
+    help="MvgeOS — a Python-based AI coding agent",
+    cls=MvgeosGroup,
+)
 
-app = typer.Typer(name="mvgeos", help="MvgeOS — a Python-based AI coding agent")
 
-
-@app.callback(invoke_without_command=True)
+@app.callback(invoke_without_command=True, cls=MvgeosGroup)
 def _repl_callback(
     ctx: typer.Context,
     incantation: str | None = typer.Option(
@@ -400,9 +281,11 @@ def _repl_callback(
         [s.strip() for s in spells.split(",") if s.strip()] if spells else None
     )
 
-    asyncio.run(
+    prompts = cast("list[str] | None", ctx.meta.get("prompts"))
+
+    code = asyncio.run(
         _run_agent(
-            incantation=ctx.params.get("incantation"),
+            incantation=incantation,
             model_id=model,
             api_key=api_key,
             temperature=temperature,
@@ -415,8 +298,11 @@ def _repl_callback(
             session_dir=session_dir,
             tui=tui,
             agent_name=agent_name,
+            prompts=prompts,
         )
     )
+    if code:
+        raise typer.Exit(code)
 
 
 app.add_typer(build_app, name="build")
