@@ -124,17 +124,22 @@ def _invocations_to_messages(invocations: list[Any]) -> list[dict[str, Any]]:
 
 class OpenRouterRealm(Realm):
     def __init__(
-        self, api_key: str, base_url: str = "https://openrouter.ai/api/v1"
+        self,
+        api_key: str,
+        base_url: str = "https://openrouter.ai/api/v1",
+        client: httpx.AsyncClient | None = None,
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url
-        self._client = httpx.AsyncClient(
+        self._owned_client = client is None
+        self._client = client or httpx.AsyncClient(
             base_url=base_url,
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             timeout=httpx.Timeout(60.0),
+            limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
         )
 
     async def stream(
@@ -373,4 +378,9 @@ class OpenRouterRealm(Realm):
                 return
 
     async def close(self) -> None:
-        await self._client.aclose()
+        if (
+            self._owned_client
+            and self._client is not None
+            and not self._client.is_closed
+        ):
+            await self._client.aclose()

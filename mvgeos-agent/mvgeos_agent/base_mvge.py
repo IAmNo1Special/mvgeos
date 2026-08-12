@@ -535,6 +535,8 @@ class BaseMvge:
         if self._realm is not None:
             await self._realm.close()
             self._realm = None
+        if self._provider_registry is not None:
+            await self._provider_registry.close()
         self._initialized = False
         self._runner = None
         self._agent_session = None

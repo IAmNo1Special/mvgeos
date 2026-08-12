@@ -104,6 +104,22 @@ def _get_history_path() -> Path:
     return path
 
 
+def _trim_history_file(history_path: Path, max_entries: int = 100) -> None:
+    """Trim the prompt-toolkit FileHistory file on disk.
+
+    Keeps only the last max_entries lines.
+    """
+    try:
+        if not history_path.exists():
+            return
+        lines = history_path.read_text(encoding="utf-8").splitlines()
+        if len(lines) > max_entries:
+            trimmed = lines[-max_entries:]
+            history_path.write_text("\n".join(trimmed) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
 def _format_cwd() -> str:
     home = Path.home()
     try:
@@ -806,3 +822,4 @@ async def run_repl(
         if callable(unsub):
             unsub()
     await agent.close()
+    _trim_history_file(_get_history_path())

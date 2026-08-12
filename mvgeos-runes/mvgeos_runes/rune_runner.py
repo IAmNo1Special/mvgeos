@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import traceback
 from collections.abc import Awaitable
 from typing import TYPE_CHECKING, Any
 
@@ -14,6 +16,7 @@ else:
 from mvgeos_runes.sigils import SigilRegistry
 from mvgeos_runes.types import (
     Diagnostic,
+    DiagnosticKind,
     RegisteredCommand,
     RuneContext,
     RuneLoad,
@@ -46,9 +49,32 @@ async def _call_handler_async(handler: Any, hook: SigilHook, data: Any) -> Any:
 
 
 async def _safe_call_handler_async(
-    handler: Any, hook: SigilHook, data: Any
+    handler: Any,
+    hook: SigilHook,
+    data: Any,
+    diagnostics: list[Diagnostic] | None = None,
 ) -> Any | None:
-    return await _call_handler_async(handler, hook, data)
+    try:
+        return await _call_handler_async(handler, hook, data)
+    except asyncio.CancelledError:
+        raise
+    except Exception as err:
+        tb = traceback.format_exc()
+        logger.warning(
+            "Sigil handler for hook %s raised an exception: %s\n%s",
+            hook.value,
+            err,
+            tb,
+        )
+        if diagnostics is not None:
+            diagnostics.append(
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name=getattr(handler, "__name__", "sigil_handler"),
+                    message=f"Sigil handler error on {hook.value}: {err}\n{tb}",
+                )
+            )
+        raise
 
 
 class RuneRunner:

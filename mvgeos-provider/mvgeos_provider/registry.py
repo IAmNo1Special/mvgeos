@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, cast
 
+import httpx
+
 from mvgeos_provider.base import Realm
 from mvgeos_provider.models import get_model
 from mvgeos_provider.openrouter import OpenRouterRealm
@@ -10,13 +12,27 @@ from mvgeos_provider.types import Model
 
 
 class RealmRegistry:
-    def __init__(self) -> None:
+    def __init__(self, shared_client: httpx.AsyncClient | None = None) -> None:
+        self._shared_client = shared_client
         self._extension_providers: dict[str, dict[str, Any]] = {}
         self._builtin_providers: dict[str, Callable[..., Realm]] = {
             "openrouter": lambda api_key="", base_url="": OpenRouterRealm(
-                api_key=api_key, base_url=base_url
+                api_key=api_key, base_url=base_url, client=self.get_shared_client()
             ),
         }
+
+    def get_shared_client(self) -> httpx.AsyncClient:
+        if self._shared_client is None or self._shared_client.is_closed:
+            self._shared_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(60.0),
+                limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
+            )
+        return self._shared_client
+
+    async def close(self) -> None:
+        if self._shared_client is not None and not self._shared_client.is_closed:
+            await self._shared_client.aclose()
+            self._shared_client = None
 
     def register_provider(self, name: str, config: dict[str, Any]) -> None:
         if name not in self._extension_providers:
@@ -78,7 +94,7 @@ class RealmRegistry:
         realm_factory = self._builtin_providers.get(
             pname,
             lambda api_key="", base_url="": OpenRouterRealm(
-                api_key=api_key, base_url=base_url
+                api_key=api_key, base_url=base_url, client=self.get_shared_client()
             ),
         )
         return cast(Realm, realm_factory(api_key=api_key, base_url=model.base_url))

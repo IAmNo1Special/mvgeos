@@ -4,7 +4,7 @@ import contextlib
 import json
 from pathlib import Path
 
-from mvgeos_runes.types import RuneManifest, RuneShortcut, SigilHook
+from mvgeos_runes.types import ExecutionMode, RuneManifest, RuneShortcut, SigilHook
 
 
 def load_manifest(path: Path) -> RuneManifest | None:
@@ -47,6 +47,12 @@ def load_manifest(path: Path) -> RuneManifest | None:
         python_deps = []
     python_deps = [str(dep) for dep in python_deps if isinstance(dep, str)]
 
+    exec_mode_str = data.get("execution_mode", "parallel")
+    try:
+        execution_mode = ExecutionMode(exec_mode_str)
+    except ValueError:
+        execution_mode = ExecutionMode.PARALLEL
+
     enabled = data.get("enabled", True)
     if not isinstance(enabled, bool):
         enabled = True
@@ -60,5 +66,6 @@ def load_manifest(path: Path) -> RuneManifest | None:
         shortcuts=shortcuts,
         system_deps=system_deps,
         python_deps=python_deps,
+        execution_mode=execution_mode,
         enabled=enabled,
     )

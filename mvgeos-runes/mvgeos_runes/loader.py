@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import re
 from collections.abc import Sequence
 from pathlib import Path
@@ -46,11 +47,22 @@ class RuneLoader:
 def load_factory_from_manifest(
     manifest: RuneManifest,
     rune_dir: Path,
+    diagnostics: list[Diagnostic] | None = None,
 ) -> RuneFactory | None:
     if not manifest.entry_point:
         return None
     entry = (rune_dir / manifest.entry_point).resolve()
     if not entry.exists():
+        if diagnostics is not None:
+            diagnostics.append(
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name=manifest.name,
+                    message=f"Entry point file does not exist: {entry}",
+                    scope=manifest.scope,
+                    path=manifest.path,
+                )
+            )
         return None
     spec = importlib.util.spec_from_file_location(
         f"mvgeos_rune_{manifest.name}", str(entry)
@@ -60,11 +72,58 @@ def load_factory_from_manifest(
     mod = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(mod)
-    except Exception:
+    except Exception as err:
+        if diagnostics is not None:
+            diagnostics.append(
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name=manifest.name,
+                    message=f"Failed to execute rune module {manifest.name}: {err}",
+                    scope=manifest.scope,
+                    path=manifest.path,
+                )
+            )
         return None
     factory = getattr(mod, "rune_factory", None)
-    if factory is None:
+    if factory is None or not callable(factory):
+        if diagnostics is not None:
+            diagnostics.append(
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name=manifest.name,
+                    message=(
+                        f"Rune '{manifest.name}' does not export a callable "
+                        "'rune_factory' function"
+                    ),
+                    scope=manifest.scope,
+                    path=manifest.path,
+                )
+            )
         return None
+
+    try:
+        sig = inspect.signature(factory)
+        params = list(sig.parameters.values())
+        if not params and not any(
+            p.kind == inspect.Parameter.VAR_POSITIONAL for p in params
+        ):
+            if diagnostics is not None:
+                diagnostics.append(
+                    Diagnostic(
+                        kind=DiagnosticKind.LOAD_FAILURE,
+                        rune_name=manifest.name,
+                        message=(
+                            f"Rune factory '{manifest.name}' signature expects "
+                            "at least 1 argument (RuneAPI)"
+                        ),
+                        scope=manifest.scope,
+                        path=manifest.path,
+                    )
+                )
+            return None
+    except ValueError, TypeError:
+        pass
+
     return cast(RuneFactory, factory)
 
 
@@ -144,21 +203,9 @@ def load_runes_from_paths(
         for manifest in manifests:
             factory = None
             if manifest.path:
-                factory = load_factory_from_manifest(manifest, Path(manifest.path))
-                if factory is None and manifest.entry_point:
-                    diagnostics.append(
-                        Diagnostic(
-                            kind=DiagnosticKind.LOAD_FAILURE,
-                            rune_name=manifest.name,
-                            message=(
-                                f"Failed to load factory for rune "
-                                f"'{manifest.name}' from "
-                                f"{manifest.entry_point}"
-                            ),
-                            scope=manifest.scope,
-                            path=manifest.path,
-                        )
-                    )
+                factory = load_factory_from_manifest(
+                    manifest, Path(manifest.path), diagnostics=diagnostics
+                )
             if manifest.name in seen_names:
                 winner_scope, winner_path = seen_names[manifest.name]
                 diagnostics.append(

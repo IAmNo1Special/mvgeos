@@ -77,6 +77,11 @@ class SkillDiagnostic:
     path: str = ""
 
 
+class ExecutionMode(StrEnum):
+    SEQUENTIAL = "sequential"
+    PARALLEL = "parallel"
+
+
 @dataclass
 class RuneManifest:
     name: str
@@ -89,12 +94,8 @@ class RuneManifest:
     shortcuts: list[RuneShortcut] = field(default_factory=list)
     system_deps: list[str] = field(default_factory=list)
     python_deps: list[str] = field(default_factory=list)
+    execution_mode: ExecutionMode = ExecutionMode.PARALLEL
     enabled: bool = True
-
-
-class ExecutionMode(StrEnum):
-    SEQUENTIAL = "sequential"
-    PARALLEL = "parallel"
 
 
 @dataclass
