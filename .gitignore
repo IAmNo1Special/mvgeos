@@ -25,6 +25,7 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 .kilo/
+.opencode/
 .agents/
 .goap_actions.json
 coverage.txt
