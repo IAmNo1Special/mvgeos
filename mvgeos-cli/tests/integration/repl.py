@@ -312,8 +312,8 @@ class TestStreamFilter:
         from mvgeos_cli.commands.repl import _StreamFilter
 
         f = _StreamFilter()
-        assert f.feed("see <channel|") == ""
-        assert f.feed("list>\n") == "see\n"
+        assert f.feed("see <channel|") == "see "
+        assert f.feed("list>\n") == ""
         assert f.feed("Done\n") == "Done\n"
 
     def test_thinking_heading_block_suppressed(self) -> None:
@@ -359,8 +359,8 @@ class TestStreamFilter:
         from mvgeos_cli.commands.repl import _StreamFilter
 
         f = _StreamFilter()
-        assert f.feed("Hello") == ""
-        assert f.flush() == "Hello"
+        assert f.feed("Hello") == "Hello"
+        assert f.flush() == ""
 
     def test_flush_thinking_discards(self) -> None:
         from mvgeos_cli.commands.repl import _StreamFilter
@@ -373,8 +373,8 @@ class TestStreamFilter:
         from mvgeos_cli.commands.repl import _StreamFilter
 
         f = _StreamFilter()
-        assert f.feed("see <channel|list>") == ""
-        assert f.flush() == "see"
+        assert f.feed("see <channel|list>") == "see "
+        assert f.flush() == ""
 
     def test_reset_clears_state(self) -> None:
         from mvgeos_cli.commands.repl import _StreamFilter

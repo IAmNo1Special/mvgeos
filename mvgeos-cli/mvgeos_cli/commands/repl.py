@@ -367,17 +367,37 @@ class _StreamFilter:
     def feed(self, text: str) -> str:
         self._pending += text
         out: list[str] = []
-        while True:
+        while "\n" in self._pending:
             idx = self._pending.find("\n")
-            if idx == -1:
-                break
             line = self._pending[:idx]
             self._pending = self._pending[idx + 1 :]
             filtered = self._process_line(line)
-            if filtered is None:
-                continue
-            out.append(filtered)
-            out.append("\n")
+            if filtered is not None:
+                out.append(filtered)
+                out.append("\n")
+
+        if not self._in_thinking and self._pending:
+            stripped = self._pending.strip()
+            if self._THINKING_HEADING.match(stripped) or self._STANDALONE_THINK.match(
+                stripped
+            ):
+                pass
+            elif "<" in self._pending:
+                last_lt = self._pending.rfind("<")
+                if ">" not in self._pending[last_lt:]:
+                    emit_now = self._pending[:last_lt]
+                    self._pending = self._pending[last_lt:]
+                    if emit_now:
+                        out.append(_StreamFilter._CHANNEL_TAG.sub("", emit_now))
+                else:
+                    emit_now = _StreamFilter._CHANNEL_TAG.sub("", self._pending)
+                    self._pending = ""
+                    if emit_now:
+                        out.append(emit_now)
+            else:
+                out.append(self._pending)
+                self._pending = ""
+
         return "".join(out)
 
     def flush(self) -> str:
