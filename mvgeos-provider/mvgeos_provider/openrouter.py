@@ -130,10 +130,10 @@ class OpenRouterRealm(Realm):
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self._api_key = api_key
-        self._base_url = base_url
+        self._base_url = base_url or "https://openrouter.ai/api/v1"
         self._owned_client = client is None
         self._client = client or httpx.AsyncClient(
-            base_url=base_url,
+            base_url=self._base_url,
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
@@ -142,6 +142,22 @@ class OpenRouterRealm(Realm):
             limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
         )
 
+    def _prepare_request_url_and_headers(
+        self, model: Model
+    ) -> tuple[str, dict[str, str]]:
+        base_url = (
+            model.base_url or self._base_url or "https://openrouter.ai/api/v1"
+        ).rstrip("/")
+        api_key = model.api_key or self._api_key
+        url = f"{base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        if model.headers:
+            headers.update(model.headers)
+        return url, headers
+
     async def stream(
         self,
         model: Model,
@@ -149,6 +165,7 @@ class OpenRouterRealm(Realm):
         config: ChannelConfig,
     ) -> AsyncIterator[RealmResponse]:
         messages = _invocations_to_messages(invocations)
+        url, headers = self._prepare_request_url_and_headers(model)
 
         payload = {
             "model": model.id,
@@ -174,7 +191,8 @@ class OpenRouterRealm(Realm):
         for attempt in range(max_attempts):
             async with self._client.stream(
                 "POST",
-                "/chat/completions",
+                url,
+                headers=headers,
                 json=payload,
                 timeout=config.timeout_ms / 1000,
             ) as response:
@@ -219,6 +237,7 @@ class OpenRouterRealm(Realm):
         Deliberately omits `tools`: this is used for standalone requests such
         as compaction summaries, where Spells must not be offered.
         """
+        url, headers = self._prepare_request_url_and_headers(model)
         payload: dict[str, Any] = {
             "model": model.id,
             "messages": messages,
@@ -228,7 +247,8 @@ class OpenRouterRealm(Realm):
         }
 
         response = await self._client.post(
-            "/chat/completions",
+            url,
+            headers=headers,
             json=payload,
             timeout=config.timeout_ms / 1000,
         )

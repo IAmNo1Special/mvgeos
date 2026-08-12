@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -56,3 +56,59 @@ async def test_realm_registry_create_realm_reuses_client() -> None:
     assert realm._client is registry.get_shared_client()
 
     await registry.close()
+
+
+@pytest.mark.asyncio
+async def test_openrouter_realm_request_url_and_headers() -> None:
+    """Verify stream and complete send absolute HTTPS URLs and auth headers."""
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.is_closed = False
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.headers = {"content-type": "application/json"}
+    mock_resp.json.return_value = {
+        "choices": [{"message": {"content": "ok"}}],
+        "usage": {},
+    }
+    mock_client.post.return_value = mock_resp
+
+    realm = OpenRouterRealm(
+        api_key="test_key",
+        base_url="https://openrouter.ai/api/v1",
+        client=mock_client,
+    )
+    model = Model(
+        id="nvidia/nemotron-3-ultra-550b-a55b:free",
+        name="Nemotron",
+        realm="openrouter",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="test_key",
+    )
+    from mvgeos_provider.types import ChannelConfig
+
+    config = ChannelConfig(model=model)
+
+    # Test complete() passes full URL and headers
+    await realm.complete(model, [{"role": "user", "content": "hi"}], config)
+    assert mock_client.post.called
+    call_args, call_kwargs = mock_client.post.call_args
+    assert call_args[0] == "https://openrouter.ai/api/v1/chat/completions"
+    assert call_kwargs.get("headers", {}).get("Authorization") == "Bearer test_key"
+
+    # Test stream() passes full URL and headers
+    mock_stream_resp = MagicMock()
+    mock_stream_resp.status_code = 400
+    mock_stream_resp.headers = {}
+    mock_stream_cm = AsyncMock()
+    mock_stream_cm.__aenter__.return_value = mock_stream_resp
+    mock_stream_cm.__aexit__.return_value = None
+    mock_client.stream.return_value = mock_stream_cm
+
+    _ = [r async for r in realm.stream(model, [], config)]
+    assert mock_client.stream.called
+    stream_call_args, stream_call_kwargs = mock_client.stream.call_args
+    assert stream_call_args[1] == "https://openrouter.ai/api/v1/chat/completions"
+    assert (
+        stream_call_kwargs.get("headers", {}).get("Authorization") == "Bearer test_key"
+    )
