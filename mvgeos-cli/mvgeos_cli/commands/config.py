@@ -6,7 +6,7 @@ import typer
 from mvgeos_agent.config_manager import ConfigManager, validate_agent_name
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 
-from mvgeos_cli.console import get_console
+from mvgeos_cli.console import format_error, get_console
 
 console = get_console()
 
@@ -25,7 +25,7 @@ def _get_manager(agent_name: str, allow_create: bool = False) -> ConfigManager:
     try:
         validate_agent_name(agent_name, allow_create=allow_create)
     except ValueError as err:
-        console.print(f"[red]{err}[/red]")
+        console.print(format_error(err))
         raise typer.Exit(1) from None
     return ConfigManager(agent_name=agent_name)
 
@@ -69,7 +69,7 @@ def config_set(
     try:
         mgr.set(key, parsed_value)
     except ValueError as err:
-        console.print(f"[red]{err}[/red]")
+        console.print(format_error(err))
         raise typer.Exit(1) from None
 
     console.print(f"[green]Set {key} = {parsed_value}[/green]")

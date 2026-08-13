@@ -20,7 +20,7 @@ from typing import Any, Protocol
 from coding_mvge import CodingMvge
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_agent.environment import MvgeEnvironment
-from mvgeos_agent.errors import AuthenticationError, RateLimitError
+from mvgeos_agent.errors import RateLimitError
 from mvgeos_agent.types import MvgeEvent, MvgeResponse
 from mvgeos_provider.model_registry import ModelRegistry
 from prompt_toolkit import PromptSession
@@ -35,6 +35,7 @@ from rich.markdown import Markdown
 from rich.text import Text
 
 from mvgeos_cli import DEFAULT_MODEL
+from mvgeos_cli.console import format_error
 
 if sys.platform == "win32":
     try:
@@ -210,21 +211,6 @@ def _format_session_info(
     return _fit_footer(items, console.width)
 
 
-def _render_exception(exc: Exception) -> str | None:
-    """Return friendly rich markup for known errors, else None."""
-    if isinstance(exc, RateLimitError):
-        hint = ""
-        if exc.retry_after is not None:
-            hint = f" Try again in {exc.retry_after:.0f}s."
-        return f"[yellow]Rate limited by the provider.{hint}[/yellow]"
-    if isinstance(exc, AuthenticationError):
-        return (
-            "[red]Authentication failed (401). "
-            "Check your OPENROUTER_API_KEY or --api-key.[/red]"
-        )
-    return None
-
-
 async def _render_live_rate_limit(
     exc: RateLimitError,
     out: Callable[[str], None] = console.print,
@@ -319,7 +305,7 @@ def _handle_command(
             return ReplAction.CONTINUE
         candidate = stripped
         if registry.get(candidate) is None:
-            out(f"[red]Unknown model: {candidate}[/red]")
+            out(format_error(f"Unknown model: {candidate}"))
             out("[dim]Try /refresh-models to fetch the latest catalog[/dim]")
             return ReplAction.CONTINUE
         agent._model_id = candidate
@@ -380,10 +366,10 @@ def _handle_command(
             agent._session_resume = args.strip()
             out(f"[green]Will resume: {agent._session_resume}[/green]")
             return ReplAction.NEW_SESSION
-        out("[red]Usage: /resume <path-to-session.jsonl>[/red]")
+        out(format_error("Usage: /resume <path-to-session.jsonl>"))
         return ReplAction.CONTINUE
 
-    out(f"[red]Unknown command: {cmd}[/red]")
+    out(format_error(f"Unknown command: {cmd}"))
     out("[dim]Type /help for available commands[/dim]")
     return ReplAction.CONTINUE
 
@@ -863,7 +849,7 @@ async def run_repl(
         api_key = os.environ.get("OPENROUTER_API_KEY")
     if api_key is None:
         console.print(
-            "[red]API key required. Set OPENROUTER_API_KEY or pass --api-key[/red]"
+            format_error("API key required. Set OPENROUTER_API_KEY or pass --api-key")
         )
         return
 
@@ -882,7 +868,7 @@ async def run_repl(
             agent_name=agent_name,
         )
     except ValueError as e:
-        console.print(f"[red]{e}[/red]")
+        console.print(format_error(e))
         return
 
     registry = ModelRegistry()
@@ -973,7 +959,7 @@ async def run_repl(
                 try:
                     await agent.switch_model(agent._model_id)
                 except ValueError as e:
-                    console.print(f"[red]{e}[/red]")
+                    console.print(format_error(e))
                     continue
                 console.print(f"[green]Model switched: {agent._model_id}[/green]")
                 continue
@@ -984,7 +970,7 @@ async def run_repl(
                 try:
                     count = await registry.refresh()
                 except Exception as exc:
-                    console.print(f"[red]Failed to refresh models: {exc}[/red]")
+                    console.print(format_error(f"Failed to refresh models: {exc}"))
                 else:
                     console.print(
                         f"[green]Models refreshed ({count} new models).[/green]"
@@ -1010,7 +996,7 @@ async def run_repl(
             if isinstance(exc, RateLimitError):
                 await _render_live_rate_limit(exc, out=console.print)
             else:
-                markup = _render_exception(exc) or f"[red]Error: {exc}[/red]"
+                markup = format_error(exc)
                 console.print(f"\n{markup}")
         else:
             renderer.finish()

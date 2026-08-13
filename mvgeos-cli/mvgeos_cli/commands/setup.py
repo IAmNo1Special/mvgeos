@@ -14,10 +14,11 @@ from mvgeos_agent.config_manager import validate_agent_name
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME, resolve_rune_paths
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.types import RuneManifest
-from rich.console import Console
 from typer.core import TyperGroup
 
-console = Console()
+from mvgeos_cli.console import format_error, get_console
+
+console = get_console()
 
 
 class DefaultCheckGroup(TyperGroup):
@@ -276,7 +277,7 @@ def setup_check(
     try:
         validate_agent_name(agent_name, allow_create=False)
     except ValueError as exc:
-        console.print(f"[red]{exc}[/red]")
+        console.print(format_error(exc))
         raise typer.Exit(1) from None
 
     runes = collect_rune_dirs(agent_name, extension_dir)
@@ -357,7 +358,7 @@ def setup_install(
     try:
         validate_agent_name(agent_name, allow_create=False)
     except ValueError as exc:
-        console.print(f"[red]{exc}[/red]")
+        console.print(format_error(exc))
         raise typer.Exit(1) from None
 
     runes = collect_rune_dirs(agent_name, extension_dir)

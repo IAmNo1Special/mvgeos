@@ -14,7 +14,6 @@ from mvgeos_agent.constants import (
     DEFAULT_TOME_DIR,
 )
 from mvgeos_agent.environment import MvgeEnvironment
-from mvgeos_agent.errors import AuthenticationError, RateLimitError
 from typer._click.parser import _split_opt
 from typer.core import TyperGroup
 
@@ -29,14 +28,13 @@ from mvgeos_cli.commands.info import info_app
 from mvgeos_cli.commands.repl import (
     _create_agent,
     _display_response,
-    _render_exception,
     _validate_api_key,
     run_repl,
 )
 from mvgeos_cli.commands.setup import DefaultCheckGroup, setup_app
 from mvgeos_cli.commands.tome import tome_app
 from mvgeos_cli.commands.tui import run_tui
-from mvgeos_cli.console import configure_streams, get_console
+from mvgeos_cli.console import configure_streams, format_error, get_console
 
 console = get_console()
 
@@ -56,11 +54,8 @@ async def _run_print_mode(agent: CodingMvge, prompts: list[str]) -> int:
             result = await agent.run(prompt)
             _display_response(result)
         return 0
-    except (RateLimitError, AuthenticationError) as exc:
-        console.print(_render_exception(exc) or "")
-        return 1
     except Exception as exc:
-        console.print(f"[red]Error: {exc}[/red]")
+        console.print(format_error(exc))
         return 1
 
 
@@ -163,11 +158,8 @@ async def _run_agent(
             agent_name=agent_name,
         )
         return await _run_print_mode(agent, prompts_out)
-    except ValueError as exc:
-        console.print(f"[red]{exc}[/red]")
-        return 1
     except Exception as exc:
-        console.print(_render_exception(exc) or f"[red]{exc}[/red]")
+        console.print(format_error(exc))
         return 1
     finally:
         if agent is not None:
@@ -278,8 +270,10 @@ def _repl_callback(
                 api_key = prompted_key
         if api_key is None:
             console.print(
-                "[red]API key required. Set OPENROUTER_API_KEY, "
-                "run 'mvgeos setup', or use --api-key[/red]"
+                format_error(
+                    "API key required. Set OPENROUTER_API_KEY, "
+                    "run 'mvgeos setup', or use --api-key"
+                )
             )
             raise typer.Exit(1)
 

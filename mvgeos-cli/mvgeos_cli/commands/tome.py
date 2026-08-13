@@ -15,7 +15,7 @@ from rich import box
 from rich.console import Console
 from rich.table import Table
 
-from mvgeos_cli.console import clip_text, get_console, is_utf8_stream
+from mvgeos_cli.console import clip_text, format_error, get_console, is_utf8_stream
 
 console = get_console()
 tome_app = typer.Typer(name="tome", help="Session tome management")
@@ -136,7 +136,7 @@ def tome_show(
 
     meta = ledger.open_tome(tome_id)
     if meta is None:
-        console.print(f"[red]Tome not found: {tome_id}[/red]")
+        console.print(format_error(f"Tome not found: {tome_id}"))
         raise typer.Exit(1) from None
 
     tome_entries = ledger.get_entries(meta.id)
@@ -147,7 +147,7 @@ def tome_show(
             console.print(output_text)
             return
         except ValueError:
-            console.print(f"[red]Unknown format: {format}[/red]")
+            console.print(format_error(f"Unknown format: {format}"))
             raise typer.Exit(1) from None
 
     console.print(f"[bold]Tome:[/bold] {meta.id[:8]}")
@@ -179,7 +179,7 @@ def tome_export(
 
     meta = ledger.open_tome(tome_id)
     if meta is None:
-        console.print(f"[red]Tome not found: {tome_id}[/red]")
+        console.print(format_error(f"Tome not found: {tome_id}"))
         raise typer.Exit(1) from None
 
     entries = ledger.get_entries(meta.id)
@@ -187,7 +187,7 @@ def tome_export(
     try:
         output_text = _render_tome_export(meta, entries, format)
     except ValueError:
-        console.print(f"[red]Unknown format: {format}[/red]")
+        console.print(format_error(f"Unknown format: {format}"))
         raise typer.Exit(1) from None
 
     if output:
@@ -229,16 +229,16 @@ def tome_fork(
 
     meta = ledger.open_tome(tome_id)
     if meta is None:
-        console.print(f"[red]Tome not found: {tome_id}[/red]")
+        console.print(format_error(f"Tome not found: {tome_id}"))
         raise typer.Exit(1)
 
     target_leaf = leaf_id or ledger.get_leaf_id(meta.id)
     if target_leaf is None:
-        console.print("[red]No leaf ID available. Specify --leaf.[/red]")
+        console.print(format_error("No leaf ID available. Specify --leaf."))
         raise typer.Exit(1)
 
     if ledger.get_entry(meta.id, target_leaf) is None:
-        console.print(f"[red]Leaf entry not found: {target_leaf}[/red]")
+        console.print(format_error(f"Leaf entry not found: {target_leaf}"))
         raise typer.Exit(1)
 
     try:
@@ -251,5 +251,5 @@ def tome_fork(
         console.print(f"[dim]File: {ledger.tome_file(forked_meta.id)}[/dim]")
         console.print(f"[dim]Parent: {meta.id[:8]}[/dim]")
     except (KeyError, ValueError) as e:
-        console.print(f"[red]Failed to fork tome: {e}[/red]")
+        console.print(format_error(f"Failed to fork tome: {e}"))
         raise typer.Exit(1) from e

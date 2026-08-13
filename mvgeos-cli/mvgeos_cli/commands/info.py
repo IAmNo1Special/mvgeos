@@ -13,7 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from mvgeos_cli.commands.build import _assemble
-from mvgeos_cli.console import clip_text, get_console, is_utf8_stream
+from mvgeos_cli.console import clip_text, format_error, get_console, is_utf8_stream
 
 console = get_console()
 
@@ -274,7 +274,7 @@ def info(
     try:
         snapshot = asyncio.run(_assemble(agent_name, extension_dir))
     except ValueError as exc:
-        console.print(f"[red]{exc}[/red]")
+        console.print(format_error(exc))
         raise typer.Exit(1) from None
 
     if output:

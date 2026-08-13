@@ -6,6 +6,16 @@ from typing import Any, TextIO
 
 from rich.console import Console
 
+from mvgeos_cli.formatting import format_error
+
+__all__ = [
+    "clip_text",
+    "configure_streams",
+    "format_error",
+    "get_console",
+    "is_utf8_stream",
+]
+
 
 def is_utf8_stream(stream: TextIO | None = None) -> bool:
     """Check if the target output stream uses UTF-8 encoding."""

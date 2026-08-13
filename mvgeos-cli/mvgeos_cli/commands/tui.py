@@ -44,10 +44,10 @@ from mvgeos_cli.commands.repl import (
     _format_session_info,
     _git_branch,
     _handle_command,
-    _render_exception,
     _render_live_rate_limit,
     console,
 )
+from mvgeos_cli.console import format_error
 
 
 @dataclass
@@ -404,7 +404,7 @@ class TuiApp:
                     exc, out=self._out, invalidate=self.application.invalidate
                 )
             else:
-                markup = _render_exception(exc) or f"[red]Error: {exc}[/red]"
+                markup = format_error(exc)
                 self._out(f"\n{markup}")
         else:
             self.renderer.finish()
@@ -422,7 +422,7 @@ class TuiApp:
             try:
                 await self.agent.switch_model(self.agent._model_id)
             except ValueError as e:
-                self._out(f"[red]{e}[/red]")
+                self._out(format_error(e))
                 return
             self._out(f"[green]Model switched: {self.agent._model_id}[/green]")
         elif action == ReplAction.REFRESH_MODELS:
@@ -430,7 +430,7 @@ class TuiApp:
             try:
                 count = await self.registry.refresh()
             except Exception as e:
-                self._out(f"[red]Failed to refresh models: {e}[/red]")
+                self._out(format_error(f"Failed to refresh models: {e}"))
             else:
                 self._out(f"[green]Models refreshed ({count} new models).[/green]")
         elif action == ReplAction.NEW_SESSION:
@@ -440,7 +440,7 @@ class TuiApp:
             try:
                 await self.agent.initialize()
             except ValueError as e:
-                self._out(f"[red]{e}[/red]")
+                self._out(format_error(e))
                 return
             self._out(f"[green]New session: {self.agent.session_id}[/green]")
         self.application.invalidate()
@@ -466,7 +466,7 @@ async def run_tui(
         api_key = os.environ.get("OPENROUTER_API_KEY")
     if api_key is None:
         console.print(
-            "[red]API key required. Set OPENROUTER_API_KEY or pass --api-key[/red]"
+            format_error("API key required. Set OPENROUTER_API_KEY or pass --api-key")
         )
         return
 
@@ -485,7 +485,7 @@ async def run_tui(
             agent_name=agent_name,
         )
     except ValueError as e:
-        console.print(f"[red]{e}[/red]")
+        console.print(format_error(e))
         return
 
     registry = ModelRegistry()
@@ -511,8 +511,10 @@ async def run_tui(
         await app.run()
     except NoConsoleScreenBufferError:
         console.print(
-            "[red]TUI mode requires a Win32 console screen buffer. "
-            "Run in a terminal or use standard REPL.[/red]"
+            format_error(
+                "TUI mode requires a Win32 console screen buffer. "
+                "Run in a terminal or use standard REPL."
+            )
         )
     finally:
         for unsub in unsubs:

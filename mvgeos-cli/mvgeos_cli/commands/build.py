@@ -9,7 +9,7 @@ from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.snapshot import RuntimeSnapshot
 
-from mvgeos_cli.console import get_console
+from mvgeos_cli.console import format_error, get_console
 
 console = get_console()
 
@@ -151,7 +151,7 @@ def build(
     try:
         snapshot = asyncio.run(_assemble(agent_name, extension_dir))
     except ValueError as exc:
-        console.print(f"[red]{exc}[/red]")
+        console.print(format_error(exc))
         raise typer.Exit(1) from None
 
     if format == "summary":

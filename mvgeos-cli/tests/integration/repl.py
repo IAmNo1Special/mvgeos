@@ -93,13 +93,12 @@ class TestSlashCommands:
 
 
 class TestReplHelpers:
-    def test_render_exception_rate_limit_friendly(self) -> None:
+    def test_format_error_rate_limit_friendly(self) -> None:
         from mvgeos_agent.errors import RateLimitError
 
-        from mvgeos_cli.commands.repl import _render_exception
+        from mvgeos_cli.console import format_error
 
-        markup = _render_exception(RateLimitError("You are being rate limited"))
-        assert markup is not None
+        markup = format_error(RateLimitError("You are being rate limited"))
         assert "Rate limited by the provider" in markup
         assert "[yellow]" in markup
 
@@ -137,27 +136,25 @@ class TestReplHelpers:
         assert "Retry in 2s..." in outputs[1]
         assert "Retry in 1s..." in outputs[2]
 
-    def test_render_exception_rate_limit_with_retry_after(self) -> None:
+    def test_format_error_rate_limit_with_retry_after(self) -> None:
         from mvgeos_agent.errors import RateLimitError
 
-        from mvgeos_cli.commands.repl import _render_exception
+        from mvgeos_cli.console import format_error
 
-        markup = _render_exception(RateLimitError("limited", retry_after=5))
-        assert markup is not None
+        markup = format_error(RateLimitError("limited", retry_after=5))
         assert "Try again in 5s" in markup
 
-    def test_render_exception_unknown_returns_none(self) -> None:
-        from mvgeos_cli.commands.repl import _render_exception
+    def test_format_error_unknown_returns_red_error(self) -> None:
+        from mvgeos_cli.console import format_error
 
-        assert _render_exception(RuntimeError("boom")) is None
+        assert format_error(RuntimeError("boom")) == "[red]Error: boom[/red]"
 
-    def test_render_exception_auth_friendly(self) -> None:
+    def test_format_error_auth_friendly(self) -> None:
         from mvgeos_agent.errors import AuthenticationError
 
-        from mvgeos_cli.commands.repl import _render_exception
+        from mvgeos_cli.console import format_error
 
-        markup = _render_exception(AuthenticationError("User not found"))
-        assert markup is not None
+        markup = format_error(AuthenticationError("User not found"))
         assert "Authentication failed" in markup
         assert "OPENROUTER_API_KEY" in markup
         assert "[red]" in markup
