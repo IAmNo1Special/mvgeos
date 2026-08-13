@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
+import sys
 from pathlib import Path
 from typing import Any, cast
 
@@ -18,6 +18,11 @@ from mvgeos_agent.errors import AuthenticationError, RateLimitError
 from typer._click.parser import _split_opt
 from typer.core import TyperGroup
 
+from mvgeos_cli.auth import (
+    load_api_key_from_auth,
+    prompt_api_key,
+    save_api_key_to_auth,
+)
 from mvgeos_cli.commands.build import build_app
 from mvgeos_cli.commands.config import config_app
 from mvgeos_cli.commands.info import info_app
@@ -35,18 +40,7 @@ from mvgeos_cli.console import configure_streams, get_console
 
 console = get_console()
 
-
-def _load_api_key_from_auth() -> str | None:
-    """Load API key from ~/.agents/.mvgeos/auth/openrouter.json."""
-    auth_path = Path("~/.agents/.mvgeos/auth/openrouter.json").expanduser()
-    if auth_path.exists():
-        try:
-            data = json.loads(auth_path.read_text(encoding="utf-8"))
-            api_key = data.get("api_key")
-            return api_key if isinstance(api_key, str) else None
-        except json.JSONDecodeError, OSError:
-            pass
-    return None
+_load_api_key_from_auth = load_api_key_from_auth
 
 
 def _default_spells_from_config(resolved: dict[str, Any]) -> str:
@@ -271,11 +265,21 @@ def _repl_callback(
     if api_key is None:
         api_key = _load_api_key_from_auth()
     if api_key is None:
-        console.print(
-            "[red]API key required. Set OPENROUTER_API_KEY, "
-            "add to ~/.agents/.mvgeos/auth/openrouter.json, or use --api-key[/red]"
-        )
-        raise typer.Exit(1)
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            prompted_key = prompt_api_key(console)
+            if prompted_key:
+                save_api_key_to_auth(prompted_key)
+                console.print(
+                    "[green]Saved API key to "
+                    "~/.agents/.mvgeos/auth/openrouter.json[/green]"
+                )
+                api_key = prompted_key
+        if api_key is None:
+            console.print(
+                "[red]API key required. Set OPENROUTER_API_KEY, "
+                "run 'mvgeos setup', or use --api-key[/red]"
+            )
+            raise typer.Exit(1)
 
     spells_list = (
         [s.strip() for s in spells.split(",") if s.strip()] if spells else None
