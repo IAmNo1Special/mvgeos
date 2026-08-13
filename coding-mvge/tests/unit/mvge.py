@@ -259,6 +259,106 @@ class TestSeekerRuneActiveSpells:
         runner.set_active_spells(["tool_search", "grep"])
         assert set(runner.get_active_spells()) == {"tool_search", "grep"}
 
+    @pytest.mark.asyncio
+    async def test_tool_search_widens_active_spells_on_discovery(self) -> None:
+        """Assert discovered spells become active after a tool_search call."""
+        import sys
+        from unittest.mock import patch
+
+        seeker_dir = "C:/Users/ivmno/.agents/.mvgeos/runes/00-seeker"
+        if seeker_dir not in sys.path:
+            sys.path.append(seeker_dir)
+        from mvgeos_runes_seeker.spell import ToolSearchSpell
+
+        runner = RuneRunner()
+        api = runner.create_api(rune_name="seeker")
+
+        meta_spells = ["tool_search", "skill_search", "skill_execute", "mcp_search"]
+        for name in meta_spells:
+            api.register_spell(
+                SpellDefinition(name=name, description="", parameters={})
+            )
+        api.set_active_spells(meta_spells)
+        assert set(runner.get_active_spells()) == set(meta_spells)
+
+        tool_search_spell = ToolSearchSpell(
+            provider_registry=MagicMock(),
+            rune_api=api,
+        )
+
+        mock_lazy_registry = AsyncMock()
+        mock_lazy_registry.load_selected.return_value = [
+            {"name": "grep", "description": "Search file contents", "parameters": {}},
+            {"name": "read", "description": "Read file", "parameters": {}},
+        ]
+        tool_search_spell._spell_registry = mock_lazy_registry
+
+        mock_match = MagicMock()
+        mock_match.source_path.stem = "grep"
+        mock_router = AsyncMock()
+        mock_router.route.return_value = [mock_match]
+
+        with patch("mvgeos_runes_seeker.spell.DCIRouter", return_value=mock_router):
+            result = await tool_search_spell.execute(
+                "cast-1",
+                {"operation": "grep"},
+            )
+
+        assert result["spells_found"] == 2
+        active = runner.get_active_spells()
+        assert "grep" in active
+        assert "read" in active
+        assert set(meta_spells).issubset(set(active))
+
+    @pytest.mark.asyncio
+    async def test_tool_search_widening_composes_across_runes(self) -> None:
+        """ToolSearchSpell widening composes with per-rune additive active sets."""
+        import sys
+        from unittest.mock import patch
+
+        seeker_dir = "C:/Users/ivmno/.agents/.mvgeos/runes/00-seeker"
+        if seeker_dir not in sys.path:
+            sys.path.append(seeker_dir)
+        from mvgeos_runes_seeker.spell import ToolSearchSpell
+
+        runner = RuneRunner()
+        seeker_api = runner.create_api(rune_name="seeker")
+        heal_api = runner.create_api(rune_name="heal_my_goap")
+
+        meta_spells = ["tool_search", "skill_search", "skill_execute", "mcp_search"]
+        for name in meta_spells:
+            seeker_api.register_spell(
+                SpellDefinition(name=name, description="", parameters={})
+            )
+        seeker_api.set_active_spells(meta_spells)
+
+        heal_api.register_spell(
+            SpellDefinition(name="heal", description="", parameters={})
+        )
+        heal_api.set_active_spells(["heal"])
+
+        assert set(runner.get_active_spells()) == set(meta_spells) | {"heal"}
+
+        tool_search_spell = ToolSearchSpell(
+            provider_registry=MagicMock(),
+            rune_api=seeker_api,
+        )
+        mock_lazy_registry = AsyncMock()
+        mock_lazy_registry.load_selected.return_value = [
+            {"name": "bash", "description": "shell", "parameters": {}},
+        ]
+        tool_search_spell._spell_registry = mock_lazy_registry
+
+        mock_match = MagicMock()
+        mock_match.source_path.stem = "bash"
+        mock_router = AsyncMock()
+        mock_router.route.return_value = [mock_match]
+
+        with patch("mvgeos_runes_seeker.spell.DCIRouter", return_value=mock_router):
+            await tool_search_spell.execute("cast-1", {"operation": "bash"})
+
+        assert set(runner.get_active_spells()) == set(meta_spells) | {"heal", "bash"}
+
     def test_composes_active_sets_across_runes(self) -> None:
         """Seeker narrows its surface; a second rune keeps its spells active.
 
