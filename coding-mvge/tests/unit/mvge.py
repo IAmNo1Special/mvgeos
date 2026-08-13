@@ -7,6 +7,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from mvgeos_agent.constants import DEFAULT_MODEL
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.prompt_config import load_system_prompt
 from mvgeos_agent.types import (
@@ -133,7 +134,7 @@ class TestCodingMvgeInit:
 
     def test_defaults(self) -> None:
         agent = CodingMvge(api_key="k")
-        assert agent._model_id == "openrouter/free"
+        assert agent._model_id == DEFAULT_MODEL
         assert agent._spell_names == list(DEFAULT_SPELL_MAP)
         assert agent._custom_system_prompt == ""
         assert agent._temperature == 0.7
@@ -857,7 +858,7 @@ class TestCodingMvgeSwitchModel:
             assert agent.session_id == session_before
             assert agent._model_id == "unknown/model"
             assert agent._model is not None
-            assert agent._model.id == "openrouter/free"
+            assert agent._model.id == DEFAULT_MODEL
             await agent.close()
 
     @pytest.mark.asyncio
@@ -869,15 +870,15 @@ class TestCodingMvgeSwitchModel:
                 spells=[],
             )
             await agent.initialize()
-            await agent.switch_model("openrouter/free")
-            assert agent._model_id == "openrouter/free"
+            await agent.switch_model(DEFAULT_MODEL)
+            assert agent._model_id == DEFAULT_MODEL
             await agent.close()
 
     @pytest.mark.asyncio
     async def test_switch_model_before_init(self) -> None:
         from mvgeos_provider.models import list_models
 
-        target = next(m.id for m in list_models() if m.id != "openrouter/free")
+        target = next(m.id for m in list_models() if m.id != DEFAULT_MODEL)
         agent = CodingMvge(api_key="test-key")
         await agent.switch_model(target)
         assert agent._model_id == target

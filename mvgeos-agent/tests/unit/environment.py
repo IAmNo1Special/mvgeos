@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from mvgeos_agent.config_manager import ConfigLayer
+from mvgeos_agent.constants import DEFAULT_MODEL
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.prompt_loader import PromptSource
 from mvgeos_agent.snapshot import RuntimeSnapshot
@@ -17,7 +18,7 @@ def test_mvge_environment_resolve_defaults(tmp_path: Path) -> None:
     )
 
     assert env.agent_name == "test-agent"
-    assert env.model_id == "openrouter/free"
+    assert env.model_id == DEFAULT_MODEL
     assert env.resolved_prompt.source == PromptSource.BUILTIN
     assert env.resolved_guidelines.source == PromptSource.BUILTIN
     assert "model" in env.config

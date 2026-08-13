@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 from coding_mvge import CodingMvge
+from mvgeos_agent.constants import DEFAULT_MODEL
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 from mvgeos_provider.model_registry import ModelRegistry
 
@@ -61,7 +62,7 @@ class TestSlashCommands:
     def test_model_invalid(self, agent: CodingMvge, registry: ModelRegistry) -> None:
         result = _handle_command("/model unknown/model", agent, registry)
         assert result == ReplAction.CONTINUE
-        assert agent._model_id == "openrouter/free"
+        assert agent._model_id == DEFAULT_MODEL
 
     def test_spells_no_args(self, agent: CodingMvge, registry: ModelRegistry) -> None:
         result = _handle_command("/spells", agent, registry)
@@ -183,7 +184,7 @@ class TestReplHelpers:
         assert "~/proj (main)" in parts
         assert "mana 9500" in parts
         # Footer truncates to console width; match the model ID prefix.
-        assert "openrouter/free" in parts
+        assert "nvidia/nemotron" in parts
 
     def test_format_session_info_reports_mana_used(
         self,
@@ -219,7 +220,7 @@ class TestReplHelpers:
         items = [
             ("bold", " ~/proj (main)"),
             ("dim", "  session abc12345"),
-            ("", "  openrouter/free • medium"),
+            ("", "  nvidia/nemotron-3-ultra-550b-a55b:free • medium"),
         ]
         fitted = _fit_footer(items, 40)
         plain = "".join(text for _, text in fitted)
@@ -229,7 +230,7 @@ class TestReplHelpers:
     def test_fit_footer_no_truncation_when_fits(self) -> None:
         from mvgeos_cli.commands.repl import _fit_footer
 
-        items = [("bold", " ~/proj"), ("", "  openrouter/free")]
+        items = [("bold", " ~/proj"), ("", "  nvidia/nemotron-3-ultra-550b-a55b:free")]
         fitted = _fit_footer(items, 80)
         assert fitted == items
 
