@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import inspect
 import logging
 from pathlib import Path
 from typing import Any, cast
@@ -20,13 +21,21 @@ logger = logging.getLogger(__name__)
 
 
 class _BuiltinSpell(MvgeSpell):
-    def __init__(self, name: str, func: Any) -> None:
+    def __init__(
+        self,
+        name: str,
+        func: Any,
+        workspace_root: Path | None = None,
+        timeout_ms: int | None = None,
+    ) -> None:
         super().__init__(
             name=name,
             description=f"Run the {name} tool.",
             parameters=generate_spell_schema(func),
         )
         self._func = func
+        self._workspace_root = workspace_root
+        self._timeout_ms = timeout_ms
 
     async def execute(
         self,
@@ -37,6 +46,16 @@ class _BuiltinSpell(MvgeSpell):
     ) -> str:
         validated = self.prepare_arguments(params)
         args = {k: v for k, v in validated.items() if v is not None}
+        sig = inspect.signature(self._func)
+        if self._workspace_root is not None and "workspace_root" in sig.parameters:
+            args["workspace_root"] = self._workspace_root
+        if (
+            self._timeout_ms is not None
+            and "timeout_ms" in sig.parameters
+            and "timeout_ms" not in args
+        ):
+            args["timeout_ms"] = self._timeout_ms
+
         result: SpellResult = await self._func(**args)
         if result.error_message:
             return f"[error] {result.error_message}"
@@ -93,10 +112,19 @@ class CodingMvge(BaseMvge):
 
         # Builtin spells - only if explicitly enabled via self._spell_names
         builtin_spells: list[MvgeSpell] = []
+        workspace_root = getattr(self._config_manager, "_project_dir", None)
+        timeout_ms = self._state.spell_timeout_ms if self._state is not None else None
         if self._spell_names:
             for name in self._spell_names:
                 if name in DEFAULT_SPELL_MAP:
-                    builtin_spells.append(_BuiltinSpell(name, DEFAULT_SPELL_MAP[name]))
+                    builtin_spells.append(
+                        _BuiltinSpell(
+                            name,
+                            DEFAULT_SPELL_MAP[name],
+                            workspace_root=workspace_root,
+                            timeout_ms=timeout_ms,
+                        )
+                    )
 
         return rune_spells + builtin_spells
 

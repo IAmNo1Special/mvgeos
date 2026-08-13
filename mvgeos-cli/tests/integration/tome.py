@@ -285,6 +285,89 @@ class TestTomeCommands:
 
     @patch("mvgeos_cli.commands.tome.Path.cwd")
     @patch("mvgeos_cli.commands.tome.TomeLedger")
+    def test_tome_export_tool_result_json(
+        self, mock_ledger: MagicMock, mock_cwd: MagicMock
+    ) -> None:
+        import json
+
+        mock_meta = MagicMock()
+        mock_meta.id = "tome_abc123"
+        mock_meta.created_at = "2024-01-01T12:00:00"
+        mock_meta.cwd = "/test"
+        mock_meta.parent_tome_id = None
+        mock_meta.active_leaf_id = "leaf_123"
+        mock_meta.schema_version = "1.0"
+
+        mock_entry = MagicMock()
+        mock_entry.id = "entry_tool_1"
+        mock_entry.parent_id = "entry_prev"
+        mock_entry.type.value = "message"
+        mock_entry.timestamp = 1786553222.331
+        mock_entry.payload = {
+            "role": "tool",
+            "content": [{"type": "text", "text": "file content here"}],
+            "model": None,
+            "provider": None,
+        }
+
+        mock_ledger_instance = MagicMock()
+        mock_ledger_instance.open_tome.return_value = mock_meta
+        mock_ledger_instance.get_entries.return_value = [mock_entry]
+        mock_ledger.return_value = mock_ledger_instance
+        mock_cwd.return_value = Path("/test")
+
+        result = runner.invoke(tome_app, ["export", "tome_abc123", "--format", "json"])
+        assert result.exit_code == 0
+        parsed = json.loads(result.stdout)
+        assert parsed["metadata"]["id"] == "tome_abc123"
+        assert len(parsed["entries"]) == 1
+        assert parsed["entries"][0]["payload"]["role"] == "tool"
+        assert parsed["entries"][0]["payload"]["content"] == [
+            {"type": "text", "text": "file content here"}
+        ]
+
+    @patch("mvgeos_cli.commands.tome.Path.cwd")
+    @patch("mvgeos_cli.commands.tome.TomeLedger")
+    def test_tome_export_tool_result_markdown(
+        self, mock_ledger: MagicMock, mock_cwd: MagicMock
+    ) -> None:
+        mock_meta = MagicMock()
+        mock_meta.id = "tome_abc123"
+        mock_meta.created_at = "2024-01-01T12:00:00"
+        mock_meta.cwd = "/test"
+        mock_meta.parent_tome_id = None
+        mock_meta.active_leaf_id = "leaf_123"
+        mock_meta.schema_version = "1.0"
+
+        mock_entry = MagicMock()
+        mock_entry.id = "entry_tool_1"
+        mock_entry.parent_id = "entry_prev"
+        mock_entry.type.value = "message"
+        mock_entry.timestamp = 1786553222.331
+        mock_entry.payload = {
+            "role": "tool",
+            "content": [{"type": "text", "text": "file content here"}],
+            "model": None,
+            "provider": None,
+        }
+
+        mock_ledger_instance = MagicMock()
+        mock_ledger_instance.open_tome.return_value = mock_meta
+        mock_ledger_instance.get_entries.return_value = [mock_entry]
+        mock_ledger.return_value = mock_ledger_instance
+        mock_cwd.return_value = Path("/test")
+
+        result = runner.invoke(
+            tome_app, ["export", "tome_abc123", "--format", "markdown"]
+        )
+        assert result.exit_code == 0
+        assert "# Tome: tome_abc" in result.stdout
+        assert "## message" in result.stdout
+        assert '"role": "tool"' in result.stdout
+        assert '"text": "file content here"' in result.stdout
+
+    @patch("mvgeos_cli.commands.tome.Path.cwd")
+    @patch("mvgeos_cli.commands.tome.TomeLedger")
     def test_tome_export_not_found(
         self, mock_ledger: MagicMock, mock_cwd: MagicMock
     ) -> None:
@@ -334,6 +417,46 @@ class TestTomeCommands:
         assert result.exit_code == 0
         assert "Forked tome: forked_t" in result.stdout
         assert "Parent: parent_t" in result.stdout
+
+    def test_tome_fork_with_leaf_ancestors(self, tmp_path: Path) -> None:
+        import tempfile
+
+        from mvgeos_tome.ledger import TomeLedger
+
+        with tempfile.TemporaryDirectory() as tmp_tome_dir:
+            tome_dir = Path(tmp_tome_dir)
+            ledger = TomeLedger(tome_dir)
+            meta = ledger.create_tome("/tmp")
+
+            e1 = ledger.append_message(meta.id, "user", "turn 1 req", parent_id=None)
+            ledger.append_leaf(meta.id, e1.id)
+
+            e2 = ledger.append_message(
+                meta.id, "assistant", "turn 1 resp", parent_id=e1.id
+            )
+            ledger.append_leaf(meta.id, e2.id)
+
+            e3 = ledger.append_message(meta.id, "user", "turn 2 req", parent_id=e2.id)
+            ledger.append_leaf(meta.id, e3.id)
+
+            with patch("mvgeos_cli.commands.tome.get_tome_dir", return_value=tome_dir):
+                result = runner.invoke(tome_app, ["fork", meta.id, "--leaf", e2.id])
+                assert result.exit_code == 0
+                assert "Forked tome:" in result.stdout
+
+                # Verify on disk
+                fresh_ledger = TomeLedger(tome_dir)
+                tomes = fresh_ledger.list_tomes()
+                forked_meta = next(t for t in tomes if t.id != meta.id)
+                assert forked_meta.parent_tome_id == meta.id
+                assert forked_meta.active_leaf_id == e2.id
+
+                entries = fresh_ledger.get_entries(forked_meta.id)
+                assert len(entries) == 2
+                assert entries[0].id == e1.id
+                assert entries[0].parent_id is None
+                assert entries[1].id == e2.id
+                assert entries[1].parent_id == e1.id
 
 
 def test_render_tome_list_ellipsizes_long_cwd() -> None:

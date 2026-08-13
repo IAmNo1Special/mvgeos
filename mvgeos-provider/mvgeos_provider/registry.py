@@ -84,9 +84,8 @@ class RealmRegistry:
             ) or self._builtin_providers.get(model.realm)
             if realm_factory is not None:
                 return realm_factory(api_key=key, base_url=base_url)
-            from mvgeos_provider.base import Realm as BaseRealm
 
-            class _DynamicRealm(BaseRealm):
+            class _DynamicRealm(Realm):
                 def __init__(self, config: dict[str, Any]) -> None:
                     self._config = config
                     self._http_client: Any | None = None
@@ -97,12 +96,10 @@ class RealmRegistry:
                     invocations: list[Any],
                     config: Any,
                 ) -> Any:
-                    from mvgeos_provider.openrouter import OpenRouterRealm
-
-                    bu = self._config.get("baseUrl", "")
+                    base_url_val = self._config.get("baseUrl", "")
                     fallback = OpenRouterRealm(
                         api_key=self._config.get("apiKey", ""),
-                        base_url=bu,
+                        base_url=base_url_val,
                     )
                     async for resp in fallback.stream(model_obj, invocations, config):
                         yield resp

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,12 @@ class MvgeTome:
     @property
     def metadata(self) -> TomeMetadata:
         return self._metadata
+
+    @property
+    def active_leaf_id(self) -> str | None:
+        return (
+            self._ledger.get_leaf_id(self._metadata.id) or self._metadata.active_leaf_id
+        )
 
     def bind_runner(self, runner: RuneRunner) -> None:
         self._rune_runner = runner
@@ -116,8 +123,6 @@ class MvgeTome:
         try:
             # Parse tome_id from target_file
             # target_file is like: .../entries/tome-id.jsonl
-            import re
-
             match = re.search(r"([a-f0-9]{32})\.jsonl$", str(target_file))
             if not match:
                 logger.error(
@@ -177,6 +182,8 @@ class MvgeTome:
                 self._metadata.id,
             )
             return None
+        if parent_id is None:
+            parent_id = self.active_leaf_id
         entry = self._ledger.append_message(
             tome_id=self._metadata.id,
             role=role,
@@ -209,6 +216,7 @@ class MvgeTome:
         mana_before: int,
         retained_tail: list[Any],
         first_kept_entry_id: str | None = None,
+        parent_id: str | None = None,
     ) -> TomeEntry | None:
         """Record a compaction so the Tome can rebuild context without replaying
         the Invocations the summary replaced."""
@@ -218,6 +226,8 @@ class MvgeTome:
                 self._metadata.id,
             )
             return None
+        if parent_id is None:
+            parent_id = self.active_leaf_id
         payload: dict[str, Any] = {
             "summary": summary,
             "manaBefore": mana_before,
@@ -228,12 +238,14 @@ class MvgeTome:
         return self._ledger.append_compaction(
             tome_id=self._metadata.id,
             payload=payload,
+            parent_id=parent_id,
         )
 
     def record_custom(
         self,
         custom_type: str,
         data: dict[str, Any] | None = None,
+        parent_id: str | None = None,
     ) -> TomeEntry | None:
         if not self._started:
             logger.warning(
@@ -241,9 +253,12 @@ class MvgeTome:
                 self._metadata.id,
             )
             return None
+        if parent_id is None:
+            parent_id = self.active_leaf_id
         return self._ledger.append_custom(
             tome_id=self._metadata.id,
             payload={"type": custom_type, "data": data or {}},
+            parent_id=parent_id,
         )
 
     async def _safe_emit(self, hook: SigilHook, data: Any) -> None:

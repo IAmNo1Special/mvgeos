@@ -261,6 +261,11 @@ class TomeLedger:
                 if entry.type == TomeEntryType.LEAF:
                     target = entry.payload.get("targetId")
                     return str(target) if target is not None else None
+            meta = self._tomles.get(resolved_id) or self._load_tome_metadata(
+                resolved_id
+            )
+            if meta and meta.active_leaf_id:
+                return meta.active_leaf_id
             return None
 
     def create_branched_tome(

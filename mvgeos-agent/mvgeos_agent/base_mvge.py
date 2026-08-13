@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from mvgeos_provider.base import Realm
+from mvgeos_provider.models import get_model
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 from mvgeos_runes.loader import (
@@ -291,7 +292,6 @@ class BaseMvge:
         )
         if model is not None:
             return model
-        from mvgeos_provider.models import get_model
 
         model_info = get_model(model_id)
         if model_info is None:

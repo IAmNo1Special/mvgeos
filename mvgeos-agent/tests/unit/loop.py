@@ -961,3 +961,66 @@ async def test_loop_streaming_deduplication_and_contemplation() -> None:
     ]
     text_contents = [e.get("text") for e in text_events]
     assert text_contents == ["Hello", " world!"]
+
+
+@pytest.mark.asyncio
+async def test_record_invocation_spell_result_serializes_structured_json() -> None:
+    import json
+
+    from mvgeos_tome.ledger import TomeLedger
+
+    from mvgeos_agent.agent_session import MvgeTome
+    from mvgeos_agent.loop import MvgeLoop
+    from mvgeos_agent.types import MvgeEvent, MvgeEventType
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ledger = TomeLedger(Path(tmp))
+        meta = ledger.create_tome("/tmp")
+        session = MvgeTome(ledger, meta)
+        await session.start()
+
+        state = MvgeState(
+            system_prompt="test",
+            model={"id": "test-provider/test-model", "name": "Test"},
+            invocations=[],
+            agent_session=session,
+        )
+        loop = MvgeLoop(state)
+
+        spell_result = SpellResultMessage(
+            spell_cast_id="cast_123",
+            spell_name="read_file",
+            content=[{"type": "text", "text": "file content here"}],
+            is_error=False,
+        )
+
+        await loop._emit(
+            MvgeEvent(
+                type=MvgeEventType.MESSAGE_END,
+                data={"invocation": spell_result},
+            )
+        )
+
+        entries = ledger.get_entries(meta.id)
+        msg_entries = [e for e in entries if e.payload.get("role") == "tool"]
+        assert len(msg_entries) == 1
+        entry = msg_entries[0]
+        assert entry.payload["role"] == "tool"
+        assert isinstance(entry.payload["content"], list)
+        assert entry.payload["content"] == [
+            {"type": "text", "text": "file content here"}
+        ]
+
+        tome_file = ledger.tome_file(meta.id)
+        lines = tome_file.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) >= 2
+        for line in lines:
+            parsed = json.loads(line)
+            if (
+                parsed.get("type") == "message"
+                and parsed.get("payload", {}).get("role") == "tool"
+            ):
+                assert isinstance(parsed["payload"]["content"], list)
+                assert parsed["payload"]["content"] == [
+                    {"type": "text", "text": "file content here"}
+                ]

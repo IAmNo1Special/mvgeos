@@ -161,7 +161,25 @@ class MvgeSpell:
 
     def _json_type_to_python(self, prop: dict[str, Any]) -> type:
         """Convert JSON Schema type to Python type."""
-        json_type = prop.get("type", "string")
+        json_type = prop.get("type")
+        if not json_type and "anyOf" in prop:
+            types = [
+                t.get("type")
+                for t in prop["anyOf"]
+                if isinstance(t, dict) and t.get("type") != "null"
+            ]
+            if "integer" in types:
+                return int
+            if "number" in types:
+                return float
+            if "boolean" in types:
+                return bool
+            if "array" in types:
+                return list[Any]
+            if "object" in types:
+                return dict[str, Any]
+            json_type = "string"
+
         if json_type == "string":
             return str
         elif json_type == "integer":

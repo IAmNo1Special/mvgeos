@@ -665,20 +665,27 @@ class MvgeLoop:
         if invocation is None:
             return
 
+        parent_id = session.active_leaf_id
         model = self._state.model or {}
         if isinstance(invocation, SummonerRequest):
-            session.record_message(role="user", content=invocation.content)
+            session.record_message(
+                role="user",
+                content=invocation.content,
+                parent_id=parent_id,
+            )
         elif isinstance(invocation, MvgeResponse):
             session.record_message(
                 role="assistant",
                 content=invocation.content,
+                parent_id=parent_id,
                 model=model.get("id", ""),
                 provider=model.get("id", "").split("/")[0],
             )
         elif isinstance(invocation, SpellResultMessage):
             session.record_message(
                 role="tool",
-                content=str(invocation.content),
+                content=invocation.content,
+                parent_id=parent_id,
             )
 
 
