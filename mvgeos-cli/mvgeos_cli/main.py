@@ -15,7 +15,6 @@ from mvgeos_agent.constants import (
 )
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.errors import AuthenticationError, RateLimitError
-from rich.console import Console
 from typer._click.parser import _split_opt
 from typer.core import TyperGroup
 
@@ -32,8 +31,9 @@ from mvgeos_cli.commands.repl import (
 from mvgeos_cli.commands.setup import setup_app
 from mvgeos_cli.commands.tome import tome_app
 from mvgeos_cli.commands.tui import run_tui
+from mvgeos_cli.console import configure_streams, get_console
 
-console = Console()
+console = get_console()
 
 
 def _load_api_key_from_auth() -> str | None:
@@ -198,7 +198,7 @@ class MvgeosGroup(TyperGroup):
 
 app = typer.Typer(
     name="mvgeos",
-    help="MvgeOS — a Python-based AI coding agent",
+    help="MvgeOS - a Python-based AI coding agent",
     cls=MvgeosGroup,
 )
 
@@ -313,6 +313,7 @@ app.add_typer(setup_app, name="setup")
 
 
 def main() -> None:
+    configure_streams()
     app()
 
 

@@ -8,9 +8,10 @@ from coding_mvge.mvge import CodingMvge
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.snapshot import RuntimeSnapshot
-from rich.console import Console
 
-console = Console()
+from mvgeos_cli.console import get_console
+
+console = get_console()
 
 build_app = typer.Typer(
     name="build",

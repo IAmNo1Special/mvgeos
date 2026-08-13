@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-
 import sys
+from pathlib import Path
 
 import typer
 from mvgeos_agent.constants import DEFAULT_TOME_DIR
@@ -194,4 +193,3 @@ def tome_fork(
     except (KeyError, ValueError) as e:
         console.print(f"[red]Failed to fork tome: {e}[/red]")
         raise typer.Exit(1) from e
-

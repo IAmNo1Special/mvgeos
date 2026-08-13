@@ -113,7 +113,7 @@ class TomeLedger:
                     meta = self._load_tome_metadata(f.stem)
                     if meta and meta.cwd == cwd:
                         return meta
-                except (json.JSONDecodeError, ValueError):
+                except json.JSONDecodeError, ValueError:
                     continue
             return None
 
@@ -265,9 +265,7 @@ class TomeLedger:
         tome_id: str | None = None,
     ) -> TomeMetadata:
         with self._lock:
-            resolved_parent_id = (
-                self._resolve_tome_id(parent_tome_id) or parent_tome_id
-            )
+            resolved_parent_id = self._resolve_tome_id(parent_tome_id) or parent_tome_id
             parent_meta = self._tomles.get(
                 resolved_parent_id
             ) or self._load_tome_metadata(resolved_parent_id)

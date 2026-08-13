@@ -161,5 +161,3 @@ class TestOpenTomePrefixLookup:
                 "098b2ee4", "/tmp", fork_from_leaf_id=msg.id
             )
             assert forked.parent_tome_id == tome.id
-
-
