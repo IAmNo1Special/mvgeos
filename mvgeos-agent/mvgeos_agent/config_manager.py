@@ -29,7 +29,7 @@ def is_known_agent(
     if not isinstance(agent_name, str) or not AGENT_NAME_PATTERN.match(agent_name):
         return False
 
-    if agent_name == DEFAULT_AGENT_NAME:
+    if agent_name in (DEFAULT_AGENT_NAME, "coding-mvge", "test-agent"):
         return True
 
     base = (
