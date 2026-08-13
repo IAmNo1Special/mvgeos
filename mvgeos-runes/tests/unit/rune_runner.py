@@ -55,6 +55,36 @@ class TestRuneRunnerSpells:
         runner.register_spell(SpellDefinition(name="b", description=""))
         assert runner.get_active_spells() == ["a", "b"]
 
+    def test_active_spells_seeded_with_all_registered(self) -> None:
+        runner = RuneRunner()
+        runner.register_spell(SpellDefinition(name="tool_search", description=""))
+        runner.register_spell(SpellDefinition(name="bash", description=""))
+        # Default active set = all registered rune spells
+        assert set(runner.get_active_spells()) == {"tool_search", "bash"}
+
+    def test_set_active_spells_narrows(self) -> None:
+        runner = RuneRunner()
+        runner.register_spell(SpellDefinition(name="tool_search", description=""))
+        runner.register_spell(SpellDefinition(name="bash", description=""))
+        runner.set_active_spells(["tool_search"])
+        assert runner.get_active_spells() == ["tool_search"]
+
+    def test_set_active_spells_widens_beyond_registered(self) -> None:
+        runner = RuneRunner()
+        runner.register_spell(SpellDefinition(name="tool_search", description=""))
+        # A rune may widen the active set with names not yet registered
+        # (e.g. tool_search discovering a spell at runtime).
+        runner.set_active_spells(["tool_search", "discovered_tool"])
+        assert set(runner.get_active_spells()) == {"tool_search", "discovered_tool"}
+
+    def test_register_spell_after_set_active_does_not_rewiden(self) -> None:
+        runner = RuneRunner()
+        runner.register_spell(SpellDefinition(name="tool_search", description=""))
+        runner.set_active_spells(["tool_search"])
+        runner.register_spell(SpellDefinition(name="bash", description=""))
+        # Once a rune has pinned the active set, later registrations stay out.
+        assert runner.get_active_spells() == ["tool_search"]
+
 
 class TestRuneRunnerCommands:
     def test_register_and_get_commands(self) -> None:

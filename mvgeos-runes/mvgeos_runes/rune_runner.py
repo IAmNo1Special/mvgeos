@@ -96,6 +96,8 @@ class RuneRunner:
         self._loaded_skills: list[SkillLoad] = []
         self._skill_diagnostics: list[SkillDiagnostic] = []
         self._suppress_skill_catalog: bool = False
+        self._active_spells: set[str] = set()
+        self._active_spells_pinned: bool = False
 
     @property
     def context(self) -> RuneContext:
@@ -128,6 +130,10 @@ class RuneRunner:
             if spell.source_rune is None and self._current_loading_rune is not None:
                 spell.source_rune = self._current_loading_rune
             self._spells[spell.name] = spell
+            # Seed the active set with every registered rune spell by default,
+            # unless a rune has already pinned an explicit active set.
+            if not self._active_spells_pinned:
+                self._active_spells.add(spell.name)
         else:
             logger.warning("Duplicate spell registration skipped: %s", spell.name)
 
@@ -162,7 +168,16 @@ class RuneRunner:
         return list(self._shortcuts.values())
 
     def get_active_spells(self) -> list[str]:
-        return list(self._spells.keys())
+        return sorted(self._active_spells)
+
+    def set_active_spells(self, spell_names: list[str]) -> None:
+        """Narrow or widen the rune-owned active-spell set.
+
+        Mirrors upstream Pi's ``setActiveTools``: once a rune pins an explicit
+        active set, later spell registrations no longer auto-join it.
+        """
+        self._active_spells = set(spell_names)
+        self._active_spells_pinned = True
 
     def load_skills(
         self,

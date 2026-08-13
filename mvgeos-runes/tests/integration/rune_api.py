@@ -54,6 +54,14 @@ class TestRuneAPIRegistration:
         api.register_spell(SpellDefinition(name="b", description=""))
         assert api.get_active_spells() == ["a", "b"]
 
+    def test_set_active_spells_delegates_to_runner(
+        self, api: RuneAPI, runner: RuneRunner
+    ) -> None:
+        api.register_spell(SpellDefinition(name="tool_search", description=""))
+        api.register_spell(SpellDefinition(name="bash", description=""))
+        api.set_active_spells(["tool_search"])
+        assert runner.get_active_spells() == ["tool_search"]
+
     def test_register_command(self, api: RuneAPI, runner: RuneRunner) -> None:
         def handler() -> None:
             return None

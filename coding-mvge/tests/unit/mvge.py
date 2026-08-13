@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,14 @@ from mvgeos_agent.types import (
     MvgeResponse,
     MvgeState,
     StopReason,
+)
+from mvgeos_runes.rune_runner import RuneRunner
+from mvgeos_runes.types import (
+    RuneLoad,
+    RuneManifest,
+    RuneScope,
+    SigilHook,
+    SpellDefinition,
 )
 
 from coding_mvge.mvge import (
@@ -144,13 +153,9 @@ class TestCodingMvgeBuildSpells:
         spells = agent._build_spells()
         assert len(spells) == 7
 
-    def test_build_spells_returns_seeker_and_rune_spells(
-        self, agent: CodingMvge
-    ) -> None:
-        # With a rune runner that has seeker and regular spells,
-        # _build_spells returns both
-        from mvgeos_runes.types import SpellDefinition
-
+    def test_build_spells_returns_active_set_spells(self, agent: CodingMvge) -> None:
+        # _build_spells is driven by the runner's active-spell set, not a
+        # hardcoded name tuple. Spells outside the active set are excluded.
         mock_runner = MagicMock()
         mock_runner.get_all_registered_spells.return_value = [
             SpellDefinition(
@@ -163,21 +168,96 @@ class TestCodingMvgeBuildSpells:
                 name="bash", description="Execute shell commands", parameters={}
             ),
         ]
+        # Only the active set is surfaced to the model.
+        mock_runner.get_active_spells.return_value = ["tool_search", "skill_search"]
         agent._runner = mock_runner
         spells = agent._build_spells()
-        names = {s.name for s in spells}
-        # Seeker spells + rune spells (bash) + builtin spells
-        # (since _spell_names defaults to all)
-        assert "tool_search" in names
-        assert "skill_search" in names
-        assert "bash" in names
-        # Should have at least seeker + rune + builtin spells
-        assert len(spells) >= 3
+        rune_names = {s.name for s in spells if s.name not in DEFAULT_SPELL_MAP}
+        assert rune_names == {"tool_search", "skill_search"}
+        # A registered-but-inactive rune spell is not surfaced.
+        assert "bash" not in rune_names
+
+    def test_build_spells_excludes_inactive_rune_spells(
+        self, agent: CodingMvge
+    ) -> None:
+        mock_runner = MagicMock()
+        mock_runner.get_all_registered_spells.return_value = [
+            SpellDefinition(name="a", description="", parameters={}),
+            SpellDefinition(name="b", description="", parameters={}),
+        ]
+        mock_runner.get_active_spells.return_value = ["a"]
+        agent._runner = mock_runner
+        spells = agent._build_spells()
+        rune_names = {s.name for s in spells if s.name not in DEFAULT_SPELL_MAP}
+        assert rune_names == {"a"}
 
     def test_build_spells_empty(self, agent: CodingMvge) -> None:
         agent._spell_names = []
         spells = agent._build_spells()
         assert len(spells) == 0
+
+    def test_render_prompt_lists_active_spells(self, agent: CodingMvge) -> None:
+        mock_runner = MagicMock()
+        mock_runner.get_active_spells.return_value = ["tool_search", "skill_search"]
+        agent._runner = mock_runner
+        prompt = agent._render_prompt("You are Mvge", [], [])
+        assert "Active spells:" in prompt
+        assert "tool_search" in prompt
+        assert "skill_search" in prompt
+
+
+class TestSeekerRuneActiveSpells:
+    """A rune narrows the active set in SESSION_START and widens at runtime."""
+
+    def test_seeker_pins_meta_spells_in_session_start(self) -> None:
+        runner = RuneRunner()
+
+        meta_spells = ["tool_search", "skill_search", "skill_execute", "mcp_search"]
+
+        def factory(api: object) -> None:
+            for name in meta_spells:
+                api.register_spell(
+                    SpellDefinition(name=name, description="meta", parameters={})
+                )
+            # A non-meta rune spell that should be hidden until widened.
+            api.register_spell(
+                SpellDefinition(name="bash", description="shell", parameters={})
+            )
+
+            def on_session_start(data: object) -> None:
+                api.set_active_spells(meta_spells)
+
+            api.on(SigilHook.SESSION_START, on_session_start)
+
+        manifest = RuneManifest(
+            name="seeker",
+            version="1.0.0",
+            description="seeker",
+            scope=RuneScope.USER,
+            path="/tmp/seeker",
+            enabled=True,
+            entry_point="rune.py",
+            hooks=[SigilHook.SESSION_START],
+        )
+        asyncio.run(
+            runner.load_rune_loads([RuneLoad(manifest=manifest, factory=factory)])
+        )
+
+        # Before SESSION_START the active set is seeded with all registered.
+        assert set(runner.get_active_spells()) == set(meta_spells) | {"bash"}
+
+        asyncio.run(runner.emit_async(SigilHook.SESSION_START, {}))
+
+        # After SESSION_START only the meta-spells are active.
+        assert set(runner.get_active_spells()) == set(meta_spells)
+
+    def test_set_active_spells_can_widen_beyond_registered(self) -> None:
+        runner = RuneRunner()
+        runner.set_active_spells(["tool_search"])
+
+        # A rune may widen the active set at runtime with a discovered name.
+        runner.set_active_spells(["tool_search", "grep"])
+        assert set(runner.get_active_spells()) == {"tool_search", "grep"}
 
 
 class TestCodingMvgeProperties:

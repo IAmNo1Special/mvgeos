@@ -139,12 +139,40 @@ async def install_package(package: str, dry_run: bool = False) -> tuple[bool, st
     return False, f"No working package manager found for {package} on {plat}"
 
 
-async def install_rune_python_deps(
-    rune_dir: Path, dry_run: bool = False
+def _has_build_config(rune_dir: Path) -> bool:
+    """A rune ships a package only if it has a build config."""
+    return (rune_dir / "pyproject.toml").exists() or (rune_dir / "setup.py").exists()
+
+
+async def install_python_dep_by_name(
+    dep: str, dry_run: bool = False
 ) -> tuple[bool, str]:
-    """Install a rune's Python deps via editable install of the rune directory."""
+    """Install a single declared Python dependency by name via uv pip install."""
     if not shutil.which("uv"):
         return False, "uv not found on PATH"
+    cmd = ["uv", "pip", "install", dep]
+    console.print(f"[dim]Trying: {' '.join(cmd)}[/dim]")
+    if dry_run:
+        return True, f"Would run: {' '.join(cmd)}"
+    try:
+        result = await asyncio.to_thread(
+            subprocess.run,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        if result.returncode == 0:
+            return True, f"Installed python dep {dep} via uv"
+        return False, f"uv pip install {dep} failed: {result.stderr[:200]}"
+    except subprocess.TimeoutExpired:
+        return False, f"uv pip install {dep} timed out"
+    except Exception as e:
+        return False, f"uv pip install {dep} error: {e}"
+
+
+async def _run_uv_editable(rune_dir: Path, dry_run: bool = False) -> tuple[bool, str]:
+    """Editable-install a rune directory via uv pip install -e."""
     cmd = ["uv", "pip", "install", "-e", str(rune_dir)]
     console.print(f"[dim]Trying: {' '.join(cmd)}[/dim]")
     if dry_run:
@@ -163,7 +191,38 @@ async def install_rune_python_deps(
     except subprocess.TimeoutExpired:
         return False, "uv pip install timed out"
     except Exception as e:
-        return False, f"uv pip install error: {e}"
+        return False, f"uv install error: {e}"
+
+
+async def install_rune_python_deps(
+    rune_dir: Path,
+    manifest: RuneManifest | None = None,
+    dry_run: bool = False,
+) -> tuple[bool, str]:
+    """Install a rune's Python deps.
+
+    Declared ``python_deps`` are installed by name (``uv pip install <dep>``).
+    When the rune directory ships a build config (``pyproject.toml`` /
+    ``setup.py``) we fall back to an editable install of the directory,
+    which also covers runes like heal-my-goap that ship no package.
+    """
+    if not shutil.which("uv"):
+        return False, "uv not found on PATH"
+
+    deps = list(manifest.python_deps) if manifest is not None else []
+    if _has_build_config(rune_dir) or not deps:
+        # Packaged rune (has build config) or no declared deps by name:
+        # fall back to an editable install of the rune directory.
+        return await _run_uv_editable(rune_dir, dry_run)
+
+    results: list[tuple[bool, str]] = []
+    for dep in deps:
+        ok, msg = await install_python_dep_by_name(dep, dry_run=dry_run)
+        results.append((ok, msg))
+    failed = [r for r in results if not r[0]]
+    if failed:
+        return False, "; ".join(m for _, m in failed)
+    return True, "; ".join(m for _, m in results)
 
 
 def collect_rune_dirs(
@@ -315,7 +374,9 @@ def setup_install(
             console.print(f"[red]FAIL {dep}: {msg}[/red]")
 
     for manifest, rune_dir in runes_needing_python:
-        success, msg = asyncio.run(install_rune_python_deps(rune_dir, dry_run=dry_run))
+        success, msg = asyncio.run(
+            install_rune_python_deps(rune_dir, manifest, dry_run=dry_run)
+        )
         label = f"python deps ({manifest.name})"
         results.append((label, success, msg))
         if success:

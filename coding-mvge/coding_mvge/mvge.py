@@ -80,28 +80,15 @@ class CodingMvge(BaseMvge):
         return list(self._spell_names or [])
 
     def _build_spells(self) -> list[MvgeSpell]:
-        # Seekers (meta-tools) - always included
-        seeker_spells: list[MvgeSpell] = []
-        if self._runner is not None:
-            for rs in self._runner.get_all_registered_spells():
-                if rs.name in (
-                    "tool_search",
-                    "skill_search",
-                    "skill_execute",
-                    "mcp_search",
-                ):
-                    seeker_spells.append(cast(MvgeSpell, rs))
-
-        # Rune spells (non-seeker) - all other rune-registered spells
+        # Rune spells are driven entirely by the runner's active-spell set
+        # (seeded with all registered rune spells, narrowed/widened by runes
+        # such as the Seeker Rune via set_active_spells). No rune spell names
+        # are hardcoded here.
         rune_spells: list[MvgeSpell] = []
         if self._runner is not None:
+            active = set(self._runner.get_active_spells())
             for rs in self._runner.get_all_registered_spells():
-                if rs.name not in (
-                    "tool_search",
-                    "skill_search",
-                    "skill_execute",
-                    "mcp_search",
-                ):
+                if rs.name in active:
                     rune_spells.append(cast(MvgeSpell, rs))
 
         # Builtin spells - only if explicitly enabled via self._spell_names
@@ -111,14 +98,16 @@ class CodingMvge(BaseMvge):
                 if name in DEFAULT_SPELL_MAP:
                     builtin_spells.append(_BuiltinSpell(name, DEFAULT_SPELL_MAP[name]))
 
-        return seeker_spells + rune_spells + builtin_spells
+        return rune_spells + builtin_spells
 
     def _render_prompt(
         self, body: str, spell_names: list[str], guidelines: list[str]
     ) -> str:
-        """Render prompt with only seeker spell names."""
-        seeker_names = ["tool_search", "skill_search", "skill_execute", "mcp_search"]
-        return super()._render_prompt(body, seeker_names, guidelines)
+        """Render prompt with the runner's active rune spell names."""
+        active = (
+            list(self._runner.get_active_spells()) if self._runner is not None else []
+        )
+        return super()._render_prompt(body, active, guidelines)
 
     async def _run_impl(self) -> MvgeInvocation:
         assert self._model is not None

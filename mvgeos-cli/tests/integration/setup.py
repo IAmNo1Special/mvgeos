@@ -138,7 +138,7 @@ def test_install_rune_python_deps_no_uv() -> None:
     import asyncio
 
     with patch("shutil.which", return_value=None):
-        success, msg = asyncio.run(install_rune_python_deps(Path("/tmp/rune")))
+        success, msg = asyncio.run(install_rune_python_deps(Path("/tmp/rune"), None))
         assert success is False
         assert "uv not found" in msg
 
@@ -148,7 +148,58 @@ def test_install_rune_python_deps_dry_run() -> None:
 
     with patch("shutil.which", return_value="/usr/bin/uv"):
         success, msg = asyncio.run(
-            install_rune_python_deps(Path("/tmp/rune"), dry_run=True)
+            install_rune_python_deps(Path("/tmp/rune"), None, dry_run=True)
+        )
+        assert success is True
+        assert "uv pip install -e" in msg
+
+
+def test_install_rune_python_deps_by_name_without_build_config() -> None:
+    import asyncio
+
+    from mvgeos_runes.types import RuneManifest
+
+    manifest = RuneManifest(
+        name="heal-my-goap",
+        version="1.0.0",
+        description="",
+        python_deps=["heal_my_goap"],
+    )
+    with (
+        tempfile.TemporaryDirectory() as tmpdir,
+        patch("shutil.which", return_value="/usr/bin/uv"),
+    ):
+        rune_dir = Path(tmpdir) / "heal-my-goap"
+        rune_dir.mkdir()
+        # No pyproject.toml / setup.py -> install declared deps by name.
+        success, msg = asyncio.run(
+            install_rune_python_deps(rune_dir, manifest, dry_run=True)
+        )
+        assert success is True
+        assert "uv pip install heal_my_goap" in msg
+
+
+def test_install_rune_python_deps_editable_when_build_config_present() -> None:
+    import asyncio
+
+    from mvgeos_runes.types import RuneManifest
+
+    manifest = RuneManifest(
+        name="pkg-rune",
+        version="1.0.0",
+        description="",
+        python_deps=["some_pkg"],
+    )
+    with (
+        tempfile.TemporaryDirectory() as tmpdir,
+        patch("shutil.which", return_value="/usr/bin/uv"),
+    ):
+        rune_dir = Path(tmpdir) / "pkg-rune"
+        rune_dir.mkdir()
+        (rune_dir / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        # A build config exists -> fall back to editable install.
+        success, msg = asyncio.run(
+            install_rune_python_deps(rune_dir, manifest, dry_run=True)
         )
         assert success is True
         assert "uv pip install -e" in msg
@@ -297,4 +348,4 @@ def test_setup_install_command_dry_run_python() -> None:
     ):
         result = runner.invoke(app, ["setup", "install", "--dry-run", "--yes"])
         assert result.exit_code == 0
-        assert "uv pip install -e" in result.output
+        assert "uv pip install heal_my_goap" in result.output

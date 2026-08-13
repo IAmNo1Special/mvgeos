@@ -64,6 +64,9 @@ class RuneAPI:
     def get_active_spells(self) -> list[str]:
         return self._runner.get_active_spells()
 
+    def set_active_spells(self, spell_names: list[str]) -> None:
+        self._runner.set_active_spells(spell_names)
+
     def get_all_spells(self) -> list[SpellDefinition]:
         return self._runner.get_all_registered_spells()
 
