@@ -12,6 +12,7 @@ dev = [
     "git-cliff>=2.13.1",
     "mvgeos-agent",
     "mvgeos-cli",
+    "mvgeos-gui",
     "mvgeos-provider",
     "mvgeos-runes",
     "mvgeos-tome",
@@ -34,6 +35,7 @@ members = [
     "mvgeos-tome",
     "mvgeos-runes",
     "mvgeos-cli",
+    "mvgeos-gui",
     "coding-mvge",
 ]
 
@@ -43,6 +45,7 @@ mvgeos-provider = { workspace = true, editable = true }
 mvgeos-tome = { workspace = true, editable = true }
 mvgeos-runes = { workspace = true, editable = true }
 mvgeos-cli = { workspace = true, editable = true }
+mvgeos-gui = { workspace = true, editable = true }
 coding-mvge = { workspace = true, editable = true }
 
 [tool.ruff]
@@ -94,6 +97,7 @@ testpaths = [
     "mvgeos-runes/tests",
     "mvgeos-tome/tests",
     "mvgeos-cli/tests",
+    "mvgeos-gui/tests",
 ]
 pythonpath = "."
 python_files = "*.py"

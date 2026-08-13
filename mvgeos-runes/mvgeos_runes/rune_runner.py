@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import traceback
 from collections.abc import Awaitable
@@ -136,8 +137,9 @@ class RuneRunner:
         if rune_name is None:
             rune_name = self._current_loading_rune
         if spell.name not in self._spells:
-            if spell.source_rune is None and rune_name is not None:
-                spell.source_rune = rune_name
+            if getattr(spell, "source_rune", None) is None and rune_name is not None:
+                with contextlib.suppress(AttributeError):
+                    spell.source_rune = rune_name
             self._spells[spell.name] = spell
             # Seed the rune's own active set with every registered rune spell by
             # default, unless that rune has already pinned an explicit set. Other
