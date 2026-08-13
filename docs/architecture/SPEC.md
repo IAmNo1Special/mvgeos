@@ -41,9 +41,8 @@ mvgeos/
 | mvgeos-cli | `commands/config.py` | `mvgeos config` command |
 | mvgeos-cli | `commands/repl.py` | REPL/TUI implementation |
 | mvgeos-cli | `commands/tui.py` | TUI implementation |
-| coding-mvge | `mvge.py` | CodingMvge - concrete coding agent |
+| coding-mvge | `mvge.py` | CodingMvge - concrete coding agent (BaseMvge subclass) |
 | coding-mvge | `spells/` | Built-in spell implementations |
-| coding-mvge | `mvge.py` | CodingMvge (BaseMvge subclass) |
 
 ## Core Types
 
@@ -365,8 +364,8 @@ Package the three Seekers as an `mvgeos-runes-seeker` extension:
 
 Config at `.agents/.mvgeos/`:
 
-- `config.json` - Main config (model, mana_budget, spells_enabled, etc.)
-- `sessions/` - Tome directories (managed by TomeLedger)
+- `config.json` - Main config (model, max_tokens, spells_enabled, etc.)
+- `tomes/` - Tome directories (managed by TomeLedger)
 - `runes/` - Project-level runes (each rune in its own subdirectory with manifest.json)
 - `runes/manifest.json` - Rune manifest
 
@@ -374,8 +373,7 @@ Config at `.agents/.mvgeos/`:
 
 ```json
 {
-  "model": "openrouter/anthropic/claude-3.5-sonnet",
-  "mana_budget": 10000,
+  "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
   "max_tokens": 4096,
   "temperature": 0.7,
   "contemplation_level": "medium",

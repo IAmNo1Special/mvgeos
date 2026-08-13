@@ -30,100 +30,98 @@ DEFAULT_SPELL_MAP: dict[str, Any] = {
     "grep": cast_grep,
 }
 ```
-Direct imports from `mvgeos_spells` couple `coding-mvge` to specific spell implementations. Cannot use custom spells or swap spell implementations without modifying this file.
-
-### Fix Steps
-1. **Create `SpellRegistry` protocol** in `mvgeos-agent` (new file):
-   ```python
-   # mvgeos_agent/spell_registry.py
-   from typing import Protocol, Callable
-   from mvgeos_agent.types import MvgeSpell
-
-
-   class SpellRegistry(Protocol):
-       def get_spell(self, name: str) -> MvgeSpell | None: ...
-       def get_all_spells(self) -> list[MvgeSpell]: ...
-   ```
-
-2. **Create `DefaultSpellRegistry` implementation** in `mvgeos-spells` (new file):
-   ```python
-   # mvgeos_spells/registry.py
-   from mvgeos_agent.spell_registry import SpellRegistry
-   from mvgeos_spells import cast_bash, cast_read, ...
-
-   class DefaultSpellRegistry(SpellRegistry):
-       def __init__(self):
-           self._spells = {
-               "bash": MvgeSpell("bash", ..., parameters=generate_schema(cast_bash)),
-               ...
-           }
-       def get_spell(self, name): return self._spells.get(name)
-       def get_all_spells(self): return list(self._spells.values())
-   ```
-
-3. **Update `CodingAgent.__init__`** to accept `spell_registry: SpellRegistry | None = None`:
-   ```python
-   def __init__(self, ..., spell_registry: SpellRegistry | None = None, ...):
-       self._spell_registry = spell_registry or DefaultSpellRegistry()
-   ```
-
-4. **Update `_build_base_spells()`** to use registry:
-   ```python
-   def _build_base_spells(self) -> list[MvgeSpell]:
-       spells = []
-       for name in self._spell_names:
-           spell = self._spell_registry.get_spell(name)
-           if spell:
-               spells.append(spell)
-       return spells
-   ```
-
-5. **Default registry** provided by `mvgeos-spells` (no circular deps)
-
-### Priority: Medium
-### Effort: Medium (~80 lines across 3 files + new protocol)
-### Dependencies: mvgeos-agent (protocol), mvgeos-spells (default registry + schema generation)
-
----
-
-## CODING-04: No Spell Sandboxing
-
-**Note**: This is primarily a `mvgeos-spells` issue (SP-3). Listed here as coding-mvge inherits the gap.
-
-### Root Cause
-`CodingAgent` uses `DEFAULT_SPELL_MAP` which calls `mvgeos_spells` functions directly. No path validation or sandbox boundaries. Spells execute with full process permissions.
-
-### Fix Steps
-1. **Implement sandboxing in `mvgeos-spells`** (see SP-3 plan):
-   - `SpellSandbox` class with `allowed_roots`
-   - `resolve_and_validate(path)` method
-   - Module-level `set_sandbox(allowed_roots)`
-
-2. **Call sandbox setup in `CodingAgent.initialize()`**:
-   ```python
-   async def initialize(self):
-       ...
-       from mvgeos_spells import set_sandbox
-
-       set_sandbox([str(Path.cwd())])  # or configurable
-       ...
-   ```
-
-3. **Make sandbox configurable** via `CodingAgent` constructor:
-   ```python
-   def __init__(self, ..., sandbox_roots: list[str] | None = None, ...):
-       self._sandbox_roots = sandbox_roots or [str(Path.cwd())]
-   ```
-
-### Priority: Medium
-### Effort: Large (mostly in mvgeos-spells, see SP-3)
-### Dependencies: mvgeos-spells (SP-3 implementation)
-
----
-
-## CODING-05: No Validation of Extension-Provided Spells
-
-**File**: `coding_agent/agent.py:221-229`
+33: Direct imports from `coding_mvge.spells` couple `coding-mvge` to specific spell implementations. Cannot use custom spells or swap spell implementations without modifying this file.
+34: 
+35: ### Fix Steps
+36: 1. **Create `SpellRegistry` protocol** in `mvgeos-agent` (new file):
+37:    ```python
+38:    # mvgeos_agent/spell_registry.py
+39:    from typing import Protocol, Callable
+40:    from mvgeos_agent.types import MvgeSpell
+41: 
+42: 
+43:    class SpellRegistry(Protocol):
+44:        def get_spell(self, name: str) -> MvgeSpell | None: ...
+45:        def get_all_spells(self) -> list[MvgeSpell]: ...
+46:    ```
+47: 
+48: 2. **Create `DefaultSpellRegistry` implementation** in `coding_mvge/spells` (new file):
+49:    ```python
+50:    # coding_mvge/spells/registry.py
+51:    from mvgeos_agent.spell_registry import SpellRegistry
+52:    from coding_mvge.spells import cast_bash, cast_read, ...
+53: 
+54:    class DefaultSpellRegistry(SpellRegistry):
+55:        def __init__(self):
+56:            self._spells = {
+57:                "bash": MvgeSpell("bash", ..., parameters=generate_schema(cast_bash)),
+58:                ...
+59:            }
+60:        def get_spell(self, name): return self._spells.get(name)
+61:        def get_all_spells(self): return list(self._spells.values())
+62:    ```
+63: 
+64: 3. **Update `CodingMvge.__init__`** to accept `spell_registry: SpellRegistry | None = None`:
+65:    ```python
+66:    def __init__(self, ..., spell_registry: SpellRegistry | None = None, ...):
+67:        self._spell_registry = spell_registry or DefaultSpellRegistry()
+68:    ```
+69: 
+70: 4. **Update `_build_base_spells()`** to use registry:
+71:    ```python
+72:    def _build_base_spells(self) -> list[MvgeSpell]:
+73:        spells = []
+74:        for name in self._spell_names:
+75:            spell = self._spell_registry.get_spell(name)
+76:            if spell:
+77:                spells.append(spell)
+78:        return spells
+79:    ```
+80: 
+81: 5. **Default registry** provided by `coding-mvge`
+82: 
+83: ### Priority: Medium
+84: ### Effort: Medium (~80 lines across 3 files + new protocol)
+85: ### Dependencies: mvgeos-agent (protocol)
+86: 
+87: ---
+88: 
+89: ## CODING-04: No Spell Sandboxing
+90: 
+91: ### Root Cause
+92: `CodingMvge` uses `DEFAULT_SPELL_MAP` which calls `coding_mvge.spells` functions directly. No path validation or sandbox boundaries. Spells execute with full process permissions.
+93: 
+94: ### Fix Steps
+95: 1. **Implement sandboxing in `coding-mvge/spells`**:
+96:    - `SpellSandbox` class with `allowed_roots`
+97:    - `resolve_and_validate(path)` method
+98:    - Module-level `set_sandbox(allowed_roots)`
+99: 
+100: 2. **Call sandbox setup in `CodingMvge.initialize()`**:
+101:    ```python
+102:    async def initialize(self):
+103:        ...
+104:        from coding_mvge.spells.sandbox import set_sandbox
+105: 
+106:        set_sandbox([str(Path.cwd())])  # or configurable
+107:        ...
+108:    ```
+109: 
+110: 3. **Make sandbox configurable** via `CodingMvge` constructor:
+111:    ```python
+112:    def __init__(self, ..., sandbox_roots: list[str] | None = None, ...):
+113:        self._sandbox_roots = sandbox_roots or [str(Path.cwd())]
+114:    ```
+115: 
+116: ### Priority: Medium
+117: ### Effort: Large
+118: ### Dependencies: None
+119: 
+120: ---
+121: 
+122: ## CODING-05: No Validation of Extension-Provided Spells
+123: 
+124: **File**: `coding_mvge/mvge.py:221-229`
 
 ### Root Cause
 ```python
@@ -141,7 +139,7 @@ Rune-provided spells added without:
 - Verifying `SpellDefinition.execute()` signature
 
 ### Fix Steps
-1. **Add validation in `CodingAgent._build_all_spells()`** (or new method):
+1. **Add validation in `CodingMvge._build_spells()`** (or new method):
    ```python
    def _merge_rune_spells(self, base_spells: list[MvgeSpell]) -> list[MvgeSpell]:
        if self._runner is None:
@@ -181,8 +179,8 @@ Rune-provided spells added without:
 3. **Add warning log** for conflicts (user visibility)
 
 ### Priority: Medium
-### Effort: Small-Medium (~40 lines in agent.py)
-### Dependencies: mvgeos-runes (SpellDefinition), mvgeos-spells (schema validation)
+### Effort: Small-Medium (~40 lines in mvge.py)
+### Dependencies: mvgeos-runes (SpellDefinition)
 
 ---
 
@@ -190,17 +188,17 @@ Rune-provided spells added without:
 
 | Issue | Depends On | Blocks |
 |-------|------------|--------|
-| CODING-03 | mvgeos-agent (protocol), mvgeos-spells (registry) | — |
-| CODING-04 | mvgeos-spells (SP-3) | — |
-| CODING-05 | mvgeos-runes, mvgeos-spells (schema) | — |
+| CODING-03 | mvgeos-agent (protocol) | — |
+| CODING-04 | — | — |
+| CODING-05 | mvgeos-runes | — |
 
 ---
 
 ## Recommended Implementation Order
 
 1. **CODING-05** (Extension spell validation) — Small, improves robustness
-2. **CODING-03** (Spell registry) — Decouples from mvgeos-spells
-3. **CODING-04** (Sandboxing) — Depends on mvgeos-spells SP-3
+2. **CODING-03** (Spell registry) — Decouples spell implementations
+3. **CODING-04** (Sandboxing) — Adds execution boundaries to built-in spells
 
 ---
 
@@ -210,4 +208,4 @@ Rune-provided spells added without:
 - **CODING-05**: Test rune spell conflict warning; test invalid parameter rejection; test signature validation
 - **CODING-04**: Test sandbox blocks access outside allowed roots; test backward compat (no sandbox = no restriction)
 
-Run: `uv run pytest coding-mvge/tests_coding_agent/ --cov=coding_agent`
+Run: `uv run pytest coding-mvge/tests/ --cov=coding_mvge`

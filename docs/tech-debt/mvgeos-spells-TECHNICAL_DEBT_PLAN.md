@@ -1,6 +1,6 @@
-# Technical Debt Remediation Plan — mvgeos-spells
+# Technical Debt Remediation Plan — mvgeos-spells (SUPERSEDED)
 
-> **DEPRECATED**: The `mvgeos-spells` package was deleted. Its functionality moved to `coding-mvge/spells/`. This document is retained for historical reference. See `coding-mvge/AGENTS.md` for current spell implementation.
+> **SUPERSEDED**: The `mvgeos-spells` package was deleted and its functionality was consolidated into `coding-mvge/spells/`. Active technical debt for built-in spells is now tracked in `docs/tech-debt/coding-agent-TECHNICAL_DEBT_PLAN.md` and `docs/tech-debt/TECHNICAL_DEBT_BY_PACKAGE.md`. This file is archived for historical reference.
 
 ## Overview
 

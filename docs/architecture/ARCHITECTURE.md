@@ -38,7 +38,7 @@ Manages the connection to LLM providers (Realms). Defines the `Realm` protocol
 (the OpenRouter provider). The provider handles channeling (streaming),
 authentication resolution, and response delivery.
 
-**Entry point**: `Realm.stream(model, invocations, config)`
+**Entry point**: `Realm.channel(model, invocations, config)`
 → returns async generator of `RealmResponse`
 
 **Dependencies**: httpx, filelock

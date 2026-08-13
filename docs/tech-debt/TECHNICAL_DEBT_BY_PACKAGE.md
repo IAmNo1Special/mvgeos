@@ -69,27 +69,6 @@
 
 ---
 
-## mvgeos-spells
-
-> **DEPRECATED**: The `mvgeos-spells` package was deleted. Its functionality moved to `coding-mvge/spells/`. This section is retained for historical reference.
-
-### Anti-Patterns & Bugs
-- **Hardcoded empty parameters** — `parameters={}` in `prompt.py:67-73` and `agent.py:252-258` — no JSON Schema generation from spell signatures
-- **Only bash has timeout** — `cast_bash()` has 30s timeout (`casting.py:8`), other spells have none
-- **No sandboxing** — spells execute with full process permissions, no security boundaries
-- **No spell result caching** — repeated file reads hit disk every time
-
-### Performance & Scale
-- **Blocking `Path.read_text()`/`write_text()`** — `cast_read`, `cast_write`, `cast_edit` use sync I/O (`reading.py:17`, `writing.py:12`, `editing.py:17`)
-- **`cast_find` uses `rglob` recursively** — can be slow on large trees (`finding.py:17`)
-- **`cast_grep` reads entire file into memory** — `read_text().splitlines()` (`grep.py:23-24`)
-
-### Gaps in Logic
-- **No parameter validation** — spells accept `dict[str, Any]` with no schema checking before execution
-- **No global spell timeout** — only bash has timeout; long-running spells can block agent indefinitely
-
----
-
 ## mvgeos-runes
 
 ### Anti-Patterns & Bugs
@@ -119,20 +98,22 @@
 - **Prompt-toolkit history file grows unbounded** — `FileHistory` at `~/.agents/.mvgeos/history` no rotation (`repl.py:88-91`)
 
 ### Architecture Quirks
-- **`CodingAgent` imported in CLI commands** — circular-ish dependency: `cli → coding-agent → agent → cli` via imports (`prompt.py:10`, `repl.py:13`)
+- **`CodingMvge` imported in CLI commands** — circular-ish dependency: `cli → coding-mvge → agent → cli` via imports (`prompt.py:10`, `repl.py:13`)
 
 ---
 
-### coding-mvge
+## coding-mvge
 
 ### Anti-Patterns & Bugs
 - ~~**Duplicate `_build_spells()`** at lines 248-259 and 367-378 — second method dead code~~ ✅ **RESOLVED** — Dead code removed during refactoring
-- ~~**Duplicate initialization logic** — mirrors `BaseMvge.initialize()` almost line-for-line (189 vs 171 lines)~~ ✅ **RESOLVED** — `CodingAgent` now inherits `BaseMvge` via Template Method pattern
-- **Hardcoded `DEFAULT_SPELL_MAP`** — couples agent to specific spell implementations (`agent.py:44-52`)
+- ~~**Duplicate initialization logic** — mirrors `BaseMvge.initialize()` almost line-for-line (189 vs 171 lines)~~ ✅ **RESOLVED** — `CodingMvge` now inherits `BaseMvge` via Template Method pattern
+- **Hardcoded `DEFAULT_SPELL_MAP`** — couples agent to specific spell implementations (`mvge.py:44-52`)
+- **Blocking file I/O in built-in spells** — `read`, `write`, `edit`, `find`, `grep` use sync I/O in async paths (`coding_mvge/spells/*.py`)
 
 ### Gaps in Logic
-- **No spell sandboxing** — inherits from mvgeos-spells
-- **No validation of rune-provided spells** — `runner.get_all_registered_spells()` added without parameter check (`agent.py:221-229`)
+- **No spell sandboxing** — spells execute with full process permissions and no working directory confinement
+- **Only bash has timeout** — `bash.py` has 30s timeout, other spells have none
+- **No validation of rune-provided spells** — `runner.get_all_registered_spells()` added without parameter check (`mvge.py:221-229`)
 
 ---
 
@@ -141,9 +122,9 @@
 | Category | Count | Highest Impact |
 |----------|-------|----------------|
 | Silent exception suppression | 15+ locations | `mvgeos-agent/loop.py`, `mvgeos-runes/sigils.py`, `mvgeos-runes/rune_runner.py` |
-| Sync I/O in async code | 6+ locations | `mvgeos-tome/jsonl_store.py`, `mvgeos-spells/*.py` |
+| Sync I/O in async code | 6+ locations | `mvgeos-tome/ledger.py`, `coding-mvge/spells/*.py` |
 | No connection pooling | 1 | `mvgeos-provider/openrouter.py` |
-| Unbounded memory growth | ~~3~~ **1** | `mvgeos-tome/ledger.py` (event rotation & spell index added) |
-| Missing validation | ~~5~~ **2** | Spell params, session resume (mana budget ✅, turn limits ✅) |
-| Dead/duplicate code | ~~4~~ **2** | `mvgeos-agent/prompt_config.py`, `mvgeos-tome/session.py` |
-| Hardcoded configuration | ~~3~~ **1** | Spell map (model lists ✅, timeouts ✅) |
+| Unbounded memory growth | 1 | `mvgeos-tome/ledger.py` (event rotation & spell index added) |
+| Missing validation | 2 | Spell params, session resume (mana budget ✅, turn limits ✅) |
+| Dead/duplicate code | 2 | `mvgeos-agent/prompt_config.py`, `mvgeos-tome/session.py` |
+| Hardcoded configuration | 1 | Spell map (model lists ✅, timeouts ✅) |
