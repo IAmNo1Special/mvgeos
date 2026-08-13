@@ -1,14 +1,14 @@
-"""Styles and design token definitions for Antigravity Obsidian theme."""
+"""Styles and design token definitions for MvgeOS Obsidian theme."""
 
 from nicegui import ui
 
 OBSIDIAN_THEME_CSS = """
 :root {
-    --bg-obsidian: #0e1117;
+    --bg-canvas: #181a20;
     --bg-surface: #13151b;
-    --bg-card: #1b1e27;
-    --bg-card-hover: #222632;
-    --border-subtle: #252936;
+    --bg-card: #1e212b;
+    --bg-card-hover: #262a36;
+    --border-subtle: #2b2f3d;
     --border-active: #3b82f6;
     --text-primary: #e6edf3;
     --text-secondary: #8b949e;
@@ -19,22 +19,34 @@ OBSIDIAN_THEME_CSS = """
     --deletion-red: #ef4444;
 }
 
-body {
-    background-color: var(--bg-obsidian) !important;
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+html, body {
+    background-color: var(--bg-canvas) !important;
     color: var(--text-primary) !important;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont,
         'Segoe UI', Roboto, sans-serif !important;
     margin: 0;
     padding: 0;
+    width: 100vw;
+    height: 100vh;
+    max-height: 100vh;
     overflow: hidden;
 }
 
-.q-layout, .q-page-container {
-    background-color: var(--bg-obsidian) !important;
+.q-layout, .q-page-container, .q-page {
+    background-color: var(--bg-canvas) !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+    margin: 0 !important;
 }
 
-.bg-obsidian {
-    background-color: var(--bg-obsidian) !important;
+.bg-canvas {
+    background-color: var(--bg-canvas) !important;
 }
 
 .bg-surface {
@@ -74,19 +86,19 @@ body {
     background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-    background: #252936;
+    background: #2b2f3d;
     border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
     background: #3b4252;
 }
 
-/* Antigravity buttons & controls */
+/* MvgeOS buttons & controls */
 .ag-btn {
     border: 1px solid var(--border-subtle);
     background-color: var(--bg-card);
     color: var(--text-primary);
-    border-radius: 6px;
+    border-radius: 8px;
     transition: all 0.15s ease-in-out;
 }
 
@@ -98,8 +110,8 @@ body {
 .ag-input-dock {
     background-color: var(--bg-card);
     border: 1px solid var(--border-subtle);
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    border-radius: 14px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
 }
 
 .ag-input-dock:focus-within {

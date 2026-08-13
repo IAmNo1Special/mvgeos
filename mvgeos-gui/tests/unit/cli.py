@@ -3,7 +3,9 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from mvgeos_gui.main import main, parse_args
+import pytest
+
+from mvgeos_gui.main import enable_windows_dark_titlebar, main, parse_args
 
 
 def test_parse_args_defaults() -> None:
@@ -42,16 +44,35 @@ def test_parse_args_custom_values() -> None:
 
 
 @patch("mvgeos_gui.main.ui.run")
-def test_main_runs_native_by_default(mock_ui_run: MagicMock) -> None:
+@patch("mvgeos_gui.main.app.on_startup")
+def test_main_runs_native_by_default(
+    mock_on_startup: MagicMock, mock_ui_run: MagicMock
+) -> None:
     """Verify main launches native window when --web is not specified."""
     with patch("sys.argv", ["mvgeos-gui"]):
         main()
         mock_ui_run.assert_called_once()
         kwargs = mock_ui_run.call_args.kwargs
         assert kwargs.get("native") is True
-        assert kwargs.get("title") == "Antigravity"
+        assert kwargs.get("title") == "MvgeOS"
         assert kwargs.get("port") == 8000
         assert kwargs.get("host") == "127.0.0.1"
+        mock_on_startup.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_startup_hook_invokes_dark_titlebar() -> None:
+    """Verify on_startup callback runs enable_windows_dark_titlebar."""
+    with (
+        patch("mvgeos_gui.main.ui.run"),
+        patch("mvgeos_gui.main.app.on_startup") as mock_on_startup,
+        patch("mvgeos_gui.main.enable_windows_dark_titlebar") as mock_dark,
+        patch("sys.argv", ["mvgeos-gui"]),
+    ):
+        main()
+        startup_callback = mock_on_startup.call_args[0][0]
+        await startup_callback()
+        mock_dark.assert_called_with("MvgeOS")
 
 
 @patch("mvgeos_gui.main.ui.run")
@@ -63,3 +84,8 @@ def test_main_runs_web_mode(mock_ui_run: MagicMock) -> None:
         kwargs = mock_ui_run.call_args.kwargs
         assert kwargs.get("native") is False
         assert kwargs.get("port") == 9090
+
+
+def test_enable_windows_dark_titlebar_safe() -> None:
+    """Verify enable_windows_dark_titlebar runs without unhandled exceptions."""
+    enable_windows_dark_titlebar("NonExistentWindow")

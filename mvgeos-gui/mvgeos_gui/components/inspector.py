@@ -8,8 +8,8 @@ from mvgeos_gui.state import AppState
 def render_inspector(state: AppState) -> ui.column:
     """Render the collapsible right context inspector panel."""
     container = ui.column().classes(
-        "h-full bg-[#13151b] border-l border-[#252936] p-0 "
-        "flex flex-col justify-between transition-all duration-200"
+        "h-full bg-[#13151b] border-l border-[#2b2f3d] p-0 pb-6 "
+        "flex flex-col justify-between transition-all duration-200 shrink-0 select-none"
     )
     if not state.inspector_expanded:
         container.classes("w-0 p-0 hidden overflow-hidden", remove="w-80")
@@ -20,11 +20,11 @@ def render_inspector(state: AppState) -> ui.column:
     with container:
         # Header
         with ui.row().classes(
-            "w-full h-12 px-4 items-center justify-between "
-            "border-b border-[#252936] shrink-0"
+            "w-full h-11 px-4 items-center justify-between "
+            "border-b border-[#2b2f3d] shrink-0"
         ):
             with ui.row().classes("items-center gap-2"):
-                ui.icon("layers", size="18px").classes("text-[#3b82f6]")
+                ui.icon("layers", size="16px").classes("text-[#3b82f6]")
                 ui.label("Context").classes("text-xs font-semibold text-[#e6edf3]")
 
             ui.button(
@@ -39,7 +39,7 @@ def render_inspector(state: AppState) -> ui.column:
             # 1. Subagents
             with (
                 ui.expansion("Subagents", icon="hub").classes(
-                    "w-full text-xs text-[#e6edf3] border-b border-[#252936]/60 rounded"
+                    "w-full text-xs text-[#e6edf3] border-b border-[#2b2f3d]/60 rounded"
                 ),
                 ui.column().classes("w-full p-2 text-xs text-[#8b949e]"),
             ):
@@ -48,7 +48,7 @@ def render_inspector(state: AppState) -> ui.column:
             # 2. Files Changed
             with (
                 ui.expansion("Files Changed", icon="difference").classes(
-                    "w-full text-xs text-[#e6edf3] border-b border-[#252936]/60 rounded"
+                    "w-full text-xs text-[#e6edf3] border-b border-[#2b2f3d]/60 rounded"
                 ),
                 ui.column().classes("w-full p-2 text-xs text-[#8b949e]"),
             ):
@@ -57,7 +57,7 @@ def render_inspector(state: AppState) -> ui.column:
             # 3. Artifacts
             with (
                 ui.expansion("Artifacts", icon="description").classes(
-                    "w-full text-xs text-[#e6edf3] border-b border-[#252936]/60 rounded"
+                    "w-full text-xs text-[#e6edf3] border-b border-[#2b2f3d]/60 rounded"
                 ),
                 ui.column().classes("w-full p-2 text-xs text-[#8b949e]"),
             ):
@@ -66,7 +66,7 @@ def render_inspector(state: AppState) -> ui.column:
             # 4. Skills Used
             with (
                 ui.expansion("Skills Used", icon="auto_stories").classes(
-                    "w-full text-xs text-[#e6edf3] border-b border-[#252936]/60 rounded"
+                    "w-full text-xs text-[#e6edf3] border-b border-[#2b2f3d]/60 rounded"
                 ),
                 ui.column().classes("w-full p-2 text-xs text-[#8b949e]"),
             ):
@@ -75,7 +75,7 @@ def render_inspector(state: AppState) -> ui.column:
             # 5. Uploads
             with (
                 ui.expansion("Uploads", icon="cloud_upload").classes(
-                    "w-full text-xs text-[#e6edf3] border-b border-[#252936]/60 rounded"
+                    "w-full text-xs text-[#e6edf3] border-b border-[#2b2f3d]/60 rounded"
                 ),
                 ui.column().classes("w-full p-2 text-xs text-[#8b949e]"),
             ):
@@ -84,7 +84,7 @@ def render_inspector(state: AppState) -> ui.column:
             # 6. Background Tasks
             with (
                 ui.expansion("Background Tasks", icon="schedule").classes(
-                    "w-full text-xs text-[#e6edf3] border-b border-[#252936]/60 rounded"
+                    "w-full text-xs text-[#e6edf3] border-b border-[#2b2f3d]/60 rounded"
                 ),
                 ui.column().classes("w-full p-2 text-xs text-[#8b949e]"),
             ):

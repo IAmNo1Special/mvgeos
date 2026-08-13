@@ -1,21 +1,43 @@
 """CLI entry point for mvgeos-gui."""
 
 import argparse
+import asyncio
+import contextlib
+import ctypes
+import sys
 from pathlib import Path
 
-from nicegui import ui
+from nicegui import app, ui
 
 from mvgeos_gui.app import init_app
 from mvgeos_gui.state import AppState
 
 DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
+APP_TITLE = "MvgeOS"
+
+
+def enable_windows_dark_titlebar(title: str = APP_TITLE) -> None:
+    """Apply immersive dark mode to Windows native titlebar."""
+    if sys.platform != "win32":
+        return
+    with contextlib.suppress(Exception):
+        hwnd = ctypes.windll.user32.FindWindowW(None, title)
+        if hwnd:
+            dwmwa_use_immersive_dark_mode = 20
+            value = ctypes.c_int(1)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd,
+                dwmwa_use_immersive_dark_mode,
+                ctypes.byref(value),
+                ctypes.sizeof(value),
+            )
 
 
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments for mvgeos-gui."""
     parser = argparse.ArgumentParser(
         prog="mvgeos-gui",
-        description="Launch MvgeOS Antigravity desktop GUI application.",
+        description="Launch MvgeOS desktop GUI application.",
     )
     parser.add_argument(
         "--web",
@@ -64,11 +86,21 @@ def main() -> None:
         selected_model=args.model,
     )
     init_app(state)
+
+    if not args.web and sys.platform == "win32":
+        app.native.window_args["background_color"] = "#181a20"
+
+        async def _apply_dark_titlebar() -> None:
+            await asyncio.sleep(0.3)
+            enable_windows_dark_titlebar(APP_TITLE)
+
+        app.on_startup(_apply_dark_titlebar)
+
     ui.run(
         native=not args.web,
         host=args.host,
         port=args.port,
-        title="Antigravity",
+        title=APP_TITLE,
         window_size=(1400, 900),
         reload=args.reload,
         dark=True,

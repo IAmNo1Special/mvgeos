@@ -14,12 +14,12 @@ AVAILABLE_MODELS = [
 
 def render_input_dock(state: AppState) -> ui.column:
     """Render floating input dock at bottom of conversation viewport."""
-    wrapper = ui.column().classes("w-full max-w-4xl mx-auto px-4 pb-4 shrink-0")
+    wrapper = ui.column().classes("w-full max-w-4xl mx-auto px-6 pb-8 pt-2 shrink-0")
 
     with (
         wrapper,
         ui.card().classes(
-            "w-full bg-[#1b1e27] border border-[#252936] rounded-xl p-3 gap-2 "
+            "w-full bg-[#1e212b] border border-[#2b2f3d] rounded-2xl p-3.5 gap-2 "
             "shadow-2xl focus-within:border-[#3b82f6] transition-colors"
         ),
     ):
@@ -27,15 +27,16 @@ def render_input_dock(state: AppState) -> ui.column:
         ui.textarea(placeholder="Ask anything. @ to mention. / for actions").props(
             "borderless autogrow dark dense hide-bottom-space"
         ).classes(
-            "w-full text-xs text-[#e6edf3] bg-transparent resize-none leading-relaxed"
+            "w-full text-xs text-[#e6edf3] bg-transparent resize-none "
+            "leading-relaxed min-h-[36px]"
         )
 
         # Bottom toolbar row inside dock
         with ui.row().classes("w-full items-center justify-between pt-1"):
-            # Left tools: Attachment (+) and Model Selector
+            # Left tools: Attachment (+), Model Selector, Mode Pill
             with ui.row().classes("items-center gap-2"):
                 with ui.button(icon="add").props(
-                    "flat dense round text-color=grey-5 size=sm"
+                    "flat dense round text-color=grey-4 size=sm"
                 ):
                     ui.tooltip("Add context files or images")
 
@@ -48,8 +49,22 @@ def render_input_dock(state: AppState) -> ui.column:
                     "dense options-dense borderless dark options-dark rounded text-xs"
                 ).classes("text-xs text-[#8b949e] font-mono max-w-[220px]")
 
-            # Right action: Submit or Stop Channeling button
-            with ui.row().classes("items-center gap-1"):
+                # Local pill indicator (Image 1 style)
+                with ui.row().classes(
+                    "items-center gap-1 px-2 py-0.5 rounded bg-[#13151b] border "
+                    "border-[#2b2f3d] text-[11px] text-[#8b949e] cursor-pointer"
+                ):
+                    ui.icon("terminal", size="12px").classes("text-[#3b82f6]")
+                    ui.label("Local").classes("font-normal")
+                    ui.icon("expand_more", size="12px")
+
+            # Right action: Mic + Submit / Stop Channeling button
+            with ui.row().classes("items-center gap-1.5"):
+                with ui.button(icon="mic").props(
+                    "flat dense round text-color=grey-5 size=sm"
+                ):
+                    ui.tooltip("Voice Input")
+
                 if state.is_channeling:
                     ui.button(
                         icon="stop",
@@ -59,7 +74,7 @@ def render_input_dock(state: AppState) -> ui.column:
                     ).classes("shadow")
                 else:
                     ui.button(
-                        icon="arrow_upward",
+                        icon="arrow_forward",
                         on_click=lambda: ui.notify("Prompt submitted"),
                     ).props(
                         "unelevated dense round color=primary text-color=white size=sm"

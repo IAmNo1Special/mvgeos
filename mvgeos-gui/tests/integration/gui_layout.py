@@ -22,8 +22,11 @@ async def test_full_shell_layout_rendering(user: User) -> None:
     await user.open("/test_shell_render")
 
     # Left sidebar branding and action
-    await user.should_see("Antigravity")
+    await user.should_see("MvgeOS")
     await user.should_see("New Conversation")
+    await user.should_see("Conversation History")
+    await user.should_see("Scheduled Tasks")
+    await user.should_see("Projects")
 
     # Center header breadcrumb
     await user.should_see("my-project")
