@@ -78,6 +78,11 @@ _Avoid_: Callback (as a spoken term), hook (for the callback — the hook is the
 The depth of reasoning the Mvge applies during a run, requested by the Summoner (or set by the Mvge's defaults) and conveyed to the Realm as reasoning effort. Optionally capped by `contemplation_budget` — a per-request parameter sent to the Realm (Pi's `ThinkingBudgets`), not a run-level cap. Do not conflate with Mana Budget.
 _Avoid_: Reasoning (as a spoken term), thinking (for the concept)
 
+**MvgeOS GUI**:
+The native desktop interface for MvgeOS, built on NiceGUI with PyWebView, providing a 1:1 visual experience for multi-turn Summoner interactions, live Spell tracking, Git diff inspection, and Tome navigation.
+_Avoid_: Web client, frontend dashboard
+
+
 ## Loop architecture
 
 **Loop Core** (`run_loop`):
