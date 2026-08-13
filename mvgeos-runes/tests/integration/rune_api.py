@@ -102,6 +102,27 @@ class TestRuneAPIRegistration:
         assert runner._session_name == "rune-session"
 
 
+class TestRuneAPIActiveSpells:
+    def test_api_scoped_to_rune_name(self, runner: RuneRunner) -> None:
+        api_a = runner.create_api(rune_name="rune_a")
+        api_b = runner.create_api(rune_name="rune_b")
+        api_a.register_spell(SpellDefinition(name="a", description=""))
+        api_b.register_spell(SpellDefinition(name="b", description=""))
+        # rune_a narrows its own surface; rune_b is unaffected.
+        api_a.set_active_spells(["a"])
+        assert set(runner.get_active_spells()) == {"a", "b"}
+
+    def test_two_apis_compose_active_sets(self, runner: RuneRunner) -> None:
+        api_a = runner.create_api(rune_name="rune_a")
+        api_b = runner.create_api(rune_name="rune_b")
+        api_a.register_spell(SpellDefinition(name="a1", description=""))
+        api_a.register_spell(SpellDefinition(name="a2", description=""))
+        api_b.register_spell(SpellDefinition(name="b1", description=""))
+        api_a.set_active_spells(["a1"])
+        api_b.set_active_spells(["b1"])
+        assert set(runner.get_active_spells()) == {"a1", "b1"}
+
+
 class TestRuneAPIEventBus:
     def test_on_event_delegates_to_runner(
         self, api: RuneAPI, runner: RuneRunner

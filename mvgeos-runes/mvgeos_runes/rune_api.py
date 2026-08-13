@@ -20,8 +20,9 @@ RuneFactory = Callable[["RuneAPI"], None | Awaitable[None]]
 
 
 class RuneAPI:
-    def __init__(self, runner: RuneRunner) -> None:
+    def __init__(self, runner: RuneRunner, rune_name: str | None = None) -> None:
         self._runner = runner
+        self._rune_name = rune_name
 
     @property
     def sandbox(self) -> MvgeSandbox:
@@ -31,7 +32,7 @@ class RuneAPI:
         self._runner.register_handler(hook, handler)
 
     def register_spell(self, spell: SpellDefinition) -> None:
-        self._runner.register_spell(spell)
+        self._runner.register_spell(spell, self._rune_name)
 
     def register_command(
         self,
@@ -65,7 +66,7 @@ class RuneAPI:
         return self._runner.get_active_spells()
 
     def set_active_spells(self, spell_names: list[str]) -> None:
-        self._runner.set_active_spells(spell_names)
+        self._runner.set_active_spells(spell_names, self._rune_name)
 
     def get_all_spells(self) -> list[SpellDefinition]:
         return self._runner.get_all_registered_spells()

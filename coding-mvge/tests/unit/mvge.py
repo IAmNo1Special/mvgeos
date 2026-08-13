@@ -259,6 +259,199 @@ class TestSeekerRuneActiveSpells:
         runner.set_active_spells(["tool_search", "grep"])
         assert set(runner.get_active_spells()) == {"tool_search", "grep"}
 
+    def test_composes_active_sets_across_runes(self) -> None:
+        """Seeker narrows its surface; a second rune keeps its spells active.
+
+        Reproduces the issue: once seeker pinned its active set, later
+        spell registrations from another rune stopped joining the active set,
+        and a second rune calling set_active_spells clobbered seeker. The union
+        of each rune's own contribution must be the effective active set.
+        """
+        runner = RuneRunner()
+        seeker_spells = ["tool_search", "skill_search", "skill_execute", "mcp_search"]
+
+        def seeker_factory(api: Any) -> None:
+            for name in seeker_spells:
+                api.register_spell(
+                    SpellDefinition(name=name, description="meta", parameters={})
+                )
+            api.register_spell(
+                SpellDefinition(name="bash", description="shell", parameters={})
+            )
+
+            def on_session_start(data: object) -> None:
+                api.set_active_spells(seeker_spells)
+
+            api.on(SigilHook.SESSION_START, on_session_start)
+
+        def heal_factory(api: Any) -> None:
+            api.register_spell(
+                SpellDefinition(name="heal", description="heal", parameters={})
+            )
+
+        seeker_manifest = RuneManifest(
+            name="seeker",
+            version="1.0.0",
+            description="seeker",
+            scope=RuneScope.USER,
+            path="/tmp/seeker",
+            enabled=True,
+            entry_point="rune.py",
+            hooks=[SigilHook.SESSION_START],
+        )
+        heal_manifest = RuneManifest(
+            name="heal_my_goap",
+            version="1.0.0",
+            description="heal",
+            scope=RuneScope.USER,
+            path="/tmp/heal",
+            enabled=True,
+            entry_point="rune.py",
+        )
+        asyncio.run(
+            runner.load_rune_loads(
+                [
+                    RuneLoad(manifest=seeker_manifest, factory=seeker_factory),
+                    RuneLoad(manifest=heal_manifest, factory=heal_factory),
+                ]
+            )
+        )
+
+        # Before SESSION_START: all registered rune spells are active.
+        assert set(runner.get_active_spells()) == set(seeker_spells) | {"bash", "heal"}
+
+        # SESSION_START only narrows seeker's contribution.
+        asyncio.run(runner.emit_async(SigilHook.SESSION_START, {}))
+
+        # `bash` is hidden by seeker; `heal` from the other rune is still active.
+        assert set(runner.get_active_spells()) == set(seeker_spells) | {"heal"}
+
+    def test_runtime_synthesized_spell_becomes_active(self) -> None:
+        """A rune may register a spell at runtime (not just in its factory)."""
+        runner = RuneRunner()
+
+        def factory(api: Any) -> None:
+            api.register_spell(
+                SpellDefinition(name="heal", description="heal", parameters={})
+            )
+
+            def on_turn_start(data: object) -> None:
+                api.register_spell(
+                    SpellDefinition(
+                        name="synthesized_heal", description="syn", parameters={}
+                    )
+                )
+
+            api.on(SigilHook.TURN_START, on_turn_start)
+
+        manifest = RuneManifest(
+            name="heal_my_goap",
+            version="1.0.0",
+            description="heal",
+            scope=RuneScope.USER,
+            path="/tmp/heal",
+            enabled=True,
+            entry_point="rune.py",
+        )
+        asyncio.run(
+            runner.load_rune_loads([RuneLoad(manifest=manifest, factory=factory)])
+        )
+        asyncio.run(runner.emit_async(SigilHook.TURN_START, {}))
+        assert "synthesized_heal" in runner.get_active_spells()
+
+    def test_seekers_pin_does_not_freeze_other_runes_runtime_spell(
+        self,
+    ) -> None:
+        """Reproduction of issue #40: seeker narrows its surface in SESSION_START;
+        heal-my-goap synthesizes a spell at runtime. The synthesized spell must
+        become active (it joins heal-my-goap's own unpinned contribution rather
+        than the globally-frozen set)."""
+        runner = RuneRunner()
+
+        def seeker_factory(api: Any) -> None:
+            api.register_spell(
+                SpellDefinition(name="tool_search", description="meta", parameters={})
+            )
+
+            def on_session_start(data: object) -> None:
+                api.set_active_spells(["tool_search"])
+
+            api.on(SigilHook.SESSION_START, on_session_start)
+
+        def heal_factory(api: Any) -> None:
+            api.register_spell(
+                SpellDefinition(name="heal", description="heal", parameters={})
+            )
+
+            def on_turn_start(data: object) -> None:
+                api.register_spell(
+                    SpellDefinition(
+                        name="synthesized_heal", description="syn", parameters={}
+                    )
+                )
+
+            api.on(SigilHook.TURN_START, on_turn_start)
+
+        seeker_manifest = RuneManifest(
+            name="seeker",
+            version="1.0.0",
+            description="seeker",
+            scope=RuneScope.USER,
+            path="/tmp/seeker",
+            enabled=True,
+            entry_point="rune.py",
+            hooks=[SigilHook.SESSION_START],
+        )
+        heal_manifest = RuneManifest(
+            name="heal_my_goap",
+            version="1.0.0",
+            description="heal",
+            scope=RuneScope.USER,
+            path="/tmp/heal",
+            enabled=True,
+            entry_point="rune.py",
+        )
+        asyncio.run(
+            runner.load_rune_loads(
+                [
+                    RuneLoad(manifest=seeker_manifest, factory=seeker_factory),
+                    RuneLoad(manifest=heal_manifest, factory=heal_factory),
+                ]
+            )
+        )
+
+        # SESSION_START: seeker narrows its own surface to {tool_search}.
+        asyncio.run(runner.emit_async(SigilHook.SESSION_START, {}))
+        assert set(runner.get_active_spells()) == {"tool_search", "heal"}
+
+        # heal-my-goap synthesizes at runtime, after seeker pinned. Its own
+        # contribution is unpinned, so the synthesized spell joins the union.
+        asyncio.run(runner.emit_async(SigilHook.TURN_START, {}))
+        assert set(runner.get_active_spells()) == {
+            "tool_search",
+            "heal",
+            "synthesized_heal",
+        }
+
+    def test_build_spells_reflects_unioned_active_set(self, agent: CodingMvge) -> None:
+        """CodingMvge._build_spells surfaces the unioned active rune spells."""
+        runner = RuneRunner()
+        api_a = runner.create_api(rune_name="rune_a")
+        api_b = runner.create_api(rune_name="rune_b")
+        api_a.register_spell(
+            SpellDefinition(name="spell_a", description="", parameters={})
+        )
+        api_b.register_spell(
+            SpellDefinition(name="spell_b", description="", parameters={})
+        )
+        api_a.set_active_spells(["spell_a"])
+        api_b.set_active_spells(["spell_b"])
+        agent._runner = runner
+        agent._spell_names = None
+        spells = agent._build_spells()
+        rune_names = {s.name for s in spells if s.name not in DEFAULT_SPELL_MAP}
+        assert rune_names == {"spell_a", "spell_b"}
+
 
 class TestCodingMvgeProperties:
     def test_session_id_none_before_init(self) -> None:

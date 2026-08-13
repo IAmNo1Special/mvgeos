@@ -96,8 +96,13 @@ class RuneRunner:
         self._loaded_skills: list[SkillLoad] = []
         self._skill_diagnostics: list[SkillDiagnostic] = []
         self._suppress_skill_catalog: bool = False
-        self._active_spells: set[str] = set()
-        self._active_spells_pinned: bool = False
+        # The effective active-spell set is the *union* of each rune's own
+        # contribution: ``_active_spells_by_rune`` maps a rune name (or ``None``
+        # for spells registered outside any rune context) to the set of spell
+        # names it has declared active. A rune that calls ``set_active_spells``
+        # only narrows/freezes its own entry; it never locks out other runes.
+        self._active_spells_by_rune: dict[str | None, set[str]] = {}
+        self._pinned_runes: set[str | None] = set()
 
     @property
     def context(self) -> RuneContext:
@@ -125,15 +130,20 @@ class RuneRunner:
     def register_handler(self, hook: SigilHook, handler: Any) -> None:
         self._sigils.register(hook, handler)
 
-    def register_spell(self, spell: SpellDefinition) -> None:
+    def register_spell(
+        self, spell: SpellDefinition, rune_name: str | None = None
+    ) -> None:
+        if rune_name is None:
+            rune_name = self._current_loading_rune
         if spell.name not in self._spells:
-            if spell.source_rune is None and self._current_loading_rune is not None:
-                spell.source_rune = self._current_loading_rune
+            if spell.source_rune is None and rune_name is not None:
+                spell.source_rune = rune_name
             self._spells[spell.name] = spell
-            # Seed the active set with every registered rune spell by default,
-            # unless a rune has already pinned an explicit active set.
-            if not self._active_spells_pinned:
-                self._active_spells.add(spell.name)
+            # Seed the rune's own active set with every registered rune spell by
+            # default, unless that rune has already pinned an explicit set. Other
+            # runes' pinned sets are left untouched (composable per-rune model).
+            if rune_name not in self._pinned_runes:
+                self._active_spells_by_rune.setdefault(rune_name, set()).add(spell.name)
         else:
             logger.warning("Duplicate spell registration skipped: %s", spell.name)
 
@@ -168,16 +178,32 @@ class RuneRunner:
         return list(self._shortcuts.values())
 
     def get_active_spells(self) -> list[str]:
-        return sorted(self._active_spells)
+        active: set[str] = set()
+        for rune_spells in self._active_spells_by_rune.values():
+            active |= rune_spells
+        return sorted(active)
 
-    def set_active_spells(self, spell_names: list[str]) -> None:
-        """Narrow or widen the rune-owned active-spell set.
+    def set_active_spells(
+        self, spell_names: list[str], rune_name: str | None = None
+    ) -> None:
+        """Declare the rune-owned active-spell set for a single rune.
 
-        Mirrors upstream Pi's ``setActiveTools``: once a rune pins an explicit
-        active set, later spell registrations no longer auto-join it.
+        Unlike a global replace and freeze, this only sets the calling rune's own
+        contribution; the engine's effective active set is the union across all
+        runes (``get_active_spells``). A rune that wants to narrow its own
+        surface does so without affecting other runes' spells.
+
+        ``rune_name`` defaults to the rune currently being loaded so that
+        factory-time calls (before sigils fire) are attributed correctly. When
+        invoked through a ``RuneAPI`` tied to a rune, the rune name is carried
+        on the API instance, surviving past the loading phase into
+        ``SESSION_START`` handlers, so later spell registrations from other
+        runes still join the unioned active set.
         """
-        self._active_spells = set(spell_names)
-        self._active_spells_pinned = True
+        if rune_name is None:
+            rune_name = self._current_loading_rune
+        self._active_spells_by_rune[rune_name] = set(spell_names)
+        self._pinned_runes.add(rune_name)
 
     def load_skills(
         self,
@@ -253,8 +279,10 @@ class RuneRunner:
     def set_session_name(self, name: str) -> None:
         self._session_name = name
 
-    def create_api(self) -> RuneAPI:
-        return RuneAPI(self)
+    def create_api(self, rune_name: str | None = None) -> RuneAPI:
+        if rune_name is None:
+            rune_name = self._current_loading_rune
+        return RuneAPI(self, rune_name)
 
     async def load_runes(
         self,

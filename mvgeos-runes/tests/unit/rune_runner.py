@@ -86,6 +86,95 @@ class TestRuneRunnerSpells:
         assert runner.get_active_spells() == ["tool_search"]
 
 
+class TestRuneRunnerActiveSpellsComposition:
+    """The active set is the union of each rune's own contribution.
+
+    A rune that pins its active set (via ``set_active_spells``) only narrows or
+    freezes its own contribution; it must not lock out spells contributed by
+    other runes.
+    """
+
+    def test_second_rune_registers_after_first_pins_still_active(self) -> None:
+        runner = RuneRunner()
+        runner.register_spell(
+            SpellDefinition(name="a", description=""), rune_name="rune_a"
+        )
+        runner.set_active_spells(["a"], rune_name="rune_a")
+        # A different rune registers a spell after rune_a pinned its surface.
+        runner.register_spell(
+            SpellDefinition(name="b", description=""), rune_name="rune_b"
+        )
+        assert set(runner.get_active_spells()) == {"a", "b"}
+
+    def test_multiple_runes_set_active_spells_compose(self) -> None:
+        runner = RuneRunner()
+        runner.register_spell(
+            SpellDefinition(name="a1", description=""), rune_name="rune_a"
+        )
+        runner.register_spell(
+            SpellDefinition(name="a2", description=""), rune_name="rune_a"
+        )
+        runner.register_spell(
+            SpellDefinition(name="b1", description=""), rune_name="rune_b"
+        )
+        runner.set_active_spells(["a1"], rune_name="rune_a")
+        runner.set_active_spells(["b1"], rune_name="rune_b")
+        # Each rune's set_active_spells only affects its own contribution, so
+        # the effective set is the union rather than a clobbered global.
+        assert set(runner.get_active_spells()) == {"a1", "b1"}
+
+    def test_per_rune_pin_isolates_freeze(self) -> None:
+        runner = RuneRunner()
+        runner.register_spell(
+            SpellDefinition(name="a", description=""), rune_name="rune_a"
+        )
+        runner.register_spell(
+            SpellDefinition(name="b", description=""), rune_name="rune_b"
+        )
+        # rune_a narrows its own surface to {a} and pins it.
+        runner.set_active_spells(["a"], rune_name="rune_a")
+        # A later registration to rune_a stays out (pinned for rune_a only).
+        runner.register_spell(
+            SpellDefinition(name="a_extra", description=""), rune_name="rune_a"
+        )
+        # A registration to rune_b still joins the active set.
+        runner.register_spell(
+            SpellDefinition(name="b_extra", description=""), rune_name="rune_b"
+        )
+        active = set(runner.get_active_spells())
+        assert "a" in active
+        assert "b" in active
+        assert "a_extra" not in active
+        assert "b_extra" in active
+
+    def test_rune_narrows_own_surface_only(self) -> None:
+        runner = RuneRunner()
+        runner.register_spell(
+            SpellDefinition(name="a", description=""), rune_name="rune_a"
+        )
+        runner.register_spell(
+            SpellDefinition(name="bash", description=""), rune_name="rune_a"
+        )
+        runner.register_spell(
+            SpellDefinition(name="b", description=""), rune_name="rune_b"
+        )
+        # rune_a hides its own `bash` by pinning to {a}; rune_b's `b` is unaffected.
+        runner.set_active_spells(["a"], rune_name="rune_a")
+        active = set(runner.get_active_spells())
+        assert active == {"a", "b"}
+
+    def test_rune_can_widen_after_pinning_own_set(self) -> None:
+        runner = RuneRunner()
+        runner.register_spell(
+            SpellDefinition(name="tool_search", description=""),
+            rune_name="seeker",
+        )
+        runner.set_active_spells(["tool_search"], rune_name="seeker")
+        # A rune may widen its own surface at runtime with a discovered name.
+        runner.set_active_spells(["tool_search", "grep"], rune_name="seeker")
+        assert set(runner.get_active_spells()) == {"tool_search", "grep"}
+
+
 class TestRuneRunnerCommands:
     def test_register_and_get_commands(self) -> None:
         runner = RuneRunner()

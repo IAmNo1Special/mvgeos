@@ -107,7 +107,7 @@ class RuneWatcher:
             self._runner.register_shortcut(sc)
 
         logger.info("Reloading rune: %s (%s)", rune_name, manifest.version)
-        api = self._runner.create_api()
+        api = self._runner.create_api(rune_name=rune_name)
         result = factory(api)
         if isinstance(result, Awaitable):
             await result
