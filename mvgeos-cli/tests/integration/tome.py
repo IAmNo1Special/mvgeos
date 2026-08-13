@@ -123,7 +123,7 @@ class TestTomeCommands:
 
         mock_entry = MagicMock()
         mock_entry.type.value = "invocation"
-        mock_entry.timestamp = 123.456
+        mock_entry.timestamp = 1786553222.331
         mock_entry.payload = {"key": "value"}
 
         mock_ledger_instance = MagicMock()
@@ -135,6 +135,92 @@ class TestTomeCommands:
         result = runner.invoke(tome_app, ["show", "tome_abc123"])
         assert result.exit_code == 0
         assert "tome_abc" in result.stdout
+        assert "2026-08-12T16:47:02.331000+00:00" in result.stdout
+
+    @patch("mvgeos_cli.commands.tome.Path.cwd")
+    @patch("mvgeos_cli.commands.tome.TomeLedger")
+    def test_tome_show_format_markdown_matches_export(
+        self, mock_ledger: MagicMock, mock_cwd: MagicMock
+    ) -> None:
+        mock_meta = MagicMock()
+        mock_meta.id = "tome_abc123"
+        mock_meta.created_at = "2024-01-01T12:00:00"
+        mock_meta.cwd = "/test"
+        mock_meta.parent_tome_id = None
+        mock_meta.active_leaf_id = "leaf_123"
+        mock_meta.schema_version = "1.0"
+
+        mock_entry = MagicMock()
+        mock_entry.type.value = "invocation"
+        mock_entry.timestamp = 1786553222.331
+        mock_entry.payload = {"key": "value"}
+
+        mock_ledger_instance = MagicMock()
+        mock_ledger_instance.open_tome.return_value = mock_meta
+        mock_ledger_instance.get_entries.return_value = [mock_entry]
+        mock_ledger.return_value = mock_ledger_instance
+        mock_cwd.return_value = Path("/test")
+
+        show_res = runner.invoke(
+            tome_app, ["show", "tome_abc123", "--format", "markdown"]
+        )
+        export_res = runner.invoke(
+            tome_app, ["export", "tome_abc123", "--format", "markdown"]
+        )
+        assert show_res.exit_code == 0
+        assert export_res.exit_code == 0
+        assert show_res.stdout == export_res.stdout
+        assert "2026-08-12T16:47:02.331000+00:00" in show_res.stdout
+
+    @patch("mvgeos_cli.commands.tome.Path.cwd")
+    @patch("mvgeos_cli.commands.tome.TomeLedger")
+    def test_tome_show_format_json_matches_export(
+        self, mock_ledger: MagicMock, mock_cwd: MagicMock
+    ) -> None:
+        mock_meta = MagicMock()
+        mock_meta.id = "tome_abc123"
+        mock_meta.created_at = "2024-01-01T12:00:00"
+        mock_meta.cwd = "/test"
+        mock_meta.parent_tome_id = None
+        mock_meta.active_leaf_id = "leaf_123"
+        mock_meta.schema_version = "1.0"
+
+        mock_entry = MagicMock()
+        mock_entry.id = "entry_123"
+        mock_entry.parent_id = None
+        mock_entry.type.value = "invocation"
+        mock_entry.timestamp = 1786553222.331
+        mock_entry.payload = {"key": "value"}
+
+        mock_ledger_instance = MagicMock()
+        mock_ledger_instance.open_tome.return_value = mock_meta
+        mock_ledger_instance.get_entries.return_value = [mock_entry]
+        mock_ledger.return_value = mock_ledger_instance
+        mock_cwd.return_value = Path("/test")
+
+        show_res = runner.invoke(tome_app, ["show", "tome_abc123", "--format", "json"])
+        export_res = runner.invoke(
+            tome_app, ["export", "tome_abc123", "--format", "json"]
+        )
+        assert show_res.exit_code == 0
+        assert export_res.exit_code == 0
+        assert show_res.stdout == export_res.stdout
+        assert "2026-08-12T16:47:02.331000+00:00" in show_res.stdout
+
+    @patch("mvgeos_cli.commands.tome.Path.cwd")
+    @patch("mvgeos_cli.commands.tome.TomeLedger")
+    def test_tome_show_invalid_format_exits_with_error(
+        self, mock_ledger: MagicMock, mock_cwd: MagicMock
+    ) -> None:
+        mock_meta = MagicMock()
+        mock_meta.id = "tome_abc123"
+        mock_ledger_instance = MagicMock()
+        mock_ledger_instance.open_tome.return_value = mock_meta
+        mock_ledger.return_value = mock_ledger_instance
+
+        result = runner.invoke(tome_app, ["show", "tome_abc123", "--format", "invalid"])
+        assert result.exit_code == 1
+        assert "Unknown format" in result.stdout
 
     @patch("mvgeos_cli.commands.tome.Path.cwd")
     @patch("mvgeos_cli.commands.tome.TomeLedger")

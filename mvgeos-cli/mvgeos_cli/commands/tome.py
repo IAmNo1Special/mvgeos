@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
+from typing import Any
 
 import typer
 from mvgeos_agent.constants import DEFAULT_TOME_DIR
 from mvgeos_tome.ledger import TomeLedger
-from mvgeos_tome.types import TomeMetadata
+from mvgeos_tome.types import TomeEntry, TomeMetadata
 from rich import box
 from rich.console import Console
 from rich.table import Table
@@ -67,8 +69,67 @@ def _render_tome_list(metas: list[TomeMetadata], ascii_only: bool = False) -> st
     return out.getvalue()
 
 
+def _format_timestamp(ts: Any) -> str:
+    """Format a timestamp float/int as ISO 8601 string."""
+    if isinstance(ts, (int, float)):
+        return datetime.fromtimestamp(ts, UTC).isoformat()
+    return str(ts)
+
+
+def _render_tome_export(
+    meta: TomeMetadata, entries: list[TomeEntry], format: str
+) -> str:
+    """Render tome metadata and entries as JSON or Markdown."""
+    if format == "json":
+        data = {
+            "metadata": {
+                "id": meta.id,
+                "created_at": meta.created_at,
+                "cwd": meta.cwd,
+                "parent_tome_id": meta.parent_tome_id,
+                "active_leaf_id": meta.active_leaf_id,
+                "schema_version": meta.schema_version,
+            },
+            "entries": [
+                {
+                    "id": e.id,
+                    "parent_id": e.parent_id,
+                    "type": e.type.value if hasattr(e.type, "value") else str(e.type),
+                    "timestamp": _format_timestamp(e.timestamp),
+                    "payload": e.payload,
+                }
+                for e in entries
+            ],
+        }
+        return json.dumps(data, indent=2)
+    elif format == "markdown":
+        lines = [
+            f"# Tome: {meta.id[:8]}",
+            f"Created: {meta.created_at}",
+            f"CWD: {meta.cwd}",
+            "",
+        ]
+        for entry in entries:
+            entry_type = (
+                entry.type.value if hasattr(entry.type, "value") else str(entry.type)
+            )
+            lines.append(f"## {entry_type} ({_format_timestamp(entry.timestamp)})")
+            lines.append("```json")
+            lines.append(json.dumps(entry.payload, indent=2))
+            lines.append("```")
+            lines.append("")
+        return "\n".join(lines)
+    else:
+        raise ValueError(f"Unknown format: {format}")
+
+
 @tome_app.command("show")
-def tome_show(tome_id: str = typer.Argument(..., help="Tome ID to show")) -> None:
+def tome_show(
+    tome_id: str = typer.Argument(..., help="Tome ID to show"),
+    format: str | None = typer.Option(
+        None, "--format", "-f", help="Output format (json, markdown)"
+    ),
+) -> None:
     """Show tome details."""
     tome_dir = get_tome_dir()
     ledger = TomeLedger(tome_dir)
@@ -80,6 +141,15 @@ def tome_show(tome_id: str = typer.Argument(..., help="Tome ID to show")) -> Non
 
     tome_entries = ledger.get_entries(meta.id)
 
+    if format is not None:
+        try:
+            output_text = _render_tome_export(meta, tome_entries, format)
+            console.print(output_text)
+            return
+        except ValueError:
+            console.print(f"[red]Unknown format: {format}[/red]")
+            raise typer.Exit(1) from None
+
     console.print(f"[bold]Tome:[/bold] {meta.id[:8]}")
     console.print(f"[bold]Created:[/bold] {meta.created_at}")
     console.print(f"[bold]CWD:[/bold] {meta.cwd}")
@@ -88,7 +158,10 @@ def tome_show(tome_id: str = typer.Argument(..., help="Tome ID to show")) -> Non
     console.print()
 
     for entry in tome_entries:
-        console.print(f"  [{entry.type.value}] {entry.timestamp:.3f}")
+        entry_type = (
+            entry.type.value if hasattr(entry.type, "value") else str(entry.type)
+        )
+        console.print(f"  [{entry_type}] {_format_timestamp(entry.timestamp)}")
         console.print(f"    {entry.payload}")
 
 
@@ -111,45 +184,11 @@ def tome_export(
 
     entries = ledger.get_entries(meta.id)
 
-    if format == "json":
-        data = {
-            "metadata": {
-                "id": meta.id,
-                "created_at": meta.created_at,
-                "cwd": meta.cwd,
-                "parent_tome_id": meta.parent_tome_id,
-                "active_leaf_id": meta.active_leaf_id,
-                "schema_version": meta.schema_version,
-            },
-            "entries": [
-                {
-                    "id": e.id,
-                    "parent_id": e.parent_id,
-                    "type": e.type.value,
-                    "timestamp": e.timestamp,
-                    "payload": e.payload,
-                }
-                for e in entries
-            ],
-        }
-        output_text = json.dumps(data, indent=2)
-    elif format == "markdown":
-        lines = [
-            f"# Tome: {meta.id[:8]}",
-            f"Created: {meta.created_at}",
-            f"CWD: {meta.cwd}",
-            "",
-        ]
-        for entry in entries:
-            lines.append(f"## {entry.type.value} ({entry.timestamp:.3f})")
-            lines.append("```json")
-            lines.append(json.dumps(entry.payload, indent=2))
-            lines.append("```")
-            lines.append("")
-        output_text = "\n".join(lines)
-    else:
+    try:
+        output_text = _render_tome_export(meta, entries, format)
+    except ValueError:
         console.print(f"[red]Unknown format: {format}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     if output:
         Path(output).write_text(output_text, encoding="utf-8")
