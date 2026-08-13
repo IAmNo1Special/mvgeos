@@ -16,10 +16,12 @@ from mvgeos_runes.loader import (
 )
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
+    Diagnostic,
     RuneContext,
     RuneScope,
     RuneShortcut,
     SigilHook,
+    SkillDiagnostic,
     SpellDefinition,
 )
 from mvgeos_runes.watcher import RuneWatcher
@@ -220,6 +222,16 @@ class BaseMvge:
     @property
     def config_dir(self) -> Path:
         return Path(f"~/.agents/.mvgeos/{self._name}").expanduser()
+
+    @property
+    def environment(self) -> MvgeEnvironment:
+        return self._environment
+
+    @property
+    def diagnostics(self) -> list[Diagnostic | SkillDiagnostic]:
+        if self._runner is not None:
+            return list(self._runner.diagnostics) + list(self._runner.skill_diagnostics)
+        return list(self._environment.diagnostics)
 
     def build_snapshot(self) -> RuntimeSnapshot:
         """Assemble a resolved runtime snapshot of the agent's surface."""
@@ -503,28 +515,34 @@ class BaseMvge:
         """Load runes from all three levels (global, agent, project)."""
         paths_with_scope = self._build_rune_paths_with_scope()
         loads, diagnostics = load_runes_from_paths(paths_with_scope, self._name)
-        if not loads:
-            return
 
-        self._runner = RuneRunner()
-        self._runner.bind_context(
-            RuneContext(
-                cwd=str(Path.cwd()),
-                mode="cli",
-                agent_name=self._name,
-                api_key=self._api_key,
+        if self._runner is None:
+            self._runner = RuneRunner()
+            self._runner.bind_context(
+                RuneContext(
+                    cwd=str(Path.cwd()),
+                    mode="cli",
+                    agent_name=self._name,
+                    api_key=self._api_key,
+                )
             )
-        )
-        await self._runner.load_rune_loads(loads, diagnostics)
-        for pname, pconfig in self._runner.get_registered_providers().items():
-            if isinstance(pconfig, dict):
-                self._provider_registry.register_provider(pname, pconfig)
+
+        if loads:
+            await self._runner.load_rune_loads(loads, diagnostics)
+            for pname, pconfig in self._runner.get_registered_providers().items():
+                if isinstance(pconfig, dict):
+                    self._provider_registry.register_provider(pname, pconfig)
+        elif diagnostics:
+            self._runner._diagnostics.extend(diagnostics)
 
         # Load skills from standard scopes
         skill_paths = get_default_skill_paths(self._name)
         skill_loads, skill_diagnostics = load_skills_from_paths(skill_paths, self._name)
         if skill_loads:
             self._runner.load_skills(skill_loads, diagnostics=skill_diagnostics)
+        elif skill_diagnostics:
+            self._runner._skill_diagnostics.extend(skill_diagnostics)
+
         if skill_diagnostics:
             for diag in skill_diagnostics:
                 logger.warning(
@@ -534,6 +552,13 @@ class BaseMvge:
                     diag.scope.value if diag.scope else "unknown",
                     diag.path,
                 )
+
+        self._environment = dataclasses.replace(
+            self._environment,
+            diagnostics=list(self._runner.diagnostics)
+            + list(self._runner.skill_diagnostics),
+            runner=self._runner,
+        )
 
         for path, _ in paths_with_scope:
             if path.exists():

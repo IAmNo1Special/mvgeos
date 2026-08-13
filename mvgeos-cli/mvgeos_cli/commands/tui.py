@@ -39,6 +39,7 @@ from mvgeos_cli.commands.repl import (
     ReplAction,
     SlashCompleter,
     StreamRenderer,
+    _check_and_warn_load_failures,
     _create_agent,
     _format_session_info,
     _git_branch,
@@ -497,6 +498,7 @@ async def run_tui(
     renderer = StreamRenderer(sink)
     app = TuiApp(agent, sink, registry, renderer)
     sink.set_redraw_cb(app.application.invalidate)
+    _check_and_warn_load_failures(agent.environment.diagnostics, out=app._out)
 
     unsubs: list[object] = [
         agent.on("message_update", renderer.on_message_update),

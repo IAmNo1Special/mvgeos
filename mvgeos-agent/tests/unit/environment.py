@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from mvgeos_agent.config_manager import ConfigLayer
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.prompt_loader import PromptSource
@@ -71,3 +73,38 @@ def test_mvge_environment_build_snapshot(tmp_path: Path) -> None:
     assert snapshot.model == env.model_id
     assert snapshot.prompt is not None
     assert snapshot.prompt.source == PromptSource.BUILTIN.value
+
+
+@pytest.mark.asyncio
+async def test_base_mvge_diagnostics_property_and_zero_load_retention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import patch
+
+    from mvgeos_runes.types import Diagnostic, DiagnosticKind, RuneScope
+
+    from mvgeos_agent.base_mvge import BaseMvge
+
+    diag = Diagnostic(
+        kind=DiagnosticKind.LOAD_FAILURE,
+        rune_name="broken_rune",
+        message="failed to import module",
+        scope=RuneScope.USER,
+    )
+
+    with (
+        patch(
+            "mvgeos_agent.base_mvge.load_runes_from_paths",
+            return_value=([], [diag]),
+        ),
+        patch(
+            "mvgeos_agent.base_mvge.load_skills_from_paths",
+            return_value=([], []),
+        ),
+    ):
+        agent = BaseMvge(api_key="test-key")
+        await agent._load_runes()
+
+        assert len(agent.diagnostics) == 1
+        assert agent.diagnostics[0].rune_name == "broken_rune"
+        assert agent.environment.diagnostics == agent.diagnostics

@@ -233,6 +233,34 @@ async def _render_live_rate_limit(
         await sleep_fn(1)
 
 
+def _check_and_warn_load_failures(
+    diagnostics: list[Any],
+    out: Callable[[str], None] = console.print,
+) -> None:
+    """Scan diagnostics for load failures and print a prominent warning."""
+    load_failures: list[Any] = []
+    for diag in diagnostics:
+        kind = getattr(diag, "kind", None)
+        kind_str = getattr(kind, "value", str(kind)) if kind is not None else ""
+        if kind_str == "load_failure":
+            load_failures.append(diag)
+
+    if not load_failures:
+        return
+
+    count = len(load_failures)
+    out(f"[bold yellow]Warning: Failed to load {count} rune(s):[/bold yellow]")
+    for diag in load_failures:
+        name = (
+            getattr(diag, "rune_name", None)
+            or getattr(diag, "skill_name", None)
+            or getattr(diag, "name", "unknown")
+        )
+        msg = getattr(diag, "message", str(diag))
+        out(f"  [yellow]• {name}: {msg}[/yellow]")
+    out("[dim]Run 'mvgeos info' for detailed diagnostic information.[/dim]\n")
+
+
 def _handle_command(
     command: str,
     agent: CodingMvge,
@@ -864,6 +892,8 @@ async def run_repl(
         "[dim]Type /help for commands, Ctrl+C to interrupt, Ctrl+D to quit[/dim]"
     )
     console.print()
+
+    _check_and_warn_load_failures(agent.environment.diagnostics)
 
     history = FileHistory(str(_get_history_path()))
     session: PromptSession[Any] | None = None
