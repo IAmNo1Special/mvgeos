@@ -30,9 +30,11 @@ Test paths follow pattern: `mvgeos-runes/tests/unit/<module>.py` and `mvgeos-run
 | `RuneRunner` | Extension host: registers sigils/spells/commands/shortcuts/providers |
 | `RuneAPI` | Facade handed to rune factories |
 | `RuneFactory` | `Callable[[RuneAPI], None \| Awaitable[None]]` |
-| `SigilHook` | Enum of 17 lifecycle hook names |
+| `SigilHook` | Enum of 23 lifecycle hook names |
 | `SigilRegistry` | Hook → handlers map |
 | `RuneWatcher` | watchdog-based hot reload |
+| `SpellDefinition` | Definition of a spell provided by a rune |
+| `SkillManifest` | Parsed metadata for an agentskills.io skill |
 
 ## SigilHook Values
 
@@ -40,16 +42,22 @@ Test paths follow pattern: `mvgeos-runes/tests/unit/<module>.py` and `mvgeos-run
 | --- | --- |
 | `BEFORE_INVOCATION` | Before an invocation is processed |
 | `AFTER_INVOCATION` | After an invocation is processed |
-| `BEFORE_SPELL_CAST` | Before a spell is executed (can block) |
+| `BEFORE_SPELL_CAST` | Before a spell is executed (can veto/block) |
 | `AFTER_SPELL_RESULT` | After a spell result is received |
 | `BEFORE_PROVIDER_REQUEST` | Before sending request to Realm |
 | `AFTER_PROVIDER_RESPONSE` | After receiving response from Realm |
 | `BEFORE_PROVIDER_HEADERS` | Before provider headers are finalized |
 | `TURN_START` / `TURN_END` | Turn lifecycle |
-| `AGENT_START` / `AGENT_END` | Agent lifecycle |
 | `SESSION_START` / `SESSION_SHUTDOWN` | Session lifecycle |
 | `SESSION_BEFORE_SWITCH` / `SESSION_BEFORE_FORK` | Session switch/fork |
+| `SESSION_BEFORE_COMPACT` | Before session compaction begins |
+| `COMPACTION_START` / `COMPACTION_END` | Compaction lifecycle |
 | `CONTEXT_TRANSFORM` | Transform invocations before sending to Realm |
+| `AGENT_START` / `AGENT_END` | Agent lifecycle |
+| `BEFORE_MVGE_START` | Before Mvge initialization begins |
+| `INPUT` | When new Summoner input is received |
+| `SHOULD_STOP_AFTER_TURN` | Hook evaluating whether agent loop should halt |
+| `PREPARE_NEXT_TURN` | Modify context or parameters for next turn |
 
 ## Rune Discovery Paths
 

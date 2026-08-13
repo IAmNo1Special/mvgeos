@@ -36,6 +36,8 @@ Test paths follow pattern: `mvgeos-tome/tests/unit/<module>.py` and `mvgeos-tome
 
 | Value | Purpose |
 | --- | --- |
+| `INVOCATION` | Summoner request or Mvge response invocation payload |
+| `SPELL_RESULT` | Result payload from a cast spell |
 | `MESSAGE` | User/assistant/tool messages |
 | `LEAF` | Active position marker (current tip of a conversation branch) |
 | `COMPACTION` | Context compaction summary |

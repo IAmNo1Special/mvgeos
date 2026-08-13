@@ -23,7 +23,7 @@ MVGEOS IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https:/
 
 - After code changes: `uv run pytest --cov` (full output, no tail)
 - Never run `uv run build` or `uv run test` unless requested
-- For non-e2e tests, run specific package: `uv run pytest mvgeos-agent/tests_agent/`
+- For non-e2e tests, run specific package: `uv run pytest mvgeos-agent/tests/`
 - If you create or modify a test file, run it and iterate until it passes
 - **Use `;` (semicolon) to chain commands in PowerShell, not `&&`** — PowerShell does not support `&&`
 
@@ -46,7 +46,7 @@ MVGEOS IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https:/
 
 - pytest framework with pytest-asyncio
 - 90%+ coverage target enforced by CI
-- Tests mirror source structure: `<package>/tests/unit/test_<module>.py` and `<package>/tests/integration/test_<module>.py` (e.g., `mvgeos-agent/tests/unit/test_types.py`)
+- Tests mirror source structure: `<package>/tests/unit/<module>.py` and `<package>/tests/integration/<module>.py` (e.g., `mvgeos-agent/tests/unit/types.py`)
 - Unit, harness, and integration test types supported
 - **Mock sync methods with `MagicMock()`, async methods with `AsyncMock()`** — mixing causes "coroutine never awaited" warnings
 - **Add coverage omit patterns for temp directories** in pyproject.toml to avoid "couldn't parse" warnings
@@ -80,7 +80,7 @@ MvgeOS is a monorepo with uv workspaces:
 Config follows dotagents protocol at `~/.agents/.mvgeos/`.
 Rune/Extension manifest at `~/.agents/.mvgeos/runes/manifest.json`.
 
-Test paths follow pattern: `<package>/tests/unit/test_<module>.py` and `<package>/tests/integration/test_<module>.py` (e.g., `mvgeos-agent/tests/unit/test_types.py`).
+Test paths follow pattern: `<package>/tests/unit/<module>.py` and `<package>/tests/integration/<module>.py` (e.g., `mvgeos-agent/tests/unit/types.py`).
 
 **Terminology updates**: `ProviderRegistry` → `RealmRegistry` (Realm = provider abstraction). `Model.provider` field removed — provider derived from model ID prefix (e.g., `nvidia/nemotron` → provider = "nvidia").
 

@@ -25,9 +25,9 @@ Test paths follow pattern: `mvgeos-provider/tests/unit/<module>.py` and `mvgeos-
 
 | Type | Purpose |
 | --- | --- |
-| `Realm` | Abstract provider protocol (`stream()`, `close()`) |
+| `Realm` | Abstract provider protocol (`stream()`, `complete()`, `close()`) |
 | `OpenRouterRealm` | OpenRouter SSE channeling implementation |
-| `Model` | Model descriptor (has `realm`, `max_completion_mana`, `context_window`) |
+| `Model` | Model descriptor (has `realm`, `max_completion_mana`, `context_window`, `is_free`) |
 | `ChannelConfig` | Per-request config (temperature, `max_tokens`, `max_output_mana`, contemplation, tools) |
 | `RealmResponse` | Stream chunk wrapper (`invocation`, `mana_used`, error fields) |
 | `RealmRegistry` | Factory for realms; extension-provider configs |
@@ -39,6 +39,9 @@ Test paths follow pattern: `mvgeos-provider/tests/unit/<module>.py` and `mvgeos-
 - `ChannelConfig.max_output_mana` — per-request output token cap (can be `None`)
 - `Model.context_window` — model's context window size (also called Mana Pool)
 - `Model.provider` — derived property (from model ID), the organization that provides the model
+- `Model.free` / `Model.is_free` — boolean indicating whether the model is free of charge
+- `ChannelConfig.contemplation_level` — reasoning effort string (none, minimal, low, medium, high, xhigh, max)
+- `ChannelConfig.contemplation_budget` — optional token cap for reasoning
 
 **Do not confuse these**: `max_completion_mana` is the model's capability, `max_output_mana` is a per-request limit.
 
@@ -50,6 +53,7 @@ Test paths follow pattern: `mvgeos-provider/tests/unit/<module>.py` and `mvgeos-
 ## Architecture
 
 - `Realm.stream(model, invocations, config)` → async generator of `RealmResponse`
+- `Realm.complete(model, messages, config)` → single non-channeled completion (e.g. for compaction)
 - `OpenRouterRealm` implements OpenRouter SSE streaming with retry/backoff
 - `RealmRegistry` creates realms and registers rune-provided providers
 - `ModelRegistry` maintains a catalog with disk cache and OpenRouter API refresh

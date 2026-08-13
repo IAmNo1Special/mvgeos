@@ -31,21 +31,30 @@ Test paths follow pattern: `mvgeos-cli/tests/unit/<module>.py` and `mvgeos-cli/t
 | `StreamRenderer` | Renders channeled tokens to console |
 | `ConsoleSink` / `Sink` | Output sinks for streaming |
 | `SlashCompleter` | Tab completion for slash commands |
-| `tome_app` | Tome management CLI (list/show/export/create/fork) |
-| `config_app` | Config CLI (show/set/get/reset/path) |
+| `tome_app` | Tome management CLI (`mvgeos tome`) |
+| `config_app` | Config CLI (`mvgeos config`) |
+| `setup_app` | Setup CLI (`mvgeos setup`) |
+| `info_app` | Runtime snapshot inspection CLI (`mvgeos info`) |
+| `build_app` | Runtime manifest serialization CLI (`mvgeos build`) |
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `mvgeos <prompt>` | Run a one-shot prompt (or start REPL/TUI if omitted) |
-| `mvgeos tome list` | List all tomes |
-| `mvgeos tome show <id>` | Show Tome contents |
-| `mvgeos tome export <id>` | Export Tome to file |
-| `mvgeos tome create` | Create new Tome |
-| `mvgeos tome fork <id>` | Fork Tome from a leaf |
-| `mvgeos config show` | Show configuration |
-| `mvgeos config set <key> <value>` | Set configuration value |
+| `mvgeos [prompt]` | Run a prompt, start REPL, or start TUI (`--tui`) |
+| `mvgeos setup [check]` | Check missing rune system/Python dependencies |
+| `mvgeos setup install [-y]` | Install missing rune system/Python dependencies |
+| `mvgeos info [-o <path>]` | Display rich runtime snapshot (spells, runes, config, skills, diags) |
+| `mvgeos build [--format json\|summary]` | Serialise resolved runtime manifest |
+| `mvgeos tome list` | List all persisted tomes |
+| `mvgeos tome show <id> [-f json\|markdown]` | Show Tome contents |
+| `mvgeos tome export <id> [-f <fmt>] [-o <file>]` | Export Tome to JSON or Markdown |
+| `mvgeos tome create [--cwd <dir>] [--parent <id>]` | Create new Tome |
+| `mvgeos tome fork <id> [-l <leaf_id>]` | Fork Tome from a leaf |
+| `mvgeos config show [--agent-name <name>]` | Show configuration with provenance layers |
+| `mvgeos config set <key> <value>` | Set configuration value in agent-scope |
+| `mvgeos config get <key>` | Get configuration value with provenance |
+| `mvgeos config reset` | Reset configuration to defaults |
 | `mvgeos config path` | Show configuration file path |
 
 ## Dependencies

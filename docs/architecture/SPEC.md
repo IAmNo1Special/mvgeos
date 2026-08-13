@@ -50,30 +50,53 @@ mvgeos/
 
 ```python
 class ContemplationLevel(StrEnum):
-    OFF, MINIMAL, LOW, MEDIUM, HIGH, XHIGH, MAX
+    OFF = "none"
+    MINIMAL = "minimal"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    XHIGH = "xhigh"
+    MAX = "max"
 
 
 class SpellExecutionMode(StrEnum):
-    SEQUENTIAL, PARALLEL
+    SEQUENTIAL = "sequential"
+    PARALLEL = "parallel"
 
 
 class MvgeEventType(StrEnum):
-    (
-        AGENT_START,
-        AGENT_END,
-        TURN_START,
-        TURN_END,
-        MESSAGE_START,
-        MESSAGE_UPDATE,
-        MESSAGE_END,
-        SPELL_CASTING_START,
-        SPELL_CASTING_UPDATE,
-        SPELL_CASTING_END,
-    )
+    AGENT_START = "agent_start"
+    AGENT_END = "agent_end"
+    AGENT_SETTLED = "agent_settled"
+    TURN_START = "turn_start"
+    TURN_END = "turn_end"
+    INPUT = "input"
+    BEFORE_PROVIDER_REQUEST = "before_provider_request"
+    AFTER_PROVIDER_RESPONSE = "after_provider_response"
+    BEFORE_INVOCATION = "before_invocation"
+    AFTER_INVOCATION = "after_invocation"
+    MESSAGE_START = "message_start"
+    MESSAGE_UPDATE = "message_update"
+    MESSAGE_END = "message_end"
+    TOOL_EXECUTION_START = "tool_execution_start"
+    TOOL_EXECUTION_UPDATE = "tool_execution_update"
+    TOOL_EXECUTION_END = "tool_execution_end"
+    SPELL_CASTING_START = "spell_casting_start"
+    SPELL_CASTING_UPDATE = "spell_casting_update"
+    SPELL_CASTING_END = "spell_casting_end"
+    COMPACTION_START = "compaction_start"
+    COMPACTION_END = "compaction_end"
+    ENTRY_APPENDED = "entry_appended"
+    QUEUE_UPDATE = "queue_update"
 
 
 class StopReason(StrEnum):
-    PENDING, STOP, LENGTH, SPELL_USE, ERROR, ABORTED
+    PENDING = "pending"
+    STOP = "stop"
+    LENGTH = "length"
+    SPELL_USE = "spellUse"
+    ERROR = "error"
+    ABORTED = "aborted"
 
 
 @dataclass
@@ -95,6 +118,22 @@ class MvgeResponse:
     timestamp: float = 0.0
 
 
+class SpellStatus(StrEnum):
+    SUCCESS = "success"
+    ERROR = "error"
+    PARTIAL = "partial"
+
+
+@dataclass
+class SpellResult:
+    spell_name: str
+    status: SpellStatus = SpellStatus.SUCCESS
+    content: str = ""
+    details: dict[str, Any] = field(default_factory=dict)
+    error_message: str | None = None
+    terminate: bool = False
+
+
 @dataclass
 class SpellResultMessage:
     role: str = "spellResult"
@@ -104,6 +143,7 @@ class SpellResultMessage:
     details: dict[str, Any] | None = None
     is_error: bool = False
     timestamp: float = 0.0
+    terminate: bool = False
 
 
 MvgeInvocation = SummonerRequest | MvgeResponse | SpellResultMessage
@@ -116,29 +156,43 @@ class MvgeSpell:
     parameters: dict[str, Any]
     execution_mode: SpellExecutionMode = SpellExecutionMode.PARALLEL
 
+    def prepare_arguments(self, args: dict[str, Any]) -> dict[str, Any]: ...
+
     async def execute(
         self,
         spell_cast_id: str,
         params: dict[str, Any],
-        signal: Any = None,
-        on_update: Any = None,
-    ) -> dict[str, Any]: ...
+        signal: Any | None = None,
+        on_update: Any | None = None,
+    ) -> dict[str, Any] | str: ...
 
 
 @dataclass
 class MvgeState:
     system_prompt: str = ""
+    prompt_source: PromptSource = PromptSource.BUILTIN
     model: dict[str, Any] | None = None
-    contemplation_level: ContemplationLevel = ContemplationLevel.OFF
+    contemplation_level: ContemplationLevel = ContemplationLevel.MEDIUM
     spells: list[MvgeSpell] = field(default_factory=list)
     invocations: list[MvgeInvocation] = field(default_factory=list)
     is_streaming: bool = False
     streaming_manifestation: MvgeInvocation | None = None
     pending_spell_casts: set[str] = field(default_factory=set)
     error_message: str | None = None
-    mana_budget: int | None = None
+    mana_used: int = 0
     max_tokens: int | None = None
     temperature: float | None = None
+    max_turns: int = 50
+    max_events: int = 1000
+    spell_timeout_ms: int = 30000
+    contemplation_budget: int | None = None
+    exclude_contemplation: bool = False
+    rune_runner: RuneRunner | None = None
+    agent_session: MvgeTome | None = None
+    event_bus: EventBus | None = None
+    events: list[MvgeEvent] = field(default_factory=list)
+    steer_queue: list[SummonerRequest] = field(default_factory=list)
+    followup_queue: list[SummonerRequest] = field(default_factory=list)
 
 
 @dataclass
@@ -162,6 +216,11 @@ class Model:
     max_tokens: int = 4096
     headers: dict[str, str] = field(default_factory=dict)
     supported_parameters: list[str] = field(default_factory=list)
+    is_free: bool = False
+
+    @property
+    def free(self) -> bool:
+        return self.is_free or self.id.endswith(":free") or self.id == "openrouter/free"
 
     @property
     def provider(self) -> str:
@@ -197,20 +256,19 @@ class RealmResponse:
 
 ```python
 class TomeEntryType(StrEnum):
-    (
-        INVOCATION,
-        SPELL_RESULT,
-        MODEL_CHANGE,
-        CONTEMPLATION_LEVEL_CHANGE,
-        SPELL_CALLS_CHANGE,
-        LABEL,
-        BRANCH_SUMMARY,
-        COMPACTION,
-        CUSTOM,
-        CUSTOM_MESSAGE,
-        LEAF,
-        TOME_INFO,
-    )
+    INVOCATION = "invocation"
+    SPELL_RESULT = "spellResult"
+    MODEL_CHANGE = "modelChange"
+    CONTEMPLATION_LEVEL_CHANGE = "contemplationLevelChange"
+    SPELL_CALLS_CHANGE = "spellCallsChange"
+    LABEL = "label"
+    BRANCH_SUMMARY = "branchSummary"
+    COMPACTION = "compaction"
+    CUSTOM = "custom"
+    CUSTOM_MESSAGE = "customMessage"
+    LEAF = "leaf"
+    TOME_INFO = "tome_info"
+    MESSAGE = "message"
 
 
 @dataclass
@@ -232,65 +290,33 @@ class TomeMetadata:
     schema_version: str = "1.0"
 ```
 
-### mvgeos-agent/types.py
-
-```python
-class SpellStatus(StrEnum):
-    SUCCESS, ERROR, PARTIAL
-
-
-@dataclass
-class SpellResult:
-    spell_name: str
-    status: SpellStatus = SpellStatus.SUCCESS
-    content: str = ""
-    details: dict[str, Any] = field(default_factory=dict)
-    error_message: str | None = None
-```
-
-### mvgeos-agent/spell_schema.py
-
-```python
-def generate_spell_schema(func: Callable[..., Any]) -> dict[str, Any]:
-    """Generate a JSON schema from a spell function's signature and type hints."""
-    ...
-
-
-def validate_spell_args(schema: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:
-    """Validate spell arguments against a JSON schema using Pydantic."""
-    ...
-```
-
 ### mvgeos-runes/types.py
 
 ```python
 class SigilHook(StrEnum):
-    (
-        BEFORE_INVOCATION,
-        AFTER_INVOCATION,
-    )
-    (
-        BEFORE_SPELL_CAST,
-        AFTER_SPELL_RESULT,
-    )
-    (
-        BEFORE_PROVIDER_REQUEST,
-        AFTER_PROVIDER_RESPONSE,
-    )
-    (BEFORE_PROVIDER_HEADERS,)
-    (
-        TURN_START,
-        TURN_END,
-    )
-    (
-        SESSION_START,
-        SESSION_SHUTDOWN,
-    )
-    (
-        SESSION_BEFORE_SWITCH,
-        SESSION_BEFORE_FORK,
-    )
-    CONTEXT_TRANSFORM
+    BEFORE_INVOCATION = "before_invocation"
+    AFTER_INVOCATION = "after_invocation"
+    BEFORE_SPELL_CAST = "before_spell_cast"
+    AFTER_SPELL_RESULT = "after_spell_result"
+    BEFORE_PROVIDER_REQUEST = "before_provider_request"
+    AFTER_PROVIDER_RESPONSE = "after_provider_response"
+    BEFORE_PROVIDER_HEADERS = "before_provider_headers"
+    TURN_START = "turn_start"
+    TURN_END = "turn_end"
+    SESSION_START = "session_start"
+    SESSION_SHUTDOWN = "session_shutdown"
+    SESSION_BEFORE_SWITCH = "session_before_switch"
+    SESSION_BEFORE_FORK = "session_before_fork"
+    SESSION_BEFORE_COMPACT = "session_before_compact"
+    COMPACTION_START = "compaction_start"
+    COMPACTION_END = "compaction_end"
+    CONTEXT_TRANSFORM = "context_transform"
+    AGENT_START = "agent_start"
+    AGENT_END = "agent_end"
+    BEFORE_MVGE_START = "before_mvge_start"
+    INPUT = "input"
+    SHOULD_STOP_AFTER_TURN = "should_stop_after_turn"
+    PREPARE_NEXT_TURN = "prepare_next_turn"
 
 
 @dataclass
@@ -298,8 +324,15 @@ class RuneManifest:
     name: str
     version: str
     description: str
+    scope: RuneScope = RuneScope.PROJECT
+    path: str = ""
     hooks: list[SigilHook] = field(default_factory=list)
     entry_point: str = ""
+    shortcuts: list[RuneShortcut] = field(default_factory=list)
+    system_deps: list[str] = field(default_factory=list)
+    python_deps: list[str] = field(default_factory=list)
+    execution_mode: ExecutionMode = ExecutionMode.PARALLEL
+    enabled: bool = True
 ```
 
 ## Implemented Components

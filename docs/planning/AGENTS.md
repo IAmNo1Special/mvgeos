@@ -1,7 +1,7 @@
 # MvgeOS TODO — Agent Task Tracker
 
-**Last Updated**: 2026-08-11
-**Current Status**: Core engine, provider, tome persistence, rune loader, CLI, and coding agent implemented with 823 passing tests and 92.87% coverage.
+**Last Updated**: 2026-08-13
+**Current Status**: Core engine, provider, tome persistence, rune loader, CLI, and coding agent implemented with 1,008 passing tests (2 skipped) and 94.38% coverage.
 **Location**: `C:\Users\ivmno\Desktop\mvgeos\`
 
 ---
@@ -10,13 +10,13 @@
 
 | Package | Tests | Coverage | Mypy | Ruff |
 |---------|-------|----------|------|------|
-| mvgeos-agent | 338 passed | 89-100% | ✅ | ✅ |
-| mvgeos-provider | 64 passed | 82-100% | ✅ | ✅ |
-| mvgeos-tome | 11 passed | 65-100% | ✅ | ✅ |
-| mvgeos-runes | 240 passed | 87-100% | ✅ | ✅ |
-| mvgeos-cli | 160 passed | 57-100% | ✅ | ✅ |
-| coding-mvge | 10 passed | 90-100% | ✅ | ✅ |
-| **TOTAL** | **823 passed** | **92.87%** | ✅ | ✅ |
+| mvgeos-agent | 334 passed (1 skipped) | 96% | ✅ | ✅ |
+| mvgeos-provider | 98 passed | 93% | ✅ | ✅ |
+| mvgeos-tome | 27 passed | 90% | ✅ | ✅ |
+| mvgeos-runes | 178 passed | 97% | ✅ | ✅ |
+| mvgeos-cli | 306 passed | 95% | ✅ | ✅ |
+| coding-mvge | 65 passed (1 skipped) | 97% | ✅ | ✅ |
+| **TOTAL** | **1,008 passed (2 skipped)** | **94.38%** | ✅ | ✅ |
 
 ---
 

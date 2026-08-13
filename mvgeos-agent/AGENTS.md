@@ -35,6 +35,10 @@ Test paths follow pattern: `mvgeos-agent/tests/unit/<module>.py` and `mvgeos-age
 | `ContemplationLevel` | Reasoning-effort enum (maps to OpenRouter `reasoning.effort`) |
 | `BaseMvge` | Template-Method agent skeleton (`run()` → `_run_impl()`) |
 | `MvgeLoop` | The turn loop: channels realm responses, executes spells, emits events/sigils |
+| `MvgeHarness` | Session-aware operational owner of the agent loop, compaction, and turns |
+| `MvgeEnvironment` | Layered config loading, prompt resolution, and diagnostic introspection |
+| `CompactionRunner` | Orchestrates transcript compaction and summary generation |
+| `SpellDispatcher` | Executes tool call batches concurrently or sequentially |
 | `MvgeTome` | Session wrapper over `TomeLedger`; emits session sigils; switch/fork |
 
 ## Spell Schema

@@ -36,9 +36,9 @@ The heartbeat of MvgeOS. Contains the `Mvge` class (the agent),
 Manages the connection to LLM providers (Realms). Defines the `Realm` protocol
 (the provider interface) and implements `OpenRouterRealm`
 (the OpenRouter provider). The provider handles channeling (streaming),
-authentication resolution, and response delivery.
+authentication resolution, non-channeled completion, and response delivery.
 
-**Entry point**: `Realm.channel(model, invocations, config)`
+**Entry point**: `Realm.stream(model, invocations, config)`
 → returns async generator of `RealmResponse`
 
 **Dependencies**: httpx, filelock
@@ -66,7 +66,7 @@ points where runes can register Sigil callbacks.
 **Entry point**: `RuneLoader.load_all()` → discovers manifests
 → registers sigils → emits MvgeEvents on hooks
 
-**Dependencies**: importlib_metadata
+**Dependencies**: importlib.util, watchdog
 
 ### mvgeos-cli
 
@@ -75,12 +75,15 @@ orchestrating the other packages.
 
 **Commands**:
 
-- `mvgeos <prompt>` → Run a one-shot prompt (or start REPL/TUI if omitted)
-- `mvgeos tome <command>` → Manage tomes (list, create, resume)
-- `mvgeos config <command>` → Manage configuration
+- `mvgeos [prompt]` → Run a prompt, start REPL, or start TUI (`--tui`)
+- `mvgeos setup [check|install]` → Check and install missing dependencies
+- `mvgeos info` → Display rich runtime snapshot
+- `mvgeos build` → Serialise resolved runtime manifest
+- `mvgeos tome <command>` → Manage tomes (list, show, export, create, fork)
+- `mvgeos config <command>` → Manage configuration (show, set, get, reset, path)
 
 **Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-tome,
-mvgeos-runes, rich, typer, prompt-toolkit
+mvgeos-runes, rich, typer, prompt_toolkit
 
 ### coding-mvge
 
@@ -101,15 +104,16 @@ mvgeos-runes
 2. CLI creates `BaseMvge`/`CodingMvge` instance with configured realms
 3. `BaseMvge.run(prompt)` → normalizes input to `SummonerRequest`
 4. `BaseMvge.initialize()` creates `MvgeHarness` (wraps `MvgeLoop`, owns lifecycle and compaction)
-5. `MvgeHarness.run()` delegates to `MvgeLoop.run()` (nested outer/inner loops)
-6. Loop calls `Realm.channel(model, invocations, config)` on configured realm
-7. Provider channels `RealmResponse` events (text deltas, tool calls, etc.)
-8. `MvgeLoop` processes events → updates `MvgeState` → emits `MvgeEvent` to subscribers
-9. Tool calls detected → `Spell.execute()` → results appended to invocations
-10. Loop continues until no more tool calls and no steering/follow-up invocations
-11. `MvgeHarness` handles compaction (after each invocation), `should_stop_after_turn`,
+5. `BaseMvge._run_impl()` delegates to `MvgeHarness.run()`
+6. `MvgeHarness.run()` delegates to `MvgeLoop.run()` (nested outer/inner loops)
+7. Loop calls `Realm.stream(model, invocations, config)` on configured realm
+8. Provider channels `RealmResponse` events (text deltas, tool calls, etc.)
+9. `MvgeLoop` processes events → updates `MvgeState` → emits `MvgeEvent` to subscribers
+10. Tool calls detected → `SpellDispatcher.execute_spells()` → `Spell.execute()` → results appended to invocations
+11. Loop continues until no more tool calls and no steering/follow-up invocations
+12. `MvgeHarness` handles compaction (after each invocation), `should_stop_after_turn`,
     `prepare_next_turn`, steering/follow-up queue drainage
-12. Final `MvgeResponse` emitted with `done` event
+13. Final `MvgeResponse` emitted with `done` event
 
 ### Tome Persistence Flow
 
@@ -142,7 +146,7 @@ interface MvgeSpell {
     name: str
     description: str
     parameters: dict
-    execute(params, signal, on_update) -> SpellResult
+    execute(spell_cast_id, params, signal, on_update) -> SpellResult | str
     execution_mode: SpellExecutionMode  # sequential | parallel
 }
 ```
@@ -152,7 +156,8 @@ interface MvgeSpell {
 ```typescript
 interface MvgeState {
     system_prompt: str
-    model: Model
+    prompt_source: PromptSource
+    model: dict | None
     contemplation_level: ContemplationLevel
     spells: list[MvgeSpell]
     invocations: list[MvgeInvocation]
@@ -160,6 +165,7 @@ interface MvgeState {
     streaming_manifestation: MvgeInvocation | None
     pending_spell_casts: set[str]
     error_message: str | None
+    mana_used: int
 }
 ```
 
@@ -167,7 +173,7 @@ interface MvgeState {
 
 Discriminated union of lifecycle events: agent_start, turn_start,
 message_start, message_update, message_end, spell_casting_start/update/end,
-turn_end, agent_end.
+turn_end, agent_end, compaction_start/end, queue_update.
 
 ## Technology Stack
 
@@ -179,7 +185,7 @@ turn_end, agent_end.
 - **Type checking**: mypy (strict)
 - **File locking**: filelock (cross-platform)
 - **HTTP client**: httpx (provider realm)
-- **CLI**: rich (future TUI), argparse (CLI commands)
+- **CLI**: typer, rich (console rendering), prompt_toolkit (TUI)
 - **Pre-commit**: pre-commit framework (ruff + mypy + pytest checks)
 - **Config compliance**: dotagents protocol at `.agents/.mvgeos/`
 - **Changelog**: git-cliff at `cliff.toml` — conventional commits
