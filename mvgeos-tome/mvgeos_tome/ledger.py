@@ -93,12 +93,18 @@ class TomeLedger:
     def open_tome(self, tome_id: str) -> TomeMetadata | None:
         with self._lock:
             meta = self._tomles.get(tome_id)
+            if meta is None and Path(tome_id).is_file():
+                meta = self._load_tome_metadata(Path(tome_id))
+                if meta:
+                    self._tomles[meta.id] = meta
             if meta is None:
                 meta = self._load_tome_metadata(tome_id)
                 if meta:
                     self._tomles[meta.id] = meta
             if meta is None:
-                resolved_id = self._resolve_tome_id(tome_id)
+                resolved_id = self._resolve_tome_id(tome_id) or self._resolve_tome_id(
+                    Path(tome_id).stem
+                )
                 if resolved_id:
                     meta = self._tomles.get(resolved_id)
             return meta
@@ -339,10 +345,15 @@ class TomeLedger:
                 continue
         self._rebuild_index()
 
-    def _load_tome_metadata(self, tome_id: str) -> TomeMetadata | None:
-        tome_file = self._tome_file_path(tome_id)
+    def _load_tome_metadata(self, tome_id_or_path: str | Path) -> TomeMetadata | None:
+        path = Path(tome_id_or_path)
+        if path.is_file():
+            tome_file = path
+        else:
+            tome_file = self._tome_file_path(str(tome_id_or_path))
         if not tome_file.exists():
             return None
+
         with tome_file.open("r", encoding="utf-8") as f:
             first_line = f.readline()
             if not first_line:

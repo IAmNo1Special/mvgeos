@@ -139,6 +139,18 @@ class TestOpenTomePrefixLookup:
             assert resolved is not None
             assert resolved.id == tome.id
 
+    def test_open_tome_raw_file_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = _ledger(tmp)
+            tome_id = "098b2ee4a1b2c3d4e5f6789012345678"
+            tome = ledger.create_tome("/tmp", tome_id=tome_id)
+            raw_path = ledger.tome_file(tome_id)
+
+            resolved = ledger.open_tome(str(raw_path))
+
+            assert resolved is not None
+            assert resolved.id == tome.id
+
     def test_append_leaf_with_short_id_prefix(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             ledger = _ledger(tmp)

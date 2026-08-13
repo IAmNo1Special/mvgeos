@@ -464,17 +464,9 @@ class BaseMvge:
         )
 
         if self._session_resume:
-            resume_path = Path(self._session_resume)
-            if not resume_path.exists():
-                raise FileNotFoundError(
-                    f"Session file not found: {self._session_resume}"
-                )
-            tome_id = resume_path.stem
-            meta = self._tome_ledger.open_tome(tome_id)
+            meta = self._tome_ledger.open_tome(self._session_resume)
             if meta is None:
-                raise SessionResumeError(
-                    f"Failed to resume session {self._session_resume}: tome not found"
-                )
+                raise SessionResumeError(self._session_resume)
             self._agent_session = MvgeTome(self._tome_ledger, meta, self._runner)
             await self._agent_session.start(reason="resume")
 
