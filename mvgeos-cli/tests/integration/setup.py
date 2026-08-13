@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+from mvgeos_runes.types import RuneManifest
 from typer.testing import CliRunner
 
 from mvgeos_cli.commands.setup import (
@@ -349,3 +350,53 @@ def test_setup_install_command_dry_run_python() -> None:
         result = runner.invoke(app, ["setup", "install", "--dry-run", "--yes"])
         assert result.exit_code == 0
         assert "uv pip install heal_my_goap" in result.output
+
+
+def test_setup_install_command_yes_skips_prompt() -> None:
+    runner = CliRunner()
+    manifest = RuneManifest(name="r", version="1", description="", system_deps=["git"])
+    with (
+        patch(
+            "mvgeos_cli.commands.setup.collect_rune_dirs",
+            return_value=[(manifest, Path("/tmp/r"))],
+        ),
+        patch("mvgeos_cli.commands.setup.check_tool_installed", return_value=True),
+    ):
+        result = runner.invoke(app, ["setup", "install", "--yes"])
+        assert result.exit_code == 0
+        assert "All dependencies already installed" in result.output
+
+
+def test_setup_install_command_piped_stdin_confirm() -> None:
+    runner = CliRunner()
+    manifest = RuneManifest(
+        name="r", version="1", description="", system_deps=["ripgrep"]
+    )
+    with (
+        patch(
+            "mvgeos_cli.commands.setup.collect_rune_dirs",
+            return_value=[(manifest, Path("/tmp/r"))],
+        ),
+        patch("mvgeos_cli.commands.setup.check_tool_installed", return_value=False),
+        patch("shutil.which", return_value="/usr/bin/winget"),
+    ):
+        result = runner.invoke(app, ["setup", "install", "--dry-run"], input="y\n")
+        assert result.exit_code == 0
+        assert "Would run" in result.output
+
+
+def test_setup_install_command_piped_stdin_abort() -> None:
+    runner = CliRunner()
+    manifest = RuneManifest(
+        name="r", version="1", description="", system_deps=["ripgrep"]
+    )
+    with (
+        patch(
+            "mvgeos_cli.commands.setup.collect_rune_dirs",
+            return_value=[(manifest, Path("/tmp/r"))],
+        ),
+        patch("mvgeos_cli.commands.setup.check_tool_installed", return_value=False),
+    ):
+        result = runner.invoke(app, ["setup", "install"], input="n\n")
+        assert result.exit_code == 0
+        assert "Aborted" in result.output

@@ -46,6 +46,31 @@ MvgeOS adheres to the dotagents protocol. Configuration lives in `.agents/.mvgeo
 - `.agents/.mvgeos/auth/` — API keys and credentials
 - `.agents/.mvgeos/tomes/` — Tome JSONL files
 
+## Setup (installing rune dependencies)
+
+Runes may declare system and Python dependencies. `mvgeos setup install`
+resolves and installs what is missing:
+
+```bash
+# Interactive: prompts "Install now? [y/N]:"
+uv run mvgeos setup install
+
+# Non-interactive: skip the prompt entirely
+uv run mvgeos setup install --yes
+uv run mvgeos setup install -y
+
+# Non-interactive via piped stdin (no --yes flag needed)
+echo y | uv run mvgeos setup install
+
+# Preview without installing
+uv run mvgeos setup install --dry-run
+```
+
+The `--yes`/`-y` flag auto-confirms every installation. When omitted, the
+confirmation prompt reads from stdin, so piping a `y` (`echo y | mvgeos setup
+install`) also runs it non-interactively — useful for scripts and CI. Check
+what is required without changes via `uv run mvgeos setup check`.
+
 ## License
 
 MIT

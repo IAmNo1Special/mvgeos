@@ -319,10 +319,21 @@ def setup_install(
         False, "--dry-run", help="Show what would be installed without installing"
     ),
     yes: bool = typer.Option(
-        False, "--yes", "-y", help="Auto-confirm all installations"
+        False,
+        "--yes",
+        "-y",
+        help=(
+            "Auto-confirm all installations (non-interactive). Without this flag "
+            "the confirmation prompt reads piped stdin, so "
+            "'echo y | mvgeos setup install' also works non-interactively."
+        ),
     ),
 ) -> None:
-    """Install missing dependencies for runes."""
+    """Install missing dependencies for runes.
+
+    Non-interactive use: pass ``--yes``/``-y`` to skip the confirmation prompt,
+    or pipe stdin (``echo y | mvgeos setup install``) when prompted.
+    """
     runes = collect_rune_dirs(agent_name, extension_dir)
 
     if not runes:
