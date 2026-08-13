@@ -13,7 +13,7 @@ from rich.table import Table
 from mvgeos_cli.console import get_console, is_utf8_stream
 
 console = get_console()
-tome_app = typer.Typer()
+tome_app = typer.Typer(name="tome", help="Session tome management")
 
 
 def get_tome_dir() -> Path:

@@ -30,6 +30,7 @@ def test_app_help() -> None:
     assert result.exit_code == 0
     assert "MvgeOS" in result.output
     assert "REPL" in result.output
+    assert "Session tome management" in result.output
 
 
 def test_app_config_help() -> None:
