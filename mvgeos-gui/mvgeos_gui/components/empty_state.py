@@ -10,7 +10,7 @@ from mvgeos_gui.state import AppState
 def render_empty_state(state: AppState) -> ui.column:
     """Render centered empty state with project switcher dropdown."""
     container = ui.column().classes(
-        "w-full h-full items-center justify-center gap-5 p-6 text-center select-none"
+        "w-full h-full items-center justify-center gap-4 px-6 text-center select-none"
     )
 
     with container:
@@ -28,7 +28,7 @@ def render_empty_state(state: AppState) -> ui.column:
                 "Summon an AI coding agent to inspect, code, and execute spells."
             ).classes("text-xs text-[#8b949e]")
 
-        # Centered Active Workspace Selector Pill (Image 1 style)
+        # Centered Active Workspace Selector Pill
         with ui.row().classes("items-center justify-center gap-2"):
             project_name = state.project_path.name or str(state.project_path)
             with ui.button().classes(
@@ -116,7 +116,7 @@ def render_empty_state(state: AppState) -> ui.column:
                             ui.label("No Project").classes("text-[#8b949e]")
 
         # Quick action pills
-        with ui.row().classes("gap-2 items-center pt-2"):
+        with ui.row().classes("gap-2 items-center justify-center pt-1"):
             ui.button(
                 "New Project",
                 icon="add",

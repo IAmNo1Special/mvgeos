@@ -14,25 +14,25 @@ AVAILABLE_MODELS = [
 
 def render_input_dock(state: AppState) -> ui.column:
     """Render floating input dock at bottom of conversation viewport."""
-    wrapper = ui.column().classes("w-full max-w-4xl mx-auto px-6 pb-8 pt-2 shrink-0")
+    wrapper = ui.column().classes("w-full max-w-3xl mx-auto px-6 pb-8 pt-2 shrink-0")
 
     with (
         wrapper,
         ui.card().classes(
-            "w-full bg-[#1e212b] border border-[#2b2f3d] rounded-2xl p-3.5 gap-2 "
+            "w-full bg-[#1e212b] border border-[#2b2f3d] rounded-2xl p-4 gap-3 "
             "shadow-2xl focus-within:border-[#3b82f6] transition-colors"
         ),
     ):
-        # Prompt textarea
+        # Prompt textarea with symmetrical horizontal padding
         ui.textarea(placeholder="Ask anything. @ to mention. / for actions").props(
             "borderless autogrow dark dense hide-bottom-space"
         ).classes(
             "w-full text-xs text-[#e6edf3] bg-transparent resize-none "
-            "leading-relaxed min-h-[36px]"
+            "leading-relaxed min-h-[36px] px-1"
         )
 
-        # Bottom toolbar row inside dock
-        with ui.row().classes("w-full items-center justify-between pt-1"):
+        # Bottom toolbar row inside dock with symmetrical horizontal padding
+        with ui.row().classes("w-full items-center justify-between px-1"):
             # Left tools: Attachment (+), Model Selector, Mode Pill
             with ui.row().classes("items-center gap-2"):
                 with ui.button(icon="add").props(
@@ -49,7 +49,7 @@ def render_input_dock(state: AppState) -> ui.column:
                     "dense options-dense borderless dark options-dark rounded text-xs"
                 ).classes("text-xs text-[#8b949e] font-mono max-w-[220px]")
 
-                # Local pill indicator (Image 1 style)
+                # Local pill indicator
                 with ui.row().classes(
                     "items-center gap-1 px-2 py-0.5 rounded bg-[#13151b] border "
                     "border-[#2b2f3d] text-[11px] text-[#8b949e] cursor-pointer"
@@ -59,7 +59,7 @@ def render_input_dock(state: AppState) -> ui.column:
                     ui.icon("expand_more", size="12px")
 
             # Right action: Mic + Submit / Stop Channeling button
-            with ui.row().classes("items-center gap-1.5"):
+            with ui.row().classes("items-center gap-2"):
                 with ui.button(icon="mic").props(
                     "flat dense round text-color=grey-5 size=sm"
                 ):
