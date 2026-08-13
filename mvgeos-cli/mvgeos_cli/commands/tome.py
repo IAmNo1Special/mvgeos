@@ -16,6 +16,13 @@ console = get_console()
 tome_app = typer.Typer(name="tome", help="Session tome management")
 
 
+@tome_app.callback(invoke_without_command=True)
+def tome_callback(ctx: typer.Context) -> None:
+    """Session tome management."""
+    if ctx.invoked_subcommand is None:
+        console.print(ctx.get_help())
+
+
 def get_tome_dir() -> Path:
     tome_dir = DEFAULT_TOME_DIR
     tome_dir.mkdir(parents=True, exist_ok=True)

@@ -6,8 +6,17 @@ from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
 
 from mvgeos_cli.commands.config import config_app
+from mvgeos_cli.main import app
 
 runner = CliRunner()
+
+
+def test_config_no_subcommand_prints_help() -> None:
+    result = runner.invoke(app, ["config"])
+    assert result.exit_code == 0
+    assert "Configuration management" in result.stdout
+    assert "Commands" in result.stdout
+    assert "Missing command" not in result.output
 
 
 class TestConfigCommands:

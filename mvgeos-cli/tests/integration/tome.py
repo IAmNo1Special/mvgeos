@@ -11,8 +11,17 @@ from mvgeos_cli.commands.tome import (
     get_tome_dir,
     tome_app,
 )
+from mvgeos_cli.main import app
 
 runner = CliRunner()
+
+
+def test_tome_no_subcommand_prints_help() -> None:
+    result = runner.invoke(app, ["tome"])
+    assert result.exit_code == 0
+    assert "Session tome management" in result.stdout
+    assert "Commands" in result.stdout
+    assert "Missing command" not in result.output
 
 
 class TestTomeCommands:

@@ -400,3 +400,19 @@ def test_setup_install_command_piped_stdin_abort() -> None:
         result = runner.invoke(app, ["setup", "install"], input="n\n")
         assert result.exit_code == 0
         assert "Aborted" in result.output
+
+
+def test_setup_no_subcommand_defaults_to_check() -> None:
+    runner = CliRunner()
+    with patch("mvgeos_cli.commands.setup.collect_rune_dirs", return_value=[]):
+        result = runner.invoke(app, ["setup"])
+        assert result.exit_code == 0
+        assert "No runes found" in result.output
+
+
+def test_setup_explicit_check_subcommand() -> None:
+    runner = CliRunner()
+    with patch("mvgeos_cli.commands.setup.collect_rune_dirs", return_value=[]):
+        result = runner.invoke(app, ["setup", "check"])
+        assert result.exit_code == 0
+        assert "No runes found" in result.output

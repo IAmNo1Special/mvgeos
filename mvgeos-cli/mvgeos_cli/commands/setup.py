@@ -6,15 +6,28 @@ import platform
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import typer
+import typer._click as _click
 from mvgeos_agent.config_manager import validate_agent_name
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME, resolve_rune_paths
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.types import RuneManifest
 from rich.console import Console
+from typer.core import TyperGroup
 
 console = Console()
+
+
+class DefaultCheckGroup(TyperGroup):
+    """Group that defaults to the ``check`` subcommand when none is given."""
+
+    def invoke(self, ctx: _click.Context) -> Any:
+        if not ctx._protected_args:
+            ctx._protected_args = ["check"]
+        return super().invoke(ctx)
+
 
 setup_app = typer.Typer(name="setup", help="Install system dependencies for runes")
 

@@ -13,6 +13,13 @@ console = get_console()
 config_app = typer.Typer(name="config", help="Configuration management")
 
 
+@config_app.callback(invoke_without_command=True)
+def config_callback(ctx: typer.Context) -> None:
+    """Configuration management."""
+    if ctx.invoked_subcommand is None:
+        console.print(ctx.get_help())
+
+
 def _get_manager(agent_name: str, allow_create: bool = False) -> ConfigManager:
     """Create a ConfigManager for the given agent name."""
     try:
