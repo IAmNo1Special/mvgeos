@@ -11,7 +11,7 @@
 - **`Any` type abuse**: `base_mvge.py:67, 148, 278, 279` — `_realm: Any`, `signal: Any`, `on_update: Any` loses type safety
 - **Mutable shared dict mutation**: `loop.py:228-231` — `state.model["headers"].update(provider_headers)` mutates shared dict across turns
 - **Session resume silent fallback**: `base_mvge.py:172-185` catches `ValueError, FileNotFoundError`, logs warning, continues with new session — no user notification
-- **Duplicate `_build_spells()`** in `coding_mvge/mvge.py:248` and `367` — second shadows first (dead code)
+- ~~**Duplicate `_build_spells()`** in `coding_mvge/mvge.py:248` and `367` — second shadows first (dead code)~~ ✅ **RESOLVED** — See `coding-mvge` section (duplicate removed during refactoring)
 
 ### Performance & Scale
 - ~~**Linear spell lookup**: `loop.py:362` — `next((s for s in spells if s.name == name), None)` is O(n) per spell cast~~ ✅ **RESOLVED** — Added `_spell_index` dict in `MvgeState.__post_init__`
