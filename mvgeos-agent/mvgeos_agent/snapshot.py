@@ -105,8 +105,8 @@ class RuntimeSnapshot:
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
 
-    def to_json(self) -> str:
-        return json.dumps(dataclasses.asdict(self), indent=2, default=str)
+    def to_json(self, indent: int | None = 2) -> str:
+        return json.dumps(dataclasses.asdict(self), indent=indent, default=str)
 
 
 def to_snapshot_spell(spell: MvgeSpell | SpellDefinition) -> SnapshotSpell:

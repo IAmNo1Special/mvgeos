@@ -275,6 +275,73 @@ class TestBuildCommand:
         assert result.exit_code == 0
         assert config_file.read_text(encoding="utf-8") == '{"model": "default-model"}'
 
+    @patch("mvgeos_cli.commands.build._assemble")
+    def test_build_format_summary(self, mock_assemble: MagicMock) -> None:
+        mock_assemble.return_value = _make_snapshot()
+        result = runner.invoke(build_app, ["--format", "summary"])
+        assert result.exit_code == 0
+        output = result.output
+        assert "Agent: test-agent" in output
+        assert "Spells (2):" in output
+        assert "Runes (1):" in output
+        assert "my_rune" in output
+        assert "Diagnostics (1):" in output
+        assert "duplicate-rune" in output
+        # summary is not raw JSON
+        assert not output.lstrip().startswith("{")
+
+    @patch("mvgeos_cli.commands.build._assemble")
+    def test_build_format_summary_to_file(
+        self, mock_assemble: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_assemble.return_value = _make_snapshot()
+        out_file = tmp_path / "manifest.txt"
+        result = runner.invoke(
+            build_app, ["--format", "summary", "--output", str(out_file)]
+        )
+        assert result.exit_code == 0
+        assert out_file.exists()
+        text = out_file.read_text(encoding="utf-8")
+        assert "Agent: test-agent" in text
+        assert "Spells (2):" in text
+
+    @patch("mvgeos_cli.commands.build._assemble")
+    def test_build_format_json_pretty(self, mock_assemble: MagicMock) -> None:
+        mock_assemble.return_value = _make_snapshot()
+        result = runner.invoke(build_app, ["--format", "json", "--pretty"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["agent_name"] == "test-agent"
+        # pretty printing inserts indentation/newlines
+        assert "\n  " in result.output
+
+    @patch("mvgeos_cli.commands.build._assemble")
+    def test_build_format_json_compact(self, mock_assemble: MagicMock) -> None:
+        mock_assemble.return_value = _make_snapshot()
+        result = runner.invoke(build_app, ["--format", "json", "--no-pretty"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["agent_name"] == "test-agent"
+        # compact output has no indented newlines
+        assert "\n  " not in result.output
+
+    @patch("mvgeos_cli.commands.build._assemble")
+    def test_build_default_json_unchanged(self, mock_assemble: MagicMock) -> None:
+        mock_assemble.return_value = _make_snapshot()
+        result = runner.invoke(build_app, [])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["agent_name"] == "test-agent"
+        # default remains pretty
+        assert "\n  " in result.output
+
+    @patch("mvgeos_cli.commands.build._assemble")
+    def test_build_invalid_format_rejected(self, mock_assemble: MagicMock) -> None:
+        mock_assemble.return_value = _make_snapshot()
+        result = runner.invoke(build_app, ["--format", "xml"])
+        assert result.exit_code != 0
+        mock_assemble.assert_not_called()
+
 
 class TestAssemble:
     @patch("mvgeos_cli.commands.build.MvgeEnvironment")
