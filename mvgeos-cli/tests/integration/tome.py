@@ -5,13 +5,27 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import typer
+from mvgeos_tome.types import TomeMetadata
 from typer.testing import CliRunner
 
 from mvgeos_cli.commands.tome import (
+    _render_tome_list,
     get_tome_dir,
     tome_app,
 )
 from mvgeos_cli.main import app
+
+
+def _make_meta(tome_id: str, cwd: str) -> TomeMetadata:
+    return TomeMetadata(
+        id=tome_id,
+        created_at="2024-01-01T12:00:00",
+        cwd=cwd,
+        parent_tome_id=None,
+        active_leaf_id=None,
+        schema_version="1.0",
+    )
+
 
 runner = CliRunner()
 
@@ -234,6 +248,30 @@ class TestTomeCommands:
         assert result.exit_code == 0
         assert "Forked tome: forked_t" in result.stdout
         assert "Parent: parent_t" in result.stdout
+
+
+def test_render_tome_list_ellipsizes_long_cwd() -> None:
+    long_cwd = "/a" + "/b" * 90
+    meta = _make_meta("tome_abc123", long_cwd)
+    output = _render_tome_list([meta], ascii_only=False)
+    assert "…" in output
+    assert long_cwd not in output
+
+
+def test_render_tome_list_short_cwd_kept_full() -> None:
+    meta = _make_meta("tome_abc123", "/short/cwd")
+    output = _render_tome_list([meta], ascii_only=False)
+    assert "/short/cwd" in output
+    assert "…" not in output
+
+
+def test_render_tome_list_ascii_long_cwd_uses_ascii_ellipsis() -> None:
+    long_cwd = "/a" + "/b" * 90
+    meta = _make_meta("tome_abc123", long_cwd)
+    output = _render_tome_list([meta], ascii_only=True)
+    assert "..." in output
+    assert "…" not in output
+    assert all(ord(ch) < 128 for ch in output)
 
 
 if __name__ == "__main__":

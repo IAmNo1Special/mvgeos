@@ -28,6 +28,19 @@ def get_console(file: TextIO | None = None, **kwargs: Any) -> Console:
     return Console(file=file, **kwargs)
 
 
+def clip_text(value: str, max_width: int, ascii_only: bool = False) -> str:
+    """Truncate ``value`` to ``max_width``, appending an ellipsis on overflow.
+
+    Uses a Unicode ellipsis (…) under UTF-8 and an ASCII ``...`` under a
+    non-UTF-8 stream so the marker itself never triggers ``?`` substitution.
+    """
+    if max_width <= 0 or len(value) <= max_width:
+        return value
+    if ascii_only:
+        return value[: max(0, max_width - 3)] + "..."
+    return value[: max(0, max_width - 1)] + "…"
+
+
 def configure_streams() -> None:
     """Configure stdout and stderr streams safely."""
     for stream_name in ("stdout", "stderr"):

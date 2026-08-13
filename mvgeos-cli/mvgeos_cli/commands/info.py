@@ -13,7 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from mvgeos_cli.commands.build import _assemble
-from mvgeos_cli.console import get_console, is_utf8_stream
+from mvgeos_cli.console import clip_text, get_console, is_utf8_stream
 
 console = get_console()
 
@@ -21,6 +21,12 @@ info_app = typer.Typer(
     name="info",
     help="Display the runtime snapshot as rich tables (read-only).",
 )
+
+PATH_MAX_WIDTH = 50
+
+
+def _clip_path(value: str, ascii_only: bool) -> str:
+    return clip_text(value, PATH_MAX_WIDTH - 2, ascii_only)
 
 
 def _render_snapshot(snap: RuntimeSnapshot, ascii_only: bool = False) -> str:
@@ -30,25 +36,30 @@ def _render_snapshot(snap: RuntimeSnapshot, ascii_only: bool = False) -> str:
     """
     out = StringIO()
     box_style = box.ASCII if ascii_only else box.HEAVY_HEAD
-    render_console = Console(file=out, width=100, record=True, force_terminal=False)
+    render_console = Console(file=out, width=200, record=True, force_terminal=False)
 
     render_console.print(f"[bold]Agent:[/bold] {snap.agent_name}")
     render_console.print(f"[bold]Model:[/bold] {snap.model}")
     render_console.print()
 
-    _render_spells(render_console, snap, box_style=box_style)
-    _render_runes(render_console, snap, box_style=box_style)
-    _render_config(render_console, snap, box_style=box_style)
-    _render_prompt(render_console, snap, box_style=box_style)
-    _render_guidelines(render_console, snap, box_style=box_style)
-    _render_skills(render_console, snap, box_style=box_style)
-    _render_diagnostics(render_console, snap, box_style=box_style)
+    _render_spells(render_console, snap, box_style=box_style, ascii_only=ascii_only)
+    _render_runes(render_console, snap, box_style=box_style, ascii_only=ascii_only)
+    _render_config(render_console, snap, box_style=box_style, ascii_only=ascii_only)
+    _render_prompt(render_console, snap, box_style=box_style, ascii_only=ascii_only)
+    _render_guidelines(render_console, snap, box_style=box_style, ascii_only=ascii_only)
+    _render_skills(render_console, snap, box_style=box_style, ascii_only=ascii_only)
+    _render_diagnostics(
+        render_console, snap, box_style=box_style, ascii_only=ascii_only
+    )
 
     return out.getvalue()
 
 
 def _render_spells(
-    console: Console, snap: RuntimeSnapshot, box_style: box.Box | None = None
+    console: Console,
+    snap: RuntimeSnapshot,
+    box_style: box.Box | None = None,
+    ascii_only: bool = False,
 ) -> None:
     table = Table(title="Spells", show_lines=False, box=box_style)
     table.add_column("Name", style="cyan")
@@ -72,14 +83,17 @@ def _render_spells(
 
 
 def _render_runes(
-    console: Console, snap: RuntimeSnapshot, box_style: box.Box | None = None
+    console: Console,
+    snap: RuntimeSnapshot,
+    box_style: box.Box | None = None,
+    ascii_only: bool = False,
 ) -> None:
     table = Table(title="Runes", show_lines=False, box=box_style)
     table.add_column("Name", style="cyan")
     table.add_column("Scope", style="green")
     table.add_column("Version", style="yellow")
     table.add_column("Enabled", style="magenta")
-    table.add_column("Path")
+    table.add_column("Path", width=PATH_MAX_WIDTH)
     table.add_column("Entry Point")
     table.add_column("Hooks")
 
@@ -90,7 +104,7 @@ def _render_runes(
             rune.scope,
             rune.version,
             str(rune.enabled),
-            rune.path,
+            _clip_path(rune.path, ascii_only),
             rune.entry_point or "-",
             hooks,
         )
@@ -102,13 +116,16 @@ def _render_runes(
 
 
 def _render_config(
-    console: Console, snap: RuntimeSnapshot, box_style: box.Box | None = None
+    console: Console,
+    snap: RuntimeSnapshot,
+    box_style: box.Box | None = None,
+    ascii_only: bool = False,
 ) -> None:
     table = Table(title="Config", show_lines=False, box=box_style)
     table.add_column("Key", style="cyan")
     table.add_column("Value", style="green")
     table.add_column("Layer", style="yellow")
-    table.add_column("Source File")
+    table.add_column("Source File", width=PATH_MAX_WIDTH)
 
     for entry in snap.config:
         source_file = entry.source_file if entry.source_file is not None else "-"
@@ -116,7 +133,7 @@ def _render_config(
             entry.key,
             str(entry.value),
             entry.layer,
-            source_file,
+            _clip_path(source_file, ascii_only),
         )
 
     if not snap.config:
@@ -126,20 +143,23 @@ def _render_config(
 
 
 def _render_prompt(
-    console: Console, snap: RuntimeSnapshot, box_style: box.Box | None = None
+    console: Console,
+    snap: RuntimeSnapshot,
+    box_style: box.Box | None = None,
+    ascii_only: bool = False,
 ) -> None:
     if snap.prompt is None:
         return
 
     table = Table(title="Prompt", show_lines=False, box=box_style)
     table.add_column("Source", style="cyan")
-    table.add_column("Path", style="yellow")
+    table.add_column("Path", style="yellow", width=PATH_MAX_WIDTH)
     table.add_column("Text")
 
     path = snap.prompt.path if snap.prompt.path is not None else "-"
     table.add_row(
         snap.prompt.source,
-        path,
+        _clip_path(path, ascii_only),
         snap.prompt.text or "-",
     )
 
@@ -147,7 +167,10 @@ def _render_prompt(
 
 
 def _render_guidelines(
-    console: Console, snap: RuntimeSnapshot, box_style: box.Box | None = None
+    console: Console,
+    snap: RuntimeSnapshot,
+    box_style: box.Box | None = None,
+    ascii_only: bool = False,
 ) -> None:
     if not snap.guidelines:
         return
@@ -163,12 +186,15 @@ def _render_guidelines(
 
 
 def _render_skills(
-    console: Console, snap: RuntimeSnapshot, box_style: box.Box | None = None
+    console: Console,
+    snap: RuntimeSnapshot,
+    box_style: box.Box | None = None,
+    ascii_only: bool = False,
 ) -> None:
     table = Table(title="Skills", show_lines=False, box=box_style)
     table.add_column("Name", style="cyan")
     table.add_column("Scope", style="green")
-    table.add_column("Path", style="yellow")
+    table.add_column("Path", style="yellow", width=PATH_MAX_WIDTH)
     table.add_column("Version")
     table.add_column("Description")
 
@@ -176,7 +202,7 @@ def _render_skills(
         table.add_row(
             skill.name,
             skill.scope,
-            skill.path,
+            _clip_path(skill.path, ascii_only),
             skill.version or "-",
             skill.description or "-",
         )
@@ -188,14 +214,17 @@ def _render_skills(
 
 
 def _render_diagnostics(
-    console: Console, snap: RuntimeSnapshot, box_style: box.Box | None = None
+    console: Console,
+    snap: RuntimeSnapshot,
+    box_style: box.Box | None = None,
+    ascii_only: bool = False,
 ) -> None:
     table = Table(title="Diagnostics", show_lines=False, box=box_style)
     table.add_column("Kind", style="red")
     table.add_column("Target", style="yellow")
     table.add_column("Name", style="cyan")
     table.add_column("Scope")
-    table.add_column("Path")
+    table.add_column("Path", width=PATH_MAX_WIDTH)
     table.add_column("Message")
 
     for diag in snap.diagnostics:
@@ -206,7 +235,7 @@ def _render_diagnostics(
             diag.target,
             diag.name,
             scope,
-            path,
+            _clip_path(path, ascii_only),
             diag.message,
         )
 

@@ -2,18 +2,23 @@ from __future__ import annotations
 
 import json
 import sys
+from io import StringIO
 from pathlib import Path
 
 import typer
 from mvgeos_agent.constants import DEFAULT_TOME_DIR
 from mvgeos_tome.ledger import TomeLedger
+from mvgeos_tome.types import TomeMetadata
 from rich import box
+from rich.console import Console
 from rich.table import Table
 
-from mvgeos_cli.console import get_console, is_utf8_stream
+from mvgeos_cli.console import clip_text, get_console, is_utf8_stream
 
 console = get_console()
 tome_app = typer.Typer(name="tome", help="Session tome management")
+
+CWD_MAX_WIDTH = 50
 
 
 @tome_app.callback(invoke_without_command=True)
@@ -34,23 +39,32 @@ def tome_list() -> None:
     """List all tomes."""
     tome_dir = get_tome_dir()
     ledger = TomeLedger(tome_dir)
+    ascii_only = not is_utf8_stream(sys.stdout)
 
-    box_style = box.ASCII if not is_utf8_stream(sys.stdout) else box.HEAVY_HEAD
+    console.print(_render_tome_list(ledger.list_tomes(), ascii_only=ascii_only))
+
+
+def _render_tome_list(metas: list[TomeMetadata], ascii_only: bool = False) -> str:
+    """Render tome metadata as a Rich table string (for testing/assertions)."""
+    out = StringIO()
+    box_style = box.ASCII if ascii_only else box.HEAVY_HEAD
+    render_console = Console(file=out, width=150, record=True, force_terminal=False)
     table = Table(title="MvgeOS Tomes", box=box_style)
-    table.add_column("ID", style="cyan")
-    table.add_column("Created", style="green")
-    table.add_column("CWD", style="yellow")
-    table.add_column("Active Leaf", style="magenta")
+    table.add_column("ID", style="cyan", width=10)
+    table.add_column("Created", style="green", width=21)
+    table.add_column("CWD", style="yellow", width=CWD_MAX_WIDTH)
+    table.add_column("Active Leaf", style="magenta", width=15)
 
-    for meta in ledger.list_tomes():
+    for meta in metas:
         table.add_row(
             meta.id[:8],
             meta.created_at[:19],
-            meta.cwd,
+            clip_text(meta.cwd, CWD_MAX_WIDTH - 2, ascii_only),
             meta.active_leaf_id or "-",
         )
 
-    console.print(table)
+    render_console.print(table)
+    return out.getvalue()
 
 
 @tome_app.command("show")

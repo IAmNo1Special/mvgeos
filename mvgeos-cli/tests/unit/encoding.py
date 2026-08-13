@@ -4,11 +4,17 @@ import io
 import sys
 from unittest.mock import patch
 
-from mvgeos_agent.snapshot import RuntimeSnapshot, SnapshotSpell, SpellSource
+from mvgeos_agent.snapshot import (
+    RuntimeSnapshot,
+    SnapshotRune,
+    SnapshotSkill,
+    SnapshotSpell,
+    SpellSource,
+)
 from typer.testing import CliRunner
 
 from mvgeos_cli.commands.info import _render_snapshot, info
-from mvgeos_cli.console import configure_streams, get_console, is_utf8_stream
+from mvgeos_cli.console import clip_text, configure_streams, get_console, is_utf8_stream
 from mvgeos_cli.main import app
 
 runner = CliRunner()
@@ -90,3 +96,94 @@ def test_get_console_non_utf8_safe_box() -> None:
 def test_configure_streams_executes() -> None:
     # Verify configure_streams runs without error
     configure_streams()
+
+
+def test_clip_text_short_unchanged() -> None:
+    assert clip_text("/short/path", 50) == "/short/path"
+    assert clip_text("-", 50) == "-"
+
+
+def test_clip_text_utf8_ellipsis() -> None:
+    long_path = "/a" + "/b" * 80
+    clipped = clip_text(long_path, 50)
+    assert clipped.endswith("…")
+    assert "…" not in long_path
+    assert long_path not in clipped
+    assert len(clipped) == 50
+
+
+def test_clip_text_ascii_ellipsis() -> None:
+    long_path = "/a" + "/b" * 80
+    clipped = clip_text(long_path, 50, ascii_only=True)
+    assert clipped.endswith("...")
+    assert "…" not in clipped
+    assert long_path not in clipped
+    assert len(clipped) == 50
+
+
+def test_clip_text_zero_width_unchanged() -> None:
+    assert clip_text("/a/b/c", 0) == "/a/b/c"
+
+
+def _make_rune_snapshot() -> RuntimeSnapshot:
+    return RuntimeSnapshot(
+        agent_name="path-agent",
+        model="nvidia/nemotron-3-ultra-550b-a55b:free",
+        runes=[
+            SnapshotRune(
+                name="long_rune",
+                version="1.0.0",
+                description="A rune with a very long path",
+                scope="user",
+                path="/a" + "/b" * 90,
+                enabled=True,
+                hooks=["turn_start"],
+                entry_point="main.py",
+            ),
+        ],
+        skills=[
+            SnapshotSkill(
+                name="long_skill",
+                description="A skill with a very long path",
+                scope="user",
+                path="/x" + "/y" * 90,
+                version="2.0.0",
+            ),
+        ],
+    )
+
+
+def test_render_snapshot_ellipsizes_long_path() -> None:
+    snap = _make_rune_snapshot()
+    output = _render_snapshot(snap, ascii_only=False)
+    assert "…" in output
+    assert "/a" + "/b" * 90 not in output
+    assert "/x" + "/y" * 90 not in output
+
+
+def test_render_snapshot_short_path_kept_full() -> None:
+    snap = RuntimeSnapshot(
+        agent_name="path-agent",
+        model="nvidia/nemotron-3-ultra-550b-a55b:free",
+        runes=[
+            SnapshotRune(
+                name="rune",
+                version="1.0.0",
+                description="desc",
+                scope="user",
+                path="/short/rune/path",
+                enabled=True,
+            ),
+        ],
+    )
+    output = _render_snapshot(snap, ascii_only=False)
+    assert "/short/rune/path" in output
+    assert "…" not in output
+
+
+def test_render_snapshot_ascii_long_path_uses_ascii_ellipsis() -> None:
+    snap = _make_rune_snapshot()
+    output = _render_snapshot(snap, ascii_only=True)
+    assert "..." in output
+    assert "…" not in output
+    assert all(ord(ch) < 128 for ch in output)
