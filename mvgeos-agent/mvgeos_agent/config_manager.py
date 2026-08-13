@@ -200,7 +200,8 @@ class ConfigManager:
                 "high",
             ):
                 raise ValueError(
-                    "Invalid contemplation_level value: expected one of ['none', 'low', 'medium', 'high']"
+                    "Invalid contemplation_level value: expected one of "
+                    "['none', 'low', 'medium', 'high']"
                 )
             return value
 
@@ -216,7 +217,8 @@ class ConfigManager:
                     val_int = int(value)
                 except ValueError, TypeError:
                     raise ValueError(
-                        "Invalid contemplation_budget value: expected integer >= 0 or null"
+                        "Invalid contemplation_budget value: "
+                        "expected integer >= 0 or null"
                     ) from None
             elif isinstance(value, int):
                 val_int = value

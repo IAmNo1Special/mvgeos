@@ -137,7 +137,8 @@ class BaseMvge:
             self._contemplation_level = raw_level
         else:
             logger.warning(
-                "Invalid contemplation_level in config (%r); falling back to default 'medium'",
+                "Invalid contemplation_level in config (%r); "
+                "falling back to default 'medium'",
                 raw_level,
             )
             self._contemplation_level = "medium"
@@ -151,7 +152,8 @@ class BaseMvge:
                 self._contemplation_budget = int(raw_budget)
             except ValueError, TypeError:
                 logger.warning(
-                    "Invalid contemplation_budget in config (%r); falling back to default None",
+                    "Invalid contemplation_budget in config (%r); "
+                    "falling back to default None",
                     raw_budget,
                 )
                 self._contemplation_budget = None
