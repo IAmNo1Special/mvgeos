@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 import typer
-from mvgeos_agent.config_manager import ConfigManager
+from mvgeos_agent.config_manager import ConfigManager, validate_agent_name
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 
 from mvgeos_cli.console import get_console
@@ -13,8 +13,13 @@ console = get_console()
 config_app = typer.Typer(name="config", help="Configuration management")
 
 
-def _get_manager(agent_name: str) -> ConfigManager:
+def _get_manager(agent_name: str, allow_create: bool = False) -> ConfigManager:
     """Create a ConfigManager for the given agent name."""
+    try:
+        validate_agent_name(agent_name, allow_create=allow_create)
+    except ValueError as err:
+        console.print(f"[red]{err}[/red]")
+        raise typer.Exit(1) from None
     return ConfigManager(agent_name=agent_name)
 
 

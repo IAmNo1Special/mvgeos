@@ -242,7 +242,11 @@ def info(
     source provenance, runes per scope with enabled state, config values
     with provenance layers, loaded skills with source, and diagnostics.
     """
-    snapshot = asyncio.run(_assemble(agent_name, extension_dir))
+    try:
+        snapshot = asyncio.run(_assemble(agent_name, extension_dir))
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from None
 
     if output:
         render_text = _render_snapshot(snapshot, ascii_only=False)

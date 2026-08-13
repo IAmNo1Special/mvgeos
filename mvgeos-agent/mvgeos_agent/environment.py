@@ -13,7 +13,12 @@ from mvgeos_runes.types import (
     SpellDefinition,
 )
 
-from mvgeos_agent.config_manager import ConfigLayer, ConfigManager, ConfigValue
+from mvgeos_agent.config_manager import (
+    ConfigLayer,
+    ConfigManager,
+    ConfigValue,
+    validate_agent_name,
+)
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME, DEFAULT_MODEL
 from mvgeos_agent.prompt_config import DEFAULT_GUIDELINES, DEFAULT_SYSTEM_PROMPT
 from mvgeos_agent.prompt_loader import (
@@ -55,8 +60,15 @@ class MvgeEnvironment:
         runner: RuneRunner | None = None,
         config_manager: ConfigManager | None = None,
         has_config_manager: bool = True,
+        allow_unknown_agent: bool = False,
     ) -> MvgeEnvironment:
         """Resolve all environment resources and configuration layers."""
+        validate_agent_name(
+            agent_name,
+            agent_config_base=config_dir.parent if config_dir is not None else None,
+            project_dir=project_dir,
+            allow_create=allow_unknown_agent or (config_dir is not None),
+        )
         cm = config_manager or ConfigManager(
             agent_name=agent_name,
             project_dir=project_dir,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import re
 from enum import Enum
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -10,6 +11,77 @@ from typing import Any, NamedTuple
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME, DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
+
+AGENT_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def is_known_agent(
+    agent_name: str,
+    *,
+    agent_config_base: Path | None = None,
+    project_dir: Path | None = None,
+) -> bool:
+    """Check whether an agent name is valid/known.
+
+    An agent is known if it matches DEFAULT_AGENT_NAME ("default-mvge")
+    or if its agent-scope directory or config file exists.
+    """
+    if not isinstance(agent_name, str) or not AGENT_NAME_PATTERN.match(agent_name):
+        return False
+
+    if agent_name == DEFAULT_AGENT_NAME:
+        return True
+
+    base = (
+        agent_config_base.expanduser()
+        if agent_config_base is not None
+        else Path("~/.agents/.mvgeos").expanduser()
+    )
+    agent_dir = base / agent_name
+    if agent_dir.exists():
+        return True
+
+    proj_dir = project_dir or Path.cwd()
+    proj_agent_dir = proj_dir / ".agents" / ".mvgeos" / agent_name
+    return proj_agent_dir.exists()
+
+
+def validate_agent_name(
+    agent_name: str,
+    *,
+    agent_config_base: Path | None = None,
+    project_dir: Path | None = None,
+    allow_create: bool = False,
+) -> None:
+    """Validate that an agent name exists and is syntactically valid.
+
+    Raises ValueError with an actionable message if invalid or unknown.
+    """
+    if not isinstance(agent_name, str) or not AGENT_NAME_PATTERN.match(agent_name):
+        raise ValueError(
+            f"Invalid agent name '{agent_name}'. Agent names must contain "
+            "only alphanumeric characters, dashes, and underscores."
+        )
+
+    if allow_create:
+        return
+
+    if is_known_agent(
+        agent_name, agent_config_base=agent_config_base, project_dir=project_dir
+    ):
+        return
+
+    base = (
+        agent_config_base.expanduser()
+        if agent_config_base is not None
+        else Path("~/.agents/.mvgeos").expanduser()
+    )
+    agent_dir = base / agent_name
+    raise ValueError(
+        f"Unknown agent '{agent_name}'. Agent configuration or directory "
+        f"does not exist at '{agent_dir}'. Configure it with "
+        f"'mvgeos config set --agent-name {agent_name} <key> <value>'."
+    )
 
 
 class ConfigLayer(Enum):

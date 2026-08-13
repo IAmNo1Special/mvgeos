@@ -35,6 +35,16 @@ from rich.text import Text
 
 from mvgeos_cli import DEFAULT_MODEL
 
+try:
+    from prompt_toolkit.output.win32 import (
+        NoConsoleScreenBufferError as NoConsoleScreenBufferError,
+    )
+except ImportError:
+
+    class NoConsoleScreenBufferError(Exception):  # type: ignore[no-redef]
+        pass
+
+
 logger = logging.getLogger(__name__)
 
 console = Console()
@@ -365,6 +375,13 @@ async def _read_initial_prompt(
             multiline=False,
         )
         return result
+    except KeyboardInterrupt, EOFError:
+        return None
+
+
+async def _read_fallback_prompt() -> str | None:
+    try:
+        return await asyncio.to_thread(input, "> ")
     except KeyboardInterrupt, EOFError:
         return None
 
@@ -849,12 +866,21 @@ async def run_repl(
     console.print()
 
     history = FileHistory(str(_get_history_path()))
-    session: PromptSession[Any] = PromptSession(
-        history=history,
-        completer=SlashCompleter(),
-        key_bindings=_make_bindings(),
-        style=REPL_STYLE,
-    )
+    session: PromptSession[Any] | None = None
+    use_fallback = False
+    try:
+        session = PromptSession(
+            history=history,
+            completer=SlashCompleter(),
+            key_bindings=_make_bindings(),
+            style=REPL_STYLE,
+        )
+    except NoConsoleScreenBufferError:
+        use_fallback = True
+        console.print(
+            "[dim]Console screen buffer unavailable. "
+            "Falling back to standard line reader.[/dim]\n"
+        )
 
     branch = _git_branch()
 
@@ -880,7 +906,18 @@ async def run_repl(
         signal.signal(signal.SIGINT, _on_sigint)
 
     while True:
-        text = await _read_initial_prompt(session, get_toolbar)
+        if use_fallback or session is None:
+            text = await _read_fallback_prompt()
+        else:
+            try:
+                text = await _read_initial_prompt(session, get_toolbar)
+            except NoConsoleScreenBufferError:
+                use_fallback = True
+                console.print(
+                    "[dim]Console screen buffer unavailable. "
+                    "Falling back to standard line reader.[/dim]\n"
+                )
+                text = await _read_fallback_prompt()
 
         if text is None:
             console.print("\n[dim]Goodbye.[/dim]")

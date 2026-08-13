@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 import typer
+from mvgeos_agent.config_manager import validate_agent_name
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME, resolve_rune_paths
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.types import RuneManifest
@@ -259,6 +260,12 @@ def setup_check(
     ),
 ) -> None:
     """Check which system dependencies are missing."""
+    try:
+        validate_agent_name(agent_name, allow_create=False)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from None
+
     runes = collect_rune_dirs(agent_name, extension_dir)
 
     if not runes:
@@ -334,6 +341,12 @@ def setup_install(
     Non-interactive use: pass ``--yes``/``-y`` to skip the confirmation prompt,
     or pipe stdin (``echo y | mvgeos setup install``) when prompted.
     """
+    try:
+        validate_agent_name(agent_name, allow_create=False)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from None
+
     runes = collect_rune_dirs(agent_name, extension_dir)
 
     if not runes:

@@ -94,27 +94,46 @@ async def _run_agent(
     if spells_enabled is not None:
         overrides["spells_enabled"] = spells_enabled
 
-    env = MvgeEnvironment.resolve(agent_name=agent_name, overrides=overrides)
-    resolved = env.config
-    model_id = model_id or str(resolved["model"].value)
-    temperature = (
-        temperature if temperature is not None else float(resolved["temperature"].value)
-    )
-    max_tokens = (
-        max_tokens if max_tokens is not None else int(resolved["max_tokens"].value)
-    )
-    contemplation_level = contemplation_level or str(
-        resolved["contemplation_level"].value
-    )
-    spells_joined = (
-        ",".join(spells_enabled)
-        if spells_enabled is not None
-        else _default_spells_from_config(resolved)
-    )
+    agent: CodingMvge | None = None
+    try:
+        env = MvgeEnvironment.resolve(agent_name=agent_name, overrides=overrides)
+        resolved = env.config
+        model_id = model_id or str(resolved["model"].value)
+        temperature = (
+            temperature
+            if temperature is not None
+            else float(resolved["temperature"].value)
+        )
+        max_tokens = (
+            max_tokens if max_tokens is not None else int(resolved["max_tokens"].value)
+        )
+        contemplation_level = contemplation_level or str(
+            resolved["contemplation_level"].value
+        )
+        spells_joined = (
+            ",".join(spells_enabled)
+            if spells_enabled is not None
+            else _default_spells_from_config(resolved)
+        )
 
-    if not prompts_out:
-        if tui:
-            await run_tui(
+        if not prompts_out:
+            if tui:
+                await run_tui(
+                    model=model_id,
+                    api_key=api_key,
+                    spells=spells_joined,
+                    extension_dir=extension_dir,
+                    resume=resume,
+                    provider=provider_name,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    contemplation=contemplation_level,
+                    session_dir=session_dir,
+                    agent_name=agent_name,
+                )
+                return 0
+
+            await run_repl(
                 model=model_id,
                 api_key=api_key,
                 spells=spells_joined,
@@ -129,23 +148,6 @@ async def _run_agent(
             )
             return 0
 
-        await run_repl(
-            model=model_id,
-            api_key=api_key,
-            spells=spells_joined,
-            extension_dir=extension_dir,
-            resume=resume,
-            provider=provider_name,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            contemplation=contemplation_level,
-            session_dir=session_dir,
-            agent_name=agent_name,
-        )
-        return 0
-
-    agent: CodingMvge | None = None
-    try:
         _validate_api_key(api_key)
         agent = await _create_agent(
             model=model_id,

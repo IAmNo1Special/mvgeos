@@ -35,6 +35,7 @@ from rich.text import Text
 
 from mvgeos_cli import DEFAULT_MODEL
 from mvgeos_cli.commands.repl import (
+    NoConsoleScreenBufferError,
     ReplAction,
     SlashCompleter,
     StreamRenderer,
@@ -506,6 +507,11 @@ async def run_tui(
     ]
     try:
         await app.run()
+    except NoConsoleScreenBufferError:
+        console.print(
+            "[red]TUI mode requires a Win32 console screen buffer. "
+            "Run in a terminal or use standard REPL.[/red]"
+        )
     finally:
         for unsub in unsubs:
             if callable(unsub):
