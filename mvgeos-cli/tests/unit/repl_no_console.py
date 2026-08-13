@@ -3,9 +3,12 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from prompt_toolkit.output.win32 import NoConsoleScreenBufferError
 
-from mvgeos_cli.commands.repl import _read_fallback_prompt, run_repl
+from mvgeos_cli.commands.repl import (
+    NoConsoleScreenBufferError,
+    _read_fallback_prompt,
+    run_repl,
+)
 from mvgeos_cli.commands.tui import run_tui
 
 

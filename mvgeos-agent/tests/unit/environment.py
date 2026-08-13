@@ -76,9 +76,7 @@ def test_mvge_environment_build_snapshot(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_base_mvge_diagnostics_property_and_zero_load_retention(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_base_mvge_diagnostics_property_and_zero_load_retention() -> None:
     from unittest.mock import patch
 
     from mvgeos_runes.types import Diagnostic, DiagnosticKind, RuneScope

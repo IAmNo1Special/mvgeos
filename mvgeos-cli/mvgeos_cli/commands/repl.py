@@ -8,6 +8,7 @@ import os
 import re
 import signal
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable, Generator
@@ -35,11 +36,17 @@ from rich.text import Text
 
 from mvgeos_cli import DEFAULT_MODEL
 
-try:
-    from prompt_toolkit.output.win32 import (
-        NoConsoleScreenBufferError as NoConsoleScreenBufferError,
-    )
-except ImportError:
+if sys.platform == "win32":
+    try:
+        from prompt_toolkit.output.win32 import (
+            NoConsoleScreenBufferError as NoConsoleScreenBufferError,
+        )
+    except Exception:
+
+        class NoConsoleScreenBufferError(Exception):  # type: ignore[no-redef]
+            pass
+
+else:
 
     class NoConsoleScreenBufferError(Exception):  # type: ignore[no-redef]
         pass
