@@ -92,3 +92,61 @@ def test_create_realm_default_openrouter() -> None:
     from mvgeos_provider.openrouter import OpenRouterRealm
 
     assert isinstance(realm, OpenRouterRealm)
+
+
+def test_compose_model_prioritizes_realm_over_provider() -> None:
+    reg = RealmRegistry()
+    reg.register_provider(
+        "openrouter",
+        {"apiKey": "openrouter-key", "baseUrl": "https://openrouter.ai/api/v1"},
+    )
+    model = reg.compose_model("nvidia/nemotron-3.5-lightning:free", api_key="cli-key")
+    assert model is not None
+    assert model.api_key == "openrouter-key"
+    assert model.base_url == "https://openrouter.ai/api/v1"
+
+
+def test_create_realm_prioritizes_realm_over_provider() -> None:
+    reg = RealmRegistry()
+    reg.register_provider(
+        "openrouter",
+        {"apiKey": "openrouter-key", "baseUrl": "https://openrouter.ai/api/v1"},
+    )
+    model = Model(
+        id="nvidia/nemotron-3.5-lightning:free",
+        name="Nemotron",
+        realm="openrouter",
+        base_url="https://original.url",
+        api_key="cli-key",
+    )
+    realm = reg.create_realm(model, api_key="cli-key")
+    from mvgeos_provider.openrouter import OpenRouterRealm
+
+    assert isinstance(realm, OpenRouterRealm)
+    assert realm._api_key == "openrouter-key"
+    assert realm._base_url == "https://openrouter.ai/api/v1"
+
+
+def test_compose_model_fallback_for_unlisted_model() -> None:
+    reg = RealmRegistry()
+    reg.register_provider(
+        "ollama", {"baseUrl": "http://localhost:11434", "apiKey": "ollama-key"}
+    )
+    model = reg.compose_model("ollama/llama3", api_key="cli-key")
+    assert model is not None
+    assert model.id == "ollama/llama3"
+    assert model.realm == "ollama"
+    assert model.api_key == "ollama-key"
+    assert model.base_url == "http://localhost:11434"
+
+
+def test_compose_model_fallback_with_explicit_provider_name() -> None:
+    reg = RealmRegistry()
+    reg.register_provider("vllm", {"baseUrl": "http://localhost:8000"})
+    model = reg.compose_model(
+        "custom-model-id", api_key="cli-key", provider_name="vllm"
+    )
+    assert model is not None
+    assert model.id == "custom-model-id"
+    assert model.realm == "vllm"
+    assert model.base_url == "http://localhost:8000"

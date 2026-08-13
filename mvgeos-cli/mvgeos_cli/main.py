@@ -175,12 +175,33 @@ class MvgeosGroup(TyperGroup):
         if ctx._protected_args:
             args = [*ctx._protected_args, *ctx.args]
             first = args[0] if args else ""
-            if not _split_opt(first)[0] and first not in self.commands:
-                ctx.meta["prompts"] = list(args)
-                ctx.args = []
-                ctx._protected_args = []
-                with ctx:
-                    return _click.Command.invoke(self, ctx)
+            if not _split_opt(first)[0]:
+                is_prompt = False
+                if first not in self.commands:
+                    is_prompt = True
+                elif len(args) > 1 and not _split_opt(args[1])[0]:
+                    cmd = self.get_command(ctx, first)
+                    if cmd is not None:
+                        subcommands = (
+                            cmd.list_commands(ctx)
+                            if hasattr(cmd, "list_commands")
+                            else []
+                        )
+                        is_leaf = not bool(subcommands)
+                        params = getattr(cmd, "params", [])
+                        has_positional = any(
+                            getattr(p, "param_type_name", None) == "argument"
+                            for p in params
+                        )
+                        if is_leaf and not has_positional:
+                            is_prompt = True
+
+                if is_prompt:
+                    ctx.meta["prompts"] = list(args)
+                    ctx.args = []
+                    ctx._protected_args = []
+                    with ctx:
+                        return _click.Command.invoke(self, ctx)
         return TyperGroup.invoke(self, ctx)
 
 

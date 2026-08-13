@@ -1,26 +1,30 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-pass
+import filelock
 
 
 class FileLock:
-    def __init__(self, path: str, timeout: float = 30.0) -> None:
-        self._path = path
+    def __init__(self, path: str | Path, timeout: float = 30.0) -> None:
+        p = Path(path)
+        if p.name.endswith(".lock"):
+            self._path = p
+        else:
+            self._path = p.with_name(p.name + ".lock")
         self._timeout = timeout
-        self._lock: Any | None = None
+        self._lock = filelock.FileLock(self._path, timeout=self._timeout)
+
+    @property
+    def path(self) -> Path:
+        return self._path
 
     def acquire(self) -> None:
-        import filelock
-
-        self._lock = filelock.FileLock(self._path + ".lock", timeout=self._timeout)
         self._lock.acquire()
 
     def release(self) -> None:
-        if self._lock is not None:
-            self._lock.release()
-            self._lock = None
+        self._lock.release()
 
     def __enter__(self) -> FileLock:
         self.acquire()

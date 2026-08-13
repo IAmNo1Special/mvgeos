@@ -41,6 +41,7 @@ from mvgeos_cli.commands.repl import (
     StreamRenderer,
     _check_and_warn_load_failures,
     _create_agent,
+    _fit_footer,
     _format_session_info,
     _git_branch,
     _handle_command,
@@ -360,13 +361,14 @@ class TuiApp:
             self.transcript.scroll_to_bottom()
 
     def _footer_text(self) -> FormattedText:
-        items = list(_format_session_info(self.agent, self._branch))
+        items = list(_format_session_info(self.agent, self._branch, fit=False))
         mode = getattr(self.agent, "queue_mode", "steer")
         if self._busy:
             items.append(("", f"  (working • mode: {mode})"))
         else:
             items.append(("", f"  (mode: {mode})"))
-        return FormattedText(items)
+        width = self.application.output.get_size().columns
+        return FormattedText(_fit_footer(items, width))
 
     def _out(self, text: str) -> None:
         self.sink.write_card_line(render_markup(text), None)

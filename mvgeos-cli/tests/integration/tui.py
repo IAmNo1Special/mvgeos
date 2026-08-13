@@ -268,13 +268,16 @@ class FakeRegistry:
 
 
 class TestTuiApp:
-    def _app(self, agent: FakeAgent, sink: TuiSink | None = None) -> Any:
+    def _app(
+        self, agent: FakeAgent, sink: TuiSink | None = None, output: Any = None
+    ) -> Any:
         from prompt_toolkit.input import create_pipe_input
         from prompt_toolkit.output import DummyOutput
 
         from mvgeos_cli.commands.tui import TuiApp
 
         sink = sink or TuiSink()
+        out = output if output is not None else DummyOutput()
         with create_pipe_input() as pin:
             return TuiApp(
                 agent,
@@ -282,7 +285,7 @@ class TestTuiApp:
                 FakeRegistry(),
                 StreamRenderer(sink),
                 input=pin,
-                output=DummyOutput(),
+                output=out,
             )
 
     def test_app_constructs(self) -> None:
@@ -569,3 +572,62 @@ class TestTuiApp:
             "follow up prompt" in (e.text.plain if e.text else "")
             for e in sink._entries
         )
+
+    def test_footer_text_appends_mode_before_fit_footer_and_uses_terminal_width(
+        self,
+    ) -> None:
+        from prompt_toolkit.data_structures import Size
+        from prompt_toolkit.output import DummyOutput
+
+        agent = FakeAgent()
+        agent.session_id = "1234567890"
+        agent._model_id = "very-long-model-provider-name/model-name-extra-long:latest"
+        sink = TuiSink()
+
+        class CustomOutput(DummyOutput):
+            def get_size(self) -> Size:
+                return Size(rows=24, columns=50)
+
+        app = self._app(agent, sink, output=CustomOutput())
+        footer = app._footer_text()
+        plain_text = "".join(text for _, text in footer)
+        assert len(plain_text) <= 50
+
+    def test_footer_text_working_status_truncation(self) -> None:
+        from prompt_toolkit.data_structures import Size
+        from prompt_toolkit.output import DummyOutput
+
+        agent = FakeAgent()
+        agent.session_id = "1234567890"
+        agent._model_id = "very-long-model-provider-name/model-name-extra-long:latest"
+        sink = TuiSink()
+
+        class CustomOutput(DummyOutput):
+            def get_size(self) -> Size:
+                return Size(rows=24, columns=60)
+
+        app = self._app(agent, sink, output=CustomOutput())
+        app._busy = True
+        footer = app._footer_text()
+        plain_text = "".join(text for _, text in footer)
+        assert len(plain_text) <= 60
+
+    def test_fit_footer_dynamic_truncation_multiple_items_narrow_width(self) -> None:
+        from mvgeos_cli.commands.repl import _fit_footer
+
+        items = [
+            ("bold", " ~/mvgeos (main)"),
+            ("dim", "  session 12345678"),
+            ("", "  mana 0"),
+            ("", "  nvidia/nemotron-3-ultra-550b-a55b:free • medium"),
+            ("", "  (working • mode: steer)"),
+        ]
+        # Total length of items is 119
+        fitted_50 = _fit_footer(items, 50)
+        assert sum(len(text) for _, text in fitted_50) <= 50
+
+        fitted_30 = _fit_footer(items, 30)
+        assert sum(len(text) for _, text in fitted_30) <= 30
+
+        fitted_15 = _fit_footer(items, 15)
+        assert sum(len(text) for _, text in fitted_15) <= 15

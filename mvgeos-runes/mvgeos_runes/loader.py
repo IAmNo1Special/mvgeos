@@ -68,6 +68,28 @@ def load_factory_from_manifest(
 
     rune_dir_resolved = rune_dir.resolve()
     entry_parent_resolved = entry.parent.resolve()
+
+    site_pkg_paths: list[Path] = []
+    for venv_name in (".venv", "venv"):
+        venv_dir = rune_dir_resolved / venv_name
+        if venv_dir.is_dir():
+            win_sp = venv_dir / "Lib" / "site-packages"
+            if win_sp.is_dir() and win_sp not in site_pkg_paths:
+                site_pkg_paths.append(win_sp)
+            lib_dir = venv_dir / "lib"
+            if lib_dir.is_dir():
+                posix_sp = lib_dir / "site-packages"
+                if posix_sp.is_dir() and posix_sp not in site_pkg_paths:
+                    site_pkg_paths.append(posix_sp)
+                for sp in sorted(lib_dir.glob("python*/site-packages")):
+                    if sp.is_dir() and sp not in site_pkg_paths:
+                        site_pkg_paths.append(sp)
+
+    for p in site_pkg_paths:
+        p_str = str(p)
+        if p_str not in sys.path:
+            sys.path.insert(0, p_str)
+
     for p in (entry_parent_resolved, rune_dir_resolved):
         p_str = str(p)
         if p_str not in sys.path:
@@ -84,11 +106,14 @@ def load_factory_from_manifest(
         spec.loader.exec_module(mod)
     except Exception as err:
         if diagnostics is not None:
+            msg = f"Failed to execute rune module {manifest.name}: {err}"
+            if manifest.python_deps:
+                msg += f" (declared python_deps: {', '.join(manifest.python_deps)})"
             diagnostics.append(
                 Diagnostic(
                     kind=DiagnosticKind.LOAD_FAILURE,
                     rune_name=manifest.name,
-                    message=f"Failed to execute rune module {manifest.name}: {err}",
+                    message=msg,
                     scope=manifest.scope,
                     path=manifest.path,
                 )

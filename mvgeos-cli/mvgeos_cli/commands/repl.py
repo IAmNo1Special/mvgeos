@@ -181,18 +181,35 @@ def _mana_context(agent: CodingMvge) -> tuple[str, str]:
 
 
 def _fit_footer(items: list[tuple[str, str]], width: int) -> list[tuple[str, str]]:
-    total = sum(len(text) for _, text in items)
-    if total <= width:
-        return items
-    room = width - (total - len(items[-1][1]))
-    style, text = items[-1]
-    if room < 1:
-        return items[:-1]
-    return items[:-1] + [(style, text[: room - 1] + "…")]
+    if width <= 0:
+        return []
+    items = list(items)
+    while items:
+        total = sum(len(text) for _, text in items)
+        if total <= width:
+            return items
+
+        target_idx = -1
+        if len(items) >= 2 and items[-1][1].lstrip().startswith("("):
+            target_idx = -2
+
+        n = len(items)
+        norm_target = (target_idx + n) % n
+        other_total = sum(
+            len(text) for i, (_, text) in enumerate(items) if i != norm_target
+        )
+        room = width - other_total
+        if room >= 1:
+            style, text = items[norm_target]
+            items[norm_target] = (style, text[: room - 1] + "…")
+            return items
+        items.pop(norm_target)
+
+    return items
 
 
 def _format_session_info(
-    agent: CodingMvge, branch: str | None = None
+    agent: CodingMvge, branch: str | None = None, fit: bool = True
 ) -> list[tuple[str, str]]:
     cwd = _format_cwd()
     if branch:
@@ -208,6 +225,8 @@ def _format_session_info(
     if thinking:
         right = f"{right} • {thinking}"
     items.append(("", f"  {right}"))
+    if not fit:
+        return items
     return _fit_footer(items, console.width)
 
 

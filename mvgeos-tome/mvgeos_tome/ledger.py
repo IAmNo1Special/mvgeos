@@ -32,7 +32,7 @@ class TomeLedger:
         self._tome_dir = tome_dir
         self._index = Index()
         self._tomles: dict[str, TomeMetadata] = {}
-        self._lock = FileLock(str(tome_dir / ".lock"), timeout=30.0)
+        self._lock = FileLock(tome_dir / ".lock", timeout=30.0)
         self._load_all_tomes()
 
     def _resolve_tome_id(self, tome_id: str) -> str | None:

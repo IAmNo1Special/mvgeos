@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any
 
 import httpx
 
@@ -48,18 +48,40 @@ class RealmRegistry:
     def has_provider(self, name: str) -> bool:
         return name in self._extension_providers or name in self._builtin_providers
 
+    def _get_extension_config(
+        self, model: Model, provider_name: str | None = None
+    ) -> dict[str, Any] | None:
+        if provider_name and provider_name in self._extension_providers:
+            return self._extension_providers[provider_name]
+        if model.realm in self._extension_providers:
+            return self._extension_providers[model.realm]
+        if model.provider in self._extension_providers:
+            return self._extension_providers[model.provider]
+        for part in model.id.split("/"):
+            if part in self._extension_providers:
+                return self._extension_providers[part]
+        return None
+
     def create_realm(
         self,
         model: Model,
         api_key: str,
         provider_name: str | None = None,
     ) -> Realm:
-        pname = provider_name or model.provider
-        ext_config = self._extension_providers.get(pname)
+        ext_config = self._get_extension_config(model, provider_name)
         if ext_config is not None:
             base_url = ext_config.get("baseUrl") or model.base_url
             key = ext_config.get("apiKey") or api_key
-            realm_factory = self._builtin_providers.get(pname)
+            pname = provider_name or (
+                model.realm
+                if model.realm in self._extension_providers
+                else model.provider
+                if model.provider in self._extension_providers
+                else model.realm
+            )
+            realm_factory = self._builtin_providers.get(
+                pname
+            ) or self._builtin_providers.get(model.realm)
             if realm_factory is not None:
                 return realm_factory(api_key=key, base_url=base_url)
             from mvgeos_provider.base import Realm as BaseRealm
@@ -91,13 +113,17 @@ class RealmRegistry:
 
             return _DynamicRealm(ext_config)
 
+        pname = provider_name or model.realm
         realm_factory = self._builtin_providers.get(
             pname,
-            lambda api_key="", base_url="": OpenRouterRealm(
-                api_key=api_key, base_url=base_url, client=self.get_shared_client()
+            self._builtin_providers.get(
+                model.realm,
+                lambda api_key="", base_url="": OpenRouterRealm(
+                    api_key=api_key, base_url=base_url, client=self.get_shared_client()
+                ),
             ),
         )
-        return cast(Realm, realm_factory(api_key=api_key, base_url=model.base_url))
+        return realm_factory(api_key=api_key, base_url=model.base_url)
 
     def compose_model(
         self,
@@ -106,26 +132,36 @@ class RealmRegistry:
         provider_name: str | None = None,
     ) -> Model | None:
         model_info = get_model(model_id)
-        if model_info is None:
-            return None
+        if model_info is not None:
+            model = Model(
+                id=model_info.id,
+                name=model_info.name,
+                realm=model_info.realm,
+                base_url=model_info.base_url,
+                api_key=api_key,
+                max_completion_mana=model_info.max_completion_mana,
+                context_window=model_info.context_window,
+                max_tokens=model_info.max_tokens,
+                headers=dict(model_info.headers or {}),
+                supported_parameters=list(model_info.supported_parameters),
+            )
+        else:
+            target_provider = provider_name
+            if not target_provider and "/" in model_id:
+                target_provider = model_id.split("/")[0]
 
-        from mvgeos_provider.types import Model
+            if target_provider and self.has_provider(target_provider):
+                model = Model(
+                    id=model_id,
+                    name=model_id,
+                    realm=target_provider,
+                    base_url="",
+                    api_key=api_key,
+                )
+            else:
+                return None
 
-        model = Model(
-            id=model_info.id,
-            name=model_info.name,
-            realm=model_info.realm,
-            base_url=model_info.base_url,
-            api_key=api_key,
-            max_completion_mana=model_info.max_completion_mana,
-            context_window=model_info.context_window,
-            max_tokens=model_info.max_tokens,
-            headers=dict(model_info.headers or {}),
-            supported_parameters=list(model_info.supported_parameters),
-        )
-
-        pname = provider_name or model.provider
-        ext_config = self._extension_providers.get(pname)
+        ext_config = self._get_extension_config(model, provider_name)
         if ext_config is not None:
             if "baseUrl" in ext_config:
                 model.base_url = str(ext_config["baseUrl"])

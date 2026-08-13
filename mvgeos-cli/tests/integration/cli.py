@@ -168,6 +168,28 @@ def test_subcommands_still_route(mock_run_agent: AsyncMock) -> None:
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
 @patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
+def test_leaf_subcommand_with_extra_args_routes_to_prompts(
+    mock_run_agent: AsyncMock,
+) -> None:
+    mock_run_agent.return_value = 0
+    result = runner.invoke(app, ["info", "about", "python"])
+    assert result.exit_code == 0
+    mock_run_agent.assert_called_once()
+    call_kwargs = mock_run_agent.call_args[1]
+    assert call_kwargs["incantation"] is None
+    assert call_kwargs["prompts"] == ["info", "about", "python"]
+
+    mock_run_agent.reset_mock()
+    result_build = runner.invoke(app, ["build", "a", "snake", "game"])
+    assert result_build.exit_code == 0
+    mock_run_agent.assert_called_once()
+    call_kwargs_build = mock_run_agent.call_args[1]
+    assert call_kwargs_build["incantation"] is None
+    assert call_kwargs_build["prompts"] == ["build", "a", "snake", "game"]
+
+
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
+@patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
 def test_options_after_positionals_are_prompts(mock_run_agent: AsyncMock) -> None:
     mock_run_agent.return_value = 0
     result = runner.invoke(app, ["p1", "--model", "x"])
