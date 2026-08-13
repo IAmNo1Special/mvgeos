@@ -48,7 +48,7 @@ if sys.platform == "win32":
 
 else:
 
-    class NoConsoleScreenBufferError(Exception):  # type: ignore[no-redef]
+    class NoConsoleScreenBufferError(Exception):
         pass
 
 

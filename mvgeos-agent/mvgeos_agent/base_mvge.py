@@ -96,6 +96,7 @@ class BaseMvge:
             environment = MvgeEnvironment.resolve(
                 name,
                 config_dir=Path(f"~/.agents/.mvgeos/{name}").expanduser(),
+                allow_unknown_agent=True,
             )
 
         self._environment = environment
