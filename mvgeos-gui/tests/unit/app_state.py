@@ -1,8 +1,15 @@
 """Unit tests for AppState management in mvgeos-gui."""
 
+from __future__ import annotations
+
+import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+from mvgeos_tome.ledger import TomeLedger
 
 from mvgeos_gui.state import AppState
+from mvgeos_gui.tome_service import TomeService
 
 
 def test_app_state_defaults() -> None:
@@ -16,6 +23,8 @@ def test_app_state_defaults() -> None:
     assert state.selected_model == "nvidia/nemotron-3-ultra-550b-a55b:free"
     assert state.is_channeling is False
     assert isinstance(state.recent_projects, list)
+    assert state.tome_service is not None
+    assert state.loaded_tomes == []
 
 
 def test_app_state_custom_init() -> None:
@@ -119,3 +128,259 @@ def test_listeners_and_exception_handling() -> None:
 
     state.notify()
     assert called == ["good"]
+
+
+# --- Tome service integration tests ---
+
+
+def _make_state_with_tomes(
+    project_cwd: str = "/test/project",
+) -> tuple[AppState, Path]:
+    """Create AppState backed by a temp tome dir with no tombs yet."""
+    tmp_dir = tempfile.mkdtemp()
+    tome_dir = Path(tmp_dir)
+    service = TomeService(tome_dir)
+    state = AppState(project_path=Path(project_cwd), tome_service=service)
+    return state, tome_dir
+
+
+def _create_tome(tome_dir: Path, cwd: str, tome_id: str | None = None) -> str:
+    ledger = TomeLedger(tome_dir)
+    meta = ledger.create_tome(cwd, tome_id=tome_id)
+    return meta.id
+
+
+class TestLoadTomes:
+    def test_loads_tomes_for_active_project(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        _create_tome(tome_dir, "/proj/a")
+        _create_tome(tome_dir, "/proj/b")
+
+        state.load_tomes()
+
+        assert len(state.loaded_tomes) == 1
+        assert state.loaded_tomes[0].tome_id is not None
+
+    def test_filters_out_other_projects(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        _create_tome(tome_dir, "/proj/a")
+        _create_tome(tome_dir, "/proj/b")
+
+        state.load_tomes()
+
+        assert len(state.loaded_tomes) == 1
+
+    def test_empty_when_no_tomes(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+
+        state.load_tomes()
+
+        assert state.loaded_tomes == []
+
+    def test_sets_active_flag_on_loaded_tomes(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        tome_id = _create_tome(tome_dir, "/proj/a")
+        state.active_tome_id = tome_id
+
+        state.load_tomes()
+
+        active_entries = [e for e in state.loaded_tomes if e.is_active]
+        assert len(active_entries) == 1
+        assert active_entries[0].tome_id == tome_id
+
+    def test_notifies_listeners(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        _create_tome(tome_dir, "/proj/a")
+
+        state.load_tomes()
+
+        assert called == [True]
+
+
+class TestSwitchToTome:
+    def test_sets_active_tome_id_and_title(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        tome_id = _create_tome(tome_dir, "/proj/a")
+        ledger = TomeLedger(tome_dir)
+        ledger.append_tome_info(tome_id, {"name": "Bug Fix Session"})
+
+        state.switch_to_tome(tome_id)
+
+        assert state.active_tome_id == tome_id
+        assert state.tome_title == "Bug Fix Session"
+
+    def test_sets_title_from_tome_info_title_key(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        tome_id = _create_tome(tome_dir, "/proj/a")
+        ledger = TomeLedger(tome_dir)
+        ledger.append_tome_info(tome_id, {"title": "Refactor Loop"})
+
+        state.switch_to_tome(tome_id)
+
+        assert state.tome_title == "Refactor Loop"
+
+    def test_title_fallback_conversation(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        tome_id = _create_tome(tome_dir, "/proj/a")
+
+        state.switch_to_tome(tome_id)
+
+        assert state.tome_title == "Conversation"
+
+    def test_clears_channeling(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        state.is_channeling = True
+        tome_id = _create_tome(tome_dir, "/proj/a")
+
+        state.switch_to_tome(tome_id)
+
+        assert state.is_channeling is False
+
+    def test_unknown_tome_id_is_noop(self) -> None:
+        state, _ = _make_state_with_tomes("/proj/a")
+        state.active_tome_id = None
+        state.tome_title = "New Conversation"
+
+        state.switch_to_tome("nonexistent_tome_id")
+
+        assert state.active_tome_id is None
+        assert state.tome_title == "New Conversation"
+
+    def test_notifies_listeners(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        tome_id = _create_tome(tome_dir, "/proj/a")
+
+        state.switch_to_tome(tome_id)
+
+        assert called == [True]
+
+
+class TestOpenInEditor:
+    @patch("mvgeos_gui.state.subprocess.Popen")
+    def test_uses_code_command_by_default(self, mock_popen: MagicMock) -> None:
+        state = AppState(project_path=Path("C:/demo/project"))
+        state.open_in_editor()
+
+        mock_popen.assert_called_once()
+        args = mock_popen.call_args[0][0]
+        assert args[0] == "code"
+        assert args[1] == str(Path("C:/demo/project"))
+
+    @patch("mvgeos_gui.state.subprocess.Popen")
+    def test_uses_editor_env_var(self, mock_popen: MagicMock) -> None:
+        with patch.dict("os.environ", {"EDITOR": "vim"}):
+            state = AppState(project_path=Path("/home/user/proj"))
+            state.open_in_editor()
+
+        mock_popen.assert_called_once()
+        args = mock_popen.call_args[0][0]
+        assert args[0] == "vim"
+
+    @patch("mvgeos_gui.state.subprocess.Popen")
+    def test_suppresses_file_not_found(self, mock_popen: MagicMock) -> None:
+        mock_popen.side_effect = FileNotFoundError("not found")
+        state = AppState(project_path=Path("/proj"))
+
+        state.open_in_editor()
+
+        mock_popen.assert_called_once()
+
+
+class TestForkTome:
+    def test_forks_active_tome_and_switches(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        tome_id = _create_tome(tome_dir, "/proj/a")
+        ledger = TomeLedger(tome_dir)
+        entry = ledger.append_message(tome_id, "user", "hello")
+        ledger.append_leaf(tome_id, entry.id)
+        state.active_tome_id = tome_id
+        state.tome_title = "Original"
+
+        forked_id = state.fork_tome()
+
+        assert forked_id is not None
+        assert state.active_tome_id == forked_id
+        assert state.active_tome_id != tome_id
+
+    def test_no_active_tome_returns_none(self) -> None:
+        state, _ = _make_state_with_tomes("/proj/a")
+
+        assert state.fork_tome() is None
+
+    def test_no_leaf_returns_none(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        tome_id = _create_tome(tome_dir, "/proj/a")
+        state.active_tome_id = tome_id
+
+        assert state.fork_tome() is None
+
+
+class TestExportTome:
+    def test_exports_to_project_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as proj_tmp:
+            state, tome_dir = _make_state_with_tomes(proj_tmp)
+            tome_id = _create_tome(tome_dir, proj_tmp)
+            ledger = TomeLedger(tome_dir)
+            ledger.append_message(tome_id, "user", "hello")
+            ledger.append_message(tome_id, "assistant", "hi")
+            state.active_tome_id = tome_id
+
+            result = state.export_tome()
+
+            assert result is not None
+            assert result.suffix == ".jsonl"
+            assert result.exists()
+
+    def test_no_active_tome_returns_none(self) -> None:
+        state, _ = _make_state_with_tomes("/proj/a")
+
+        assert state.export_tome() is None
+
+    def test_export_filename_uses_short_id(self) -> None:
+        with tempfile.TemporaryDirectory() as proj_tmp:
+            state, tome_dir = _make_state_with_tomes(proj_tmp)
+            tome_id = _create_tome(tome_dir, proj_tmp)
+            state.active_tome_id = tome_id
+
+            result = state.export_tome()
+
+            assert result is not None
+            assert result.name == f"{tome_id[:8]}.jsonl"
+
+
+class TestClearHistory:
+    def test_resets_conversation_state(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        tome_id = _create_tome(tome_dir, "/proj/a")
+        state.active_tome_id = tome_id
+        state.tome_title = "Old Session"
+        state.is_channeling = True
+
+        state.clear_history()
+
+        assert state.active_tome_id is None
+        assert state.tome_title == "New Conversation"
+        assert state.is_channeling is False
+
+    def test_notifies_listeners(self) -> None:
+        state, _ = _make_state_with_tomes("/proj/a")
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+
+        state.clear_history()
+
+        assert called == [True]
+
+
+class TestSetProjectReloadsTomes:
+    def test_set_project_loads_tomes_for_new_project(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        _create_tome(tome_dir, "/proj/b")
+
+        state.set_project(Path("/proj/b"))
+
+        assert len(state.loaded_tomes) == 1

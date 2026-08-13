@@ -10,6 +10,7 @@ from mvgeos_gui.styles import inject_theme
 def build_page(state: AppState | None = None) -> None:
     """Construct the Antigravity GUI layout on the current page."""
     current_state = state or AppState()
+    current_state.load_tomes()
     inject_theme()
 
     @ui.refreshable

@@ -96,22 +96,53 @@ def render_sidebar(state: AppState) -> ui.column:
                         ui.icon("folder_open", size="15px").classes("text-[#3b82f6]")
                         ui.label(project_name).classes("truncate")
 
-                    # Active Tome row
-                    with ui.row().classes(
-                        "w-full items-center justify-between pl-6 pr-2 py-1.5 "
-                        "rounded-md bg-[#1e212b]/70 border border-[#2b2f3d]/60 "
-                        "cursor-pointer text-xs"
-                    ):
-                        with ui.row().classes(
-                            "items-center gap-1.5 truncate max-w-[150px]"
-                        ):
-                            ui.icon("chat_bubble_outline", size="13px").classes(
-                                "text-[#8b949e]"
-                            )
-                            ui.label(state.tome_title).classes(
-                                "text-[#e6edf3] truncate text-[11px]"
-                            )
-                        ui.label("now").classes("text-[10px] text-[#64748b]")
+                    # Dynamic Tome list from TomeLedger
+                    if state.loaded_tomes:
+                        with ui.column().classes("w-full gap-0.5 mt-1"):
+                            for entry in state.loaded_tomes:
+                                bg_class = (
+                                    "bg-[#1e212b]/70 border border-[#2b2f3d]/60"
+                                    if entry.is_active
+                                    else "hover:bg-[#1e212b]/40"
+                                )
+                                with (
+                                    ui.row()
+                                    .classes(
+                                        "w-full items-center justify-between "
+                                        "pl-6 pr-2 py-1.5 rounded-md "
+                                        f"cursor-pointer text-xs {bg_class}"
+                                    )
+                                    .on(
+                                        "click",
+                                        lambda _, e=entry: state.switch_to_tome(
+                                            e.tome_id
+                                        ),
+                                    )
+                                    .mark(f"tome_entry_{entry.tome_id[:8]}"),
+                                ):
+                                    with ui.row().classes(
+                                        "items-center gap-1.5 truncate max-w-[150px]"
+                                    ):
+                                        ui.icon(
+                                            "chat_bubble_outline", size="13px"
+                                        ).classes("text-[#8b949e]")
+                                        ui.label(entry.title).classes(
+                                            "text-[#e6edf3] truncate text-[11px]"
+                                        )
+                                    with ui.row().classes("items-center gap-1"):
+                                        ui.label(entry.relative_time).classes(
+                                            "text-[10px] text-[#64748b]"
+                                        )
+                                        if entry.git_branch:
+                                            ui.label(entry.git_branch).classes(
+                                                "text-[10px] px-1 py-0.5 rounded "
+                                                "bg-[#3b82f6]/10 text-[#3b82f6] "
+                                                "border border-[#3b82f6]/30 font-mono"
+                                            )
+                    else:
+                        ui.label("No recent sessions").classes(
+                            "text-[11px] text-[#64748b] pl-6 py-2"
+                        )
 
         # Bottom section with generous bottom padding
         with ui.column().classes("w-full border-t border-[#2b2f3d] pt-3 pb-2 gap-2"):

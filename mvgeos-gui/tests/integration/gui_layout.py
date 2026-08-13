@@ -1,13 +1,47 @@
 """Integration tests for 3-column obsidian shell layout and components."""
 
+import shutil
+import subprocess
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
+from mvgeos_tome.ledger import TomeLedger
 from nicegui import ui
 from nicegui.testing import User
 
 from mvgeos_gui.app import build_page, init_app
 from mvgeos_gui.state import AppState
+from mvgeos_gui.tome_service import TomeService
+
+
+def _init_git_repo(repo_path: Path, branch: str) -> None:
+    subprocess.run(
+        ["git", "init", "-b", branch],
+        cwd=repo_path,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=repo_path,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test"],
+        cwd=repo_path,
+        check=True,
+        capture_output=True,
+    )
+    (repo_path / "README.md").write_text("test", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "init"],
+        cwd=repo_path,
+        check=True,
+        capture_output=True,
+    )
 
 
 @pytest.mark.asyncio
@@ -160,3 +194,203 @@ async def test_init_app_registers_index(user: User) -> None:
 
     await user.open("/")
     await user.should_see("init-project")
+
+
+# --- Tome integration tests ---
+
+
+@pytest.mark.asyncio
+async def test_sidebar_displays_tomes(user: User, tmp_path: Path) -> None:
+    """Verify sidebar lists tombs with titles, timestamps, and git branches."""
+    tome_dir = tmp_path / "tomes"
+    project_path = tmp_path / "proj"
+    project_path.mkdir()
+    ledger = TomeLedger(tome_dir)
+    meta = ledger.create_tome(str(project_path))
+    ledger.append_tome_info(meta.id, {"name": "Bug Fix Session"})
+
+    service = TomeService(tome_dir)
+    state = AppState(project_path=project_path, tome_service=service)
+    state.load_tomes()
+
+    @ui.page("/test_sidebar_tomes")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_sidebar_tomes")
+    await user.should_see("Bug Fix Session")
+    await user.should_see("now")
+
+
+@pytest.mark.asyncio
+async def test_sidebar_shows_git_branch(user: User, tmp_path: Path) -> None:
+    """Verify sidebar shows git branch tags for tome entries."""
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo, "feature-branch")
+
+    tome_dir = tmp_path / "tomes"
+    ledger = TomeLedger(tome_dir)
+    ledger.create_tome(str(repo))
+
+    service = TomeService(tome_dir)
+    state = AppState(project_path=repo, tome_service=service)
+    state.load_tomes()
+
+    @ui.page("/test_git_branch")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_git_branch")
+    await user.should_see("feature-branch")
+
+
+@pytest.mark.asyncio
+async def test_clicking_tome_switches_session(user: User, tmp_path: Path) -> None:
+    """Verify clicking a tome entry switches the active session."""
+    tome_dir = tmp_path / "tomes"
+    project_path = tmp_path / "proj"
+    project_path.mkdir()
+    ledger = TomeLedger(tome_dir)
+    meta = ledger.create_tome(str(project_path))
+    ledger.append_tome_info(meta.id, {"name": "Test Session"})
+
+    service = TomeService(tome_dir)
+    state = AppState(project_path=project_path, tome_service=service)
+    state.load_tomes()
+
+    @ui.page("/test_click_tome")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_click_tome")
+
+    user.find(f"tome_entry_{meta.id[:8]}").click()
+
+    assert state.active_tome_id == meta.id
+    assert state.tome_title == "Test Session"
+
+
+@pytest.mark.asyncio
+async def test_header_breadcrumb_with_tome(user: User, tmp_path: Path) -> None:
+    """Verify header breadcrumb shows active tome title."""
+    tome_dir = tmp_path / "tomes"
+    project_path = tmp_path / "my-awesome-project"
+    project_path.mkdir()
+    ledger = TomeLedger(tome_dir)
+    meta = ledger.create_tome(str(project_path))
+    ledger.append_tome_info(meta.id, {"name": "Active Session"})
+
+    service = TomeService(tome_dir)
+    state = AppState(project_path=project_path, tome_service=service)
+    state.load_tomes()
+    state.switch_to_tome(meta.id)
+
+    @ui.page("/test_breadcrumb")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_breadcrumb")
+    await user.should_see("my-awesome-project")
+    await user.should_see("Active Session")
+
+
+@pytest.mark.asyncio
+async def test_viewport_transitions_to_conversation(user: User, tmp_path: Path) -> None:
+    """Verify center viewport transitions from empty state to active session."""
+    tome_dir = tmp_path / "tomes"
+    project_path = tmp_path / "proj"
+    project_path.mkdir()
+    ledger = TomeLedger(tome_dir)
+    meta = ledger.create_tome(str(project_path))
+    ledger.append_tome_info(meta.id, {"name": "Active Session"})
+
+    service = TomeService(tome_dir)
+    state = AppState(project_path=project_path, tome_service=service)
+    state.load_tomes()
+    state.switch_to_tome(meta.id)
+
+    @ui.page("/test_viewport_transition")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_viewport_transition")
+    await user.should_see("Active Session")
+
+
+@pytest.mark.asyncio
+async def test_open_ide_button_launches_editor(user: User, tmp_path: Path) -> None:
+    """Verify Open IDE button spawns editor in project directory."""
+    with patch("mvgeos_gui.state.subprocess.Popen") as mock_popen:
+        state = AppState(project_path=tmp_path)
+        mock_popen.return_value = MagicMock()
+
+        @ui.page("/test_open_ide")
+        def page() -> None:
+            build_page(state)
+
+        await user.open("/test_open_ide")
+        user.find("open_ide_btn").click()
+
+        mock_popen.assert_called_once()
+        args = mock_popen.call_args[0][0]
+        assert args[0] == "code"
+        assert args[1] == str(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_header_menu_items_visible(user: User) -> None:
+    """Verify 3-dots menu items are labeled correctly."""
+    state = AppState()
+
+    @ui.page("/test_menu_items")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_menu_items")
+    await user.should_see("Export Transcript")
+    await user.should_see("Fork Tome")
+    await user.should_see("Clear Conversation")
+
+
+@pytest.mark.asyncio
+async def test_empty_state_visible_without_tome(user: User) -> None:
+    """Verify empty state renders when no tome is active."""
+    state = AppState()
+
+    @ui.page("/test_empty_state")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_empty_state")
+    await user.should_see("How can MvgeOS help you today?")
+
+
+@pytest.mark.asyncio
+async def test_new_conversation_hides_conversation_view(
+    user: User, tmp_path: Path
+) -> None:
+    """Verify new conversation transitions back to empty state."""
+    tome_dir = tmp_path / "tomes"
+    project_path = tmp_path / "proj"
+    project_path.mkdir()
+    ledger = TomeLedger(tome_dir)
+    meta = ledger.create_tome(str(project_path))
+
+    service = TomeService(tome_dir)
+    state = AppState(project_path=project_path, tome_service=service)
+    state.load_tomes()
+    state.switch_to_tome(meta.id)
+
+    @ui.page("/test_new_convo_transition")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_new_convo_transition")
+    user.find("new_conversation_btn").click()
+
+    assert state.active_tome_id is None
+    assert state.tome_title == "New Conversation"

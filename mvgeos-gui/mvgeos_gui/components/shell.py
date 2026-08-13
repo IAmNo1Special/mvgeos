@@ -2,6 +2,7 @@
 
 from nicegui import ui
 
+from mvgeos_gui.components.conversation_view import render_conversation_view
 from mvgeos_gui.components.empty_state import render_empty_state
 from mvgeos_gui.components.header import render_header
 from mvgeos_gui.components.input_dock import render_input_dock
@@ -31,7 +32,10 @@ def render_shell(state: AppState) -> ui.row:
 
             # Center Scrollable View (Empty State or Chat Stream)
             with ui.scroll_area().classes("w-full flex-grow relative"):
-                render_empty_state(state)
+                if state.active_tome_id is not None:
+                    render_conversation_view(state)
+                else:
+                    render_empty_state(state)
 
             # Floating Bottom Input Dock with proper clearance
             render_input_dock(state)
