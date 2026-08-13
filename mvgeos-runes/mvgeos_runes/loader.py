@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import inspect
 import re
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
@@ -64,9 +65,18 @@ def load_factory_from_manifest(
                 )
             )
         return None
+
+    rune_dir_resolved = rune_dir.resolve()
+    entry_parent_resolved = entry.parent.resolve()
+    for p in (entry_parent_resolved, rune_dir_resolved):
+        p_str = str(p)
+        if p_str not in sys.path:
+            sys.path.insert(0, p_str)
+
     spec = importlib.util.spec_from_file_location(
         f"mvgeos_rune_{manifest.name}", str(entry)
     )
+
     if spec is None or spec.loader is None:
         return None
     mod = importlib.util.module_from_spec(spec)

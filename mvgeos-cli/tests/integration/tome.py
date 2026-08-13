@@ -73,7 +73,7 @@ class TestTomeCommands:
 
         result = runner.invoke(tome_app, ["list"])
         assert result.exit_code == 0
-        assert "tome_abc123" in result.stdout
+        assert "tome_abc" in result.stdout
 
     @patch("mvgeos_cli.commands.tome.Path.cwd")
     @patch("mvgeos_cli.commands.tome.TomeLedger")
@@ -111,7 +111,7 @@ class TestTomeCommands:
 
         result = runner.invoke(tome_app, ["show", "tome_abc123"])
         assert result.exit_code == 0
-        assert "tome_abc123" in result.stdout
+        assert "tome_abc" in result.stdout
 
     @patch("mvgeos_cli.commands.tome.Path.cwd")
     @patch("mvgeos_cli.commands.tome.TomeLedger")
@@ -172,7 +172,7 @@ class TestTomeCommands:
             ["export", "tome_abc123", "--format", "markdown"],
         )
         assert result.exit_code == 0
-        assert "Tome: tome_abc123" in result.stdout
+        assert "tome_abc" in result.stdout
 
     @patch("mvgeos_cli.commands.tome.Path.cwd")
     @patch("mvgeos_cli.commands.tome.TomeLedger")
@@ -191,14 +191,42 @@ class TestTomeCommands:
     @patch("mvgeos_cli.commands.tome.TomeLedger")
     def test_tome_create(self, mock_ledger: MagicMock, mock_cwd: MagicMock) -> None:
         mock_cwd.return_value = Path("/test")
+        mock_meta = MagicMock()
+        mock_meta.id = "tome_abc123"
 
         mock_ledger_instance = MagicMock()
+        mock_ledger_instance.create_tome.return_value = mock_meta
         mock_ledger.return_value = mock_ledger_instance
 
         result = runner.invoke(tome_app, ["create"])
         assert result.exit_code == 0
-        assert "Created tome" in result.stdout
+        assert "Created tome: tome_abc" in result.stdout
+
+    @patch("mvgeos_cli.commands.tome.Path.cwd")
+    @patch("mvgeos_cli.commands.tome.TomeLedger")
+    def test_tome_fork_short_id(
+        self, mock_ledger: MagicMock, mock_cwd: MagicMock
+    ) -> None:
+        mock_meta = MagicMock()
+        mock_meta.id = "parent_tome_123456"
+        mock_meta.cwd = "/test"
+
+        forked_meta = MagicMock()
+        forked_meta.id = "forked_tome_654321"
+
+        mock_ledger_instance = MagicMock()
+        mock_ledger_instance.open_tome.return_value = mock_meta
+        mock_ledger_instance.get_leaf_id.return_value = "leaf_001"
+        mock_ledger_instance.get_entry.return_value = MagicMock()
+        mock_ledger_instance.create_branched_tome.return_value = forked_meta
+        mock_ledger.return_value = mock_ledger_instance
+
+        result = runner.invoke(tome_app, ["fork", "parent_t"])
+        assert result.exit_code == 0
+        assert "Forked tome: forked_t" in result.stdout
+        assert "Parent: parent_t" in result.stdout
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+

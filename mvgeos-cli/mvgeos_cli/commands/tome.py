@@ -3,13 +3,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import sys
+
 import typer
 from mvgeos_agent.constants import DEFAULT_TOME_DIR
 from mvgeos_tome.ledger import TomeLedger
-from rich.console import Console
+from rich import box
 from rich.table import Table
 
-console = Console()
+from mvgeos_cli.console import get_console, is_utf8_stream
+
+console = get_console()
 tome_app = typer.Typer()
 
 
@@ -25,7 +29,8 @@ def tome_list() -> None:
     tome_dir = get_tome_dir()
     ledger = TomeLedger(tome_dir)
 
-    table = Table(title="MvgeOS Tomes")
+    box_style = box.ASCII if not is_utf8_stream(sys.stdout) else box.HEAVY_HEAD
+    table = Table(title="MvgeOS Tomes", box=box_style)
     table.add_column("ID", style="cyan")
     table.add_column("Created", style="green")
     table.add_column("CWD", style="yellow")
@@ -33,10 +38,10 @@ def tome_list() -> None:
 
     for meta in ledger.list_tomes():
         table.add_row(
-            meta.id,
+            meta.id[:8],
             meta.created_at[:19],
             meta.cwd,
-            meta.active_leaf_id or "\u2014",
+            meta.active_leaf_id or "-",
         )
 
     console.print(table)
@@ -53,12 +58,12 @@ def tome_show(tome_id: str = typer.Argument(..., help="Tome ID to show")) -> Non
         console.print(f"[red]Tome not found: {tome_id}[/red]")
         raise typer.Exit(1) from None
 
-    tome_entries = ledger.get_entries(tome_id)
+    tome_entries = ledger.get_entries(meta.id)
 
-    console.print(f"[bold]Tome:[/bold] {meta.id}")
+    console.print(f"[bold]Tome:[/bold] {meta.id[:8]}")
     console.print(f"[bold]Created:[/bold] {meta.created_at}")
     console.print(f"[bold]CWD:[/bold] {meta.cwd}")
-    console.print(f"[bold]Active Leaf:[/bold] {meta.active_leaf_id or '\u2014'}")
+    console.print(f"[bold]Active Leaf:[/bold] {meta.active_leaf_id or '-'}")
     console.print(f"[bold]Entries:[/bold] {len(tome_entries)}")
     console.print()
 
@@ -84,7 +89,7 @@ def tome_export(
         console.print(f"[red]Tome not found: {tome_id}[/red]")
         raise typer.Exit(1) from None
 
-    entries = ledger.get_entries(tome_id)
+    entries = ledger.get_entries(meta.id)
 
     if format == "json":
         data = {
@@ -110,7 +115,7 @@ def tome_export(
         output_text = json.dumps(data, indent=2)
     elif format == "markdown":
         lines = [
-            f"# Tome: {meta.id}",
+            f"# Tome: {meta.id[:8]}",
             f"Created: {meta.created_at}",
             f"CWD: {meta.cwd}",
             "",
@@ -148,7 +153,7 @@ def tome_create(
 
     ledger = TomeLedger(tome_dir)
     meta = ledger.create_tome(cwd, parent_tome_id=parent)
-    console.print(f"[green]Created tome: {meta.id}[/green]")
+    console.print(f"[green]Created tome: {meta.id[:8]}[/green]")
     console.print(f"[dim]File: {ledger.tome_file(meta.id)}[/dim]")
 
 
@@ -168,24 +173,25 @@ def tome_fork(
         console.print(f"[red]Tome not found: {tome_id}[/red]")
         raise typer.Exit(1)
 
-    target_leaf = leaf_id or ledger.get_leaf_id(tome_id)
+    target_leaf = leaf_id or ledger.get_leaf_id(meta.id)
     if target_leaf is None:
         console.print("[red]No leaf ID available. Specify --leaf.[/red]")
         raise typer.Exit(1)
 
-    if ledger.get_entry(tome_id, target_leaf) is None:
+    if ledger.get_entry(meta.id, target_leaf) is None:
         console.print(f"[red]Leaf entry not found: {target_leaf}[/red]")
         raise typer.Exit(1)
 
     try:
         forked_meta = ledger.create_branched_tome(
-            parent_tome_id=tome_id,
+            parent_tome_id=meta.id,
             cwd=meta.cwd,
             fork_from_leaf_id=target_leaf,
         )
-        console.print(f"[green]Forked tome: {forked_meta.id}[/green]")
+        console.print(f"[green]Forked tome: {forked_meta.id[:8]}[/green]")
         console.print(f"[dim]File: {ledger.tome_file(forked_meta.id)}[/dim]")
-        console.print(f"[dim]Parent: {tome_id}[/dim]")
+        console.print(f"[dim]Parent: {meta.id[:8]}[/dim]")
     except (KeyError, ValueError) as e:
         console.print(f"[red]Failed to fork tome: {e}[/red]")
         raise typer.Exit(1) from e
+

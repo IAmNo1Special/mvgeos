@@ -136,6 +136,114 @@ class ConfigManager:
                 result[key] = value
         return result
 
+    KNOWN_KEYS: set[str] = {
+        "model",
+        "max_tokens",
+        "temperature",
+        "contemplation_level",
+        "contemplation_budget",
+        "exclude_contemplation",
+        "spells_enabled",
+        "rune_paths",
+    }
+
+    @classmethod
+    def validate_value(cls, key: str, value: Any) -> Any:
+        """Validate a config key and value against the schema.
+
+        Returns the coerced/validated value or raises ValueError.
+        """
+        if key not in cls.KNOWN_KEYS:
+            raise ValueError(f"Unknown configuration key: '{key}'")
+
+        if key == "temperature":
+            if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+                raise ValueError("Invalid temperature value: expected float")
+            try:
+                val_float = float(value)
+            except ValueError, TypeError:
+                raise ValueError("Invalid temperature value: expected float") from None
+            if val_float < 0.0 or val_float > 2.0:
+                raise ValueError(
+                    "Invalid temperature value: expected float between 0.0 and 2.0"
+                )
+            return val_float
+
+        if key == "max_tokens":
+            if isinstance(value, bool):
+                raise ValueError("Invalid max_tokens value: expected int")
+            if isinstance(value, str):
+                try:
+                    val_int = int(value)
+                except ValueError, TypeError:
+                    raise ValueError("Invalid max_tokens value: expected int") from None
+            elif isinstance(value, int):
+                val_int = value
+            elif isinstance(value, float) and value.is_integer():
+                val_int = int(value)
+            else:
+                raise ValueError("Invalid max_tokens value: expected int")
+            if val_int <= 0:
+                raise ValueError("Invalid max_tokens value: expected positive integer")
+            return val_int
+
+        if key == "model":
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError("Invalid model value: expected string")
+            return value
+
+        if key == "contemplation_level":
+            if not isinstance(value, str) or value not in (
+                "none",
+                "low",
+                "medium",
+                "high",
+            ):
+                raise ValueError(
+                    "Invalid contemplation_level value: expected one of ['none', 'low', 'medium', 'high']"
+                )
+            return value
+
+        if key == "contemplation_budget":
+            if value is None:
+                return None
+            if isinstance(value, bool):
+                raise ValueError(
+                    "Invalid contemplation_budget value: expected integer >= 0 or null"
+                )
+            if isinstance(value, str):
+                try:
+                    val_int = int(value)
+                except ValueError, TypeError:
+                    raise ValueError(
+                        "Invalid contemplation_budget value: expected integer >= 0 or null"
+                    ) from None
+            elif isinstance(value, int):
+                val_int = value
+            else:
+                raise ValueError(
+                    "Invalid contemplation_budget value: expected integer >= 0 or null"
+                )
+            if val_int < 0:
+                raise ValueError(
+                    "Invalid contemplation_budget value: expected integer >= 0 or null"
+                )
+            return val_int
+
+        if key == "exclude_contemplation":
+            if not isinstance(value, bool):
+                raise ValueError("Invalid exclude_contemplation value: expected bool")
+            return value
+
+        if key in ("spells_enabled", "rune_paths"):
+            if not isinstance(value, list) or not all(
+                isinstance(x, str) for x in value
+            ):
+                raise ValueError(f"Invalid {key} value: expected list of strings")
+            return value
+
+        return value
+
     def get(self, key: str, default: Any = None) -> ConfigValue:
         """Get a single config value with provenance."""
         merged = self.load()
@@ -145,9 +253,10 @@ class ConfigManager:
 
     def set(self, key: str, value: Any) -> None:
         """Set a value in the agent-scope config file."""
+        validated_value = self.validate_value(key, value)
         self.agent_config_path.parent.mkdir(parents=True, exist_ok=True)
         data = self._load_json(self.agent_config_path)
-        data[key] = value
+        data[key] = validated_value
         self.agent_config_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     def reset(self) -> None:

@@ -953,3 +953,75 @@ class TestGetDefaultSkillPaths:
         # Agent path should have agent name substituted
         agent_path = paths[2][0]
         assert "test_agent" in str(agent_path)
+
+
+def test_load_factory_from_manifest_with_local_import() -> None:
+    import sys
+
+    orig_sys_path = list(sys.path)
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rune_dir = Path(tmpdir) / "imported_rune"
+            rune_dir.mkdir()
+            (rune_dir / "manifest.json").write_text(
+                '{"name": "imported_rune", "version": "1.0.0", '
+                '"description": "Test", "entry_point": "main.py"}',
+                encoding="utf-8",
+            )
+            (rune_dir / "helper_mod.py").write_text(
+                "HELPER_VALUE = 123\n", encoding="utf-8"
+            )
+            (rune_dir / "main.py").write_text(
+                "import helper_mod\n\ndef rune_factory(api):\n    pass\n",
+                encoding="utf-8",
+            )
+
+            manifest = load_manifest(rune_dir)
+            assert manifest is not None
+            factory = load_factory_from_manifest(manifest, rune_dir)
+            assert factory is not None
+            assert str(rune_dir.resolve()) in sys.path
+    finally:
+        sys.path.clear()
+        sys.path.extend(orig_sys_path)
+
+
+def test_load_factory_from_manifest_nested_entrypoint_with_imports() -> None:
+    import sys
+
+    orig_sys_path = list(sys.path)
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rune_dir = Path(tmpdir) / "nested_rune"
+            rune_dir.mkdir()
+            src_dir = rune_dir / "src"
+            src_dir.mkdir()
+
+            (rune_dir / "manifest.json").write_text(
+                '{"name": "nested_rune", "version": "1.0.0", '
+                '"description": "Test", "entry_point": "src/main.py"}',
+                encoding="utf-8",
+            )
+            (rune_dir / "root_helper.py").write_text(
+                "ROOT_VAL = 'root'\n", encoding="utf-8"
+            )
+            (src_dir / "nested_helper.py").write_text(
+                "NESTED_VAL = 'nested'\n", encoding="utf-8"
+            )
+            (src_dir / "main.py").write_text(
+                "import root_helper\n"
+                "import nested_helper\n\n"
+                "def rune_factory(api):\n"
+                "    pass\n",
+                encoding="utf-8",
+            )
+
+            manifest = load_manifest(rune_dir)
+            assert manifest is not None
+            factory = load_factory_from_manifest(manifest, rune_dir)
+            assert factory is not None
+            assert str(src_dir.resolve()) in sys.path
+            assert str(rune_dir.resolve()) in sys.path
+    finally:
+        sys.path.clear()
+        sys.path.extend(orig_sys_path)

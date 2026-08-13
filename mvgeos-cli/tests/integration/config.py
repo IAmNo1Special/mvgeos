@@ -59,10 +59,26 @@ class TestConfigCommands:
         mock_manager_cls.return_value = mock_mgr
 
         result = runner.invoke(
-            config_app, ["set", "list_val", "[1, 2, 3]", "--agent-name", "test-agent"]
+            config_app,
+            ["set", "spells_enabled", '["bash", "read"]', "--agent-name", "test-agent"],
         )
         assert result.exit_code == 0
-        mock_mgr.set.assert_called_once_with("list_val", [1, 2, 3])
+        mock_mgr.set.assert_called_once_with("spells_enabled", ["bash", "read"])
+
+    @patch("mvgeos_cli.commands.config.ConfigManager")
+    def test_config_set_invalid_temperature(self, mock_manager_cls: MagicMock) -> None:
+        runner = CliRunner()
+        mock_mgr = MagicMock()
+        mock_mgr.set.side_effect = ValueError(
+            "Invalid temperature value: expected float"
+        )
+        mock_manager_cls.return_value = mock_mgr
+
+        result = runner.invoke(
+            config_app, ["set", "temperature", "invalid", "--agent-name", "test-agent"]
+        )
+        assert result.exit_code == 1
+        assert "Invalid temperature value: expected float" in result.output
 
     @patch("mvgeos_cli.commands.config.ConfigManager")
     def test_config_get(self, mock_manager_cls: MagicMock) -> None:

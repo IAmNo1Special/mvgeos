@@ -5,9 +5,10 @@ import json
 import typer
 from mvgeos_agent.config_manager import ConfigManager
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
-from rich.console import Console
 
-console = Console()
+from mvgeos_cli.console import get_console
+
+console = get_console()
 
 config_app = typer.Typer(name="config", help="Configuration management")
 
@@ -53,7 +54,12 @@ def config_set(
     except json.JSONDecodeError:
         parsed_value = value
 
-    mgr.set(key, parsed_value)
+    try:
+        mgr.set(key, parsed_value)
+    except ValueError as err:
+        console.print(f"[red]{err}[/red]")
+        raise typer.Exit(1) from None
+
     console.print(f"[green]Set {key} = {parsed_value}[/green]")
 
 

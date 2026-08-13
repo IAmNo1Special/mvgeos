@@ -196,3 +196,107 @@ class TestConfigManagerConfigFileLocations:
         assert str(mgr.legacy_config_path) == str(
             tmp_path / ".agents" / ".mvgeos" / "config.json"
         )
+
+
+class TestConfigManagerValidation:
+    def test_set_invalid_temperature_type(self, tmp_path: Path) -> None:
+        mgr = _make_mgr(tmp_path)
+        import pytest
+
+        with pytest.raises(
+            ValueError, match="Invalid temperature value: expected float"
+        ):
+            mgr.set("temperature", "invalid")
+
+    def test_set_invalid_temperature_bool(self, tmp_path: Path) -> None:
+        mgr = _make_mgr(tmp_path)
+        import pytest
+
+        with pytest.raises(
+            ValueError, match="Invalid temperature value: expected float"
+        ):
+            mgr.set("temperature", True)
+
+    def test_set_invalid_temperature_range(self, tmp_path: Path) -> None:
+        mgr = _make_mgr(tmp_path)
+        import pytest
+
+        with pytest.raises(
+            ValueError,
+            match="Invalid temperature value: expected float between 0.0 and 2.0",
+        ):
+            mgr.set("temperature", 3.5)
+
+    def test_set_invalid_max_tokens_type(self, tmp_path: Path) -> None:
+        mgr = _make_mgr(tmp_path)
+        import pytest
+
+        with pytest.raises(ValueError, match="Invalid max_tokens value: expected int"):
+            mgr.set("max_tokens", "invalid")
+
+    def test_set_invalid_max_tokens_bool(self, tmp_path: Path) -> None:
+        mgr = _make_mgr(tmp_path)
+        import pytest
+
+        with pytest.raises(ValueError, match="Invalid max_tokens value: expected int"):
+            mgr.set("max_tokens", True)
+
+    def test_set_invalid_max_tokens_negative(self, tmp_path: Path) -> None:
+        mgr = _make_mgr(tmp_path)
+        import pytest
+
+        with pytest.raises(
+            ValueError, match="Invalid max_tokens value: expected positive integer"
+        ):
+            mgr.set("max_tokens", -10)
+
+    def test_set_unknown_key(self, tmp_path: Path) -> None:
+        mgr = _make_mgr(tmp_path)
+        import pytest
+
+        with pytest.raises(
+            ValueError, match="Unknown configuration key: 'invalid_key'"
+        ):
+            mgr.set("invalid_key", "foo")
+
+    def test_set_valid_values(self, tmp_path: Path) -> None:
+        mgr = _make_mgr(tmp_path)
+        mgr.set("temperature", 0.8)
+        assert (
+            json.loads(mgr.agent_config_path.read_text(encoding="utf-8"))["temperature"]
+            == 0.8
+        )
+        mgr.set("max_tokens", 8192)
+        assert (
+            json.loads(mgr.agent_config_path.read_text(encoding="utf-8"))["max_tokens"]
+            == 8192
+        )
+
+
+class TestBaseMvgeConfigResilience:
+    def test_agent_startup_handles_invalid_config_types(self, tmp_path: Path) -> None:
+        from mvgeos_agent.base_mvge import BaseMvge
+        from mvgeos_agent.environment import MvgeEnvironment
+
+        custom_defaults = {
+            "temperature": "invalid",
+            "max_tokens": None,
+            "contemplation_level": "ultra_high",
+            "contemplation_budget": [1, 2],
+        }
+        mgr = ConfigManager(
+            agent_name="test-agent",
+            project_dir=tmp_path,
+            defaults=custom_defaults,
+            agent_config_base=tmp_path / "agent_configs",
+        )
+        env = MvgeEnvironment.resolve(
+            "test-agent",
+            project_dir=tmp_path,
+            config_manager=mgr,
+        )
+        agent = BaseMvge(api_key="test-key", environment=env)
+        assert agent._temperature == 0.7
+        assert agent._max_tokens == 4096
+        assert agent._contemplation_level == "medium"
+        assert agent._contemplation_budget is None

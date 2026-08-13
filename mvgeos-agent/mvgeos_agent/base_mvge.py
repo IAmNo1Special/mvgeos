@@ -105,10 +105,59 @@ class BaseMvge:
             return environment.config.get(key, ConfigValue(default, layer)).value
 
         self._model_id = str(_get("model", DEFAULT_MODEL))
-        self._temperature = float(_get("temperature", 0.7))
-        self._max_tokens = int(_get("max_tokens", 4096))
-        self._contemplation_level = str(_get("contemplation_level", "medium"))
-        self._contemplation_budget = _get("contemplation_budget", None)
+
+        raw_temp = _get("temperature", 0.7)
+        try:
+            if isinstance(raw_temp, bool):
+                raise TypeError("temperature cannot be boolean")
+            self._temperature = float(raw_temp)
+        except ValueError, TypeError:
+            logger.warning(
+                "Invalid temperature in config (%r); falling back to default %s",
+                raw_temp,
+                0.7,
+            )
+            self._temperature = 0.7
+
+        raw_max_tokens = _get("max_tokens", 4096)
+        try:
+            if isinstance(raw_max_tokens, bool):
+                raise TypeError("max_tokens cannot be boolean")
+            self._max_tokens = int(raw_max_tokens)
+        except ValueError, TypeError:
+            logger.warning(
+                "Invalid max_tokens in config (%r); falling back to default %s",
+                raw_max_tokens,
+                4096,
+            )
+            self._max_tokens = 4096
+
+        raw_level = str(_get("contemplation_level", "medium"))
+        if raw_level in ("none", "low", "medium", "high"):
+            self._contemplation_level = raw_level
+        else:
+            logger.warning(
+                "Invalid contemplation_level in config (%r); falling back to default 'medium'",
+                raw_level,
+            )
+            self._contemplation_level = "medium"
+
+        self._contemplation_budget: int | None = None
+        raw_budget = _get("contemplation_budget", None)
+        if raw_budget is not None:
+            try:
+                if isinstance(raw_budget, bool):
+                    raise TypeError("contemplation_budget cannot be boolean")
+                self._contemplation_budget = int(raw_budget)
+            except ValueError, TypeError:
+                logger.warning(
+                    "Invalid contemplation_budget in config (%r); falling back to default None",
+                    raw_budget,
+                )
+                self._contemplation_budget = None
+        else:
+            self._contemplation_budget = None
+
         self._exclude_contemplation = bool(_get("exclude_contemplation", False))
         self._queue_mode: str = "steer"
 

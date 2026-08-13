@@ -35,12 +35,29 @@ class TomeLedger:
         self._lock = FileLock(str(tome_dir / ".lock"), timeout=30.0)
         self._load_all_tomes()
 
+    def _resolve_tome_id(self, tome_id: str) -> str | None:
+        if not tome_id:
+            return None
+        if tome_id in self._tomles:
+            return tome_id
+        exact_matches = [k for k in self._tomles if k.lower() == tome_id.lower()]
+        if len(exact_matches) == 1:
+            return exact_matches[0]
+        prefix_matches = [
+            k for k in self._tomles if k.lower().startswith(tome_id.lower())
+        ]
+        if len(prefix_matches) == 1:
+            return prefix_matches[0]
+        return None
+
     @property
     def dir(self) -> Path:
         return self._tome_dir
 
     def tome_file(self, tome_id: str) -> Path:
-        return self._tome_dir / f"{tome_id}.jsonl"
+        with self._lock:
+            resolved_id = self._resolve_tome_id(tome_id) or tome_id
+            return self._tome_dir / f"{resolved_id}.jsonl"
 
     def list_tomes(self) -> list[TomeMetadata]:
         with self._lock:
@@ -78,6 +95,12 @@ class TomeLedger:
             meta = self._tomles.get(tome_id)
             if meta is None:
                 meta = self._load_tome_metadata(tome_id)
+                if meta:
+                    self._tomles[meta.id] = meta
+            if meta is None:
+                resolved_id = self._resolve_tome_id(tome_id)
+                if resolved_id:
+                    meta = self._tomles.get(resolved_id)
             return meta
 
     def open_recent(self, cwd: str) -> TomeMetadata | None:
@@ -90,19 +113,20 @@ class TomeLedger:
                     meta = self._load_tome_metadata(f.stem)
                     if meta and meta.cwd == cwd:
                         return meta
-                except json.JSONDecodeError, ValueError:
+                except (json.JSONDecodeError, ValueError):
                     continue
             return None
 
     def append(self, tome_id: str, entry: TomeEntry) -> None:
         with self._lock:
-            metadata = self._tomles.get(tome_id)
+            resolved_id = self._resolve_tome_id(tome_id) or tome_id
+            metadata = self._tomles.get(resolved_id)
             if metadata is None:
-                metadata = self._load_tome_metadata(tome_id)
+                metadata = self._load_tome_metadata(resolved_id)
                 if metadata is None:
                     raise ValueError(f"Tome not found: {tome_id}")
 
-            self._append_entry_to_file(tome_id, entry)
+            self._append_entry_to_file(resolved_id, entry)
             self._index.add(entry)
 
     def append_message(
@@ -138,9 +162,11 @@ class TomeLedger:
             payload={"targetId": target_id},
         )
         self.append(tome_id, entry)
-        metadata = self._tomles[tome_id]
-        metadata.active_leaf_id = target_id
-        self._write_tome_file(metadata, self._read_tome_entries(tome_id))
+        with self._lock:
+            resolved_id = self._resolve_tome_id(tome_id) or tome_id
+            metadata = self._tomles[resolved_id]
+            metadata.active_leaf_id = target_id
+            self._write_tome_file(metadata, self._read_tome_entries(resolved_id))
         return entry
 
     def append_custom(
@@ -203,7 +229,8 @@ class TomeLedger:
         limit: int | None = None,
     ) -> list[TomeEntry]:
         with self._lock:
-            entries = self._read_tome_entries(tome_id)
+            resolved_id = self._resolve_tome_id(tome_id) or tome_id
+            entries = self._read_tome_entries(resolved_id)
             if entry_type is not None:
                 entries = [e for e in entries if e.type == entry_type]
             if limit is not None:
@@ -214,7 +241,8 @@ class TomeLedger:
         # Entry ids are short and only unique within a Tome, and the index
         # spans every Tome, so scope the lookup to this Tome's own entries.
         with self._lock:
-            for entry in self._read_tome_entries(tome_id):
+            resolved_id = self._resolve_tome_id(tome_id) or tome_id
+            for entry in self._read_tome_entries(resolved_id):
                 if entry.id == entry_id:
                     return entry
             return None
@@ -222,7 +250,8 @@ class TomeLedger:
     def get_leaf_id(self, tome_id: str) -> str | None:
         """The entry the Tome's Leaf currently points at."""
         with self._lock:
-            for entry in reversed(self._read_tome_entries(tome_id)):
+            resolved_id = self._resolve_tome_id(tome_id) or tome_id
+            for entry in reversed(self._read_tome_entries(resolved_id)):
                 if entry.type == TomeEntryType.LEAF:
                     target = entry.payload.get("targetId")
                     return str(target) if target is not None else None
@@ -236,24 +265,27 @@ class TomeLedger:
         tome_id: str | None = None,
     ) -> TomeMetadata:
         with self._lock:
-            parent_meta = self._tomles.get(parent_tome_id) or self._load_tome_metadata(
-                parent_tome_id
+            resolved_parent_id = (
+                self._resolve_tome_id(parent_tome_id) or parent_tome_id
             )
+            parent_meta = self._tomles.get(
+                resolved_parent_id
+            ) or self._load_tome_metadata(resolved_parent_id)
             if parent_meta is None:
                 raise ValueError(f"Parent tome not found: {parent_tome_id}")
 
-            new_tome_id = _generate_id()
+            new_tome_id = tome_id or _generate_id()
             metadata = TomeMetadata(
                 id=new_tome_id,
                 created_at=_timestamp_iso(),
                 cwd=parent_meta.cwd,
-                parent_tome_id=parent_tome_id,
+                parent_tome_id=parent_meta.id,
                 active_leaf_id=fork_from_leaf_id,
                 schema_version="1.0",
             )
             self._tomles[new_tome_id] = metadata
 
-            parent_entries = self._read_tome_entries(parent_tome_id)
+            parent_entries = self._read_tome_entries(parent_meta.id)
             if fork_from_leaf_id:
                 parent_entries = self._filter_entries_to_leaf(
                     parent_entries, fork_from_leaf_id
@@ -271,7 +303,8 @@ class TomeLedger:
         max_entries: int | None = None,
     ) -> list[TomeEntry]:
         with self._lock:
-            entries = self.get_entries(tome_id)
+            resolved_id = self._resolve_tome_id(tome_id) or tome_id
+            entries = self.get_entries(resolved_id)
             if leaf_id:
                 entries = self._filter_entries_to_leaf(entries, leaf_id)
             if max_entries is not None:
@@ -279,7 +312,8 @@ class TomeLedger:
             return entries
 
     def _tome_file_path(self, tome_id: str) -> Path:
-        return self._tome_dir / f"{tome_id}.jsonl"
+        resolved_id = self._resolve_tome_id(tome_id) or tome_id
+        return self._tome_dir / f"{resolved_id}.jsonl"
 
     def _append_entry_to_file(self, tome_id: str, entry: TomeEntry) -> None:
         tome_file = self._tome_file_path(tome_id)
