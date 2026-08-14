@@ -4,6 +4,7 @@ from mvgeos_agent.types import (
     MvgeResponse,
     MvgeSpell,
     MvgeState,
+    QueueMode,
     StopReason,
     SummonerRequest,
 )
@@ -30,6 +31,21 @@ def test_mvge_state_default_spells() -> None:
 def test_mvge_state_default_events() -> None:
     state = MvgeState()
     assert state.events == []
+
+
+def test_mvge_state_default_queue_mode() -> None:
+    state = MvgeState()
+    assert state.queue_mode == QueueMode.ONE_AT_A_TIME
+
+
+def test_mvge_state_queue_mode_can_be_set() -> None:
+    state = MvgeState(queue_mode=QueueMode.ALL)
+    assert state.queue_mode == QueueMode.ALL
+
+
+def test_queue_mode_values() -> None:
+    assert QueueMode.ALL.value == "all"
+    assert QueueMode.ONE_AT_A_TIME.value == "one-at-a-time"
 
 
 def test_mvge_spell_has_required_fields() -> None:

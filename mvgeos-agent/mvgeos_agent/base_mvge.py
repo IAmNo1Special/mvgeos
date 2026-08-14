@@ -53,6 +53,7 @@ from mvgeos_agent.types import (
     MvgeInvocation,
     MvgeSpell,
     MvgeState,
+    QueueMode,
     SessionResumeError,
     SummonerRequest,
 )
@@ -165,7 +166,7 @@ class BaseMvge:
             self._contemplation_budget = None
 
         self._exclude_contemplation = bool(_get("exclude_contemplation", False))
-        self._queue_mode: str = "steer"
+        self._queue_mode: QueueMode = QueueMode.ONE_AT_A_TIME
 
         spells_enabled = _get("spells_enabled", [])
         self._spell_names = list(spells_enabled) if spells_enabled else None
@@ -262,13 +263,14 @@ class BaseMvge:
         return self._event_bus.on(event_type, callback)
 
     @property
-    def queue_mode(self) -> str:
-        return getattr(self, "_queue_mode", "steer")
+    def queue_mode(self) -> QueueMode:
+        return getattr(self, "_queue_mode", QueueMode.ONE_AT_A_TIME)
 
     @queue_mode.setter
-    def queue_mode(self, mode: str) -> None:
-        if mode in ("steer", "followup"):
-            self._queue_mode = mode
+    def queue_mode(self, mode: QueueMode | str) -> None:
+        if isinstance(mode, str):
+            mode = QueueMode(mode)
+        self._queue_mode = mode
 
     def steer(self, text: str) -> None:
         if self._state is not None:
@@ -281,10 +283,7 @@ class BaseMvge:
             )
 
     def queue(self, text: str) -> None:
-        if self.queue_mode == "followup":
-            self.follow_up(text)
-        else:
-            self.steer(text)
+        self.steer(text)
 
     def _compose_model(self, model_id: str) -> Model:
         model = self._provider_registry.compose_model(
@@ -486,6 +485,7 @@ class BaseMvge:
             temperature=self._temperature,
             contemplation_budget=self._contemplation_budget,
             exclude_contemplation=self._exclude_contemplation,
+            queue_mode=self._queue_mode,
             rune_runner=self._runner,
             agent_session=self._agent_session,
             event_bus=self._event_bus,

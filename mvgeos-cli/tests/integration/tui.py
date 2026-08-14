@@ -218,7 +218,7 @@ class FakeAgent:
         self.session_id = session_id
         self._model_id = "nvidia/nemotron-3-ultra-550b-a55b:free"
         self._contemplation_level = "medium"
-        self.queue_mode = "steer"
+        self.queue_mode = "one-at-a-time"
         self._initialized = False
         self.closed = False
         self.initialize_calls = 0
@@ -235,10 +235,7 @@ class FakeAgent:
         self.run_calls.append(f"follow_up:{text}")
 
     def queue(self, text: str) -> None:
-        if self.queue_mode == "followup":
-            self.follow_up(text)
-        else:
-            self.steer(text)
+        self.steer(text)
 
     async def run(self, text: str) -> None:
         self.run_calls.append(text)
@@ -307,7 +304,7 @@ class TestTuiApp:
             )
         assert app.application is not None
         with patch(
-            "mvgeos_cli.commands.repl._fit_footer",
+            "mvgeos_cli.commands.tui._fit_footer",
             side_effect=lambda items, width: items,
         ):
             footer = app._footer_text()
@@ -620,7 +617,7 @@ class TestTuiApp:
             ("dim", "  session 12345678"),
             ("", "  mana 0"),
             ("", "  nvidia/nemotron-3-ultra-550b-a55b:free • medium"),
-            ("", "  (working • mode: steer)"),
+            ("", "  (working • mode: one-at-a-time)"),
         ]
         # Total length of items is 119
         fitted_50 = _fit_footer(items, 50)

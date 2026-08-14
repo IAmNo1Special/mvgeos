@@ -24,6 +24,7 @@ from mvgeos_agent.types import (
     MvgeResponse,
     MvgeSpell,
     MvgeState,
+    QueueMode,
     SpellResultMessage,
     StopReason,
     SummonerRequest,
@@ -58,6 +59,7 @@ class LoopContext:
     contemplation_budget: int | None = None
     exclude_contemplation: bool = False
     max_turns: int = 50
+    queue_mode: QueueMode = QueueMode.ONE_AT_A_TIME
 
 
 @dataclass
@@ -488,6 +490,7 @@ class MvgeLoop:
             contemplation_budget=self._state.contemplation_budget,
             exclude_contemplation=self._state.exclude_contemplation,
             max_turns=self._state.max_turns,
+            queue_mode=self._state.queue_mode,
         )
 
         try:
@@ -518,11 +521,19 @@ class MvgeLoop:
         return spells
 
     async def _drain_steer_queue(self) -> list[MvgeInvocation]:
+        if not self._state.steer_queue:
+            return []
+        if self._state.queue_mode == QueueMode.ONE_AT_A_TIME:
+            return [self._state.steer_queue.pop(0)]
         queued: list[MvgeInvocation] = list(self._state.steer_queue)
         self._state.steer_queue.clear()
         return queued
 
     async def _drain_followup_queue(self) -> list[MvgeInvocation]:
+        if not self._state.followup_queue:
+            return []
+        if self._state.queue_mode == QueueMode.ONE_AT_A_TIME:
+            return [self._state.followup_queue.pop(0)]
         queued: list[MvgeInvocation] = list(self._state.followup_queue)
         self._state.followup_queue.clear()
         return queued

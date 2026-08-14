@@ -362,7 +362,7 @@ class TuiApp:
 
     def _footer_text(self) -> FormattedText:
         items = list(_format_session_info(self.agent, self._branch, fit=False))
-        mode = getattr(self.agent, "queue_mode", "steer")
+        mode = getattr(self.agent, "queue_mode", "one-at-a-time")
         if self._busy:
             items.append(("", f"  (working • mode: {mode})"))
         else:

@@ -187,6 +187,7 @@ class MvgeState:
     spell_timeout_ms: int = 30000
     contemplation_budget: int | None = None
     exclude_contemplation: bool = False
+    queue_mode: QueueMode = QueueMode.ONE_AT_A_TIME
     rune_runner: RuneRunner | None = None
     agent_session: MvgeTome | None = None
     event_bus: EventBus | None = None

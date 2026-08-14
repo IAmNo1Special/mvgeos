@@ -21,7 +21,7 @@ from coding_mvge import CodingMvge
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.errors import RateLimitError
-from mvgeos_agent.types import MvgeEvent, MvgeResponse
+from mvgeos_agent.types import MvgeEvent, MvgeResponse, QueueMode
 from mvgeos_provider.model_registry import ModelRegistry
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
@@ -72,7 +72,7 @@ SLASH_COMMANDS: dict[str, str] = {
     "/exit": "Exit the REPL",
     "/model": "Switch or list models: /model [id] or /model --free",
     "/models": "List available models: /models [--free]",
-    "/mode": "Toggle queue mode (steer/followup): /mode or /m",
+    "/mode": "Toggle queue mode (all/one-at-a-time): /mode or /m",
     "/new": "Start a new session",
     "/session": "Show current session info",
     "/resume": "Resume a previous session: /resume <path>",
@@ -355,26 +355,25 @@ def _handle_command(
         return ReplAction.CONTINUE
 
     if cmd in ("/mode", "/m"):
-        agent.queue_mode = "followup" if agent.queue_mode == "steer" else "steer"
-        out(f"[dim]Queue mode toggled to {agent.queue_mode}[/dim]")
+        if agent.queue_mode == QueueMode.ONE_AT_A_TIME:
+            agent.queue_mode = QueueMode.ALL
+        else:
+            agent.queue_mode = QueueMode.ONE_AT_A_TIME
+        out(f"[dim]Queue mode: {agent.queue_mode}[/dim]")
         return ReplAction.CONTINUE
 
     if cmd in ("/steer", "/s"):
-        agent.queue_mode = "steer"
         if args:
             agent.steer(args.strip())
-            out(f"[dim]Queue mode: steer. Steering queued: {args.strip()}[/dim]")
-        else:
-            out("[dim]Queue mode set to steer[/dim]")
+            out(f"[dim]Steering queued: {args.strip()}[/dim]")
         return ReplAction.CONTINUE
 
     if cmd in ("/followup", "/f", "/follow"):
-        agent.queue_mode = "followup"
         if args:
             agent.follow_up(args.strip())
-            out(f"[dim]Queue mode: followup. Follow-up queued: {args.strip()}[/dim]")
+            out(f"[dim]Follow-up queued: {args.strip()}[/dim]")
         else:
-            out("[dim]Queue mode set to followup[/dim]")
+            out(f"[dim]Queue mode: {agent.queue_mode}[/dim]")
         return ReplAction.CONTINUE
 
     if cmd == "/new":

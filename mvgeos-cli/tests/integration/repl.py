@@ -309,22 +309,23 @@ class TestReplHelpers:
     def test_handle_command_mode_toggle(self) -> None:
         from unittest.mock import MagicMock
 
+        from mvgeos_agent.types import QueueMode
         from mvgeos_provider.model_registry import ModelRegistry
 
         from mvgeos_cli.commands.repl import _handle_command
 
         agent = MagicMock()
-        agent.queue_mode = "steer"
+        agent.queue_mode = QueueMode.ONE_AT_A_TIME
         registry = ModelRegistry()
         out_messages: list[str] = []
 
         _handle_command("/mode", agent, registry, out=out_messages.append)
-        assert agent.queue_mode == "followup"
-        assert any("Queue mode toggled to followup" in m for m in out_messages)
+        assert agent.queue_mode == QueueMode.ALL
+        assert any("Queue mode: all" in m for m in out_messages)
 
         _handle_command("/m", agent, registry, out=out_messages.append)
-        assert agent.queue_mode == "steer"
-        assert any("Queue mode toggled to steer" in m for m in out_messages)
+        assert agent.queue_mode == QueueMode.ONE_AT_A_TIME
+        assert any("Queue mode: one-at-a-time" in m for m in out_messages)
 
 
 class TestStreamFilter:

@@ -14,6 +14,7 @@ from mvgeos_agent.types import (
     MvgeInvocation,
     MvgeResponse,
     MvgeSpell,
+    QueueMode,
     SpellResultMessage,
     StopReason,
     SummonerRequest,
@@ -356,8 +357,235 @@ class TestCoreStaysDecoupled:
         assert context.invocations == before
 
 
+class TestQueueMode:
+    @pytest.mark.asyncio
+    async def test_default_queue_mode_is_one_at_a_time(self) -> None:
+        assert LoopContext().queue_mode == QueueMode.ONE_AT_A_TIME
+
+    @pytest.mark.asyncio
+    async def test_all_mode_drains_entire_steer_queue(
+        self, context: LoopContext
+    ) -> None:
+        context = LoopContext(
+            invocations=context.invocations,
+            spells=context.spells,
+            queue_mode=QueueMode.ALL,
+        )
+        drained = False
+        all_staged: list[list[MvgeInvocation]] = []
+
+        async def get_steering() -> list[MvgeInvocation]:
+            nonlocal drained
+            if drained:
+                return []
+            drained = True
+            staged = [
+                SummonerRequest(role="user", content="steer one"),
+                SummonerRequest(role="user", content="steer two"),
+                SummonerRequest(role="user", content="steer three"),
+            ]
+            all_staged.append(staged)
+            return staged
+
+        callbacks = LoopCallbacks(get_steering_messages=get_steering)
+        script = TurnScript([[_text("First")], [_text("Second")]])
+
+        await run_loop(context, script, Recorder(), callbacks)
+
+        assert len(all_staged) == 1
+        assert len(all_staged[0]) == 3
+
+    @pytest.mark.asyncio
+    async def test_one_at_a_time_drains_single_steer_message(
+        self, context: LoopContext
+    ) -> None:
+        context = LoopContext(
+            invocations=context.invocations,
+            spells=context.spells,
+            queue_mode=QueueMode.ONE_AT_A_TIME,
+        )
+        steer_queue = [
+            SummonerRequest(role="user", content="steer one"),
+            SummonerRequest(role="user", content="steer two"),
+            SummonerRequest(role="user", content="steer three"),
+        ]
+        all_drained: list[list[MvgeInvocation]] = []
+
+        async def get_steering() -> list[MvgeInvocation]:
+            if not steer_queue:
+                return []
+            drained = [steer_queue.pop(0)]
+            all_drained.append(drained)
+            return drained
+
+        callbacks = LoopCallbacks(get_steering_messages=get_steering)
+        script = TurnScript(
+            [[_text("First")], [_text("Second")], [_text("Third")], [_text("Fourth")]]
+        )
+
+        await run_loop(context, script, Recorder(), callbacks)
+
+        assert len(all_drained) <= 4
+        for batch in all_drained:
+            assert len(batch) == 1
+
+    @pytest.mark.asyncio
+    async def test_one_at_a_time_drains_all_staged_messages_over_multiple_turns(
+        self, context: LoopContext
+    ) -> None:
+        context = LoopContext(
+            invocations=context.invocations,
+            spells=context.spells,
+            queue_mode=QueueMode.ONE_AT_A_TIME,
+        )
+        steer_queue = [
+            SummonerRequest(role="user", content="steer one"),
+            SummonerRequest(role="user", content="steer two"),
+            SummonerRequest(role="user", content="steer three"),
+        ]
+
+        async def get_steering() -> list[MvgeInvocation]:
+            if not steer_queue:
+                return []
+            return [steer_queue.pop(0)]
+
+        callbacks = LoopCallbacks(get_steering_messages=get_steering)
+        script = TurnScript(
+            [
+                [_text("First")],
+                [_text("Second")],
+                [_text("Third")],
+                [_text("Fourth")],
+            ]
+        )
+
+        await run_loop(context, script, Recorder(), callbacks)
+
+        assert len(script.calls) == 4
+        assert not steer_queue
+
+    @pytest.mark.asyncio
+    async def test_one_at_a_time_drains_single_followup_message(
+        self, context: LoopContext
+    ) -> None:
+        context = LoopContext(
+            invocations=context.invocations,
+            spells=context.spells,
+            queue_mode=QueueMode.ONE_AT_A_TIME,
+        )
+        followup_queue = [
+            SummonerRequest(role="user", content="followup one"),
+            SummonerRequest(role="user", content="followup two"),
+            SummonerRequest(role="user", content="followup three"),
+        ]
+        all_drained: list[list[MvgeInvocation]] = []
+
+        async def get_follow_up() -> list[MvgeInvocation]:
+            if not followup_queue:
+                return []
+            drained = [followup_queue.pop(0)]
+            all_drained.append(drained)
+            return drained
+
+        callbacks = LoopCallbacks(get_follow_up_messages=get_follow_up)
+        script = TurnScript(
+            [
+                [_text("First")],
+                [_text("Second")],
+                [_text("Third")],
+                [_text("Fourth")],
+            ]
+        )
+
+        await run_loop(context, script, Recorder(), callbacks)
+
+        for batch in all_drained:
+            assert len(batch) == 1
+
+    @pytest.mark.asyncio
+    async def test_all_mode_drains_multiple_followup_messages(
+        self, context: LoopContext
+    ) -> None:
+        context = LoopContext(
+            invocations=context.invocations,
+            spells=context.spells,
+            queue_mode=QueueMode.ALL,
+        )
+        drained = False
+
+        async def get_follow_up() -> list[MvgeInvocation]:
+            nonlocal drained
+            if drained:
+                return []
+            drained = True
+            return [
+                SummonerRequest(role="user", content="followup one"),
+                SummonerRequest(role="user", content="followup two"),
+            ]
+
+        callbacks = LoopCallbacks(get_follow_up_messages=get_follow_up)
+        script = TurnScript([[_text("First")], [_text("Second")]])
+
+        await run_loop(context, script, Recorder(), callbacks)
+
+        assert len(script.calls) == 2
+
+    @pytest.mark.asyncio
+    async def test_one_at_a_time_preserves_unprocessed_steer_items(
+        self, context: LoopContext
+    ) -> None:
+        context = LoopContext(
+            invocations=context.invocations,
+            spells=context.spells,
+            queue_mode=QueueMode.ONE_AT_A_TIME,
+        )
+        steer_queue = [
+            SummonerRequest(role="user", content="steer one"),
+            SummonerRequest(role="user", content="steer two"),
+        ]
+        drained_items: list[str] = []
+
+        async def get_steering() -> list[MvgeInvocation]:
+            if not steer_queue:
+                return []
+            item = steer_queue.pop(0)
+            drained_items.append(item.content or "")
+            return [item]
+
+        callbacks = LoopCallbacks(get_steering_messages=get_steering)
+        script = TurnScript([[_text("First")], [_text("Second")]])
+
+        await run_loop(context, script, Recorder(), callbacks)
+
+        assert drained_items == ["steer one", "steer two"]
+
+
 class TestBaseMvgeNoLongerOwnsTurnLoop:
     def test_make_stream_removed(self) -> None:
         from mvgeos_agent.base_mvge import BaseMvge
 
         assert not hasattr(BaseMvge, "_make_stream")
+
+
+class TestBaseMvgeQueueMode:
+    def test_default_queue_mode_is_one_at_a_time(self) -> None:
+        from mvgeos_agent.base_mvge import BaseMvge
+
+        agent = BaseMvge(api_key="test-key")
+        assert agent.queue_mode == QueueMode.ONE_AT_A_TIME
+
+    def test_queue_mode_can_be_set_to_all(self) -> None:
+        from mvgeos_agent.base_mvge import BaseMvge
+
+        agent = BaseMvge(api_key="test-key")
+        agent.queue_mode = QueueMode.ALL
+        assert agent.queue_mode == QueueMode.ALL
+
+    def test_queue_mode_accepts_string(self) -> None:
+        from mvgeos_agent.base_mvge import BaseMvge
+
+        agent = BaseMvge(api_key="test-key")
+        agent.queue_mode = "one-at-a-time"
+        assert agent.queue_mode == QueueMode.ONE_AT_A_TIME
+        agent.queue_mode = "all"
+        assert agent.queue_mode == QueueMode.ALL

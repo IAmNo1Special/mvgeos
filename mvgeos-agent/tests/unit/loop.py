@@ -18,6 +18,7 @@ from mvgeos_agent.types import (
     MvgeResponse,
     MvgeSpell,
     MvgeState,
+    QueueMode,
     SpellResultMessage,
     StopReason,
     SummonerRequest,
@@ -1024,3 +1025,164 @@ async def test_record_invocation_spell_result_serializes_structured_json() -> No
                 assert parsed["payload"]["content"] == [
                     {"type": "text", "text": "file content here"}
                 ]
+
+
+class TestMvgeLoopQueueMode:
+    """Tests that MvgeLoop's drain callbacks respect MvgeState.queue_mode."""
+
+    @pytest.fixture
+    def state(self) -> MvgeState:
+        return MvgeState(
+            system_prompt="test",
+            model={"id": "test-model", "name": "Test"},
+            invocations=[SummonerRequest(role="user", content="hi")],
+        )
+
+    @pytest.fixture
+    def model_obj(self) -> Model:
+        return Model(
+            id="test-model",
+            name="Test Model",
+            realm="test",
+            base_url="https://api.test.com",
+            api_key="test",
+        )
+
+    def _make_realm_stream(
+        self, responses: list[RealmResponse]
+    ) -> Callable[[list[Any]], AsyncIterator[RealmResponse]]:
+        turn = -1
+
+        def stream_fn(invocations: list[Any]) -> AsyncIterator[RealmResponse]:
+            nonlocal turn
+            turn += 1
+            response = responses[min(turn, len(responses) - 1)]
+
+            async def gen() -> AsyncIterator[RealmResponse]:
+                yield response
+
+            return gen()
+
+        return stream_fn
+
+    @pytest.mark.asyncio
+    async def test_all_mode_drains_entire_steer_queue(
+        self, state: MvgeState, model_obj: Model
+    ) -> None:
+        from mvgeos_agent.loop import MvgeLoop
+
+        state.queue_mode = QueueMode.ALL
+        state.steer_queue = [
+            SummonerRequest(role="user", content="steer one"),
+            SummonerRequest(role="user", content="steer two"),
+            SummonerRequest(role="user", content="steer three"),
+        ]
+
+        responses = [
+            RealmResponse(
+                model=model_obj,
+                invocation=MvgeResponse(
+                    role="assistant",
+                    content=[{"type": "text", "text": "Hello!"}],
+                    stop_reason=StopReason.STOP,
+                ),
+            )
+        ]
+        stream_fn = self._make_realm_stream(responses)
+
+        loop = MvgeLoop(state)
+        await loop.run(stream_fn, {"id": "test-model"}, "none")
+
+        assert len(state.steer_queue) == 0
+
+    @pytest.mark.asyncio
+    async def test_one_at_a_time_drains_single_steer_message(
+        self, state: MvgeState, model_obj: Model
+    ) -> None:
+        from mvgeos_agent.loop import MvgeLoop
+
+        state.queue_mode = QueueMode.ONE_AT_A_TIME
+        state.steer_queue = [
+            SummonerRequest(role="user", content="steer one"),
+            SummonerRequest(role="user", content="steer two"),
+            SummonerRequest(role="user", content="steer three"),
+        ]
+
+        responses = [
+            RealmResponse(
+                model=model_obj,
+                invocation=MvgeResponse(
+                    role="assistant",
+                    content=[{"type": "text", "text": "First"}],
+                    stop_reason=StopReason.STOP,
+                ),
+            ),
+            RealmResponse(
+                model=model_obj,
+                invocation=MvgeResponse(
+                    role="assistant",
+                    content=[{"type": "text", "text": "Second"}],
+                    stop_reason=StopReason.STOP,
+                ),
+            ),
+            RealmResponse(
+                model=model_obj,
+                invocation=MvgeResponse(
+                    role="assistant",
+                    content=[{"type": "text", "text": "Third"}],
+                    stop_reason=StopReason.STOP,
+                ),
+            ),
+        ]
+        stream_fn = self._make_realm_stream(responses)
+
+        loop = MvgeLoop(state)
+        await loop.run(stream_fn, {"id": "test-model"}, "none")
+
+        assert len(state.steer_queue) == 0
+
+    @pytest.mark.asyncio
+    async def test_one_at_a_time_drains_single_followup_message(
+        self, state: MvgeState, model_obj: Model
+    ) -> None:
+        from mvgeos_agent.loop import MvgeLoop
+
+        state.queue_mode = QueueMode.ONE_AT_A_TIME
+        state.followup_queue = [
+            SummonerRequest(role="user", content="followup one"),
+            SummonerRequest(role="user", content="followup two"),
+            SummonerRequest(role="user", content="followup three"),
+        ]
+
+        responses = [
+            RealmResponse(
+                model=model_obj,
+                invocation=MvgeResponse(
+                    role="assistant",
+                    content=[{"type": "text", "text": "First"}],
+                    stop_reason=StopReason.STOP,
+                ),
+            ),
+            RealmResponse(
+                model=model_obj,
+                invocation=MvgeResponse(
+                    role="assistant",
+                    content=[{"type": "text", "text": "Second"}],
+                    stop_reason=StopReason.STOP,
+                ),
+            ),
+            RealmResponse(
+                model=model_obj,
+                invocation=MvgeResponse(
+                    role="assistant",
+                    content=[{"type": "text", "text": "Third"}],
+                    stop_reason=StopReason.STOP,
+                ),
+            ),
+        ]
+        stream_fn = self._make_realm_stream(responses)
+
+        loop = MvgeLoop(state)
+        await loop.run(stream_fn, {"id": "test-model"}, "none")
+
+        assert len(state.followup_queue) == 0

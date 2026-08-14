@@ -98,7 +98,7 @@ Frozen snapshot of everything the core reads (~9 fields). Diverges from Pi, whic
 The value-returning extension points: `transform_context`, `before_realm_headers`, `before_spell_cast` (veto), `after_spell_result`, `should_stop_after_turn`, `prepare_next_turn`, plus the queue drains `get_steering_messages` and `get_follow_up_messages`. Every callback is optional and must not raise — return a safe fallback instead. `MvgeLoop` honours this contract when building them from a Rune runner. Mirrors Pi's `AgentLoopConfig` callbacks.
 
 **Steering** / **Follow-up**:
-Steering Invocations are injected between turns while the Mvge is still working; follow-ups resume it after it would otherwise settle. The loop drains `MvgeState.steer_queue` after each turn that cast no Spells, and `followup_queue` at the outer-loop boundary. Queue modes (`all` / `one-at-a-time`) are not implemented — both queues always drain in full.
+Steering Invocations are injected between turns while the Mvge is still working; follow-ups resume it after it would otherwise settle. The loop drains `MvgeState.steer_queue` after each turn that cast no Spells, and `followup_queue` at the outer-loop boundary. Each queue's drain strategy is controlled by `MvgeState.queue_mode` (`QueueMode.ALL` drains the entire queue, `QueueMode.ONE_AT_A_TIME` drains one message at a time, leaving the rest queued for subsequent drain points — matching Pi's `PendingMessageQueue.drain()` semantics).
 
 **MvgeHarness**:
 The session-aware operational owner of the agent loop. Wraps `MvgeLoop`, `MvgeTome`, and `CompactionRunner`, orchestrating session startup, prompt dispatch, compaction history synchronization, and turn driving behind a deep interface. Mirrors Pi's `AgentHarness`.
@@ -143,5 +143,5 @@ The system-wide default model across all MvgeOS packages and test suites is `nvi
 ## Known gaps
 
 - **Abort** — `signal` parameters exist on `MvgeSpell.execute` but are always `None`; there is no `abort()` on the Mvge. Pi threads an `AbortSignal` end to end.
-- **Queue modes** — steering and follow-up queues always drain in full; Pi supports `one-at-a-time`.
+- **Queue modes** — `ONE_AT_A_TIME` drains one message per turn; `ALL` drains the entire queue. Both `queue_mode` and `one-at-a-time` semantics implemented.
 
