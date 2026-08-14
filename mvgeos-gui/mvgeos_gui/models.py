@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -56,6 +57,7 @@ class ChatMessage:
 
     role: str
     content: str = ""
+    contemplation: str = ""
     timestamp: str = field(default_factory=lambda: datetime.now(UTC).strftime("%H:%M"))
     model: str | None = None
     mana_used: int = 0
@@ -64,3 +66,37 @@ class ChatMessage:
     feedback: str | None = None
     is_error: bool = False
     error_message: str | None = None
+
+
+def extract_contemplation_tags(text: str) -> tuple[str, str]:
+    """Extract <think>...</think> or <thought>...</thought> tags from text.
+
+    Returns (cleaned_content, extracted_contemplation).
+    """
+    if not text:
+        return "", ""
+
+    pattern = re.compile(
+        r"<(?:think|thought)>(.*?)</(?:think|thought)>",
+        re.DOTALL | re.IGNORECASE,
+    )
+    thoughts: list[str] = []
+
+    def _replace(m: re.Match[str]) -> str:
+        thoughts.append(m.group(1).strip())
+        return ""
+
+    cleaned = pattern.sub(_replace, text)
+
+    # Check for unclosed <think> or <thought> tag at end of streaming buffer
+    unclosed = re.compile(
+        r"<(?:think|thought)>(.*)$",
+        re.DOTALL | re.IGNORECASE,
+    )
+    unclosed_match = unclosed.search(cleaned)
+    if unclosed_match:
+        thoughts.append(unclosed_match.group(1).strip())
+        cleaned = unclosed.sub("", cleaned)
+
+    extracted_thoughts = "\n\n".join(t for t in thoughts if t)
+    return cleaned.strip(), extracted_thoughts

@@ -169,3 +169,26 @@ async def test_model_selector_dropdown(user: User) -> None:
 
     state.switch_model("google/gemini-2.5-pro")
     assert state.selected_model == "google/gemini-2.5-pro"
+
+
+@pytest.mark.asyncio
+async def test_contemplation_card_in_conversation(user: User) -> None:
+    """Verify contemplation/thought block renders separately from response content."""
+    state = AppState(project_path=Path("C:/demo/project"))
+    state.messages.append(
+        ChatMessage(
+            role="assistant",
+            contemplation="User wants greeting. Respond politely.",
+            content="Hey there! How can I help you today?",
+            model="nvidia/nemotron-3-ultra-550b-a55b:free",
+        )
+    )
+
+    @ui.page("/test_thought_rendering")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_thought_rendering")
+    await user.should_see("Thought")
+    await user.should_see("User wants greeting. Respond politely.")
+    await user.should_see("Hey there! How can I help you today?")

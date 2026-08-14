@@ -20,6 +20,7 @@ from mvgeos_gui.models import (
     ExecutionStep,
     FileExploration,
     StepType,
+    extract_contemplation_tags,
 )
 
 if TYPE_CHECKING:
@@ -108,8 +109,20 @@ class AgentService:
 
         elif event.type == MvgeEventType.MESSAGE_UPDATE:
             text = data.get("text", "")
+            kind = data.get("kind", "text")
             if text:
-                message.content += text
+                if kind == "contemplation":
+                    message.contemplation += text
+                else:
+                    message.content += text
+                    if "<think>" in message.content or "<thought>" in message.content:
+                        cleaned, thoughts = extract_contemplation_tags(message.content)
+                        if thoughts:
+                            sep = "\n\n" if message.contemplation else ""
+                            message.contemplation = (
+                                f"{message.contemplation}{sep}{thoughts}"
+                            )
+                            message.content = cleaned
                 message.is_streaming = True
                 state.notify()
 
@@ -193,6 +206,12 @@ class AgentService:
                         step.duration_seconds = elapsed
                         step.title = f"Worked for {self._format_duration(elapsed)}"
                         step.is_complete = True
+            if message.content:
+                cleaned, thoughts = extract_contemplation_tags(message.content)
+                if thoughts:
+                    sep = "\n\n" if message.contemplation else ""
+                    message.contemplation = f"{message.contemplation}{sep}{thoughts}"
+                    message.content = cleaned
             message.is_streaming = False
             state.is_channeling = False
             self._is_running = False

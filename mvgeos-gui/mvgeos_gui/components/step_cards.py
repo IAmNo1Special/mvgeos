@@ -7,6 +7,32 @@ from nicegui import ui
 from mvgeos_gui.models import ExecutionStep, StepType
 
 
+def render_contemplation_card(
+    contemplation: str, is_streaming: bool = False
+) -> ui.expansion:
+    """Render a collapsible 'Thought' reasoning card."""
+    with (
+        ui.expansion(
+            text="Thought",
+            icon="psychology",
+            value=is_streaming,
+        )
+        .props("dense dense-toggle header-class=bg-[#1a1d26] dark")
+        .classes(
+            "w-full rounded-xl bg-[#14161f] border border-[#262a38] "
+            "text-xs text-[#8b949e] my-1"
+        ) as expansion,
+        ui.column().classes(
+            "w-full p-3 bg-[#0f1118] rounded-b-xl border-t border-[#252836]"
+        ),
+    ):
+        ui.markdown(contemplation).classes(
+            "text-xs text-[#94a3b8] italic leading-relaxed markdown-content "
+            "max-w-none w-full"
+        )
+    return expansion
+
+
 def render_worked_card(step: ExecutionStep) -> ui.expansion:
     """Render a collapsible 'Worked for Xs' execution card."""
     with (

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from nicegui import ui
 
-from mvgeos_gui.components.step_cards import render_step_card
+from mvgeos_gui.components.step_cards import (
+    render_contemplation_card,
+    render_step_card,
+)
 from mvgeos_gui.models import ChatMessage
 from mvgeos_gui.state import AppState
 
@@ -84,6 +87,10 @@ def render_assistant_message(
                         )
                 ui.label(msg.timestamp).classes("text-[10px] text-[#64748b] font-mono")
 
+        # Contemplation / Reasoning Card
+        if msg.contemplation:
+            render_contemplation_card(msg.contemplation, msg.is_streaming)
+
         # Intermediate Execution Steps
         if msg.steps:
             with ui.column().classes("w-full gap-1 my-1"):
@@ -101,20 +108,26 @@ def render_assistant_message(
         if msg.is_streaming:
             with ui.row().classes("items-center gap-2 py-1"):
                 ui.spinner("dots", size="sm", color="primary")
-                ui.label("Channeling response...").classes(
+                stream_label = (
+                    "Contemplating..."
+                    if (not msg.content and msg.contemplation)
+                    else "Channeling response..."
+                )
+                ui.label(stream_label).classes(
                     "text-[11px] text-[#8b949e] italic animate-pulse"
                 )
 
         # Footer Action Bar: Feedback (Thumbs Up / Down) & Copy
-        if not msg.is_streaming and msg.content:
+        if not msg.is_streaming and (msg.content or msg.contemplation):
             with ui.row().classes(
                 "w-full items-center justify-end gap-1 pt-2 "
                 "border-t border-[#252836]/60"
             ):
                 # Copy Button
+                copy_text = msg.content or msg.contemplation
                 with ui.button(
                     icon="content_copy",
-                    on_click=lambda c=msg.content: _copy_to_clipboard(c),
+                    on_click=lambda c=copy_text: _copy_to_clipboard(c),
                 ).props("flat dense round size=xs text-color=grey-5"):
                     ui.tooltip("Copy response")
 

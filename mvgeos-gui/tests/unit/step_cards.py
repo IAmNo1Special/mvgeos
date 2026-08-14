@@ -6,6 +6,7 @@ from nicegui.testing import User
 
 from mvgeos_gui.components.step_cards import (
     render_commands_card,
+    render_contemplation_card,
     render_files_card,
     render_step_card,
     render_worked_card,
@@ -105,3 +106,17 @@ async def test_render_step_card_dispatcher(user: User) -> None:
     await user.should_see("Worked step")
     await user.should_see("Files step")
     await user.should_see("Commands step")
+
+
+@pytest.mark.asyncio
+async def test_render_contemplation_card(user: User) -> None:
+    """Verify 'Thought' contemplation card renders reasoning text."""
+    thought_text = "The user said 'hey' - I should respond politely."
+
+    @ui.page("/test_thought_card")
+    def page() -> None:
+        render_contemplation_card(thought_text, is_streaming=False)
+
+    await user.open("/test_thought_card")
+    await user.should_see("Thought")
+    await user.should_see("The user said 'hey' - I should respond politely.")

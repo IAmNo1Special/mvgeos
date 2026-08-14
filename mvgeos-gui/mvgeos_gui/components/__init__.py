@@ -9,6 +9,7 @@ from mvgeos_gui.components.shell import render_shell
 from mvgeos_gui.components.sidebar import render_sidebar
 from mvgeos_gui.components.step_cards import (
     render_commands_card,
+    render_contemplation_card,
     render_files_card,
     render_step_card,
     render_worked_card,
@@ -16,6 +17,7 @@ from mvgeos_gui.components.step_cards import (
 
 __all__ = [
     "render_commands_card",
+    "render_contemplation_card",
     "render_conversation_view",
     "render_empty_state",
     "render_files_card",

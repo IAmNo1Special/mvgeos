@@ -15,26 +15,34 @@ from typing import Any
 from mvgeos_tome.types import TomeEntryType
 
 from mvgeos_gui.agent_service import AgentService
-from mvgeos_gui.models import ChatMessage
+from mvgeos_gui.models import ChatMessage, extract_contemplation_tags
 from mvgeos_gui.tome_service import TomeListEntry, TomeService
 
 
-def _extract_text_content(content: Any) -> str:
-    """Extract plain text from message content which can be str or list of dicts."""
+def _extract_text_and_contemplation(content: Any) -> tuple[str, str]:
+    """Extract plain text and contemplation from message content."""
     if isinstance(content, str):
-        return content
+        return extract_contemplation_tags(content)
     if isinstance(content, list):
-        parts: list[str] = []
+        text_parts: list[str] = []
+        thought_parts: list[str] = []
         for item in content:
             if isinstance(item, dict):
-                if item.get("type") == "text":
-                    parts.append(str(item.get("text", "")))
+                item_type = item.get("type")
+                if item_type == "contemplation":
+                    thought_parts.append(str(item.get("text", "")))
+                elif item_type == "text":
+                    text_parts.append(str(item.get("text", "")))
                 elif "text" in item:
-                    parts.append(str(item["text"]))
+                    text_parts.append(str(item["text"]))
             elif isinstance(item, str):
-                parts.append(item)
-        return "\n".join(parts)
-    return str(content or "")
+                text_parts.append(item)
+        full_text = "\n".join(text_parts)
+        cleaned, tag_thoughts = extract_contemplation_tags(full_text)
+        if tag_thoughts:
+            thought_parts.append(tag_thoughts)
+        return cleaned, "\n\n".join(thought_parts).strip()
+    return str(content or ""), ""
 
 
 @dataclass
@@ -148,11 +156,14 @@ class AppState:
                 payload = entry.payload
                 role = str(payload.get("role", "assistant"))
                 if role in ("user", "assistant"):
-                    text = _extract_text_content(payload.get("content", ""))
+                    text, contemplation = _extract_text_and_contemplation(
+                        payload.get("content", "")
+                    )
                     reconstructed.append(
                         ChatMessage(
                             role=role,
                             content=text,
+                            contemplation=contemplation,
                             model=payload.get("model"),
                         )
                     )

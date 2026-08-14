@@ -130,6 +130,62 @@ def test_handle_message_update_event(
     assert msg.content == "Hello world!"
 
 
+def test_handle_message_update_contemplation(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify MESSAGE_UPDATE with kind=contemplation routes to msg.contemplation."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    event = MvgeEvent(
+        type=MvgeEventType.MESSAGE_UPDATE,
+        data={"text": "Thinking deeply...", "kind": "contemplation"},
+    )
+    agent_service.handle_event(event, msg, app_state)
+    assert msg.contemplation == "Thinking deeply..."
+    assert msg.content == ""
+
+
+def test_handle_message_update_inline_think_tags(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify inline <think> tags are stripped from content to contemplation."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    event = MvgeEvent(
+        type=MvgeEventType.MESSAGE_UPDATE,
+        data={"text": "<think>Let me formulate response</think>Hello!"},
+    )
+    agent_service.handle_event(event, msg, app_state)
+    assert msg.contemplation == "Let me formulate response"
+    assert msg.content == "Hello!"
+
+
+def test_extract_contemplation_tags_helper() -> None:
+    """Verify extract_contemplation_tags splits closed and unclosed think tags."""
+    from mvgeos_gui.models import extract_contemplation_tags
+
+    # Closed tag
+    cleaned, thought = extract_contemplation_tags(
+        "<thought>Initial plan</thought>Actual output"
+    )
+    assert cleaned == "Actual output"
+    assert thought == "Initial plan"
+
+    # Multiple closed tags
+    cleaned, thought = extract_contemplation_tags(
+        "<think>Thought 1</think>Output<think>Thought 2</think>"
+    )
+    assert cleaned == "Output"
+    assert thought == "Thought 1\n\nThought 2"
+
+    # Plain text without tags
+    cleaned, thought = extract_contemplation_tags("Just plain text")
+    assert cleaned == "Just plain text"
+    assert thought == ""
+
+
 def test_handle_provider_response_mana_tracking(
     agent_service: AgentService, app_state: AppState
 ) -> None:
