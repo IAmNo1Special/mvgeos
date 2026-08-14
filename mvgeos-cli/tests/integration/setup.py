@@ -15,6 +15,7 @@ from mvgeos_cli.commands.setup import (
     collect_rune_dirs,
     get_package_manager_commands,
     get_platform,
+    install_missing_deps,
     install_package,
     install_rune_python_deps,
 )
@@ -400,6 +401,36 @@ def test_setup_install_command_piped_stdin_abort() -> None:
         result = runner.invoke(app, ["setup", "install"], input="n\n")
         assert result.exit_code == 0
         assert "Aborted" in result.output
+
+
+def test_install_missing_deps_no_runes() -> None:
+    with patch("mvgeos_cli.commands.setup.collect_rune_dirs", return_value=[]):
+        assert install_missing_deps("coding-mvge") == 0
+
+
+def test_install_missing_deps_no_declared_deps() -> None:
+    from mvgeos_runes.types import RuneManifest
+
+    manifest = RuneManifest(name="r", version="1", description="")
+    with patch(
+        "mvgeos_cli.commands.setup.collect_rune_dirs",
+        return_value=[(manifest, Path("/tmp/r"))],
+    ):
+        assert install_missing_deps("coding-mvge") == 0
+
+
+def test_install_missing_deps_all_installed() -> None:
+    from mvgeos_runes.types import RuneManifest
+
+    manifest = RuneManifest(name="r", version="1", description="", python_deps=["json"])
+    with (
+        patch(
+            "mvgeos_cli.commands.setup.collect_rune_dirs",
+            return_value=[(manifest, Path("/tmp/r"))],
+        ),
+        patch("mvgeos_cli.commands.setup.check_python_dep", return_value=True),
+    ):
+        assert install_missing_deps("coding-mvge") == 0
 
 
 def test_setup_no_subcommand_defaults_to_check() -> None:

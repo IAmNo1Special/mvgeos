@@ -326,6 +326,93 @@ def setup_check(
         console.print("\n[green]All dependencies satisfied[/green]")
 
 
+def install_missing_deps(
+    agent_name: str = DEFAULT_AGENT_NAME,
+    extension_dir: str | None = None,
+    yes: bool = False,
+    dry_run: bool = False,
+) -> int:
+    """Install missing rune dependencies.
+
+    Shared core used by both the ``setup install`` command and the
+    pre-flight startup auto-install path. Returns ``0`` on success, ``1`` on
+    failure (no runes / nothing to install returns ``0``).
+    """
+    try:
+        validate_agent_name(agent_name, allow_create=False)
+    except ValueError as exc:
+        console.print(format_error(exc))
+        return 1
+
+    runes = collect_rune_dirs(agent_name, extension_dir)
+
+    if not runes:
+        console.print("[yellow]No runes found[/yellow]")
+        return 0
+
+    all_system_deps: set[str] = set()
+    all_python_deps: set[str] = set()
+    for manifest, _ in runes:
+        all_system_deps.update(manifest.system_deps)
+        all_python_deps.update(manifest.python_deps)
+
+    if not all_system_deps and not all_python_deps:
+        console.print("[green]No dependencies declared by runes[/green]")
+        return 0
+
+    missing_system = sorted(d for d in all_system_deps if not check_tool_installed(d))
+    missing_python = sorted(d for d in all_python_deps if not check_python_dep(d))
+    runes_needing_python = [
+        (m, d) for m, d in runes if any(dep in missing_python for dep in m.python_deps)
+    ]
+
+    if not missing_system and not missing_python:
+        console.print("[green]All dependencies already installed[/green]")
+        return 0
+
+    if missing_system:
+        console.print(
+            f"\n[bold]Missing system dependencies:[/bold] {', '.join(missing_system)}"
+        )
+    if missing_python:
+        console.print(
+            f"[bold]Missing python dependencies:[/bold] {', '.join(missing_python)}"
+        )
+
+    if not yes and not dry_run:
+        response = input("Install now? [y/N]: ").strip().lower()
+        if response != "y":
+            console.print("[yellow]Aborted[/yellow]")
+            return 0
+
+    results: list[tuple[str, bool, str]] = []
+    for dep in missing_system:
+        success, msg = asyncio.run(install_package(dep, dry_run=dry_run))
+        results.append((dep, success, msg))
+        if success:
+            console.print(f"[green]OK {dep}: {msg}[/green]")
+        else:
+            console.print(f"[red]FAIL {dep}: {msg}[/red]")
+
+    for manifest, rune_dir in runes_needing_python:
+        success, msg = asyncio.run(
+            install_rune_python_deps(rune_dir, manifest, dry_run=dry_run)
+        )
+        label = f"python deps ({manifest.name})"
+        results.append((label, success, msg))
+        if success:
+            console.print(f"[green]OK {label}: {msg}[/green]")
+        else:
+            console.print(f"[red]FAIL {label}: {msg}[/red]")
+
+    failed = [r for r in results if not r[1]]
+    if failed:
+        console.print(f"\n[red]Failed to install {len(failed)} dependency(s)[/red]")
+        return 1
+    console.print("\n[green]All dependencies installed successfully[/green]")
+    return 0
+
+
 @setup_app.command("install")
 def setup_install(
     agent_name: str = typer.Option(
@@ -355,76 +442,8 @@ def setup_install(
     Non-interactive use: pass ``--yes``/``-y`` to skip the confirmation prompt,
     or pipe stdin (``echo y | mvgeos setup install``) when prompted.
     """
-    try:
-        validate_agent_name(agent_name, allow_create=False)
-    except ValueError as exc:
-        console.print(format_error(exc))
-        raise typer.Exit(1) from None
-
-    runes = collect_rune_dirs(agent_name, extension_dir)
-
-    if not runes:
-        console.print("[yellow]No runes found[/yellow]")
-        return
-
-    all_system_deps: set[str] = set()
-    all_python_deps: set[str] = set()
-    for manifest, _ in runes:
-        all_system_deps.update(manifest.system_deps)
-        all_python_deps.update(manifest.python_deps)
-
-    if not all_system_deps and not all_python_deps:
-        console.print("[green]No dependencies declared by runes[/green]")
-        return
-
-    missing_system = sorted(d for d in all_system_deps if not check_tool_installed(d))
-    missing_python = sorted(d for d in all_python_deps if not check_python_dep(d))
-    runes_needing_python = [
-        (m, d) for m, d in runes if any(dep in missing_python for dep in m.python_deps)
-    ]
-
-    if not missing_system and not missing_python:
-        console.print("[green]All dependencies already installed[/green]")
-        return
-
-    if missing_system:
-        console.print(
-            f"\n[bold]Missing system dependencies:[/bold] {', '.join(missing_system)}"
-        )
-    if missing_python:
-        console.print(
-            f"[bold]Missing python dependencies:[/bold] {', '.join(missing_python)}"
-        )
-
-    if not yes and not dry_run:
-        response = input("Install now? [y/N]: ").strip().lower()
-        if response != "y":
-            console.print("[yellow]Aborted[/yellow]")
-            raise typer.Exit(0)
-
-    results: list[tuple[str, bool, str]] = []
-    for dep in missing_system:
-        success, msg = asyncio.run(install_package(dep, dry_run=dry_run))
-        results.append((dep, success, msg))
-        if success:
-            console.print(f"[green]OK {dep}: {msg}[/green]")
-        else:
-            console.print(f"[red]FAIL {dep}: {msg}[/red]")
-
-    for manifest, rune_dir in runes_needing_python:
-        success, msg = asyncio.run(
-            install_rune_python_deps(rune_dir, manifest, dry_run=dry_run)
-        )
-        label = f"python deps ({manifest.name})"
-        results.append((label, success, msg))
-        if success:
-            console.print(f"[green]OK {label}: {msg}[/green]")
-        else:
-            console.print(f"[red]FAIL {label}: {msg}[/red]")
-
-    failed = [r for r in results if not r[1]]
-    if failed:
-        console.print(f"\n[red]Failed to install {len(failed)} dependency(s)[/red]")
-        raise typer.Exit(1)
-    else:
-        console.print("\n[green]All dependencies installed successfully[/green]")
+    code = install_missing_deps(
+        agent_name=agent_name, extension_dir=extension_dir, yes=yes, dry_run=dry_run
+    )
+    if code != 0:
+        raise typer.Exit(code)

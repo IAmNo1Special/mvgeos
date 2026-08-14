@@ -125,6 +125,7 @@ class DiagnosticKind(StrEnum):
     SHADOWED_RUNE = "shadowed_rune"
     LOAD_FAILURE = "load_failure"
     PARSE_WARNING = "parse_warning"
+    MISSING_DEP = "missing_dep"
 
 
 @dataclass

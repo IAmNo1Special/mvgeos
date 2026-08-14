@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from mvgeos_runes.types import Diagnostic, DiagnosticKind, RuneScope
 
-from mvgeos_cli.commands.repl import _check_and_warn_load_failures, run_repl
+from mvgeos_cli.commands.repl import (
+    _check_and_warn_load_failures,
+    _check_and_warn_missing_deps,
+    run_repl,
+)
 from mvgeos_cli.commands.tui import run_tui
 
 
@@ -49,6 +53,76 @@ class TestStartupDiagnostics:
         _check_and_warn_load_failures(diags, out=messages.append)
         assert len(messages) == 0
 
+    def test_check_and_warn_missing_deps_emits_alert(self) -> None:
+        diags = [
+            Diagnostic(
+                kind=DiagnosticKind.MISSING_DEP,
+                rune_name="seeker",
+                message="requires python dependency 'foo'",
+                scope=RuneScope.USER,
+            ),
+            Diagnostic(
+                kind=DiagnosticKind.LOAD_FAILURE,
+                rune_name="other_rune",
+                message="crash",
+                scope=RuneScope.PROJECT,
+            ),
+        ]
+
+        messages: list[str] = []
+        warned = _check_and_warn_missing_deps(diags, out=messages.append)
+
+        assert warned is True
+        output = "\n".join(messages)
+        assert "seeker" in output
+        assert "requires python dependency 'foo'" in output
+        assert "mvgeos setup install" in output
+        assert "other_rune" not in output
+
+    def test_check_and_warn_missing_deps_none_detected(self) -> None:
+        messages: list[str] = []
+        warned = _check_and_warn_missing_deps([], out=messages.append)
+        assert warned is False
+        assert messages == []
+
+    def test_check_and_warn_missing_deps_auto_install(self) -> None:
+        diags = [
+            Diagnostic(
+                kind=DiagnosticKind.MISSING_DEP,
+                rune_name="seeker",
+                message="requires python dependency 'foo'",
+                scope=RuneScope.USER,
+            )
+        ]
+        messages: list[str] = []
+        installed: list[bool] = []
+        _check_and_warn_missing_deps(
+            diags,
+            out=messages.append,
+            prompt=lambda _q: "y",
+            install=lambda: installed.append(True),
+        )
+        assert installed == [True]
+
+    def test_check_and_warn_missing_deps_declines_auto_install(self) -> None:
+        diags = [
+            Diagnostic(
+                kind=DiagnosticKind.MISSING_DEP,
+                rune_name="seeker",
+                message="requires python dependency 'foo'",
+                scope=RuneScope.USER,
+            )
+        ]
+        messages: list[str] = []
+        installed: list[bool] = []
+        _check_and_warn_missing_deps(
+            diags,
+            out=messages.append,
+            prompt=lambda _q: "n",
+            install=lambda: installed.append(True),
+        )
+        assert installed == []
+
     @pytest.mark.asyncio
     @patch("mvgeos_cli.commands.repl._create_agent")
     @patch("mvgeos_cli.commands.repl._read_initial_prompt")
@@ -84,6 +158,45 @@ class TestStartupDiagnostics:
         captured = capsys.readouterr()
         assert "heal_my_goap" in captured.out
         assert "failed to import module" in captured.out
+
+    @pytest.mark.asyncio
+    @patch("mvgeos_cli.commands.repl.install_missing_deps")
+    @patch("mvgeos_cli.commands.repl._create_agent")
+    @patch("mvgeos_cli.commands.repl._read_initial_prompt")
+    @patch("mvgeos_cli.commands.repl.PromptSession")
+    async def test_run_repl_warns_on_startup_missing_dep(
+        self,
+        mock_session_cls: MagicMock,
+        mock_read_prompt: MagicMock,
+        mock_create_agent: MagicMock,
+        mock_install: MagicMock,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        mock_agent = AsyncMock()
+        mock_agent.on = MagicMock(return_value=lambda: None)
+        mock_agent.session_id = "test-session-id"
+        mock_agent._model_id = "nvidia/nemotron"
+
+        mock_env = MagicMock()
+        mock_env.diagnostics = [
+            Diagnostic(
+                kind=DiagnosticKind.MISSING_DEP,
+                rune_name="seeker",
+                message="requires python dependency 'foo'",
+                scope=RuneScope.USER,
+            )
+        ]
+        mock_agent.environment = mock_env
+        mock_create_agent.return_value = mock_agent
+
+        mock_read_prompt.return_value = None  # immediately exit REPL
+
+        await run_repl(api_key="sk-or-test-key")
+
+        captured = capsys.readouterr()
+        assert "seeker" in captured.out
+        assert "missing" in captured.out.lower()
+        assert "mvgeos setup install" in captured.out
 
     @pytest.mark.asyncio
     @patch("mvgeos_cli.commands.tui._create_agent")

@@ -40,6 +40,7 @@ from mvgeos_cli.commands.repl import (
     SlashCompleter,
     StreamRenderer,
     _check_and_warn_load_failures,
+    _check_and_warn_missing_deps,
     _create_agent,
     _fit_footer,
     _format_session_info,
@@ -48,6 +49,7 @@ from mvgeos_cli.commands.repl import (
     _render_live_rate_limit,
     console,
 )
+from mvgeos_cli.commands.setup import install_missing_deps
 from mvgeos_cli.console import format_error
 
 
@@ -501,6 +503,15 @@ async def run_tui(
     app = TuiApp(agent, sink, registry, renderer)
     sink.set_redraw_cb(app.application.invalidate)
     _check_and_warn_load_failures(agent.environment.diagnostics, out=app._out)
+    _check_and_warn_missing_deps(
+        agent.environment.diagnostics,
+        out=app._out,
+        install=lambda: install_missing_deps(
+            agent_name=agent_name,
+            extension_dir=extension_dir,
+            yes=True,
+        ),
+    )
 
     unsubs: list[object] = [
         agent.on("message_update", renderer.on_message_update),

@@ -44,31 +44,66 @@ class RuneLoader:
     def load_factories(self) -> list[RuneFactory]:
         return load_factories(self._extensions_dir)
 
+    def preflight(self, diagnostics: list[Diagnostic] | None = None) -> list[str]:
+        """Inspect declared python_deps for all enabled runes.
 
-def load_factory_from_manifest(
-    manifest: RuneManifest,
-    rune_dir: Path,
-    diagnostics: list[Diagnostic] | None = None,
-) -> RuneFactory | None:
-    if not manifest.entry_point:
-        return None
-    entry = (rune_dir / manifest.entry_point).resolve()
-    if not entry.exists():
-        if diagnostics is not None:
-            diagnostics.append(
-                Diagnostic(
-                    kind=DiagnosticKind.LOAD_FAILURE,
-                    rune_name=manifest.name,
-                    message=f"Entry point file does not exist: {entry}",
-                    scope=manifest.scope,
-                    path=manifest.path,
-                )
-            )
-        return None
+        Returns the sorted list of missing module names and appends a
+        ``DiagnosticKind.MISSING_DEP`` entry per missing dependency when a
+        diagnostics list is supplied.
+        """
+        missing: list[str] = []
+        seen: set[str] = set()
+        for manifest in self.load_all():
+            for dep in manifest.python_deps:
+                if dep in seen:
+                    continue
+                if not check_python_dep_installed(dep):
+                    seen.add(dep)
+                    missing.append(dep)
+                    if diagnostics is not None:
+                        diagnostics.append(
+                            Diagnostic(
+                                kind=DiagnosticKind.MISSING_DEP,
+                                rune_name=manifest.name,
+                                message=(
+                                    f"Rune '{manifest.name}' requires python "
+                                    f"dependency '{dep}' which is not installed. "
+                                    "Run 'mvgeos setup install' to install it."
+                                ),
+                                scope=manifest.scope,
+                                path=manifest.path,
+                            )
+                        )
+        return sorted(set(missing))
 
+
+def check_python_dep_installed(module_name: str) -> bool:
+    """Return True if a Python module is importable by importlib."""
+    return importlib.util.find_spec(module_name) is not None
+
+
+def _missing_dep_diagnostic(manifest: RuneManifest, dep: str) -> Diagnostic:
+    """Build the MISSING_DEP diagnostic for a single uninstalled dependency."""
+    return Diagnostic(
+        kind=DiagnosticKind.MISSING_DEP,
+        rune_name=manifest.name,
+        message=(
+            f"Rune '{manifest.name}' requires python dependency '{dep}' "
+            "which is not installed. Run 'mvgeos setup install' to install it."
+        ),
+        scope=manifest.scope,
+        path=manifest.path,
+    )
+
+
+def discover_rune_site_packages(rune_dir: Path) -> list[Path]:
+    """Return rune-local import roots (venv site-packages, entry dir, rune dir).
+
+    A rune may bundle python_deps in its own ``.venv``/``venv`` site-packages;
+    these must be on ``sys.path`` *before* dependency inspection so bundled
+    deps are not falsely reported as missing.
+    """
     rune_dir_resolved = rune_dir.resolve()
-    entry_parent_resolved = entry.parent.resolve()
-
     site_pkg_paths: list[Path] = []
     for venv_name in (".venv", "venv"):
         venv_dir = rune_dir_resolved / venv_name
@@ -84,16 +119,63 @@ def load_factory_from_manifest(
                 for sp in sorted(lib_dir.glob("python*/site-packages")):
                     if sp.is_dir() and sp not in site_pkg_paths:
                         site_pkg_paths.append(sp)
+    site_pkg_paths.append(rune_dir_resolved)
+    return site_pkg_paths
 
-    for p in site_pkg_paths:
+
+def _inject_rune_paths(rune_dir: Path, entry: Path) -> None:
+    """Put rune-local import roots on ``sys.path`` so bundled deps resolve."""
+    for p in discover_rune_site_packages(rune_dir):
         p_str = str(p)
         if p_str not in sys.path:
             sys.path.insert(0, p_str)
+    entry_parent = entry.parent.resolve()
+    entry_parent_str = str(entry_parent)
+    if entry_parent_str not in sys.path:
+        sys.path.insert(0, entry_parent_str)
 
-    for p in (entry_parent_resolved, rune_dir_resolved):
-        p_str = str(p)
-        if p_str not in sys.path:
-            sys.path.insert(0, p_str)
+
+def preflight_rune_deps(
+    manifest: RuneManifest,
+) -> list[str]:
+    """Return the list of declared python_deps that are not installed."""
+    return [dep for dep in manifest.python_deps if not check_python_dep_installed(dep)]
+
+
+def load_factory_from_manifest(
+    manifest: RuneManifest,
+    rune_dir: Path,
+    diagnostics: list[Diagnostic] | None = None,
+) -> RuneFactory | None:
+    if not manifest.entry_point:
+        return None
+
+    entry = (rune_dir / manifest.entry_point).resolve()
+
+    # Inject rune-local import roots (including any bundled venv) BEFORE
+    # dependency inspection, so deps shipped inside the rune are not
+    # falsely reported as missing.
+    _inject_rune_paths(rune_dir, entry)
+
+    missing = preflight_rune_deps(manifest)
+    if missing:
+        if diagnostics is not None:
+            for dep in missing:
+                diagnostics.append(_missing_dep_diagnostic(manifest, dep))
+        return None
+
+    if not entry.exists():
+        if diagnostics is not None:
+            diagnostics.append(
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name=manifest.name,
+                    message=f"Entry point file does not exist: {entry}",
+                    scope=manifest.scope,
+                    path=manifest.path,
+                )
+            )
+        return None
 
     spec = importlib.util.spec_from_file_location(
         f"mvgeos_rune_{manifest.name}", str(entry)

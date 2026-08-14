@@ -35,6 +35,7 @@ from rich.markdown import Markdown
 from rich.text import Text
 
 from mvgeos_cli import DEFAULT_MODEL
+from mvgeos_cli.commands.setup import install_missing_deps
 from mvgeos_cli.console import format_error
 
 if sys.platform == "win32":
@@ -245,6 +246,14 @@ async def _render_live_rate_limit(
         await sleep_fn(1)
 
 
+def _diag_kind(diag: Any) -> str:
+    """Return the lowercased DiagnosticKind value for a diagnostic, or ''."""
+    kind = getattr(diag, "kind", None)
+    if kind is None:
+        return ""
+    return str(getattr(kind, "value", kind))
+
+
 def _check_and_warn_load_failures(
     diagnostics: list[Any],
     out: Callable[[str], None] = console.print,
@@ -252,9 +261,7 @@ def _check_and_warn_load_failures(
     """Scan diagnostics for load failures and print a prominent warning."""
     load_failures: list[Any] = []
     for diag in diagnostics:
-        kind = getattr(diag, "kind", None)
-        kind_str = getattr(kind, "value", str(kind)) if kind is not None else ""
-        if kind_str == "load_failure":
+        if _diag_kind(diag) == "load_failure":
             load_failures.append(diag)
 
     if not load_failures:
@@ -271,6 +278,44 @@ def _check_and_warn_load_failures(
         msg = getattr(diag, "message", str(diag))
         out(f"  [yellow]• {name}: {msg}[/yellow]")
     out("[dim]Run 'mvgeos info' for detailed diagnostic information.[/dim]\n")
+
+
+def _check_and_warn_missing_deps(
+    diagnostics: list[Any],
+    out: Callable[[str], None] = console.print,
+    prompt: Callable[[str], str] | None = None,
+    install: Callable[[], Any] | None = None,
+) -> bool:
+    """Scan diagnostics for MISSING_DEP and print a recovery alert.
+
+    The Summoner is offered the choice to auto-install via ``install`` (when a
+    ``prompt`` callable returns a ``y`` confirmation) or to run
+    ``mvgeos setup install`` manually. Returns True when missing deps were
+    detected.
+    """
+    missing: list[Any] = []
+    for diag in diagnostics:
+        if _diag_kind(diag) == "missing_dep":
+            missing.append(diag)
+
+    if not missing:
+        return False
+
+    out("[bold yellow]Missing rune dependencies detected:[/bold yellow]")
+    for diag in missing:
+        name = getattr(diag, "rune_name", None) or getattr(diag, "name", "unknown")
+        msg = getattr(diag, "message", str(diag))
+        out(f"  [yellow]• {name}: {msg}[/yellow]")
+    out("[dim]Run 'mvgeos setup install' to install the missing dependencies.[/dim]")
+
+    if install is not None and prompt is not None:
+        response = (
+            prompt("Auto-install missing dependencies now? [y/N]: ").strip().lower()
+        )
+        if response == "y":
+            install()
+    out("")
+    return True
 
 
 def _handle_command(
@@ -919,6 +964,16 @@ async def run_repl(
     console.print()
 
     _check_and_warn_load_failures(agent.environment.diagnostics)
+    _check_and_warn_missing_deps(
+        agent.environment.diagnostics,
+        out=console.print,
+        prompt=input if sys.stdin.isatty() else None,
+        install=lambda: install_missing_deps(
+            agent_name=agent_name,
+            extension_dir=extension_dir,
+            yes=True,
+        ),
+    )
 
     history = FileHistory(str(_get_history_path()))
     session: PromptSession[Any] | None = None

@@ -106,9 +106,9 @@ def test_diagnostic_message_includes_declared_python_deps() -> None:
         )
 
         assert factory is None
-        assert len(diagnostics) == 1
-        assert diagnostics[0].kind == DiagnosticKind.LOAD_FAILURE
-        assert (
-            "declared python_deps: missing_dependency_abc, another_dep"
-            in diagnostics[0].message
-        )
+        # Pre-flight records a MISSING_DEP for each uninstalled declared dep
+        # and skips the module import entirely (no LOAD_FAILURE).
+        missing = [d for d in diagnostics if d.kind == DiagnosticKind.MISSING_DEP]
+        assert len(missing) == 2
+        assert missing[0].rune_name == "test_rune_failing"
+        assert "mvgeos setup install" in missing[0].message
