@@ -288,6 +288,7 @@ class OpenRouterRealm(Realm):
         response: Any,
     ) -> AsyncIterator[RealmResponse]:
         text_parts: list[str] = []
+        contemplation_parts: list[str] = []
         tool_calls_acc: dict[int, dict[str, Any]] = {}
 
         async for line in response.aiter_lines():
@@ -313,6 +314,7 @@ class OpenRouterRealm(Realm):
             # distinct block so it never lands in the answer text.
             contemplation = delta.get("reasoning") or delta.get("reasoning_content")
             if contemplation:
+                contemplation_parts.append(contemplation)
                 yield RealmResponse(
                     model=model,
                     invocation=MvgeResponse(
@@ -353,6 +355,13 @@ class OpenRouterRealm(Realm):
 
             if finish_reason:
                 blocks: list[dict[str, Any]] = []
+                if contemplation_parts:
+                    blocks.append(
+                        {
+                            "type": "contemplation",
+                            "text": "".join(contemplation_parts),
+                        }
+                    )
                 if text_parts:
                     blocks.append({"type": "text", "text": "".join(text_parts)})
                 for index in sorted(tool_calls_acc):

@@ -872,6 +872,38 @@ def test_stream_keeps_contemplation_out_of_final_text() -> None:
     assert "private thought" not in text
 
 
+def test_stream_includes_contemplation_in_final_invocation() -> None:
+    from mvgeos_agent.types import SummonerRequest
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = _make_model()
+    config = ChannelConfig(model=model)
+    invocations = [SummonerRequest(role="user", content="Think")]
+
+    realm._client.stream = _make_stream_factory(  # type: ignore[method-assign]
+        [
+            b'data: {"choices":[{"delta":{"reasoning":"weighing options"}}]}\n\n',
+            b'data: {"choices":[{"delta":{"content":"Answer"}}]}\n\n',
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+            b"data: [DONE]\n\n",
+        ]
+    )
+
+    responses = asyncio.run(collect_responses(realm.stream(model, invocations, config)))
+
+    final = responses[-1]
+    assert final.invocation is not None
+    # Final invocation should contain both contemplation and text blocks
+    contemplation_blocks = [
+        b for b in final.invocation.content if b.get("type") == "contemplation"
+    ]
+    text_blocks = [b for b in final.invocation.content if b.get("type") == "text"]
+    assert len(contemplation_blocks) == 1
+    assert contemplation_blocks[0]["text"] == "weighing options"
+    assert len(text_blocks) == 1
+    assert text_blocks[0]["text"] == "Answer"
+
+
 def test_stream_attaches_mana_usage_to_final_invocation() -> None:
     from mvgeos_agent.types import SummonerRequest
 
