@@ -464,6 +464,11 @@ class _StreamFilter:
                 if emit_now:
                     out.append(_StreamFilter._CHANNEL_TAG.sub("", emit_now))
             elif _StreamFilter._REASONING_CHANNEL.search(self._pending):
+                match = _StreamFilter._REASONING_CHANNEL.search(self._pending)
+                assert match is not None
+                prefix = self._pending[: match.start()]
+                if prefix:
+                    out.append(_StreamFilter._CHANNEL_TAG.sub("", prefix))
                 self._in_reasoning = True
                 self._pending = ""
             else:
@@ -491,19 +496,37 @@ class _StreamFilter:
         self._in_reasoning = False
 
     def _process_line(self, line: str) -> str | None:
-        """Return cleaned line content, or None to suppress the line."""
-        if self._in_reasoning:
-            tag = self._CHANNEL_TAG.search(line)
-            if tag and self._REASONING_CHANNEL.fullmatch(tag.group()):
-                return None
-            if tag:
-                self._in_reasoning = False
-                return self._clean_line(line)
-            return None
-        if self._REASONING_CHANNEL.search(line):
-            self._in_reasoning = True
-            return None
-        return self._clean_line(line)
+        """Return cleaned line content, or None to suppress the line.
+
+        Every channel tag on the line is honoured in order: a reasoning
+        channel (``<channel|reasoning>``, ``<channel|thinking>``,
+        ``<channel|thought>``) toggles suppression on, any other channel tag
+        toggles it off.  Content before an open tag or after a close tag
+        stays visible; content inside a reasoning block is stripped.
+        """
+        in_reasoning = self._in_reasoning
+        out: list[str] = []
+        saw_tag = False
+        last_end = 0
+        for tag_match in _StreamFilter._CHANNEL_TAG.finditer(line):
+            saw_tag = True
+            start, end = tag_match.span()
+            if not in_reasoning:
+                out.append(line[last_end:start])
+            in_reasoning = (
+                _StreamFilter._REASONING_CHANNEL.fullmatch(tag_match.group())
+                is not None
+            )
+            last_end = end
+        if not in_reasoning:
+            out.append(line[last_end:])
+        self._in_reasoning = in_reasoning
+        visible = "".join(out)
+        if visible.strip():
+            return visible.rstrip()
+        if not saw_tag and not in_reasoning:
+            return ""
+        return None
 
     @staticmethod
     def _clean_line(line: str) -> str | None:

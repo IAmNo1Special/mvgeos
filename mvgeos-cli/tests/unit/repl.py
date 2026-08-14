@@ -85,10 +85,27 @@ class TestReasoningChannelSuppression:
 
     def test_reasoning_channel_with_inline_text_suppressed(self) -> None:
         f = _StreamFilter()
-        assert f.feed("prefix <channel|reasoning>body\n") == ""
+        assert f.feed("prefix <channel|reasoning>body\n") == "prefix\n"
         assert f.feed("hidden\n") == ""
         assert f.feed("<channel|>\n") == ""
         assert f.feed("after\n") == "after\n"
+
+    def test_open_and_close_on_same_line_not_stuck(self) -> None:
+        f = _StreamFilter()
+        assert f.feed("x<channel|reasoning>y<channel|list>z\n") == "xz\n"
+        assert f.feed("leak check\n") == "leak check\n"
+
+    def test_close_tag_inline_suppresses_reasoning_prefix(self) -> None:
+        f = _StreamFilter()
+        f.feed("<channel|reasoning>\n")
+        assert f.feed("secret <channel|list>visible\n") == "visible\n"
+        assert f.feed("more after close\n") == "more after close\n"
+
+    def test_close_tag_only_line_does_not_leak(self) -> None:
+        f = _StreamFilter()
+        f.feed("<channel|reasoning>\n")
+        assert f.feed("<channel|list>\n") == ""
+        assert f.feed("visible now\n") == "visible now\n"
 
 
 class TestMarkdownHeadingPreservation:
@@ -239,3 +256,10 @@ class TestStreamingEdgeCases:
         assert f.feed("still hidden\n") == ""
         assert f.feed("<channel|list>\n") == ""
         assert f.feed("visible\n") == "visible\n"
+
+    def test_reasoning_tag_in_unterminated_chunk_keeps_prefix(self) -> None:
+        f = _StreamFilter()
+        assert f.feed("see <channel|reasoning>body") == "see "
+        assert f.feed("hidden\n") == ""
+        assert f.feed("<channel|>\n") == ""
+        assert f.feed("after\n") == "after\n"
