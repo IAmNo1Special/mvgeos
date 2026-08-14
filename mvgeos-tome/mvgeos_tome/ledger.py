@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections import OrderedDict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from mvgeos_tome.index import Index
 from mvgeos_tome.locking import FileLock
 from mvgeos_tome.types import TomeEntry, TomeEntryType, TomeMetadata
 
@@ -28,12 +28,14 @@ def _timestamp_iso() -> str:
 
 
 class TomeLedger:
+    _MAX_CACHE_SIZE = 32
+
     def __init__(self, tome_dir: Path) -> None:
         self._tome_dir = tome_dir
-        self._index = Index()
         self._tomles: dict[str, TomeMetadata] = {}
+        self._entries_cache: OrderedDict[str, list[TomeEntry]] = OrderedDict()
         self._lock = FileLock(tome_dir / ".lock", timeout=30.0)
-        self._load_all_tomes()
+        self._load_tome_headers()
 
     def _resolve_tome_id(self, tome_id: str) -> str | None:
         if not tome_id:
@@ -133,7 +135,11 @@ class TomeLedger:
                     raise ValueError(f"Tome not found: {tome_id}")
 
             self._append_entry_to_file(resolved_id, entry)
-            self._index.add(entry)
+            self._invalidate_cache(resolved_id)
+
+    def _invalidate_cache(self, tome_id: str | None) -> None:
+        if tome_id is not None and tome_id in self._entries_cache:
+            del self._entries_cache[tome_id]
 
     def append_message(
         self,
@@ -301,8 +307,7 @@ class TomeLedger:
                 )
 
             self._write_tome_file(metadata, parent_entries)
-            for entry in parent_entries:
-                self._index.add(entry)
+            self._invalidate_cache(new_tome_id)
             return metadata
 
     def get_entries_for_context(
@@ -338,7 +343,7 @@ class TomeLedger:
         with tome_file.open("a", encoding="utf-8") as f:
             f.write(line + "\n")
 
-    def _load_all_tomes(self) -> None:
+    def _load_tome_headers(self) -> None:
         if not self._tome_dir.exists():
             return
         for f in self._tome_dir.glob("*.jsonl"):
@@ -348,7 +353,6 @@ class TomeLedger:
                     self._tomles[meta.id] = meta
             except json.JSONDecodeError, ValueError:
                 continue
-        self._rebuild_index()
 
     def _load_tome_metadata(self, tome_id_or_path: str | Path) -> TomeMetadata | None:
         path = Path(tome_id_or_path)
@@ -376,6 +380,18 @@ class TomeLedger:
             )
 
     def _read_tome_entries(self, tome_id: str) -> list[TomeEntry]:
+        resolved_id = self._resolve_tome_id(tome_id) or tome_id
+        if resolved_id in self._entries_cache:
+            self._entries_cache.move_to_end(resolved_id)
+            return self._entries_cache[resolved_id]
+        entries = self._read_tome_entries_from_disk(resolved_id)
+        self._entries_cache[resolved_id] = entries
+        self._entries_cache.move_to_end(resolved_id)
+        while len(self._entries_cache) > self._MAX_CACHE_SIZE:
+            self._entries_cache.popitem(last=False)
+        return entries
+
+    def _read_tome_entries_from_disk(self, tome_id: str) -> list[TomeEntry]:
         tome_file = self._tome_file_path(tome_id)
         if not tome_file.exists():
             return []
@@ -429,13 +445,6 @@ class TomeLedger:
                     }
                 )
                 f.write(line + "\n")
-
-    def _rebuild_index(self) -> None:
-        self._index = Index()
-        for tome_id, _ in self._tomles.items():
-            entries = self._read_tome_entries(tome_id)
-            for entry in entries:
-                self._index.add(entry)
 
     def _filter_entries_to_leaf(
         self, entries: list[TomeEntry], leaf_id: str
