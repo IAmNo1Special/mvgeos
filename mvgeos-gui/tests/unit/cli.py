@@ -48,8 +48,9 @@ def test_parse_args_custom_values() -> None:
 
 @patch("mvgeos_gui.main.ui.run")
 @patch("mvgeos_gui.main.app.on_startup")
+@patch("mvgeos_gui.main.platform.system", return_value="Windows")
 def test_main_runs_native_by_default(
-    mock_on_startup: MagicMock, mock_ui_run: MagicMock
+    mock_system: MagicMock, mock_on_startup: MagicMock, mock_ui_run: MagicMock
 ) -> None:
     """Verify main launches native window when --web is not specified."""
     with patch("sys.argv", ["mvgeos-gui"]):
@@ -64,7 +65,8 @@ def test_main_runs_native_by_default(
 
 
 @pytest.mark.asyncio
-async def test_startup_hook_invokes_dark_titlebar() -> None:
+@patch("mvgeos_gui.main.platform.system", return_value="Windows")
+async def test_startup_hook_invokes_dark_titlebar(mock_system: MagicMock) -> None:
     """Verify on_startup callback runs enable_windows_dark_titlebar."""
     with (
         patch("mvgeos_gui.main.ui.run"),

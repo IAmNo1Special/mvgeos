@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import contextlib
 import ctypes
-import sys
+import platform
 from pathlib import Path
 
 from nicegui import app, ui
@@ -18,14 +18,17 @@ APP_TITLE = "MvgeOS"
 
 def enable_windows_dark_titlebar(title: str = APP_TITLE) -> None:
     """Apply immersive dark mode to Windows native titlebar."""
-    if sys.platform != "win32":
+    if platform.system() != "Windows":
         return
     with contextlib.suppress(Exception):
-        hwnd = ctypes.windll.user32.FindWindowW(None, title)
+        windll = getattr(ctypes, "windll", None)
+        if windll is None:
+            return
+        hwnd = windll.user32.FindWindowW(None, title)
         if hwnd:
             dwmwa_use_immersive_dark_mode = 20
             value = ctypes.c_int(1)
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            windll.dwmapi.DwmSetWindowAttribute(
                 hwnd,
                 dwmwa_use_immersive_dark_mode,
                 ctypes.byref(value),
@@ -94,7 +97,7 @@ def main() -> None:
     )
     init_app(state)
 
-    if not args.web and sys.platform == "win32":
+    if not args.web and platform.system() == "Windows":
         app.native.window_args["background_color"] = "#181a20"
 
         async def _apply_dark_titlebar() -> None:
