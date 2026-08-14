@@ -22,7 +22,7 @@ async def test_full_harness_loop_integration() -> None:
     loop = MvgeLoop(state)
     harness = MvgeHarness(loop)
 
-    async def mock_stream_fn(invocations):
+    async def mock_stream_fn(invocations, signal=None):
         from mvgeos_provider.types import Model, RealmResponse
 
         dummy_model = Model(

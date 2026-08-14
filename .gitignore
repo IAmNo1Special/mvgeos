@@ -27,6 +27,7 @@ htmlcov/
 .kilo/
 .opencode/
 .agents/
+.scratch/
 .goap_actions.json
 coverage.txt
 cov_report.txt

@@ -3,20 +3,48 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
-from mvgeos_agent.types import MvgeResponse, StopReason
+from mvgeos_agent.types import AbortError, MvgeResponse, StopReason
 
 from mvgeos_provider.base import Realm
 from mvgeos_provider.retry import (
     ServerRetryDelayTooLongError,
     is_retryable_status,
     realm_request_delay_ms,
+    retry_realm_request,
 )
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 
+if TYPE_CHECKING:
+    from mvgeos_agent.types import AbortSignal
+
 _REASONING_MODELS = ("openai/o1", "openai/o3")
+
+
+async def _sleep_with_signal(delay_seconds: float, signal: AbortSignal | None) -> None:
+    """Sleep for delay_seconds, but abort early if signal is aborted."""
+    if signal is None:
+        await asyncio.sleep(delay_seconds)
+        return
+
+    if signal.aborted:
+        raise AbortError("Operation aborted")
+
+    task = asyncio.ensure_future(asyncio.sleep(delay_seconds))
+
+    def _on_abort() -> None:
+        if not task.done():
+            task.cancel()
+
+    signal.on_abort(_on_abort)
+    try:
+        await task
+    except asyncio.CancelledError:
+        if signal.aborted:
+            raise AbortError("Operation aborted") from None
+        raise
 
 
 def _mana_usage(usage: dict[str, Any]) -> dict[str, float]:
@@ -162,6 +190,7 @@ class OpenRouterRealm(Realm):
         model: Model,
         invocations: list[Any],
         config: ChannelConfig,
+        signal: AbortSignal | None = None,
     ) -> AsyncIterator[RealmResponse]:
         messages = _invocations_to_messages(invocations)
         url, headers = self._prepare_request_url_and_headers(model)
@@ -188,6 +217,8 @@ class OpenRouterRealm(Realm):
 
         max_attempts = max(1, config.max_retries)
         for attempt in range(max_attempts):
+            if signal is not None and signal.aborted:
+                raise AbortError("Operation aborted")
             async with self._client.stream(
                 "POST",
                 url,
@@ -195,17 +226,24 @@ class OpenRouterRealm(Realm):
                 json=payload,
                 timeout=config.timeout_ms / 1000,
             ) as response:
-                if response.status_code == 200:
-                    async for item in self._consume_stream(model, response):
-                        yield item
-                    return
+                try:
+                    if response.status_code == 200:
+                        async for item in self._consume_stream(model, response):
+                            if signal is not None and signal.aborted:
+                                raise AbortError("Operation aborted")
+                            yield item
+                        return
 
-                message, error_code = _error_from_response(response)
-                if not is_retryable_status(response.status_code, response.headers):
-                    yield RealmResponse(
-                        model=model, error_message=message, error_code=error_code
-                    )
-                    return
+                    message, error_code = _error_from_response(response)
+                    if not is_retryable_status(response.status_code, response.headers):
+                        yield RealmResponse(
+                            model=model, error_message=message, error_code=error_code
+                        )
+                        return
+                finally:
+                    # Ensure response is fully consumed/closed on abort
+                    if signal is not None and signal.aborted:
+                        await response.aclose()
 
                 if attempt >= max_attempts - 1:
                     yield RealmResponse(
@@ -223,19 +261,29 @@ class OpenRouterRealm(Realm):
                     )
                     return
 
-            await asyncio.sleep(delay_ms / 1000)
+            try:
+                await _sleep_with_signal(delay_ms / 1000, signal)
+            except AbortError:
+                raise
+            except asyncio.CancelledError:
+                if signal is not None and signal.aborted:
+                    raise AbortError("Operation aborted") from None
+                raise
 
     async def complete(
         self,
         model: Model,
         messages: list[dict[str, Any]],
         config: ChannelConfig,
+        signal: AbortSignal | None = None,
     ) -> RealmResponse:
         """Run one non-channelled completion.
 
         Deliberately omits `tools`: this is used for standalone requests such
         as compaction summaries, where Spells must not be offered.
         """
+        if signal is not None and signal.aborted:
+            raise AbortError("Operation aborted")
         url, headers = self._prepare_request_url_and_headers(model)
         payload: dict[str, Any] = {
             "model": model.id,
@@ -245,12 +293,22 @@ class OpenRouterRealm(Realm):
             "max_tokens": config.max_tokens,
         }
 
-        response = await self._client.post(
-            url,
-            headers=headers,
-            json=payload,
-            timeout=config.timeout_ms / 1000,
-        )
+        async def do_request() -> Any:
+            return await self._client.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=config.timeout_ms / 1000,
+            )
+
+        if signal is None:
+            response = await retry_realm_request(
+                do_request, max_retries=config.max_retries
+            )
+        else:
+            response = await retry_realm_request(
+                do_request, max_retries=config.max_retries, signal=signal
+            )
 
         if response.status_code != 200:
             message, error_code = _error_from_response(response)

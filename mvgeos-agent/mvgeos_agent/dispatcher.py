@@ -11,6 +11,8 @@ from mvgeos_agent.errors import (
     to_error,
 )
 from mvgeos_agent.types import (
+    AbortError,
+    AbortSignal,
     ContentType,
     MvgeEvent,
     MvgeEventType,
@@ -52,6 +54,7 @@ class SpellDispatcher:
         context: LoopContext,
         callbacks: LoopCallbacks,
         emit: EmitSink,
+        signal: AbortSignal | None = None,
     ) -> BatchResult:
         tool_calls = [
             item["tool_call"]
@@ -77,8 +80,12 @@ class SpellDispatcher:
                 break
 
         if has_sequential:
-            return await self._dispatch_sequential(tool_calls, context, callbacks, emit)
-        return await self._dispatch_parallel(tool_calls, context, callbacks, emit)
+            return await self._dispatch_sequential(
+                tool_calls, context, callbacks, emit, signal
+            )
+        return await self._dispatch_parallel(
+            tool_calls, context, callbacks, emit, signal
+        )
 
     async def _handle_truncated(
         self,
@@ -119,10 +126,15 @@ class SpellDispatcher:
         context: LoopContext,
         callbacks: LoopCallbacks,
         emit: EmitSink,
+        signal: AbortSignal | None = None,
     ) -> BatchResult:
         messages: list[SpellResultMessage] = []
         for tool_call in tool_calls:
-            res = await self._execute_single_spell(tool_call, context, callbacks, emit)
+            if signal is not None and signal.aborted:
+                raise AbortError("Operation aborted")
+            res = await self._execute_single_spell(
+                tool_call, context, callbacks, emit, signal
+            )
             if res is not None:
                 messages.append(res)
 
@@ -135,13 +147,22 @@ class SpellDispatcher:
         context: LoopContext,
         callbacks: LoopCallbacks,
         emit: EmitSink,
+        signal: AbortSignal | None = None,
     ) -> BatchResult:
+        if signal is not None and signal.aborted:
+            raise AbortError("Operation aborted")
+
         tasks = [
-            self._execute_single_spell(tool_call, context, callbacks, emit)
+            self._execute_single_spell(tool_call, context, callbacks, emit, signal)
             for tool_call in tool_calls
         ]
-        results = await asyncio.gather(*tasks)
-        messages = [res for res in results if res is not None]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        messages: list[SpellResultMessage] = []
+        for res in results:
+            if isinstance(res, SpellResultMessage):
+                messages.append(res)
+            elif isinstance(res, AbortError):
+                raise res
         terminate = bool(messages) and all(m.terminate for m in messages)
         return BatchResult(messages=messages, terminate=terminate)
 
@@ -151,9 +172,13 @@ class SpellDispatcher:
         context: LoopContext,
         callbacks: LoopCallbacks,
         emit: EmitSink,
+        signal: AbortSignal | None = None,
     ) -> SpellResultMessage | None:
         spell_name = tool_call["name"]
         spell_cast_id = tool_call["id"]
+
+        if signal is not None and signal.aborted:
+            raise AbortError("Operation aborted")
 
         if callbacks.before_spell_cast is not None:
             blocked = await callbacks.before_spell_cast(
@@ -185,10 +210,21 @@ class SpellDispatcher:
         )
 
         try:
-            raw_result = await asyncio.wait_for(
-                spell.execute(spell_cast_id, tool_call.get("arguments", {})),
-                timeout=context.spell_timeout_ms / 1000,
-            )
+            if signal is not None and signal.aborted:
+                raise AbortError("Operation aborted")
+            try:
+                raw_result = await asyncio.wait_for(
+                    spell.execute(
+                        spell_cast_id,
+                        tool_call.get("arguments", {}),
+                        signal=signal,
+                    ),
+                    timeout=context.spell_timeout_ms / 1000,
+                )
+            except asyncio.CancelledError as exc:
+                if signal is not None and signal.aborted:
+                    raise AbortError("Operation aborted") from exc
+                raise
 
             is_error = False
             terminate = False
@@ -225,6 +261,8 @@ class SpellDispatcher:
             )
         except TimeoutError:
             err = SpellTimeoutError(spell_name, context.spell_timeout_ms)
+        except AbortError:
+            raise
         except Exception as exc:
             err = to_error(exc)
 

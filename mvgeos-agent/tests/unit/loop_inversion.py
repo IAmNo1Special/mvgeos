@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -87,7 +88,7 @@ class TurnScript:
         self.calls: list[list[MvgeInvocation]] = []
 
     def __call__(
-        self, invocations: list[MvgeInvocation]
+        self, invocations: list[Any], signal: Any | None = None
     ) -> AsyncIterator[RealmResponse]:
         self.calls.append(list(invocations))
         index = min(len(self.calls) - 1, len(self._turns) - 1)

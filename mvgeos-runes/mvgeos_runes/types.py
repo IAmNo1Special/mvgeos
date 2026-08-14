@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from mvgeos_agent.types import AbortSignal
 
 
 class SigilHook(StrEnum):
@@ -166,7 +169,7 @@ class SpellDefinition:
         self,
         spell_cast_id: str,
         params: dict[str, Any],
-        signal: Any | None = None,
+        signal: AbortSignal | None = None,
         on_update: Any | None = None,
     ) -> dict[str, Any]:
         raise NotImplementedError

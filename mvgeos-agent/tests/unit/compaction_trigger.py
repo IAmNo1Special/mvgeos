@@ -301,7 +301,9 @@ class TestTomePersistence:
         ]
         turn = -1
 
-        def stream_fn(invocations: list[MvgeInvocation]) -> AsyncIterator[Any]:
+        def stream_fn(
+            invocations: list[MvgeInvocation], signal: Any | None = None
+        ) -> AsyncIterator[Any]:
             nonlocal turn
             turn += 1
             seen.append(list(invocations))

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from mvgeos_provider.base import Realm
 from mvgeos_provider.retry import DEFAULT_RETRY_POLICY, RetryPolicy, retry_invocation
-from mvgeos_provider.types import ChannelConfig, Model
+from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 
 if TYPE_CHECKING:
     from mvgeos_agent.agent_session import MvgeTome
@@ -27,6 +27,7 @@ from mvgeos_agent.harness.compaction.compaction import (
     should_compact,
 )
 from mvgeos_agent.types import (
+    AbortSignal,
     ContentType,
     MvgeEvent,
     MvgeEventType,
@@ -60,7 +61,9 @@ class CompactionRunner:
         self._previous_summary: str | None = None
 
     async def maybe_compact(
-        self, invocations: list[MvgeInvocation]
+        self,
+        invocations: list[MvgeInvocation],
+        signal: AbortSignal | None = None,
     ) -> list[MvgeInvocation] | None:
         """Compact if the Mana Pool is crowded, else return None.
 
@@ -92,7 +95,7 @@ class CompactionRunner:
         )
 
         summary = await generate_summary(
-            prepared.to_summarize, self._summarize, prepared.previous_summary
+            prepared.to_summarize, self._summarize, prepared.previous_summary, signal
         )
         if summary is None:
             await self._emit(
@@ -124,7 +127,11 @@ class CompactionRunner:
         )
         return replacement
 
-    async def _summarize(self, messages: list[dict[str, str]]) -> str:
+    async def _summarize(
+        self,
+        messages: list[dict[str, str]],
+        signal: AbortSignal | None = None,
+    ) -> str:
         """Ask the Realm for a summary. Spells are deliberately not offered."""
         config = ChannelConfig(
             model=self._model,
@@ -132,10 +139,14 @@ class CompactionRunner:
             max_tokens=self._model.max_tokens,
         )
 
-        async def produce() -> object:
-            return await self._realm.complete(self._model, messages, config)
+        async def produce() -> RealmResponse:
+            return await self._realm.complete(self._model, messages, config, signal)  # type: ignore[no-any-return]
 
-        response = await retry_invocation(produce, self._retry_policy)  # type: ignore[arg-type]
+        response = await retry_invocation(
+            produce,
+            self._retry_policy,
+            signal=signal,
+        )
 
         if response.error_message or response.invocation is None:
             raise RuntimeError(response.error_message or "Realm returned no summary")

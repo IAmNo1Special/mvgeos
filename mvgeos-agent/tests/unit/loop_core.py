@@ -39,7 +39,9 @@ def _stream(
     """
     turn = -1
 
-    def stream_fn(invocations: list[Any]) -> AsyncIterator[RealmResponse]:
+    def stream_fn(
+        invocations: list[Any], signal: Any | None = None
+    ) -> AsyncIterator[RealmResponse]:
         nonlocal turn
         turn += 1
         response = responses[min(turn, len(responses) - 1)]

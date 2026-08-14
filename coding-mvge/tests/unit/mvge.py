@@ -75,9 +75,11 @@ def _install_mock(agent: CodingMvge, text: str = "Hello") -> _MockRealm:
         rune_runner=None,
         agent_session=agent._agent_session,
     )
+    from mvgeos_agent.harness import MvgeHarness
     from mvgeos_agent.loop import MvgeLoop
 
     agent._loop = MvgeLoop(agent._state)
+    agent._harness = MvgeHarness(agent._loop)
     agent._initialized = True
     return mock_realm
 
@@ -914,7 +916,11 @@ class TestCodingMvgeToolCalls:
                     pass
 
                 async def stream(
-                    self, model: object, invocations: object, config: object
+                    self,
+                    model: object,
+                    invocations: object,
+                    config: object,
+                    signal: object = None,
                 ) -> object:
                     self.calls += 1
                     if self.calls == 1:
@@ -984,7 +990,11 @@ class TestCodingMvgeToolCalls:
                     pass
 
                 async def stream(
-                    self, model: object, invocations: object, config: object
+                    self,
+                    model: object,
+                    invocations: object,
+                    config: object,
+                    signal: object = None,
                 ) -> object:
                     captured["tools"] = config.tools  # type: ignore[attr-defined]
                     if len(captured["tools"]) < 0:

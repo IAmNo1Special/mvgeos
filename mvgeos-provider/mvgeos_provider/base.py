@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from mvgeos_agent.types import AbortSignal
 
 from mvgeos_provider.types import ChannelConfig, Model
 
@@ -12,6 +15,7 @@ class Realm:
         model: Model,
         invocations: list[Any],
         config: ChannelConfig,
+        signal: AbortSignal | None = None,
     ) -> AsyncIterator[Any]:
         raise NotImplementedError
 
@@ -20,6 +24,7 @@ class Realm:
         model: Model,
         messages: list[dict[str, Any]],
         config: ChannelConfig,
+        signal: AbortSignal | None = None,
     ) -> Any:
         """Run one non-channelled request and return the whole response.
 

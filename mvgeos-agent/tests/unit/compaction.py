@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from mvgeos_agent.harness.compaction import (
@@ -247,7 +249,9 @@ class TestGenerateSummary:
     async def test_calls_summarize_with_system_prompt(self) -> None:
         captured: dict[str, object] = {}
 
-        async def summarize(messages: list[dict[str, str]]) -> str:
+        async def summarize(
+            messages: list[dict[str, str]], signal: Any | None = None
+        ) -> str:
             captured["messages"] = messages
             return "the summary"
 
@@ -265,7 +269,9 @@ class TestGenerateSummary:
     async def test_includes_transcript_text(self) -> None:
         captured: dict[str, object] = {}
 
-        async def summarize(messages: list[dict[str, str]]) -> str:
+        async def summarize(
+            messages: list[dict[str, str]], signal: Any | None = None
+        ) -> str:
             captured["messages"] = messages
             return "s"
 
@@ -282,7 +288,9 @@ class TestGenerateSummary:
     async def test_previous_summary_switches_to_update_prompt(self) -> None:
         captured: dict[str, object] = {}
 
-        async def summarize(messages: list[dict[str, str]]) -> str:
+        async def summarize(
+            messages: list[dict[str, str]], signal: Any | None = None
+        ) -> str:
             captured["messages"] = messages
             return "s"
 
@@ -299,7 +307,9 @@ class TestGenerateSummary:
 
     @pytest.mark.asyncio
     async def test_returns_none_when_summarize_fails(self) -> None:
-        async def summarize(messages: list[dict[str, str]]) -> str:
+        async def summarize(
+            messages: list[dict[str, str]], signal: Any | None = None
+        ) -> str:
             raise RuntimeError("realm exploded")
 
         result = await generate_summary(
@@ -310,7 +320,9 @@ class TestGenerateSummary:
 
     @pytest.mark.asyncio
     async def test_returns_none_for_blank_summary(self) -> None:
-        async def summarize(messages: list[dict[str, str]]) -> str:
+        async def summarize(
+            messages: list[dict[str, str]], signal: Any | None = None
+        ) -> str:
             return "   "
 
         result = await generate_summary(

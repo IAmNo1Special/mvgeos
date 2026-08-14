@@ -12,7 +12,7 @@ from mvgeos_agent.harness.compaction.compaction import (
 )
 from mvgeos_agent.harness.compaction.compaction_runner import CompactionRunner
 from mvgeos_agent.loop import LoopCallbacks, MvgeLoop, StreamFn
-from mvgeos_agent.types import MvgeInvocation, MvgeState, SummonerRequest
+from mvgeos_agent.types import AbortSignal, MvgeInvocation, MvgeState, SummonerRequest
 
 
 class MvgeHarness:
@@ -115,6 +115,7 @@ class MvgeHarness:
         model: dict[str, Any],
         contemplation_level: str = "medium",
         callbacks: LoopCallbacks | None = None,
+        signal: AbortSignal | None = None,
         prompt: str | None = None,
     ) -> MvgeInvocation:
         """Run the harness by driving turn processing via MvgeLoop.run()."""
@@ -130,7 +131,9 @@ class MvgeHarness:
             invocations: list[MvgeInvocation],
         ) -> list[MvgeInvocation] | None:
             if self._compaction is not None:
-                replacement = await self._compaction.maybe_compact(list(invocations))
+                replacement = await self._compaction.maybe_compact(
+                    list(invocations), signal
+                )
                 if replacement is not None:
                     invocations = list(replacement)
                     self._state.invocations = list(replacement)
@@ -148,6 +151,7 @@ class MvgeHarness:
             model=model,
             contemplation_level=contemplation_level,
             callbacks=effective_callbacks,
+            signal=signal,
         )
 
 

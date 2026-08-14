@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from mvgeos_agent.types import (
+    AbortSignal,
     ContentType,
     MvgeInvocation,
     MvgeResponse,
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 _CHARS_PER_MANA = 4
 
-SummarizeFn = Callable[[list[dict[str, str]]], Awaitable[str]]
+SummarizeFn = Callable[[list[dict[str, str]], "AbortSignal | None"], Awaitable[str]]
 
 SUMMARIZATION_SYSTEM_PROMPT = (
     "You are a context summarization assistant. Your task is to read a "
@@ -347,6 +348,7 @@ async def generate_summary(
     invocations: list[MvgeInvocation],
     summarize: SummarizeFn,
     previous_summary: str | None = None,
+    signal: AbortSignal | None = None,
 ) -> str | None:
     """Ask a Realm to summarize a transcript.
 
@@ -378,7 +380,7 @@ async def generate_summary(
     ]
 
     try:
-        summary = await summarize(messages)
+        summary = await summarize(messages, signal)
     except Exception:
         logger.exception("Compaction summarization failed")
         return None

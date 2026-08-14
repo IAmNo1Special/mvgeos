@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
 import inspect
 import logging
 from pathlib import Path
@@ -11,7 +10,7 @@ from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.prompt_loader import PromptSource
 from mvgeos_agent.spell_schema import generate_spell_schema
-from mvgeos_agent.types import MvgeInvocation, MvgeSpell, SpellResult
+from mvgeos_agent.types import MvgeSpell, SpellResult
 
 from coding_mvge.spells import (
     BUILTIN_SPELL_MAP as DEFAULT_SPELL_MAP,
@@ -44,6 +43,10 @@ class _BuiltinSpell(MvgeSpell):
         signal: Any | None = None,
         on_update: Any | None = None,
     ) -> str:
+        if signal is not None and getattr(signal, "aborted", False):
+            from mvgeos_agent.types import AbortError
+
+            raise AbortError("Operation aborted")
         validated = self.prepare_arguments(params)
         args = {k: v for k, v in validated.items() if v is not None}
         sig = inspect.signature(self._func)
@@ -136,25 +139,3 @@ class CodingMvge(BaseMvge):
             list(self._runner.get_active_spells()) if self._runner is not None else []
         )
         return super()._render_prompt(body, active, guidelines)
-
-    async def _run_impl(self) -> MvgeInvocation:
-        assert self._model is not None
-        assert self._realm is not None
-        assert self._state is not None
-        assert self._loop is not None
-
-        # The loop owns the turn cycle, including max_turns and draining the
-        # steer/followup queues, so this is a single call.
-        stream_fn = self._make_stream_fn(
-            self._model,
-            self._realm,
-            self._state,
-            self._temperature,
-            self._max_tokens,
-        )
-
-        return await self._loop.run(
-            stream_fn,
-            model=dataclasses.asdict(self._model),
-            contemplation_level=self._contemplation_level,
-        )

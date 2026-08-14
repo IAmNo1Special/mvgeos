@@ -64,7 +64,7 @@ async def test_harness_runs_compaction_callback() -> None:
     invocations = [SummonerRequest(role="user", content="Test")]
     res = await callbacks.after_invocation(invocations)
     assert res == [SummonerRequest(role="user", content="Compact summary")]
-    mock_compaction.maybe_compact.assert_awaited_once_with(invocations)
+    mock_compaction.maybe_compact.assert_awaited_once_with(invocations, None)
 
 
 @pytest.mark.asyncio

@@ -9,8 +9,8 @@ Two layers, mirroring Pi:
   as a `RealmResponse` carrying an error rather than raising, so this layer
   classifies the response instead of catching exceptions.
 
-Both take an optional `signal`, reserved for the abort work. It is accepted now
-so adding cancellation later does not reshape these interfaces.
+Both take an optional `signal` (AbortSignal). When aborted, retry loops exit
+promptly by raising AbortError.
 """
 
 from __future__ import annotations
@@ -21,6 +21,8 @@ import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
+
+from mvgeos_agent.types import AbortError
 
 from mvgeos_provider.types import RealmResponse
 
@@ -153,11 +155,31 @@ def is_retryable_realm_response(response: RealmResponse) -> bool:
 
 
 async def _sleep_ms(delay_ms: float, signal: Any | None = None) -> None:
-    # `signal` is accepted now so the abort work can honour it here without
-    # changing the call sites.
+    """Sleep for delay_ms, respecting abort signal.
+
+    If multiple calls to _sleep_ms share the same signal, all will be cancelled
+    when the signal is aborted. This is intentional shared-cancellation behavior.
+    """
     if delay_ms <= 0:
         return
-    await asyncio.sleep(delay_ms / 1000)
+    if signal is not None and signal.aborted:
+        raise AbortError("Operation aborted")
+    sleep_task = asyncio.create_task(asyncio.sleep(delay_ms / 1000))
+
+    def _on_abort() -> None:
+        if not sleep_task.done():
+            sleep_task.cancel()
+
+    if signal is not None:
+        signal.on_abort(_on_abort)
+        if signal.aborted:
+            raise AbortError("Operation aborted")
+    try:
+        await sleep_task
+    except asyncio.CancelledError:
+        if signal is not None and signal.aborted:
+            raise AbortError("Operation aborted") from None
+        raise
 
 
 async def retry_invocation(
@@ -176,6 +198,8 @@ async def retry_invocation(
     last_error: str | None = None
 
     while True:
+        if signal is not None and signal.aborted:
+            raise AbortError("Operation aborted")
         response = await produce()
 
         if not response.error_message:
@@ -293,6 +317,8 @@ async def retry_realm_request[T](
     remaining = max_retries
 
     while True:
+        if signal is not None and signal.aborted:
+            raise AbortError("Operation aborted")
         try:
             return await request()
         except Exception as error:

@@ -136,7 +136,7 @@ class TestEventBusIntegration:
             ),
         ]
 
-        async def stream(invocations=None):
+        async def stream(invocations=None, signal=None):
             for r in responses:
                 yield r
 
@@ -184,7 +184,7 @@ class TestEventBusIntegration:
             ),
         ]
 
-        async def stream(invocations=None):
+        async def stream(invocations=None, signal=None):
             for r in responses:
                 yield r
 

@@ -47,6 +47,8 @@ from mvgeos_agent.harness import (
 from mvgeos_agent.loop import MvgeLoop, StreamFn
 from mvgeos_agent.snapshot import RuntimeSnapshot
 from mvgeos_agent.types import (
+    AbortController,
+    AbortSignal,
     ContemplationLevel,
     MvgeEvent,
     MvgeEventType,
@@ -195,6 +197,7 @@ class BaseMvge:
         self._compaction: CompactionRunner | None = None
         self._state: MvgeState | None = None
         self._event_bus = EventBus()
+        self._abort_controller: AbortController | None = None
         self._initialized = False
 
     @property
@@ -378,10 +381,16 @@ class BaseMvge:
             self._max_tokens,
         )
 
+        if self._abort_controller is not None:
+            self._abort_controller.abort()
+        self._abort_controller = AbortController()
+        signal = self._abort_controller.signal
+
         return await self._harness.run(
             stream_fn,
             model=dataclasses.asdict(self._model),
             contemplation_level=self._contemplation_level,
+            signal=signal,
         )
 
     def _make_stream_fn(
@@ -412,6 +421,7 @@ class BaseMvge:
 
         def stream_fn(
             invocations: list[MvgeInvocation],
+            signal: AbortSignal | None = None,
         ) -> AsyncIterator[RealmResponse]:
             return realm.stream(
                 model=model,
@@ -425,6 +435,7 @@ class BaseMvge:
                     exclude_contemplation=state.exclude_contemplation,
                     tools=tools,
                 ),
+                signal=signal,
             )
 
         return stream_fn
@@ -611,6 +622,16 @@ class BaseMvge:
 
         return await self._run_impl()
 
+    def abort(self) -> None:
+        """Abort the currently running invocation.
+
+        Triggers the active AbortController (if any), which signals the loop
+        to interrupt in-flight channeling and spell execution. Mirrors Pi's
+        ``agent.abort()`` pattern.
+        """
+        if self._abort_controller is not None:
+            self._abort_controller.abort()
+
     async def close(self) -> None:
         if self._agent_session is not None:
             await self._agent_session.shutdown(reason="quit")
@@ -629,6 +650,7 @@ class BaseMvge:
         self._loop = None
         self._harness = None
         self._state = None
+        self._abort_controller = None
 
     async def __aenter__(self) -> BaseMvge:
         await self.initialize()

@@ -16,6 +16,8 @@ from mvgeos_agent.errors import (
 )
 from mvgeos_agent.prompt_loader import PromptSource
 from mvgeos_agent.types import (
+    AbortError,
+    AbortSignal,
     ContemplationLevel,
     ContentType,
     MvgeEvent,
@@ -31,7 +33,9 @@ from mvgeos_agent.types import (
 )
 
 EmitSink = Callable[[MvgeEvent], Awaitable[None]]
-StreamFn = Callable[[list[MvgeInvocation]], AsyncIterator[RealmResponse]]
+StreamFn = Callable[
+    [list[MvgeInvocation], AbortSignal | None], AsyncIterator[RealmResponse]
+]
 
 _TRUNCATED_SPELL_CALL = (
     "Spell '{name}' was not cast: the response hit the output Mana limit, so its "
@@ -116,7 +120,7 @@ class _RuneSpellWrapper(MvgeSpell):
         self,
         spell_cast_id: str,
         params: dict[str, Any],
-        signal: Any | None = None,
+        signal: AbortSignal | None = None,
         on_update: Any | None = None,
     ) -> dict[str, Any]:
         return await self._spell_def.execute(spell_cast_id, params, signal, on_update)
@@ -127,6 +131,7 @@ async def run_loop(
     stream_fn: StreamFn,
     emit: EmitSink,
     callbacks: LoopCallbacks,
+    signal: AbortSignal | None = None,
 ) -> list[MvgeInvocation]:
     """Drive the Realm turn by turn, casting Spells as they are requested.
 
@@ -168,9 +173,28 @@ async def run_loop(
     pending: list[MvgeInvocation] = []
     turns = 0
 
+    if signal is not None and signal.aborted:
+        await emit(
+            MvgeEvent(
+                type=MvgeEventType.AGENT_END,
+                data={"stop_reason": StopReason.ABORTED.value},
+            )
+        )
+        return new_invocations
+
     # Outer loop: resumes when follow-ups arrive after the Mvge would settle.
     while True:
         keep_going = True
+
+        # Check for abort before each turn
+        if signal is not None and signal.aborted:
+            await emit(
+                MvgeEvent(
+                    type=MvgeEventType.AGENT_END,
+                    data={"stop_reason": StopReason.ABORTED.value},
+                )
+            )
+            return new_invocations
 
         # Inner loop: another turn while Spells were cast or messages queued.
         while keep_going or pending:
@@ -200,9 +224,18 @@ async def run_loop(
             )
             await emit(MvgeEvent(type=MvgeEventType.TURN_START, data={"model": model}))
 
-            turn = await _run_turn(
-                context, stream_fn, emit, callbacks, invocations, state
-            )
+            try:
+                turn = await _run_turn(
+                    context, stream_fn, emit, callbacks, invocations, state, signal
+                )
+            except AbortError:
+                await emit(
+                    MvgeEvent(
+                        type=MvgeEventType.AGENT_END,
+                        data={"stop_reason": StopReason.ABORTED.value},
+                    )
+                )
+                return new_invocations
             invocations.extend(turn.produced)
             new_invocations.extend(turn.produced)
 
@@ -295,12 +328,13 @@ async def _run_turn(
     callbacks: LoopCallbacks,
     invocations: list[MvgeInvocation],
     state: _RunState,
+    signal: AbortSignal | None = None,
 ) -> _TurnOutcome:
     """Channel one Realm response and cast any Spells it requests."""
     outcome = _TurnOutcome()
     streamed_any_chunk = False
 
-    async for response in stream_fn(list(invocations)):
+    async for response in stream_fn(list(invocations), signal):
         if response.error_message:
             error_code = getattr(response, "error_code", None)
             if error_code == "rate_limited":
@@ -376,6 +410,7 @@ async def _run_turn(
             context=context,
             callbacks=callbacks,
             emit=emit,
+            signal=signal,
         )
         spell_results = batch_result.messages
 
@@ -473,6 +508,7 @@ class MvgeLoop:
         model: dict[str, Any],
         contemplation_level: str = "medium",
         callbacks: LoopCallbacks | None = None,
+        signal: AbortSignal | None = None,
     ) -> MvgeInvocation:
         self._state.is_streaming = True
         self._state.model = model
@@ -499,6 +535,7 @@ class MvgeLoop:
                 stream_fn,
                 self._emit,
                 callbacks if callbacks is not None else self._build_callbacks(),
+                signal,
             )
         finally:
             self._state.is_streaming = False

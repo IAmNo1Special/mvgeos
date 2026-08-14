@@ -51,11 +51,13 @@ class TestMvgeLoop:
 
     def _make_realm_stream(
         self, responses: list[RealmResponse]
-    ) -> Callable[[list[Any]], AsyncIterator[RealmResponse]]:
+    ) -> Callable[[list[Any], Any], AsyncIterator[RealmResponse]]:
         """Build a StreamFn yielding one response per turn, in order."""
         turn = -1
 
-        def stream_fn(invocations: list[Any]) -> AsyncIterator[RealmResponse]:
+        def stream_fn(
+            invocations: list[Any], signal: Any | None = None
+        ) -> AsyncIterator[RealmResponse]:
             nonlocal turn
             turn += 1
             response = responses[min(turn, len(responses) - 1)]
@@ -298,7 +300,7 @@ class TestMvgeLoop:
         from mvgeos_agent.loop import MvgeLoop
 
         async def error_stream_gen(
-            invocations: list[Any] | None = None,
+            invocations: list[Any] | None = None, signal: Any | None = None
         ) -> AsyncIterator[RealmResponse]:
             raise RuntimeError("API error")
             yield  # Never reached
@@ -321,7 +323,7 @@ class TestMvgeLoop:
         )
 
         async def rate_limit_stream(
-            invocations: list[Any] | None = None,
+            invocations: list[Any] | None = None, signal: Any | None = None
         ) -> AsyncIterator[RealmResponse]:
             yield RealmResponse(
                 model=model_obj,
@@ -347,7 +349,7 @@ class TestMvgeLoop:
         )
 
         async def auth_stream(
-            invocations: list[Any] | None = None,
+            invocations: list[Any] | None = None, signal: Any | None = None
         ) -> AsyncIterator[RealmResponse]:
             yield RealmResponse(
                 model=model_obj,
@@ -374,7 +376,7 @@ class TestMvgeLoop:
         )
 
         async def bad_request_stream(
-            invocations: list[Any] | None = None,
+            invocations: list[Any] | None = None, signal: Any | None = None
         ) -> AsyncIterator[RealmResponse]:
             yield RealmResponse(
                 model=model_obj,
@@ -439,7 +441,7 @@ class TestMvgeLoopProviderHooks:
         ]
 
         async def stream(
-            invocations: list[Any] | None = None,
+            invocations: list[Any] | None = None, signal: Any | None = None
         ) -> AsyncIterator[RealmResponse]:
             for r in responses:
                 yield r
@@ -481,7 +483,7 @@ class TestMvgeLoopProviderHooks:
         ]
 
         async def stream(
-            invocations: list[Any] | None = None,
+            invocations: list[Any] | None = None, signal: Any | None = None
         ) -> AsyncIterator[RealmResponse]:
             for r in responses:
                 yield r
@@ -527,7 +529,7 @@ class TestMvgeLoopProviderHooks:
         ]
 
         async def stream(
-            invocations: list[Any] | None = None,
+            invocations: list[Any] | None = None, signal: Any | None = None
         ) -> AsyncIterator[RealmResponse]:
             for r in responses:
                 yield r
@@ -574,7 +576,7 @@ class TestMvgeLoopProviderHooks:
         ]
 
         async def stream(
-            invocations: list[Any] | None = None,
+            invocations: list[Any] | None = None, signal: Any | None = None
         ) -> AsyncIterator[RealmResponse]:
             for r in responses:
                 yield r
@@ -622,7 +624,7 @@ class TestMvgeLoopContextTransform:
         ]
 
         async def stream(
-            invocations: list[Any] | None = None,
+            invocations: list[Any] | None = None, signal: Any | None = None
         ) -> AsyncIterator[RealmResponse]:
             for r in responses:
                 yield r
@@ -667,7 +669,7 @@ class TestMvgeLoopInputHook:
         ]
 
         async def stream(
-            invocations: list[Any] | None = None,
+            invocations: list[Any] | None = None, signal: Any | None = None
         ) -> AsyncIterator[RealmResponse]:
             for r in responses:
                 yield r
@@ -725,7 +727,7 @@ class TestMvgeLoopSessionHooks:
             ]
 
             async def stream(
-                invocations: list[Any] | None = None,
+                invocations: list[Any] | None = None, signal: Any | None = None
             ) -> AsyncIterator[RealmResponse]:
                 for r in responses:
                     yield r
@@ -782,7 +784,7 @@ class TestMvgeLoopSessionHooks:
             ]
 
             async def stream(
-                invocations: list[Any] | None = None,
+                invocations: list[Any] | None = None, signal: Any | None = None
             ) -> AsyncIterator[RealmResponse]:
                 for r in responses:
                     yield r
@@ -940,7 +942,7 @@ async def test_loop_streaming_deduplication_and_contemplation() -> None:
         ),
     ]
 
-    def stream_fn(invs: list[Any]) -> Any:
+    def stream_fn(invs: list[Any], signal: Any | None = None) -> Any:
         async def gen():
             for r in responses:
                 yield r
@@ -1050,10 +1052,12 @@ class TestMvgeLoopQueueMode:
 
     def _make_realm_stream(
         self, responses: list[RealmResponse]
-    ) -> Callable[[list[Any]], AsyncIterator[RealmResponse]]:
+    ) -> Callable[[list[Any], Any], AsyncIterator[RealmResponse]]:
         turn = -1
 
-        def stream_fn(invocations: list[Any]) -> AsyncIterator[RealmResponse]:
+        def stream_fn(
+            invocations: list[Any], signal: Any | None = None
+        ) -> AsyncIterator[RealmResponse]:
             nonlocal turn
             turn += 1
             response = responses[min(turn, len(responses) - 1)]

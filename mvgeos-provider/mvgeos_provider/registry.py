@@ -95,13 +95,16 @@ class RealmRegistry:
                     model_obj: Model,
                     invocations: list[Any],
                     config: Any,
+                    signal: Any | None = None,
                 ) -> Any:
                     base_url_val = self._config.get("baseUrl", "")
                     fallback = OpenRouterRealm(
                         api_key=self._config.get("apiKey", ""),
                         base_url=base_url_val,
                     )
-                    async for resp in fallback.stream(model_obj, invocations, config):
+                    async for resp in fallback.stream(
+                        model_obj, invocations, config, signal
+                    ):
                         yield resp
 
                 async def close(self) -> None:
