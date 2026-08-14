@@ -56,6 +56,7 @@ class AppState:
     messages: list[ChatMessage] = field(default_factory=list)
     total_mana_used: int = 0
     active_prompt: str = ""
+    api_key: str | None = None
     agent_service: AgentService | None = field(default=None, repr=False, compare=False)
     active_task: asyncio.Task[Any] | None = field(
         default=None, repr=False, compare=False
@@ -83,7 +84,10 @@ class AppState:
     def get_agent_service(self) -> AgentService:
         """Retrieve or initialize the active AgentService instance."""
         if self.agent_service is None:
-            self.agent_service = AgentService(project_path=self.project_path)
+            self.agent_service = AgentService(
+                project_path=self.project_path,
+                api_key=self.api_key,
+            )
         return self.agent_service
 
     def toggle_sidebar(self) -> None:

@@ -5,9 +5,10 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mvgeos_agent.errors import AuthenticationError
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 
-from mvgeos_gui.agent_service import AgentService
+from mvgeos_gui.agent_service import AgentService, resolve_api_key
 from mvgeos_gui.models import ChatMessage, StepType
 from mvgeos_gui.state import AppState
 
@@ -19,7 +20,7 @@ def app_state(tmp_path: Path) -> AppState:
 
 @pytest.fixture
 def agent_service(tmp_path: Path) -> AgentService:
-    return AgentService(project_path=tmp_path)
+    return AgentService(project_path=tmp_path, api_key="test-api-key")
 
 
 def test_agent_service_initialization(
@@ -30,11 +31,48 @@ def test_agent_service_initialization(
     assert agent_service.is_running is False
 
 
+def test_resolve_api_key_variants() -> None:
+    """Verify API key resolution from explicit args, env, and auth file."""
+    # 1. Explicit key
+    assert resolve_api_key("sk-explicit") == "sk-explicit"
+
+    # 2. OPENROUTER_API_KEY env var
+    with patch.dict("os.environ", {"OPENROUTER_API_KEY": "sk-or-env"}):
+        assert resolve_api_key() == "sk-or-env"
+
+    # 3. MVGEOS_API_KEY fallback env var
+    with patch.dict(
+        "os.environ", {"OPENROUTER_API_KEY": "", "MVGEOS_API_KEY": "sk-mvgeos-env"}
+    ):
+        assert resolve_api_key() == "sk-mvgeos-env"
+
+    # 4. load_api_key_from_auth fallback
+    with (
+        patch.dict("os.environ", {"OPENROUTER_API_KEY": "", "MVGEOS_API_KEY": ""}),
+        patch(
+            "mvgeos_cli.auth.load_api_key_from_auth",
+            return_value="sk-auth-file",
+        ),
+    ):
+        assert resolve_api_key() == "sk-auth-file"
+
+    # 5. None when no source is available
+    with (
+        patch.dict("os.environ", {"OPENROUTER_API_KEY": "", "MVGEOS_API_KEY": ""}),
+        patch("mvgeos_cli.auth.load_api_key_from_auth", return_value=None),
+    ):
+        assert resolve_api_key() is None
+
+
 def test_get_or_create_agent_with_factory(app_state: AppState) -> None:
     """Verify get_or_create_agent uses custom agent_factory if provided."""
     mock_agent = MagicMock()
     factory = MagicMock(return_value=mock_agent)
-    service = AgentService(project_path=app_state.project_path, agent_factory=factory)
+    service = AgentService(
+        project_path=app_state.project_path,
+        api_key="test-key",
+        agent_factory=factory,
+    )
 
     agent = service.get_or_create_agent(app_state)
     assert agent == mock_agent
@@ -55,7 +93,7 @@ def test_get_or_create_agent_default(
     """Verify get_or_create_agent instantiates default CodingMvge."""
     mock_instance = MagicMock()
     mock_coding_mvge.return_value = mock_instance
-    service = AgentService(project_path=app_state.project_path)
+    service = AgentService(project_path=app_state.project_path, api_key="test-key")
 
     agent = service.get_or_create_agent(app_state)
     assert agent == mock_instance
@@ -236,6 +274,22 @@ def test_format_duration_variants() -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_prompt_no_api_key(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify run_prompt gives helpful instructions when no API key exists."""
+    agent_service._api_key = None
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("Hello", app_state, msg)
+    assert msg.is_error is True
+    assert "Authentication Required" in msg.content
+    assert agent_service.is_running is False
+
+
+@pytest.mark.asyncio
 async def test_run_prompt_success(
     agent_service: AgentService, app_state: AppState
 ) -> None:
@@ -274,6 +328,25 @@ async def test_run_prompt_cancelled_error(
     await agent_service.run_prompt("Test cancel", app_state, msg)
     assert "Cancelled by summoner" in msg.content
     assert agent_service.is_running is False
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_authentication_error(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify run_prompt handles AuthenticationError with 401 message."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(side_effect=AuthenticationError("HTTP 401"))
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.on = MagicMock()
+    agent_service._agent = mock_agent
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("Test 401", app_state, msg)
+    assert msg.is_error is True
+    assert "Authentication Failed (HTTP 401)" in msg.content
 
 
 @pytest.mark.asyncio

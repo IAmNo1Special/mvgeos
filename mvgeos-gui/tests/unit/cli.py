@@ -32,6 +32,8 @@ def test_parse_args_custom_values() -> None:
             "C:/test/path",
             "--model",
             "anthropic/claude-3-5-sonnet",
+            "--api-key",
+            "sk-test-cli-key",
             "--reload",
         ]
     )
@@ -40,6 +42,7 @@ def test_parse_args_custom_values() -> None:
     assert args.port == 8080
     assert args.project == Path("C:/test/path")
     assert args.model == "anthropic/claude-3-5-sonnet"
+    assert args.api_key == "sk-test-cli-key"
     assert args.reload is True
 
 

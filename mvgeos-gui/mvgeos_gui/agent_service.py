@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from mvgeos_agent.errors import AuthenticationError
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 
 from mvgeos_gui.models import (
@@ -28,17 +30,33 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def resolve_api_key(explicit_key: str | None = None) -> str | None:
+    """Resolve OpenRouter API key from explicit arg, env vars, or auth file."""
+    if explicit_key and explicit_key.strip():
+        return explicit_key.strip()
+    env_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("MVGEOS_API_KEY")
+    if env_key and env_key.strip():
+        return env_key.strip()
+    with contextlib.suppress(Exception):
+        from mvgeos_cli.auth import load_api_key_from_auth
+
+        auth_key = load_api_key_from_auth()
+        if auth_key and auth_key.strip():
+            return auth_key.strip()
+    return None
+
+
 class AgentService:
     """Service bridge managing agent runtime lifecycle and event sink for GUI."""
 
     def __init__(
         self,
         project_path: Path,
-        api_key: str = "openrouter-mock-key",
+        api_key: str | None = None,
         agent_factory: Callable[..., Any] | None = None,
     ) -> None:
         self._project_path = project_path
-        self._api_key = api_key
+        self._api_key = resolve_api_key(api_key)
         self._agent_factory = agent_factory
         self._agent: CodingMvge | None = None
         self._is_running = False
@@ -62,7 +80,7 @@ class AgentService:
         if self._agent_factory is not None:
             self._agent = self._agent_factory(
                 project_path=self._project_path,
-                api_key=self._api_key,
+                api_key=self._api_key or "mock-key",
                 state=state,
             )
             return self._agent
@@ -70,7 +88,7 @@ class AgentService:
         from coding_mvge.mvge import CodingMvge
 
         self._agent = CodingMvge(
-            api_key=self._api_key,
+            api_key=self._api_key or "mock-key",
             session_dir=state.tome_service.tome_dir,
             session_resume=state.active_tome_id,
         )
@@ -79,7 +97,7 @@ class AgentService:
     def handle_event(
         self, event: MvgeEvent, message: ChatMessage, state: AppState
     ) -> None:
-        """Process an MvgeEvent and update the reactive ChatMessage and AppState."""
+        """Process an MvgeEvent and update reactive ChatMessage and AppState."""
         data = event.data
 
         if event.type == MvgeEventType.AGENT_START:
@@ -210,6 +228,20 @@ class AgentService:
         message.is_streaming = True
         state.notify()
 
+        if not self._api_key:
+            message.is_error = True
+            message.error_message = "API key required"
+            message.content = (
+                "**Authentication Required**: No OpenRouter API key was found.\n\n"
+                "Please set the `OPENROUTER_API_KEY` environment variable, "
+                "run `mvgeos setup`, or pass `--api-key` when starting `mvgeos-gui`."
+            )
+            message.is_streaming = False
+            state.is_channeling = False
+            self._is_running = False
+            state.notify()
+            return
+
         try:
             agent = self.get_or_create_agent(state)
             if hasattr(agent, "on"):
@@ -226,6 +258,16 @@ class AgentService:
         except asyncio.CancelledError:
             logger.info("Agent run cancelled by summoner")
             message.content += "\n\n*(Cancelled by summoner)*"
+        except AuthenticationError as exc:
+            logger.exception("Authentication failed: %s", exc)
+            message.is_error = True
+            message.error_message = str(exc)
+            message.content = (
+                "**Authentication Failed (HTTP 401)**: The OpenRouter API key "
+                "is invalid or unauthorized.\n\n"
+                "Please check your `OPENROUTER_API_KEY` environment variable "
+                "or re-run `mvgeos setup`."
+            )
         except Exception as exc:
             logger.exception("Error executing agent prompt: %s", exc)
             message.is_error = True

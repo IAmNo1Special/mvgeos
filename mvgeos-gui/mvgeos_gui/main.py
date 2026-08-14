@@ -70,6 +70,12 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help=f"Default model slug (default: {DEFAULT_MODEL}).",
     )
     parser.add_argument(
+        "--api-key",
+        type=str,
+        default=None,
+        help="OpenRouter API key (or set OPENROUTER_API_KEY env).",
+    )
+    parser.add_argument(
         "--reload",
         action="store_true",
         default=False,
@@ -84,6 +90,7 @@ def main() -> None:
     state = AppState(
         project_path=args.project,
         selected_model=args.model,
+        api_key=args.api_key,
     )
     init_app(state)
 
