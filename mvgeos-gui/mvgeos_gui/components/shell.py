@@ -32,7 +32,7 @@ def render_shell(state: AppState) -> ui.row:
 
             # Center Scrollable View (Empty State or Chat Stream)
             with ui.scroll_area().classes("w-full flex-grow relative"):
-                if state.active_tome_id is not None:
+                if state.active_tome_id is not None or bool(state.messages):
                     render_conversation_view(state)
                 else:
                     render_empty_state(state)

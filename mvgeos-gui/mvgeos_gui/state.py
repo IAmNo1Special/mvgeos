@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import os
 import shutil
@@ -11,7 +12,29 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from mvgeos_tome.types import TomeEntryType
+
+from mvgeos_gui.agent_service import AgentService
+from mvgeos_gui.models import ChatMessage
 from mvgeos_gui.tome_service import TomeListEntry, TomeService
+
+
+def _extract_text_content(content: Any) -> str:
+    """Extract plain text from message content which can be str or list of dicts."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                if item.get("type") == "text":
+                    parts.append(str(item.get("text", "")))
+                elif "text" in item:
+                    parts.append(str(item["text"]))
+            elif isinstance(item, str):
+                parts.append(item)
+        return "\n".join(parts)
+    return str(content or "")
 
 
 @dataclass
@@ -30,6 +53,13 @@ class AppState:
         default_factory=TomeService, repr=False, compare=False
     )
     loaded_tomes: list[TomeListEntry] = field(default_factory=list)
+    messages: list[ChatMessage] = field(default_factory=list)
+    total_mana_used: int = 0
+    active_prompt: str = ""
+    agent_service: AgentService | None = field(default=None, repr=False, compare=False)
+    active_task: asyncio.Task[Any] | None = field(
+        default=None, repr=False, compare=False
+    )
     _change_listeners: list[Callable[[], Any]] = field(
         default_factory=list, repr=False, compare=False
     )
@@ -50,6 +80,12 @@ class AppState:
             with contextlib.suppress(Exception):
                 listener()
 
+    def get_agent_service(self) -> AgentService:
+        """Retrieve or initialize the active AgentService instance."""
+        if self.agent_service is None:
+            self.agent_service = AgentService(project_path=self.project_path)
+        return self.agent_service
+
     def toggle_sidebar(self) -> None:
         """Toggle left navigation sidebar visibility."""
         self.sidebar_expanded = not self.sidebar_expanded
@@ -63,6 +99,7 @@ class AppState:
     def set_project(self, path: Path) -> None:
         """Change the active workspace project path."""
         self.project_path = path
+        self.agent_service = None
         self.add_recent_project(path)
         self.load_tomes()
         self.notify()
@@ -81,6 +118,8 @@ class AppState:
         self.active_tome_id = None
         self.tome_title = "New Conversation"
         self.is_channeling = False
+        self.messages = []
+        self.total_mana_used = 0
         self.load_tomes()
 
     def load_tomes(self) -> None:
@@ -89,6 +128,31 @@ class AppState:
             self.project_path, active_tome_id=self.active_tome_id
         )
         self.notify()
+
+    def load_messages_for_tome(self, tome_id: str) -> None:
+        """Load existing messages from a Tome's JSONL transcript."""
+        ledger = self.tome_service.ledger
+        try:
+            entries = ledger.get_entries(tome_id)
+        except ValueError, KeyError:
+            self.messages = []
+            return
+
+        reconstructed: list[ChatMessage] = []
+        for entry in entries:
+            if entry.type in (TomeEntryType.MESSAGE, TomeEntryType.INVOCATION):
+                payload = entry.payload
+                role = str(payload.get("role", "assistant"))
+                if role in ("user", "assistant"):
+                    text = _extract_text_content(payload.get("content", ""))
+                    reconstructed.append(
+                        ChatMessage(
+                            role=role,
+                            content=text,
+                            model=payload.get("model"),
+                        )
+                    )
+        self.messages = reconstructed
 
     def switch_to_tome(self, tome_id: str) -> None:
         """Load a Tome session and switch the active conversation."""
@@ -99,7 +163,65 @@ class AppState:
         self.active_tome_id = meta.id
         self.tome_title = self.tome_service.get_tome_title(meta.id)
         self.is_channeling = False
+        self.load_messages_for_tome(meta.id)
         self.load_tomes()
+
+    def switch_model(self, model_id: str) -> None:
+        """Switch the selected Realm model."""
+        self.selected_model = model_id
+        self.notify()
+
+    def set_message_feedback(self, index: int, feedback: str | None) -> None:
+        """Set or toggle feedback (thumbs up / thumbs down) on a message."""
+        if 0 <= index < len(self.messages):
+            msg = self.messages[index]
+            if msg.feedback == feedback:
+                msg.feedback = None
+            else:
+                msg.feedback = feedback
+            self.notify()
+
+    def submit_prompt(self, prompt: str) -> None:
+        """Submit a new user prompt and start channeling Mvge response."""
+        text = prompt.strip()
+        if not text or self.is_channeling:
+            return
+
+        # Append user message bubble
+        user_msg = ChatMessage(role="user", content=text)
+        self.messages.append(user_msg)
+
+        # Append assistant response bubble
+        assistant_msg = ChatMessage(
+            role="assistant",
+            model=self.selected_model,
+            is_streaming=True,
+        )
+        self.messages.append(assistant_msg)
+        self.is_channeling = True
+        self.notify()
+
+        # Start agent task
+        service = self.get_agent_service()
+        with contextlib.suppress(RuntimeError):
+            self.active_task = asyncio.create_task(
+                service.run_prompt(text, self, assistant_msg)
+            )
+
+    def stop_channeling(self) -> None:
+        """Cancel and halt active agent channeling."""
+        if self.active_task is not None:
+            with contextlib.suppress(Exception):
+                self.active_task.cancel()
+        if self.agent_service is not None:
+            self.agent_service.cancel()
+
+        for msg in self.messages:
+            if msg.is_streaming:
+                msg.is_streaming = False
+
+        self.is_channeling = False
+        self.notify()
 
     def open_in_editor(self) -> None:
         """Spawn the default editor in the active project directory."""

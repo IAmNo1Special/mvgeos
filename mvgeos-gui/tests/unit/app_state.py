@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from mvgeos_tome.ledger import TomeLedger
 
+from mvgeos_gui.models import ChatMessage
 from mvgeos_gui.state import AppState
 from mvgeos_gui.tome_service import TomeService
 
@@ -25,6 +27,8 @@ def test_app_state_defaults() -> None:
     assert isinstance(state.recent_projects, list)
     assert state.tome_service is not None
     assert state.loaded_tomes == []
+    assert state.messages == []
+    assert state.total_mana_used == 0
 
 
 def test_app_state_custom_init() -> None:
@@ -104,11 +108,15 @@ def test_new_conversation() -> None:
     state.active_tome_id = "tome-123"
     state.tome_title = "Refactoring loop"
     state.is_channeling = True
+    state.messages.append(ChatMessage(role="user", content="hello"))
+    state.total_mana_used = 500
 
     state.new_conversation()
     assert state.active_tome_id is None
     assert state.tome_title == "New Conversation"
     assert state.is_channeling is False
+    assert state.messages == []
+    assert state.total_mana_used == 0
 
 
 def test_listeners_and_exception_handling() -> None:
@@ -128,6 +136,79 @@ def test_listeners_and_exception_handling() -> None:
 
     state.notify()
     assert called == ["good"]
+
+
+def test_switch_model() -> None:
+    """Verify switching active Realm model updates state and notifies."""
+    state = AppState()
+    called: list[bool] = []
+    state.subscribe(lambda: called.append(True))
+
+    state.switch_model("anthropic/claude-3-5-sonnet")
+    assert state.selected_model == "anthropic/claude-3-5-sonnet"
+    assert called == [True]
+
+
+def test_set_message_feedback() -> None:
+    """Verify setting and toggling message feedback status."""
+    state = AppState()
+    msg = ChatMessage(role="assistant", content="Response")
+    state.messages.append(msg)
+
+    # Set up
+    state.set_message_feedback(0, "up")
+    assert msg.feedback == "up"
+
+    # Toggling same feedback clears it
+    state.set_message_feedback(0, "up")
+    assert msg.feedback is None
+
+    # Setting down
+    state.set_message_feedback(0, "down")
+    assert msg.feedback == "down"
+
+    # Out of range is safe no-op
+    state.set_message_feedback(99, "up")
+
+
+@pytest.mark.asyncio
+async def test_submit_prompt_appends_messages_and_starts_task() -> None:
+    """Verify submit_prompt creates user and assistant messages."""
+    state = AppState()
+    mock_service = MagicMock()
+    mock_service.run_prompt = AsyncMock()
+    state.agent_service = mock_service
+
+    state.submit_prompt("Build a widget")
+    assert len(state.messages) == 2
+    assert state.messages[0].role == "user"
+    assert state.messages[0].content == "Build a widget"
+    assert state.messages[1].role == "assistant"
+    assert state.messages[1].is_streaming is True
+    assert state.is_channeling is True
+
+    # Empty prompt is a no-op
+    state.submit_prompt("")
+    assert len(state.messages) == 2
+
+
+def test_stop_channeling_cancels_active_task() -> None:
+    """Verify stop_channeling marks streaming as false and resets channeling state."""
+    state = AppState()
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    state.messages.append(msg)
+    state.is_channeling = True
+
+    mock_task = MagicMock()
+    state.active_task = mock_task
+    mock_service = MagicMock()
+    state.agent_service = mock_service
+
+    state.stop_channeling()
+    assert state.is_channeling is False
+    assert msg.is_streaming is False
+    mock_task.cancel.assert_called_once()
+    mock_service.cancel.assert_called_once()
 
 
 # --- Tome service integration tests ---
@@ -211,6 +292,19 @@ class TestSwitchToTome:
         assert state.active_tome_id == tome_id
         assert state.tome_title == "Bug Fix Session"
 
+    def test_loads_existing_messages_from_tome(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        tome_id = _create_tome(tome_dir, "/proj/a")
+        ledger = TomeLedger(tome_dir)
+        ledger.append_message(tome_id, "user", "How do I fix this?")
+        ledger.append_message(tome_id, "assistant", "Here is the fix.")
+
+        state.switch_to_tome(tome_id)
+
+        assert len(state.messages) == 2
+        assert state.messages[0].content == "How do I fix this?"
+        assert state.messages[1].content == "Here is the fix."
+
     def test_sets_title_from_tome_info_title_key(self) -> None:
         state, tome_dir = _make_state_with_tomes("/proj/a")
         tome_id = _create_tome(tome_dir, "/proj/a")
@@ -257,37 +351,6 @@ class TestSwitchToTome:
         state.switch_to_tome(tome_id)
 
         assert called == [True]
-
-
-class TestOpenInEditor:
-    @patch("mvgeos_gui.state.subprocess.Popen")
-    def test_uses_code_command_by_default(self, mock_popen: MagicMock) -> None:
-        state = AppState(project_path=Path("C:/demo/project"))
-        state.open_in_editor()
-
-        mock_popen.assert_called_once()
-        args = mock_popen.call_args[0][0]
-        assert args[0] == "code"
-        assert args[1] == str(Path("C:/demo/project"))
-
-    @patch("mvgeos_gui.state.subprocess.Popen")
-    def test_uses_editor_env_var(self, mock_popen: MagicMock) -> None:
-        with patch.dict("os.environ", {"EDITOR": "vim"}):
-            state = AppState(project_path=Path("/home/user/proj"))
-            state.open_in_editor()
-
-        mock_popen.assert_called_once()
-        args = mock_popen.call_args[0][0]
-        assert args[0] == "vim"
-
-    @patch("mvgeos_gui.state.subprocess.Popen")
-    def test_suppresses_file_not_found(self, mock_popen: MagicMock) -> None:
-        mock_popen.side_effect = FileNotFoundError("not found")
-        state = AppState(project_path=Path("/proj"))
-
-        state.open_in_editor()
-
-        mock_popen.assert_called_once()
 
 
 class TestForkTome:

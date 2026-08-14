@@ -1,5 +1,7 @@
 """Floating bottom input card dock component."""
 
+from __future__ import annotations
+
 from nicegui import ui
 
 from mvgeos_gui.state import AppState
@@ -24,12 +26,22 @@ def render_input_dock(state: AppState) -> ui.column:
         ),
     ):
         # Prompt textarea with symmetrical horizontal padding
-        ui.textarea(placeholder="Ask anything. @ to mention. / for actions").props(
-            "borderless autogrow dark dense hide-bottom-space"
-        ).classes(
-            "w-full text-xs text-[#e6edf3] bg-transparent resize-none "
-            "leading-relaxed min-h-[36px] px-1"
+        prompt_input = (
+            ui.textarea(placeholder="Ask anything. @ to mention. / for actions")
+            .props("borderless autogrow dark dense hide-bottom-space")
+            .classes(
+                "w-full text-xs text-[#e6edf3] bg-transparent resize-none "
+                "leading-relaxed min-h-[36px] px-1"
+            )
         )
+
+        def handle_submit() -> None:
+            text = (prompt_input.value or "").strip()
+            if text:
+                prompt_input.value = ""
+                state.submit_prompt(text)
+
+        prompt_input.on("keydown.enter.prevent", handle_submit)
 
         # Bottom toolbar row inside dock with symmetrical horizontal padding
         with ui.row().classes("w-full items-center justify-between px-1"):
@@ -44,7 +56,7 @@ def render_input_dock(state: AppState) -> ui.column:
                 ui.select(
                     options=AVAILABLE_MODELS,
                     value=state.selected_model,
-                    on_change=lambda e: setattr(state, "selected_model", e.value),
+                    on_change=lambda e: state.switch_model(e.value),
                 ).props(
                     "dense options-dense borderless dark options-dark rounded text-xs"
                 ).classes("text-xs text-[#8b949e] font-mono max-w-[220px]")
@@ -66,18 +78,31 @@ def render_input_dock(state: AppState) -> ui.column:
                     ui.tooltip("Voice Input")
 
                 if state.is_channeling:
-                    ui.button(
-                        icon="stop",
-                        on_click=lambda: setattr(state, "is_channeling", False),
-                    ).props(
-                        "unelevated dense round color=red text-color=white size=sm"
-                    ).classes("shadow")
+                    with (
+                        ui.button(
+                            icon="stop",
+                            on_click=lambda: state.stop_channeling(),
+                        )
+                        .props(
+                            "unelevated dense round color=red text-color=white size=sm"
+                        )
+                        .classes("shadow bg-[#ef4444] hover:bg-[#dc2626]")
+                        .mark("stop_channeling_btn")
+                    ):
+                        ui.tooltip("Stop generation")
                 else:
-                    ui.button(
-                        icon="arrow_forward",
-                        on_click=lambda: ui.notify("Prompt submitted"),
-                    ).props(
-                        "unelevated dense round color=primary text-color=white size=sm"
-                    ).classes("bg-[#3b82f6] hover:bg-[#2563eb] shadow")
+                    with (
+                        ui.button(
+                            icon="arrow_forward",
+                            on_click=handle_submit,
+                        )
+                        .props(
+                            "unelevated dense round color=primary "
+                            "text-color=white size=sm"
+                        )
+                        .classes("bg-[#3b82f6] hover:bg-[#2563eb] shadow")
+                        .mark("submit_prompt_btn")
+                    ):
+                        ui.tooltip("Send prompt")
 
     return wrapper
