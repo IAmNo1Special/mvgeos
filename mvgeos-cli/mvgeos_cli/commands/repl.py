@@ -426,23 +426,23 @@ async def _read_fallback_prompt() -> str | None:
 
 
 class _StreamFilter:
-    """Strips pi-style channel markers and thinking blocks from streamed text.
+    """Strips pi-style channel markers and reasoning blocks from streamed text.
 
-    Some models emit reasoning artifacts in the content channel, e.g.
-    ``# thinking`` headings or ``<channel|name>`` markers. These are hidden
-    from the REPL display while normal markdown output is preserved.
+    Models emit reasoning content in dedicated channels delimited by
+    ``<channel|name>`` tags (e.g. ``<channel|reasoning>``). Content inside
+    a reasoning channel is suppressed from the REPL display; all channel
+    tags are stripped.  Standard markdown headings such as ``# Thinking``
+    are **not** treated as reasoning artifacts and are preserved verbatim.
     """
 
-    _THINKING_HEADING = re.compile(r"^#\s*(?:thinking|thought|reasoning)\b", re.I)
-    _STANDALONE_THINK = re.compile(
-        r"^\s*(?:thinking|thought|reasoning)s?[:]?\s*$", re.I
-    )
-    _OTHER_HEADING = re.compile(r"^\s*#\s+\S+")
     _CHANNEL_TAG = re.compile(r"<\s*channel\s*\|[^>]*>", re.I)
+    _REASONING_CHANNEL = re.compile(
+        r"<\s*channel\s*\|\s*(?:reasoning|thinking|thought)\s*>", re.I
+    )
 
     def __init__(self) -> None:
         self._pending = ""
-        self._in_thinking = False
+        self._in_reasoning = False
 
     def feed(self, text: str) -> str:
         self._pending += text
@@ -456,27 +456,21 @@ class _StreamFilter:
                 out.append(filtered)
                 out.append("\n")
 
-        if not self._in_thinking and self._pending:
-            stripped = self._pending.strip()
-            if self._THINKING_HEADING.match(stripped) or self._STANDALONE_THINK.match(
-                stripped
-            ):
-                pass
-            elif "<" in self._pending:
-                last_lt = self._pending.rfind("<")
-                if ">" not in self._pending[last_lt:]:
-                    emit_now = self._pending[:last_lt]
-                    self._pending = self._pending[last_lt:]
-                    if emit_now:
-                        out.append(_StreamFilter._CHANNEL_TAG.sub("", emit_now))
-                else:
-                    emit_now = _StreamFilter._CHANNEL_TAG.sub("", self._pending)
-                    self._pending = ""
-                    if emit_now:
-                        out.append(emit_now)
-            else:
-                out.append(self._pending)
+        if self._pending and not self._in_reasoning:
+            last_lt = self._pending.rfind("<")
+            if last_lt >= 0 and ">" not in self._pending[last_lt:]:
+                emit_now = self._pending[:last_lt]
+                self._pending = self._pending[last_lt:]
+                if emit_now:
+                    out.append(_StreamFilter._CHANNEL_TAG.sub("", emit_now))
+            elif _StreamFilter._REASONING_CHANNEL.search(self._pending):
+                self._in_reasoning = True
                 self._pending = ""
+            else:
+                emit_now = _StreamFilter._CHANNEL_TAG.sub("", self._pending)
+                self._pending = ""
+                if emit_now:
+                    out.append(emit_now)
 
         return "".join(out)
 
@@ -485,32 +479,29 @@ class _StreamFilter:
         self._pending = ""
         if not leftover:
             return ""
-        filtered = self._process_line(leftover)
-        if filtered is None:
+        if self._in_reasoning:
             return ""
-        return filtered
+        cleaned = _StreamFilter._clean_line(leftover)
+        if cleaned is None:
+            return ""
+        return cleaned
 
     def reset(self) -> None:
         self._pending = ""
-        self._in_thinking = False
+        self._in_reasoning = False
 
     def _process_line(self, line: str) -> str | None:
         """Return cleaned line content, or None to suppress the line."""
-        stripped = line.strip()
-        if self._in_thinking:
-            if self._THINKING_HEADING.match(stripped):
+        if self._in_reasoning:
+            tag = self._CHANNEL_TAG.search(line)
+            if tag and self._REASONING_CHANNEL.fullmatch(tag.group()):
                 return None
-            if self._CHANNEL_TAG.search(line):
-                self._in_thinking = False
-                return self._clean_line(line)
-            if self._OTHER_HEADING.match(stripped):
-                self._in_thinking = False
+            if tag:
+                self._in_reasoning = False
                 return self._clean_line(line)
             return None
-        if self._THINKING_HEADING.match(stripped) or self._STANDALONE_THINK.match(
-            stripped
-        ):
-            self._in_thinking = True
+        if self._REASONING_CHANNEL.search(line):
+            self._in_reasoning = True
             return None
         return self._clean_line(line)
 

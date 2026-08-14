@@ -349,30 +349,31 @@ class TestStreamFilter:
         assert f.feed("list>\n") == ""
         assert f.feed("Done\n") == "Done\n"
 
-    def test_thinking_heading_block_suppressed(self) -> None:
+    def test_thinking_heading_preserved_as_markdown(self) -> None:
         from mvgeos_cli.commands.repl import _StreamFilter
 
         f = _StreamFilter()
-        assert f.feed("# thinking\n") == ""
-        assert f.feed("I'll check the dir.\n") == ""
+        assert f.feed("# thinking\n") == "# thinking\n"
+        assert f.feed("I'll check the dir.\n") == "I'll check the dir.\n"
         assert f.feed("<channel|list>\n") == ""
         assert f.feed("Here is the answer\n") == "Here is the answer\n"
 
-    def test_standalone_thought_line_suppressed(self) -> None:
+    def test_standalone_thought_preserved_as_text(self) -> None:
         from mvgeos_cli.commands.repl import _StreamFilter
 
         f = _StreamFilter()
-        assert f.feed("thought\n") == ""
+        assert f.feed("thought\n") == "thought\n"
         assert f.feed("<channel|>\n") == ""
         assert f.feed("Result text\n") == "Result text\n"
 
-    def test_thinking_ended_by_other_heading(self) -> None:
+    def test_reasoning_channel_suppresses_block(self) -> None:
         from mvgeos_cli.commands.repl import _StreamFilter
 
         f = _StreamFilter()
-        assert f.feed("# thinking\n") == ""
+        assert f.feed("<channel|reasoning>\n") == ""
         assert f.feed("secret\n") == ""
-        assert f.feed("# Summary\n") == "# Summary\n"
+        assert f.feed("# Summary\n") == ""
+        assert f.feed("<channel|>\n") == ""
         assert f.feed("public\n") == "public\n"
 
     def test_normal_markdown_preserved(self) -> None:
@@ -395,11 +396,11 @@ class TestStreamFilter:
         assert f.feed("Hello") == "Hello"
         assert f.flush() == ""
 
-    def test_flush_thinking_discards(self) -> None:
+    def test_flush_reasoning_discards(self) -> None:
         from mvgeos_cli.commands.repl import _StreamFilter
 
         f = _StreamFilter()
-        assert f.feed("thought") == ""
+        assert f.feed("<channel|reasoning>") == ""
         assert f.flush() == ""
 
     def test_flush_clean_line(self) -> None:
@@ -413,7 +414,7 @@ class TestStreamFilter:
         from mvgeos_cli.commands.repl import _StreamFilter
 
         f = _StreamFilter()
-        f.feed("# thinking\n")
+        f.feed("<channel|reasoning>\n")
         f.reset()
         assert f.feed("clean\n") == "clean\n"
 
@@ -445,11 +446,16 @@ class TestStreamRenderer:
         from mvgeos_cli.commands.repl import StreamRenderer
 
         renderer = StreamRenderer()
-        for text in ["thought\n", "<channel|>\n", "Result text\n"]:
+        for text in [
+            "<channel|reasoning>\n",
+            "Suppressed thinking\n",
+            "<channel|>\n",
+            "Result text\n",
+        ]:
             renderer.on_message_update(_message_event(text))
         renderer.finish()
         captured = capsys.readouterr()
-        assert "thought" not in captured.out
+        assert "Suppressed thinking" not in captured.out
         assert "<channel|>" not in captured.out
         assert "Result text" in captured.out
 
