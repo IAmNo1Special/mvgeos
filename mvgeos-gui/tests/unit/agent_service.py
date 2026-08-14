@@ -2,6 +2,7 @@
 
 import asyncio
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -433,3 +434,77 @@ def test_agent_service_cancel_method(agent_service: AgentService) -> None:
     agent_service.cancel()
     mock_task.cancel.assert_called_once()
     assert agent_service.is_running is False
+
+
+@pytest.mark.asyncio
+async def test_multi_turn_prompt_isolation(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify consecutive prompts only update their respective ChatMessage."""
+    callbacks: dict[MvgeEventType, list[Any]] = {}
+
+    def mock_on(event_type: MvgeEventType, cb: Any) -> None:
+        callbacks.setdefault(event_type, []).append(cb)
+
+    mock_agent = MagicMock()
+    mock_agent.on = MagicMock(side_effect=mock_on)
+    mock_agent.switch_model = AsyncMock()
+
+    async def fake_run_turn_1(prompt: str) -> None:
+        for cb in callbacks.get(MvgeEventType.MESSAGE_UPDATE, []):
+            cb(
+                MvgeEvent(
+                    type=MvgeEventType.MESSAGE_UPDATE,
+                    data={"text": "Turn 1 Thought", "kind": "contemplation"},
+                )
+            )
+            cb(
+                MvgeEvent(
+                    type=MvgeEventType.MESSAGE_UPDATE,
+                    data={"text": "Turn 1 Response"},
+                )
+            )
+        for cb in callbacks.get(MvgeEventType.AGENT_END, []):
+            cb(MvgeEvent(type=MvgeEventType.AGENT_END, data={}))
+
+    async def fake_run_turn_2(prompt: str) -> None:
+        for cb in callbacks.get(MvgeEventType.MESSAGE_UPDATE, []):
+            cb(
+                MvgeEvent(
+                    type=MvgeEventType.MESSAGE_UPDATE,
+                    data={"text": "Turn 2 Thought", "kind": "contemplation"},
+                )
+            )
+            cb(
+                MvgeEvent(
+                    type=MvgeEventType.MESSAGE_UPDATE,
+                    data={"text": "Turn 2 Response"},
+                )
+            )
+        for cb in callbacks.get(MvgeEventType.AGENT_END, []):
+            cb(MvgeEvent(type=MvgeEventType.AGENT_END, data={}))
+
+    agent_service._agent = mock_agent
+
+    # Turn 1
+    mock_agent.run = AsyncMock(side_effect=fake_run_turn_1)
+    msg1 = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg1)
+    await agent_service.run_prompt("hey there", app_state, msg1)
+
+    assert msg1.contemplation == "Turn 1 Thought"
+    assert msg1.content == "Turn 1 Response"
+
+    # Turn 2
+    mock_agent.run = AsyncMock(side_effect=fake_run_turn_2)
+    msg2 = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg2)
+    await agent_service.run_prompt("read README.md", app_state, msg2)
+
+    # Turn 1 must NOT be polluted by Turn 2
+    assert msg1.contemplation == "Turn 1 Thought"
+    assert msg1.content == "Turn 1 Response"
+
+    # Turn 2 has its own distinct content
+    assert msg2.contemplation == "Turn 2 Thought"
+    assert msg2.content == "Turn 2 Response"

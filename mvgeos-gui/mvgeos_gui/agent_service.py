@@ -60,6 +60,8 @@ class AgentService:
         self._api_key = resolve_api_key(api_key)
         self._agent_factory = agent_factory
         self._agent: CodingMvge | None = None
+        self._active_message: ChatMessage | None = None
+        self._active_state: AppState | None = None
         self._is_running = False
         self._active_task: asyncio.Task[Any] | None = None
         self._start_time: float = 0.0
@@ -95,43 +97,72 @@ class AgentService:
         )
         return self._agent
 
+    def _ensure_listeners(self, agent: Any) -> None:
+        """Attach event listeners to the agent instance only once."""
+        if (
+            hasattr(agent, "on")
+            and getattr(agent, "_gui_listeners_bound", False) is not True
+        ):
+            for event_type in MvgeEventType:
+                agent.on(
+                    event_type,
+                    lambda e: self.handle_event(e),
+                )
+            agent._gui_listeners_bound = True
+
     def handle_event(
-        self, event: MvgeEvent, message: ChatMessage, state: AppState
+        self,
+        event: MvgeEvent,
+        message: ChatMessage | None = None,
+        state: AppState | None = None,
     ) -> None:
         """Process an MvgeEvent and update reactive ChatMessage and AppState."""
+        target_message = message or self._active_message
+        target_state = state or self._active_state
+        if target_message is None:
+            return
+
         data = event.data
 
         if event.type == MvgeEventType.AGENT_START:
             self._start_time = time.monotonic()
-            message.is_streaming = True
-            state.is_channeling = True
-            state.notify()
+            target_message.is_streaming = True
+            if target_state is not None:
+                target_state.is_channeling = True
+                target_state.notify()
 
         elif event.type == MvgeEventType.MESSAGE_UPDATE:
             text = data.get("text", "")
             kind = data.get("kind", "text")
             if text:
                 if kind == "contemplation":
-                    message.contemplation += text
+                    target_message.contemplation += text
                 else:
-                    message.content += text
-                    if "<think>" in message.content or "<thought>" in message.content:
-                        cleaned, thoughts = extract_contemplation_tags(message.content)
+                    target_message.content += text
+                    if (
+                        "<think>" in target_message.content
+                        or "<thought>" in target_message.content
+                    ):
+                        cleaned, thoughts = extract_contemplation_tags(
+                            target_message.content
+                        )
                         if thoughts:
-                            sep = "\n\n" if message.contemplation else ""
-                            message.contemplation = (
-                                f"{message.contemplation}{sep}{thoughts}"
+                            sep = "\n\n" if target_message.contemplation else ""
+                            target_message.contemplation = (
+                                f"{target_message.contemplation}{sep}{thoughts}"
                             )
-                            message.content = cleaned
-                message.is_streaming = True
-                state.notify()
+                            target_message.content = cleaned
+                target_message.is_streaming = True
+                if target_state is not None:
+                    target_state.notify()
 
         elif event.type == MvgeEventType.AFTER_PROVIDER_RESPONSE:
             mana = data.get("mana_used", 0)
             if isinstance(mana, int) and mana > 0:
-                message.mana_used = mana
-                state.total_mana_used = mana
-                state.notify()
+                target_message.mana_used = mana
+                if target_state is not None:
+                    target_state.total_mana_used = mana
+                    target_state.notify()
 
         elif event.type == MvgeEventType.SPELL_CASTING_START:
             spell_id = data.get("spellCastId", "")
@@ -140,7 +171,7 @@ class AgentService:
 
             if spell_name == "bash":
                 cmd = data.get("command") or data.get("params", {}).get("command", "")
-                step = self._get_or_create_step(message, StepType.COMMANDS)
+                step = self._get_or_create_step(target_message, StepType.COMMANDS)
                 step.commands.append(
                     CommandExecution(
                         command=str(cmd) if cmd else "$ (running command...)",
@@ -154,7 +185,7 @@ class AgentService:
                     or data.get("params", {}).get("path", "file")
                 )
                 lines = data.get("lines") or data.get("params", {}).get("lines")
-                step = self._get_or_create_step(message, StepType.FILES)
+                step = self._get_or_create_step(target_message, StepType.FILES)
                 step.files.append(
                     FileExploration(
                         path=str(path),
@@ -164,11 +195,12 @@ class AgentService:
                 )
                 step.title = f"Explored {len(step.files)} file(s)"
             else:
-                step = self._get_or_create_step(message, StepType.WORKED)
+                step = self._get_or_create_step(target_message, StepType.WORKED)
                 step.details.append(f"Executing {spell_name}...")
                 elapsed = time.monotonic() - self._start_time
                 step.title = f"Worked for {self._format_duration(elapsed)}"
-            state.notify()
+            if target_state is not None:
+                target_state.notify()
 
         elif event.type == MvgeEventType.SPELL_CASTING_END:
             spell_id = data.get("spellCastId", "")
@@ -177,7 +209,7 @@ class AgentService:
             result = data.get("result", "")
             error = data.get("error")
 
-            for step in message.steps:
+            for step in target_message.steps:
                 if step.step_type == StepType.COMMANDS and step.commands:
                     last_cmd = step.commands[-1]
                     if not last_cmd.output and not last_cmd.is_error:
@@ -196,26 +228,30 @@ class AgentService:
                     step.title = (
                         f"Worked for {self._format_duration(step.duration_seconds)}"
                     )
-            state.notify()
+            if target_state is not None:
+                target_state.notify()
 
         elif event.type in (MvgeEventType.TURN_END, MvgeEventType.AGENT_END):
             if self._start_time > 0:
                 elapsed = max(0.0, time.monotonic() - self._start_time)
-                for step in message.steps:
+                for step in target_message.steps:
                     if step.step_type == StepType.WORKED:
                         step.duration_seconds = elapsed
                         step.title = f"Worked for {self._format_duration(elapsed)}"
                         step.is_complete = True
-            if message.content:
-                cleaned, thoughts = extract_contemplation_tags(message.content)
+            if target_message.content:
+                cleaned, thoughts = extract_contemplation_tags(target_message.content)
                 if thoughts:
-                    sep = "\n\n" if message.contemplation else ""
-                    message.contemplation = f"{message.contemplation}{sep}{thoughts}"
-                    message.content = cleaned
-            message.is_streaming = False
-            state.is_channeling = False
+                    sep = "\n\n" if target_message.contemplation else ""
+                    target_message.contemplation = (
+                        f"{target_message.contemplation}{sep}{thoughts}"
+                    )
+                    target_message.content = cleaned
+            target_message.is_streaming = False
+            if target_state is not None:
+                target_state.is_channeling = False
+                target_state.notify()
             self._is_running = False
-            state.notify()
 
     def _get_or_create_step(
         self, message: ChatMessage, step_type: StepType
@@ -242,7 +278,10 @@ class AgentService:
     ) -> None:
         """Run agent with prompt asynchronously while capturing all events."""
         self._is_running = True
+        self._active_message = message
+        self._active_state = state
         self._start_time = time.monotonic()
+        self._pending_spell_starts.clear()
         state.is_channeling = True
         message.is_streaming = True
         state.notify()
@@ -258,17 +297,14 @@ class AgentService:
             message.is_streaming = False
             state.is_channeling = False
             self._is_running = False
+            self._active_message = None
+            self._active_state = None
             state.notify()
             return
 
         try:
             agent = self.get_or_create_agent(state)
-            if hasattr(agent, "on"):
-                for event_type in MvgeEventType:
-                    agent.on(
-                        event_type,
-                        lambda e: self.handle_event(e, message, state),
-                    )
+            self._ensure_listeners(agent)
 
             if hasattr(agent, "switch_model") and state.selected_model:
                 await agent.switch_model(state.selected_model)
@@ -297,6 +333,8 @@ class AgentService:
             message.is_streaming = False
             state.is_channeling = False
             self._is_running = False
+            self._active_message = None
+            self._active_state = None
             state.notify()
 
     def cancel(self) -> None:
@@ -305,3 +343,5 @@ class AgentService:
             with contextlib.suppress(Exception):
                 self._active_task.cancel()
         self._is_running = False
+        self._active_message = None
+        self._active_state = None
