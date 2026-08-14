@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+import pytest
 from mvgeos_tome.ledger import TomeLedger
 
 from mvgeos_agent.agent_session import MvgeTome
@@ -55,7 +56,8 @@ class TestMvgeTomeParentId:
 
 
 class TestMvgeLoopRecordInvocationParentId:
-    def test_record_invocation_supplies_active_leaf_id(self) -> None:
+    @pytest.mark.asyncio
+    async def test_record_invocation_supplies_active_leaf_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tome, ledger = _tome(tmp)
 
@@ -76,7 +78,7 @@ class TestMvgeLoopRecordInvocationParentId:
                 type=MvgeEventType.MESSAGE_END,
                 data={"invocation": req},
             )
-            loop._record_invocation(event1)
+            await loop._record_invocation(event1)
 
             e1_id = tome.active_leaf_id
             assert e1_id is not None
@@ -94,7 +96,7 @@ class TestMvgeLoopRecordInvocationParentId:
                 type=MvgeEventType.MESSAGE_END,
                 data={"invocation": resp},
             )
-            loop._record_invocation(event2)
+            await loop._record_invocation(event2)
 
             e2_id = tome.active_leaf_id
             assert e2_id is not None
@@ -114,7 +116,7 @@ class TestMvgeLoopRecordInvocationParentId:
                 type=MvgeEventType.MESSAGE_END,
                 data={"invocation": result},
             )
-            loop._record_invocation(event3)
+            await loop._record_invocation(event3)
 
             e3_id = tome.active_leaf_id
             assert e3_id is not None

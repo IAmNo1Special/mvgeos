@@ -630,7 +630,7 @@ class MvgeLoop:
             await runner.emit_async(hook, self._sigil_payload(event))
 
         if event.type == MvgeEventType.MESSAGE_END:
-            self._record_invocation(event)
+            await self._record_invocation(event)
 
     def _reduce(self, event: MvgeEvent) -> None:
         mana_used = event.data.get("mana_used")
@@ -668,7 +668,7 @@ class MvgeLoop:
             return {"response": event.data.get("response")}
         return event.data
 
-    def _record_invocation(self, event: MvgeEvent) -> None:
+    async def _record_invocation(self, event: MvgeEvent) -> None:
         session: MvgeTome | None = self._state.agent_session
         if session is None:
             return
@@ -676,16 +676,16 @@ class MvgeLoop:
         if invocation is None:
             return
 
-        parent_id = session.active_leaf_id
+        parent_id = await session.active_leaf_id_async()
         model = self._state.model or {}
         if isinstance(invocation, SummonerRequest):
-            session.record_message(
+            await session.record_message_async(
                 role="user",
                 content=invocation.content,
                 parent_id=parent_id,
             )
         elif isinstance(invocation, MvgeResponse):
-            session.record_message(
+            await session.record_message_async(
                 role="assistant",
                 content=invocation.content,
                 parent_id=parent_id,
@@ -693,7 +693,7 @@ class MvgeLoop:
                 provider=model.get("id", "").split("/")[0],
             )
         elif isinstance(invocation, SpellResultMessage):
-            session.record_message(
+            await session.record_message_async(
                 role="tool",
                 content=invocation.content,
                 parent_id=parent_id,

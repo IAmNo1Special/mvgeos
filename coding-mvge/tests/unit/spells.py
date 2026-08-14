@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from mvgeos_agent.types import SpellStatus
+from mvgeos_agent.types import SpellResult, SpellStatus
 
 from coding_mvge.spells.edit import cast_edit
 from coding_mvge.spells.find import cast_find
@@ -145,6 +146,35 @@ class TestGrepSpell:
             result = await cast_grep("hello", "any")
             assert result.status == SpellStatus.ERROR
             assert "denied" in result.error_message
+
+    @pytest.mark.asyncio
+    async def test_grep_directory_returns_empty(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello", encoding="utf-8")
+        result = await cast_grep("hello", str(tmp_path))
+        assert result.status == SpellStatus.SUCCESS
+        assert result.content == ""
+
+
+class TestSpellConcurrency:
+    @pytest.mark.asyncio
+    async def test_concurrent_reads_and_writes_no_race(self, tmp_path: Path) -> None:
+        files = [(tmp_path / f"f{i}.txt") for i in range(20)]
+        for f in files:
+            f.write_text("seed", encoding="utf-8")
+
+        async def roundtrip(f: Path) -> tuple[SpellResult, SpellResult, SpellResult]:
+            read = await cast_read(str(f))
+            write = await cast_write(str(f), "updated")
+            reread = await cast_read(str(f))
+            return read, write, reread
+
+        results = await asyncio.gather(*(roundtrip(f) for f in files))
+        for read, write, reread in results:
+            assert read.status == SpellStatus.SUCCESS
+            assert read.content == "seed"
+            assert write.status == SpellStatus.SUCCESS
+            assert reread.status == SpellStatus.SUCCESS
+            assert reread.content == "updated"
 
 
 class TestListSpell:

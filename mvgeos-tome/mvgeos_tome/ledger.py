@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from collections import OrderedDict
@@ -461,3 +462,111 @@ class TomeLedger:
             path.insert(0, entry)
             current_id = entry.parent_id
         return path
+
+    async def append_async(self, tome_id: str, entry: TomeEntry) -> None:
+        await asyncio.to_thread(self.append, tome_id, entry)
+
+    async def append_message_async(
+        self,
+        tome_id: str,
+        role: str,
+        content: Any,
+        parent_id: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+    ) -> TomeEntry:
+        return await asyncio.to_thread(
+            self.append_message,
+            tome_id,
+            role,
+            content,
+            parent_id,
+            model,
+            provider,
+        )
+
+    async def append_leaf_async(self, tome_id: str, target_id: str) -> TomeEntry:
+        return await asyncio.to_thread(self.append_leaf, tome_id, target_id)
+
+    async def append_custom_async(
+        self,
+        tome_id: str,
+        payload: dict[str, Any],
+        parent_id: str | None = None,
+    ) -> TomeEntry:
+        return await asyncio.to_thread(self.append_custom, tome_id, payload, parent_id)
+
+    async def append_compaction_async(
+        self,
+        tome_id: str,
+        payload: dict[str, Any],
+        parent_id: str | None = None,
+    ) -> TomeEntry:
+        return await asyncio.to_thread(
+            self.append_compaction, tome_id, payload, parent_id
+        )
+
+    async def append_label_async(
+        self, tome_id: str, label: str, parent_id: str | None = None
+    ) -> TomeEntry:
+        return await asyncio.to_thread(self.append_label, tome_id, label, parent_id)
+
+    async def append_tome_info_async(
+        self, tome_id: str, payload: dict[str, Any]
+    ) -> TomeEntry:
+        return await asyncio.to_thread(self.append_tome_info, tome_id, payload)
+
+    async def create_tome_async(
+        self,
+        metadata_or_cwd: TomeMetadata | str,
+        parent_tome_id: str | None = None,
+        tome_id: str | None = None,
+    ) -> TomeMetadata:
+        return await asyncio.to_thread(
+            self.create_tome, metadata_or_cwd, parent_tome_id, tome_id
+        )
+
+    async def create_branched_tome_async(
+        self,
+        parent_tome_id: str,
+        cwd: str,
+        fork_from_leaf_id: str | None = None,
+        tome_id: str | None = None,
+    ) -> TomeMetadata:
+        return await asyncio.to_thread(
+            self.create_branched_tome,
+            parent_tome_id,
+            cwd,
+            fork_from_leaf_id,
+            tome_id,
+        )
+
+    async def get_entries_async(
+        self,
+        tome_id: str,
+        entry_type: TomeEntryType | None = None,
+        limit: int | None = None,
+    ) -> list[TomeEntry]:
+        return await asyncio.to_thread(self.get_entries, tome_id, entry_type, limit)
+
+    async def get_entry_async(self, tome_id: str, entry_id: str) -> TomeEntry | None:
+        return await asyncio.to_thread(self.get_entry, tome_id, entry_id)
+
+    async def get_leaf_id_async(self, tome_id: str) -> str | None:
+        return await asyncio.to_thread(self.get_leaf_id, tome_id)
+
+    async def get_entries_for_context_async(
+        self,
+        tome_id: str,
+        leaf_id: str | None = None,
+        max_entries: int | None = None,
+    ) -> list[TomeEntry]:
+        return await asyncio.to_thread(
+            self.get_entries_for_context, tome_id, leaf_id, max_entries
+        )
+
+    async def open_tome_async(self, tome_id: str) -> TomeMetadata | None:
+        return await asyncio.to_thread(self.open_tome, tome_id)
+
+    async def open_recent_async(self, cwd: str) -> TomeMetadata | None:
+        return await asyncio.to_thread(self.open_recent, cwd)

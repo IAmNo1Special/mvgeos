@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from mvgeos_agent.types import SpellResult, SpellStatus
@@ -8,13 +9,13 @@ from mvgeos_agent.types import SpellResult, SpellStatus
 async def cast_find(pattern: str, path: str = ".") -> SpellResult:
     try:
         base = Path(path)
-        if not base.exists():
+        if not await asyncio.to_thread(base.exists):
             return SpellResult(
                 spell_name="find",
                 status=SpellStatus.ERROR,
                 error_message=f"Path not found: {path}",
             )
-        matches = list(base.rglob(pattern))
+        matches = await asyncio.to_thread(lambda: list(base.rglob(pattern)))
         return SpellResult(
             spell_name="find",
             status=SpellStatus.SUCCESS,

@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from mvgeos_agent.types import SpellResult, SpellStatus
 
 
+def _write_file(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
 async def cast_write(path: str, content: str) -> SpellResult:
     try:
         file_path = Path(path)
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(content, encoding="utf-8")
+        await asyncio.to_thread(_write_file, file_path, content)
         return SpellResult(
             spell_name="write",
             status=SpellStatus.SUCCESS,

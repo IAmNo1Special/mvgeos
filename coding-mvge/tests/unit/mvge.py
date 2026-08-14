@@ -60,10 +60,11 @@ def _install_mock(agent: CodingMvge, text: str = "Hello") -> _MockRealm:
         base_url="",
         api_key="test-key",
     )
-    # MvgeTome has async methods (start, shutdown) and sync methods (record_message)
     mock_session = MagicMock()
     mock_session.start = AsyncMock()
     mock_session.shutdown = AsyncMock()
+    mock_session.active_leaf_id_async = AsyncMock(return_value=None)
+    mock_session.record_message_async = AsyncMock(return_value=None)
     agent._agent_session = mock_session
     agent._state = MvgeState(
         system_prompt="test",

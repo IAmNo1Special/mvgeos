@@ -261,6 +261,99 @@ class MvgeTome:
             parent_id=parent_id,
         )
 
+    async def active_leaf_id_async(self) -> str | None:
+        return (
+            await self._ledger.get_leaf_id_async(self._metadata.id)
+            or self._metadata.active_leaf_id
+        )
+
+    async def record_message_async(
+        self,
+        role: str,
+        content: Any,
+        parent_id: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+    ) -> TomeEntry | None:
+        if not self._started:
+            logger.warning(
+                "record_message_async dropped: tome %s not started",
+                self._metadata.id,
+            )
+            return None
+        if parent_id is None:
+            parent_id = await self.active_leaf_id_async()
+        entry = await self._ledger.append_message_async(
+            tome_id=self._metadata.id,
+            role=role,
+            content=content,
+            parent_id=parent_id,
+            model=model,
+            provider=provider,
+        )
+        await self._advance_leaf_async(entry)
+        return entry
+
+    async def _advance_leaf_async(self, entry: TomeEntry | None) -> None:
+        """Non-blocking variant of `_advance_leaf`."""
+        if entry is None:
+            return
+        try:
+            await self._ledger.append_leaf_async(self._metadata.id, entry.id)
+        except Exception:
+            logger.exception(
+                "Failed to advance the Leaf for tome %s", self._metadata.id
+            )
+
+    async def record_compaction_async(
+        self,
+        summary: str,
+        mana_before: int,
+        retained_tail: list[Any],
+        first_kept_entry_id: str | None = None,
+        parent_id: str | None = None,
+    ) -> TomeEntry | None:
+        if not self._started:
+            logger.warning(
+                "record_compaction_async dropped: tome %s not started",
+                self._metadata.id,
+            )
+            return None
+        if parent_id is None:
+            parent_id = await self.active_leaf_id_async()
+        payload: dict[str, Any] = {
+            "summary": summary,
+            "manaBefore": mana_before,
+            "retainedTail": [_serialise_invocation(inv) for inv in retained_tail],
+        }
+        if first_kept_entry_id is not None:
+            payload["firstKeptEntryId"] = first_kept_entry_id
+        return await self._ledger.append_compaction_async(
+            tome_id=self._metadata.id,
+            payload=payload,
+            parent_id=parent_id,
+        )
+
+    async def record_custom_async(
+        self,
+        custom_type: str,
+        data: dict[str, Any] | None = None,
+        parent_id: str | None = None,
+    ) -> TomeEntry | None:
+        if not self._started:
+            logger.warning(
+                "record_custom_async dropped: tome %s not started",
+                self._metadata.id,
+            )
+            return None
+        if parent_id is None:
+            parent_id = await self.active_leaf_id_async()
+        return await self._ledger.append_custom_async(
+            tome_id=self._metadata.id,
+            payload={"type": custom_type, "data": data or {}},
+            parent_id=parent_id,
+        )
+
     async def _safe_emit(self, hook: SigilHook, data: Any) -> None:
         if self._rune_runner is None:
             return
