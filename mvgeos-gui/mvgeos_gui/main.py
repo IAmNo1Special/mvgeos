@@ -106,15 +106,16 @@ def main() -> None:
 
         app.on_startup(_apply_dark_titlebar)
 
-    ui.run(
-        native=not args.web,
-        host=args.host,
-        port=args.port,
-        title=APP_TITLE,
-        window_size=(1400, 900),
-        reload=args.reload,
-        dark=True,
-    )
+    with contextlib.suppress(KeyboardInterrupt):
+        ui.run(
+            native=not args.web,
+            host=args.host,
+            port=args.port,
+            title=APP_TITLE,
+            window_size=(1400, 900),
+            reload=args.reload,
+            dark=True,
+        )
 
 
 if __name__ == "__main__":

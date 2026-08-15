@@ -29,6 +29,7 @@ def test_app_state_defaults() -> None:
     assert state.loaded_tomes == []
     assert state.messages == []
     assert state.total_mana_used == 0
+    assert state.pending_attachments == []
 
 
 def test_app_state_custom_init() -> None:
@@ -447,3 +448,131 @@ class TestSetProjectReloadsTomes:
         state.set_project(Path("/proj/b"))
 
         assert len(state.loaded_tomes) == 1
+
+
+# --- Attachment tests ---
+
+
+class TestPendingAttachments:
+    def test_add_attachment_appends(self) -> None:
+        state = AppState()
+        state.add_attachment("main.py")
+        state.add_attachment("utils.py")
+        assert state.pending_attachments == ["main.py", "utils.py"]
+
+    def test_add_attachment_deduplicates(self) -> None:
+        state = AppState()
+        state.add_attachment("main.py")
+        state.add_attachment("main.py")
+        assert state.pending_attachments == ["main.py"]
+
+    def test_add_attachment_empty_is_noop(self) -> None:
+        state = AppState()
+        state.add_attachment("")
+        assert state.pending_attachments == []
+
+    def test_add_attachment_notifies_listeners(self) -> None:
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.add_attachment("main.py")
+        assert called == [True]
+
+    def test_remove_attachment_by_index(self) -> None:
+        state = AppState()
+        state.pending_attachments = ["a.py", "b.py", "c.py"]
+        state.remove_attachment(1)
+        assert state.pending_attachments == ["a.py", "c.py"]
+
+    def test_remove_attachment_out_of_range_safe(self) -> None:
+        state = AppState()
+        state.pending_attachments = ["a.py"]
+        state.remove_attachment(99)
+        assert state.pending_attachments == ["a.py"]
+        state.remove_attachment(-1)
+        assert state.pending_attachments == ["a.py"]
+
+    def test_remove_attachment_notifies_listeners(self) -> None:
+        state = AppState()
+        state.pending_attachments = ["a.py", "b.py"]
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.remove_attachment(0)
+        assert called == [True]
+
+    def test_clear_attachments(self) -> None:
+        state = AppState()
+        state.pending_attachments = ["a.py", "b.py"]
+        state.clear_attachments()
+        assert state.pending_attachments == []
+
+    def test_clear_attachments_empty_is_noop(self) -> None:
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.clear_attachments()
+        assert state.pending_attachments == []
+        assert called == []
+
+    def test_set_project_clears_attachments(self) -> None:
+        state = AppState(project_path=Path("/proj/a"))
+        state.pending_attachments = ["a.py"]
+        state.set_project(Path("/proj/b"))
+        assert state.pending_attachments == []
+
+
+class TestSubmitPromptAttachments:
+    def test_submit_prompt_binds_attachments_to_message(self) -> None:
+        state = AppState()
+        state.pending_attachments = ["file1.py", "file2.py"]
+        mock_service = MagicMock()
+        mock_service.run_prompt = AsyncMock()
+        state.agent_service = mock_service
+
+        state.submit_prompt("Analyze these files")
+
+        user_msg = state.messages[0]
+        assert user_msg.attachments == ["file1.py", "file2.py"]
+
+    def test_submit_prompt_clears_pending_attachments(self) -> None:
+        state = AppState()
+        state.pending_attachments = ["file1.py"]
+        mock_service = MagicMock()
+        mock_service.run_prompt = AsyncMock()
+        state.agent_service = mock_service
+
+        state.submit_prompt("Hello")
+
+        assert state.pending_attachments == []
+
+    def test_submit_prompt_empty_no_attachments_bound(self) -> None:
+        state = AppState()
+        state.pending_attachments = ["file1.py"]
+
+        state.submit_prompt("")
+
+        assert state.pending_attachments == ["file1.py"]
+        assert state.messages == []
+
+    def test_submit_prompt_no_attachments_field_empty(self) -> None:
+        state = AppState()
+        mock_service = MagicMock()
+        mock_service.run_prompt = AsyncMock()
+        state.agent_service = mock_service
+
+        state.submit_prompt("Hello")
+
+        user_msg = state.messages[0]
+        assert user_msg.attachments == []
+
+    def test_new_conversation_clears_attachments(self) -> None:
+        state = AppState()
+        state.pending_attachments = ["file1.py"]
+        state.new_conversation()
+        assert state.pending_attachments == []
+
+    def test_clear_history_clears_attachments(self) -> None:
+        state = AppState()
+        state.pending_attachments = ["file1.py"]
+        state.clear_history()
+        assert state.pending_attachments == []

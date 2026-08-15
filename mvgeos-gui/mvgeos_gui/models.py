@@ -66,6 +66,7 @@ class ChatMessage:
     feedback: str | None = None
     is_error: bool = False
     error_message: str | None = None
+    attachments: list[str] = field(default_factory=list)
 
 
 def extract_contemplation_tags(text: str) -> tuple[str, str]:

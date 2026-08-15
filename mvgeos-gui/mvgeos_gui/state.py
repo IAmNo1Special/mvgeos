@@ -12,9 +12,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from mvgeos_agent.constants import DEFAULT_AGENT_NAME
+from mvgeos_runes.loader import get_default_skill_paths, load_skills_from_paths
+from mvgeos_runes.types import SkillManifest
 from mvgeos_tome.types import TomeEntryType
 
 from mvgeos_gui.agent_service import AgentService
+from mvgeos_gui.autocomplete import (
+    AutocompleteService,
+    MentionIndex,
+    SlashCommandRegistry,
+)
 from mvgeos_gui.models import ChatMessage, extract_contemplation_tags
 from mvgeos_gui.tome_service import TomeListEntry, TomeService
 
@@ -65,8 +73,12 @@ class AppState:
     total_mana_used: int = 0
     active_prompt: str = ""
     api_key: str | None = None
+    pending_attachments: list[str] = field(default_factory=list)
     agent_service: AgentService | None = field(default=None, repr=False, compare=False)
     active_task: asyncio.Task[Any] | None = field(
+        default=None, repr=False, compare=False
+    )
+    _autocomplete_service: AutocompleteService | None = field(
         default=None, repr=False, compare=False
     )
     _change_listeners: list[Callable[[], Any]] = field(
@@ -98,6 +110,41 @@ class AppState:
             )
         return self.agent_service
 
+    def get_autocomplete_service(self) -> AutocompleteService:
+        """Retrieve or initialize the AutocompleteService for this session."""
+        if self._autocomplete_service is None:
+            skills = self.load_skills()
+            mention_index = MentionIndex(self.project_path, skills=skills)
+            command_registry = SlashCommandRegistry()
+            self._autocomplete_service = AutocompleteService(
+                mention_index, command_registry
+            )
+        return self._autocomplete_service
+
+    def load_skills(self) -> list[SkillManifest]:
+        """Load skill manifests from default discovery paths."""
+        paths = get_default_skill_paths(DEFAULT_AGENT_NAME)
+        loads, _diagnostics = load_skills_from_paths(paths)
+        return [load.manifest for load in loads]
+
+    def add_attachment(self, name: str) -> None:
+        """Add a file name to the pending attachments bound to next submission."""
+        if name and name not in self.pending_attachments:
+            self.pending_attachments.append(name)
+            self.notify()
+
+    def remove_attachment(self, index: int) -> None:
+        """Remove a pending attachment by index (safe no-op if out of range)."""
+        if 0 <= index < len(self.pending_attachments):
+            del self.pending_attachments[index]
+            self.notify()
+
+    def clear_attachments(self) -> None:
+        """Remove all pending attachments."""
+        if self.pending_attachments:
+            self.pending_attachments.clear()
+            self.notify()
+
     def toggle_sidebar(self) -> None:
         """Toggle left navigation sidebar visibility."""
         self.sidebar_expanded = not self.sidebar_expanded
@@ -112,6 +159,8 @@ class AppState:
         """Change the active workspace project path."""
         self.project_path = path
         self.agent_service = None
+        self._autocomplete_service = None
+        self.clear_attachments()
         self.add_recent_project(path)
         self.load_tomes()
         self.notify()
@@ -132,6 +181,7 @@ class AppState:
         self.is_channeling = False
         self.messages = []
         self.total_mana_used = 0
+        self.pending_attachments.clear()
         self.load_tomes()
 
     def load_tomes(self) -> None:
@@ -203,7 +253,9 @@ class AppState:
             return
 
         # Append user message bubble
-        user_msg = ChatMessage(role="user", content=text)
+        attachments = list(self.pending_attachments)
+        self.pending_attachments.clear()
+        user_msg = ChatMessage(role="user", content=text, attachments=attachments)
         self.messages.append(user_msg)
 
         # Append assistant response bubble
