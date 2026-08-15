@@ -7,6 +7,7 @@ import contextlib
 import os
 import shutil
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -23,7 +24,12 @@ from mvgeos_gui.autocomplete import (
     MentionIndex,
     SlashCommandRegistry,
 )
-from mvgeos_gui.models import ChatMessage, extract_contemplation_tags
+from mvgeos_gui.models import (
+    BackgroundTask,
+    ChatMessage,
+    TaskStatus,
+    extract_contemplation_tags,
+)
 from mvgeos_gui.tome_service import TomeListEntry, TomeService
 
 
@@ -78,6 +84,7 @@ class AppState:
     active_task: asyncio.Task[Any] | None = field(
         default=None, repr=False, compare=False
     )
+    background_tasks: list[BackgroundTask] = field(default_factory=list)
     _autocomplete_service: AutocompleteService | None = field(
         default=None, repr=False, compare=False
     )
@@ -145,6 +152,76 @@ class AppState:
             self.pending_attachments.clear()
             self.notify()
 
+    def add_background_task(
+        self,
+        task_id: str,
+        name: str,
+        *,
+        parent_id: str | None = None,
+        progress: float = 0.0,
+    ) -> BackgroundTask:
+        """Register a new background task (idempotent on duplicate id)."""
+        existing = self.get_background_task(task_id)
+        if existing is not None:
+            return existing
+        task = BackgroundTask(
+            id=task_id,
+            name=name,
+            parent_id=parent_id,
+            progress=progress,
+        )
+        self.background_tasks.append(task)
+        self.notify()
+        return task
+
+    def update_background_task(
+        self,
+        task_id: str,
+        *,
+        status: TaskStatus | str | None = None,
+        progress: float | None = None,
+        result: str | None = None,
+        error: str | None = None,
+    ) -> BackgroundTask | None:
+        """Update fields on an existing background task (no-op if unknown)."""
+        task = self.get_background_task(task_id)
+        if task is None:
+            return None
+        if status is not None:
+            task.status = TaskStatus(status)
+        if progress is not None:
+            task.progress = progress
+        if result is not None:
+            task.result = result
+        if error is not None:
+            task.error = error
+        if task.status in (TaskStatus.COMPLETE, TaskStatus.ERROR):
+            task.ended_at = time.monotonic()
+        self.notify()
+        return task
+
+    def remove_background_task(self, task_id: str) -> bool:
+        """Remove a background task by id. Returns True if removed."""
+        for i, task in enumerate(self.background_tasks):
+            if task.id == task_id:
+                del self.background_tasks[i]
+                self.notify()
+                return True
+        return False
+
+    def get_background_task(self, task_id: str) -> BackgroundTask | None:
+        """Look up a background task by id."""
+        for task in self.background_tasks:
+            if task.id == task_id:
+                return task
+        return None
+
+    def clear_background_tasks(self) -> None:
+        """Remove all tracked background tasks."""
+        if self.background_tasks:
+            self.background_tasks.clear()
+            self.notify()
+
     def toggle_sidebar(self) -> None:
         """Toggle left navigation sidebar visibility."""
         self.sidebar_expanded = not self.sidebar_expanded
@@ -182,6 +259,7 @@ class AppState:
         self.messages = []
         self.total_mana_used = 0
         self.pending_attachments.clear()
+        self.background_tasks.clear()
         self.load_tomes()
 
     def load_tomes(self) -> None:
