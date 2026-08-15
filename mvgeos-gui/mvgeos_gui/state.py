@@ -27,6 +27,7 @@ from mvgeos_gui.autocomplete import (
 from mvgeos_gui.models import (
     BackgroundTask,
     ChatMessage,
+    SkillInfo,
     TaskStatus,
     extract_contemplation_tags,
 )
@@ -80,6 +81,7 @@ class AppState:
     active_prompt: str = ""
     api_key: str | None = None
     pending_attachments: list[str] = field(default_factory=list)
+    active_skills: list[SkillInfo] = field(default_factory=list)
     agent_service: AgentService | None = field(default=None, repr=False, compare=False)
     active_task: asyncio.Task[Any] | None = field(
         default=None, repr=False, compare=False
@@ -133,6 +135,47 @@ class AppState:
         paths = get_default_skill_paths(DEFAULT_AGENT_NAME)
         loads, _diagnostics = load_skills_from_paths(paths)
         return [load.manifest for load in loads]
+
+    @staticmethod
+    def skill_info_from_manifest(manifest: SkillManifest) -> SkillInfo:
+        """Convert a SkillManifest into the inspector-friendly SkillInfo shape."""
+        return SkillInfo(
+            name=manifest.name,
+            description=manifest.description,
+            scope=manifest.scope.value if manifest.scope else "",
+            path=manifest.path,
+        )
+
+    def add_skill(self, manifest: SkillManifest) -> bool:
+        """Add a skill to active_skills if not already present.
+
+        Returns True when the skill was newly added (state changed).
+        """
+        info = self.skill_info_from_manifest(manifest)
+        for existing in self.active_skills:
+            if existing.name == info.name:
+                return False
+        self.active_skills.append(info)
+        self.notify()
+        return True
+
+    def remove_skill(self, name: str) -> bool:
+        """Remove a skill from active_skills by name.
+
+        Returns True when a skill was actually removed.
+        """
+        for index, existing in enumerate(self.active_skills):
+            if existing.name == name:
+                del self.active_skills[index]
+                self.notify()
+                return True
+        return False
+
+    def clear_skills(self) -> None:
+        """Remove all tracked skills."""
+        if self.active_skills:
+            self.active_skills.clear()
+            self.notify()
 
     def add_attachment(self, name: str) -> None:
         """Add a file name to the pending attachments bound to next submission."""
@@ -260,6 +303,7 @@ class AppState:
         self.total_mana_used = 0
         self.pending_attachments.clear()
         self.background_tasks.clear()
+        self.clear_skills()
         self.load_tomes()
 
     def load_tomes(self) -> None:

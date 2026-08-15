@@ -68,6 +68,8 @@ class AgentService:
         self._active_task: asyncio.Task[Any] | None = None
         self._start_time: float = 0.0
         self._pending_spell_starts: dict[str, float] = {}
+        self._invoked_skill_names: set[str] = set()
+        self._loaded_skill_names: set[str] = set()
 
     @property
     def project_path(self) -> Path:
@@ -88,15 +90,18 @@ class AgentService:
                 api_key=self._api_key or "mock-key",
                 state=state,
             )
-            return self._agent
+        else:
+            from coding_mvge.mvge import CodingMvge
 
-        from coding_mvge.mvge import CodingMvge
+            self._agent = CodingMvge(
+                api_key=self._api_key or "mock-key",
+                session_dir=state.tome_service.tome_dir,
+                session_resume=state.active_tome_id,
+            )
 
-        self._agent = CodingMvge(
-            api_key=self._api_key or "mock-key",
-            session_dir=state.tome_service.tome_dir,
-            session_resume=state.active_tome_id,
-        )
+        # When the agent is created, seed active_skills from the runner's
+        # loaded skill manifests so the inspector reflects available skills.
+        self.populate_skills(self._agent, state)
         return self._agent
 
     def _ensure_listeners(self, agent: Any) -> None:
@@ -131,6 +136,9 @@ class AgentService:
             target_message.is_streaming = True
             if target_state is not None:
                 target_state.is_channeling = True
+                # Seed active_skills from the agent's loaded skill manifests.
+                if self._agent is not None:
+                    self.populate_skills(self._agent, target_state)
                 target_state.notify()
 
         elif event.type == MvgeEventType.MESSAGE_UPDATE:
@@ -196,6 +204,9 @@ class AgentService:
                     )
                 )
                 step.title = f"Explored {len(step.files)} file(s)"
+                # Reading a SKILL.md file marks that skill as invoked.
+                if str(path).endswith("SKILL.md"):
+                    self.mark_skill_invoked(str(path), state=target_state)
             else:
                 step = self._get_or_create_step(target_message, StepType.WORKED)
                 step.details.append(f"Executing {spell_name}...")
@@ -371,6 +382,7 @@ class AgentService:
         self._active_state = state
         self._start_time = time.monotonic()
         self._pending_spell_starts.clear()
+        self.reset_skill_tracking()
         state.is_channeling = True
         message.is_streaming = True
         state.notify()
@@ -434,3 +446,69 @@ class AgentService:
         self._is_running = False
         self._active_message = None
         self._active_state = None
+
+    # --- Skill tracking helpers ---
+
+    def _runner_skills(self, agent: Any) -> list[Any]:
+        """Return the list of SkillManifest from the agent's RuneRunner."""
+        runner = getattr(agent, "runner", None)
+        if runner is None:
+            return []
+        getter = getattr(runner, "get_skills", None)
+        if not callable(getter):
+            return []
+        try:
+            return list(getter())
+        except Exception:
+            logger.debug("Failed to read skills from runner", exc_info=True)
+            return []
+
+    def populate_skills(
+        self, agent: Any, state: AppState | None
+    ) -> None:
+        """Seed state.active_skills from the agent's loaded skill manifests.
+
+        Idempotent: skills already tracked are not duplicated. Skills that
+        were previously invoked remain marked as invoked.
+        """
+        if state is None:
+            return
+        manifests = self._runner_skills(agent)
+        for manifest in manifests:
+            name = getattr(manifest, "name", "")
+            if not name:
+                continue
+            if name in self._loaded_skill_names:
+                continue
+            self._loaded_skill_names.add(name)
+            state.add_skill(manifest)
+        if state.active_skills:
+            state.notify()
+
+    def mark_skill_invoked(self, path: str, state: AppState | None = None) -> None:
+        """Record that a skill was invoked by reading one of its files."""
+        if not path:
+            return
+        normalized = str(path)
+        target_state = state or self._active_state
+        if target_state is None:
+            return
+        for skill in target_state.active_skills:
+            if not skill.path:
+                continue
+            skill_root = skill.path.rstrip("/")
+            skill_md = f"{skill_root}/SKILL.md"
+            matched = (
+                normalized == skill.path
+                or normalized == skill_md
+                or normalized.startswith(skill_root + "/")
+            )
+            if matched and skill.name not in self._invoked_skill_names:
+                self._invoked_skill_names.add(skill.name)
+                skill.invoked = True
+                target_state.notify()
+
+    def reset_skill_tracking(self) -> None:
+        """Clear per-session skill invocation tracking."""
+        self._invoked_skill_names.clear()
+        self._loaded_skill_names.clear()

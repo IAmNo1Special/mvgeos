@@ -41,6 +41,17 @@ class BackgroundTask:
 
 
 @dataclass
+class SkillInfo:
+    """Summary of a discovered Skill rendered in the context inspector."""
+
+    name: str
+    description: str = ""
+    scope: str = ""
+    path: str = ""
+    invoked: bool = False
+
+
+@dataclass
 class CommandExecution:
     """Execution details of a shell command invocation."""
 

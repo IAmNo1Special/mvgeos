@@ -70,7 +70,35 @@ def render_inspector(state: AppState) -> ui.column:
                 ),
                 ui.column().classes("w-full p-2 text-xs text-[#8b949e]"),
             ):
-                ui.label("No skills invoked in session").classes("italic text-[11px]")
+                if not state.active_skills:
+                    ui.label("No skills invoked in session").classes(
+                        "italic text-[11px]"
+                    )
+                else:
+                    for skill in state.active_skills:
+                        with ui.row().classes("w-full items-center gap-1 mb-1"):
+                            ui.icon(
+                                "auto_stories" if skill.invoked else "library_books",
+                                size="12px",
+                            ).classes(
+                                "text-[#3b82f6]" if skill.invoked else "text-[#6e7681]"
+                            )
+                            ui.label(skill.name).classes(
+                                "text-[12px] font-medium text-[#e6edf3]"
+                            )
+                        if skill.description:
+                            ui.label(skill.description).classes(
+                                "text-[11px] text-[#8b949e] ml-5"
+                            )
+                        meta_parts = []
+                        if skill.scope:
+                            meta_parts.append(skill.scope)
+                        if skill.path:
+                            meta_parts.append(skill.path)
+                        if meta_parts:
+                            ui.label(" · ".join(meta_parts)).classes(
+                                "text-[10px] text-[#6e7681] ml-5"
+                            )
 
             # 5. Uploads
             with (
