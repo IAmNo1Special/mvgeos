@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, get_type_hints
 
 if TYPE_CHECKING:
-    from mvgeos_agent.types import AbortSignal
+    from mvgeos_agent.types import (
+        AbortSignal,
+        MvgeInvocation,
+    )
 
 
 class SigilHook(StrEnum):
@@ -32,6 +35,290 @@ class SigilHook(StrEnum):
     INPUT = "input"
     SHOULD_STOP_AFTER_TURN = "should_stop_after_turn"
     PREPARE_NEXT_TURN = "prepare_next_turn"
+
+
+class _SigilDataMixin:
+    """Mixin to provide backward-compatible dict-like access to sigil data."""
+
+    def __getitem__(self, key: str) -> Any:
+        return getattr(self, key)
+
+    def __contains__(self, key: str) -> bool:
+        return hasattr(self, key)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return getattr(self, key, default)
+
+    def keys(self) -> list[str]:
+        return list(get_type_hints(self.__class__).keys())
+
+    def items(self) -> list[tuple[str, Any]]:
+        return [(k, getattr(self, k)) for k in self.keys()]
+
+    def values(self) -> list[Any]:
+        return [getattr(self, k) for k in self.keys()]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {k: getattr(self, k) for k in self.keys()}
+
+
+@dataclass
+class BeforeInvocationData(_SigilDataMixin):
+    """Data passed to BEFORE_INVOCATION sigil hook."""
+
+    invocation: MvgeInvocation
+
+
+@dataclass
+class AfterInvocationData(_SigilDataMixin):
+    """Data passed to AFTER_INVOCATION sigil hook."""
+
+    invocation: MvgeInvocation
+    stop_reason: str
+
+
+@dataclass
+class BeforeSpellCastData(_SigilDataMixin):
+    """Data passed to BEFORE_SPELL_CAST sigil hook."""
+
+    tool_call: dict[str, Any]
+    spell_name: str
+
+
+@dataclass
+class AfterSpellResultData(_SigilDataMixin):
+    """Data passed to AFTER_SPELL_RESULT sigil hook."""
+
+    spell_name: str
+    spell_cast_id: str
+    result: Any
+
+
+@dataclass
+class BeforeProviderRequestData(_SigilDataMixin):
+    """Data passed to BEFORE_PROVIDER_REQUEST sigil hook."""
+
+    model: dict[str, Any]
+
+
+@dataclass
+class AfterProviderResponseData(_SigilDataMixin):
+    """Data passed to AFTER_PROVIDER_RESPONSE sigil hook."""
+
+    response: Any
+    mana_used: int
+
+
+@dataclass
+class BeforeProviderHeadersData(_SigilDataMixin):
+    """Data passed to BEFORE_PROVIDER_HEADERS sigil hook."""
+
+    headers: dict[str, str]
+
+
+@dataclass
+class TurnStartData(_SigilDataMixin):
+    """Data passed to TURN_START sigil hook."""
+
+    model: dict[str, Any]
+
+
+@dataclass
+class TurnEndData(_SigilDataMixin):
+    """Data passed to TURN_END sigil hook."""
+
+    stop_reason: str
+    mana_used: int
+
+
+@dataclass
+class SessionStartData(_SigilDataMixin):
+    """Data passed to SESSION_START sigil hook."""
+
+    session_name: str
+
+
+@dataclass
+class SessionShutdownData(_SigilDataMixin):
+    """Data passed to SESSION_SHUTDOWN sigil hook."""
+
+    session_name: str
+
+
+@dataclass
+class SessionBeforeSwitchData(_SigilDataMixin):
+    """Data passed to SESSION_BEFORE_SWITCH sigil hook."""
+
+    from_session: str
+    to_session: str
+
+
+@dataclass
+class SessionBeforeForkData(_SigilDataMixin):
+    """Data passed to SESSION_BEFORE_FORK sigil hook."""
+
+    parent_session: str
+    child_session: str
+
+
+@dataclass
+class SessionBeforeCompactData(_SigilDataMixin):
+    """Data passed to SESSION_BEFORE_COMPACT sigil hook."""
+
+    session_name: str
+
+
+@dataclass
+class CompactionStartData(_SigilDataMixin):
+    """Data passed to COMPACTION_START sigil hook."""
+
+    session_name: str
+    message_count: int
+
+
+@dataclass
+class CompactionEndData(_SigilDataMixin):
+    """Data passed to COMPACTION_END sigil hook."""
+
+    session_name: str
+    original_count: int
+    compacted_count: int
+
+
+@dataclass
+class ContextTransformData(_SigilDataMixin):
+    """Data passed to CONTEXT_TRANSFORM sigil hook."""
+
+    invocations: list[MvgeInvocation]
+
+
+@dataclass
+class AgentStartData(_SigilDataMixin):
+    """Data passed to AGENT_START sigil hook."""
+
+    pass
+
+
+@dataclass
+class AgentEndData(_SigilDataMixin):
+    """Data passed to AGENT_END sigil hook."""
+
+    stop_reason: str
+
+
+@dataclass
+class BeforeMvgeStartData(_SigilDataMixin):
+    """Data passed to BEFORE_MVGE_START sigil hook."""
+
+    base_prompt: str
+    spell_names: list[str]
+    config_dir: str
+    custom_prompt: str
+    agent_name: str
+    cwd: str
+
+
+@dataclass
+class InputData(_SigilDataMixin):
+    """Data passed to INPUT sigil hook."""
+
+    content: str | list[dict[str, Any]] | None
+
+
+@dataclass
+class ShouldStopAfterTurnData(_SigilDataMixin):
+    """Data passed to SHOULD_STOP_AFTER_TURN sigil hook."""
+
+    pass
+
+
+@dataclass
+class PrepareNextTurnData(_SigilDataMixin):
+    """Data passed to PREPARE_NEXT_TURN sigil hook."""
+
+    # This will be populated with LoopContext fields
+    system_prompt: str = ""
+    prompt_source: str = "builtin"
+    invocations: list[MvgeInvocation] = field(default_factory=list)
+    spell_names: list[str] = field(default_factory=list)
+    contemplation_level: str = "medium"
+    max_tokens: int | None = None
+    temperature: float | None = None
+    spell_timeout_ms: int = 30000
+    contemplation_budget: int | None = None
+    exclude_contemplation: bool = False
+    max_turns: int = 50
+    queue_mode: str = "one-at-a-time"
+
+
+# Mapping from SigilHook to its typed data class
+SIGIL_HOOK_DATA_CLASSES: dict[SigilHook, type] = {
+    SigilHook.BEFORE_INVOCATION: BeforeInvocationData,
+    SigilHook.AFTER_INVOCATION: AfterInvocationData,
+    SigilHook.BEFORE_SPELL_CAST: BeforeSpellCastData,
+    SigilHook.AFTER_SPELL_RESULT: AfterSpellResultData,
+    SigilHook.BEFORE_PROVIDER_REQUEST: BeforeProviderRequestData,
+    SigilHook.AFTER_PROVIDER_RESPONSE: AfterProviderResponseData,
+    SigilHook.BEFORE_PROVIDER_HEADERS: BeforeProviderHeadersData,
+    SigilHook.TURN_START: TurnStartData,
+    SigilHook.TURN_END: TurnEndData,
+    SigilHook.SESSION_START: SessionStartData,
+    SigilHook.SESSION_SHUTDOWN: SessionShutdownData,
+    SigilHook.SESSION_BEFORE_SWITCH: SessionBeforeSwitchData,
+    SigilHook.SESSION_BEFORE_FORK: SessionBeforeForkData,
+    SigilHook.SESSION_BEFORE_COMPACT: SessionBeforeCompactData,
+    SigilHook.COMPACTION_START: CompactionStartData,
+    SigilHook.COMPACTION_END: CompactionEndData,
+    SigilHook.CONTEXT_TRANSFORM: ContextTransformData,
+    SigilHook.AGENT_START: AgentStartData,
+    SigilHook.AGENT_END: AgentEndData,
+    SigilHook.BEFORE_MVGE_START: BeforeMvgeStartData,
+    SigilHook.INPUT: InputData,
+    SigilHook.SHOULD_STOP_AFTER_TURN: ShouldStopAfterTurnData,
+    SigilHook.PREPARE_NEXT_TURN: PrepareNextTurnData,
+}
+
+
+def create_sigil_data(hook: SigilHook, data: dict[str, Any] | Any) -> Any:
+    """Create typed sigil data instance from raw dict or pass through if already typed.
+
+    Args:
+        hook: The sigil hook type
+        data: Raw dict data or already-typed data instance
+
+    Returns:
+        Typed data instance if a mapping exists, otherwise the original data
+    """
+    data_class = SIGIL_HOOK_DATA_CLASSES.get(hook)
+    if data_class is None:
+        return data
+
+    # If already an instance of the expected class, return as-is
+    if isinstance(data, data_class):
+        return data
+
+    # If data is a dict, try to construct the typed instance
+    if isinstance(data, dict):
+        try:
+            return data_class(**data)
+        except Exception:
+            # Fall back to raw dict if construction fails
+            return data
+
+    # For other types, return as-is
+    return data
+
+
+def get_sigil_data_class(hook: SigilHook) -> type | None:
+    """Get the typed data class for a sigil hook.
+
+    Args:
+        hook: The sigil hook type
+
+    Returns:
+        The corresponding data class, or None if no typed class exists
+    """
+    return SIGIL_HOOK_DATA_CLASSES.get(hook)
 
 
 class RuneScope(StrEnum):

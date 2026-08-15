@@ -28,6 +28,7 @@ from mvgeos_runes.types import (
     SkillLoad,
     SkillManifest,
     SpellDefinition,
+    create_sigil_data,
 )
 
 logger = logging.getLogger(__name__)
@@ -327,11 +328,12 @@ class RuneRunner:
                 self._current_loading_rune = None
 
     async def emit_async(self, hook: SigilHook, data: Any) -> None:
+        typed_data = create_sigil_data(hook, data)
         for handler in self._sigils.get_handlers(hook):
-            await _safe_call_handler_async(handler, hook, data)
+            await _safe_call_handler_async(handler, hook, typed_data)
 
     async def emit_chain(self, hook: SigilHook, initial: Any) -> Any:
-        current = initial
+        current = create_sigil_data(hook, initial)
         for handler in self._sigils.get_handlers(hook):
             result = await _safe_call_handler_async(handler, hook, current)
             if result is not None:
@@ -339,15 +341,17 @@ class RuneRunner:
         return current
 
     async def emit_first(self, hook: SigilHook, data: Any) -> Any | None:
+        typed_data = create_sigil_data(hook, data)
         for handler in self._sigils.get_handlers(hook):
-            result = await _safe_call_handler_async(handler, hook, data)
+            result = await _safe_call_handler_async(handler, hook, typed_data)
             if result is not None:
                 return result
         return None
 
     async def emit_block(self, hook: SigilHook, data: Any) -> dict[str, Any] | None:
+        typed_data = create_sigil_data(hook, data)
         for handler in self._sigils.get_handlers(hook):
-            result = await _safe_call_handler_async(handler, hook, data)
+            result = await _safe_call_handler_async(handler, hook, typed_data)
             if isinstance(result, dict) and result.get("block"):
                 return result
         return None
