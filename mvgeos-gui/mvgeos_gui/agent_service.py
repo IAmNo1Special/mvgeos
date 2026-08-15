@@ -15,11 +15,13 @@ from mvgeos_agent.errors import AuthenticationError
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 
 from mvgeos_gui.models import (
+    BackgroundTask,
     ChatMessage,
     CommandExecution,
     ExecutionStep,
     FileExploration,
     StepType,
+    TaskStatus,
     extract_contemplation_tags,
 )
 
@@ -202,6 +204,10 @@ class AgentService:
             if target_state is not None:
                 target_state.notify()
 
+            # Track long-running spells as background tasks in the inspector.
+            if target_state is not None:
+                self._track_spell_start(target_state, spell_id, spell_name, data)
+
         elif event.type == MvgeEventType.SPELL_CASTING_END:
             spell_id = data.get("spellCastId", "")
             start_ts = self._pending_spell_starts.pop(spell_id, time.monotonic())
@@ -230,6 +236,12 @@ class AgentService:
                     )
             if target_state is not None:
                 target_state.notify()
+
+            # Finalise the background task entry created on SPELL_CASTING_START.
+            if target_state is not None:
+                self._track_spell_end(
+                    target_state, spell_id, result, error, duration
+                )
 
         elif event.type in (MvgeEventType.TURN_END, MvgeEventType.AGENT_END):
             if self._start_time > 0:
@@ -262,6 +274,83 @@ class AgentService:
         step = ExecutionStep(step_type=step_type)
         message.steps.append(step)
         return step
+
+    def _track_spell_start(
+        self,
+        state: AppState,
+        spell_id: str,
+        spell_name: str,
+        data: dict[str, Any],
+    ) -> None:
+        """Register a long-running spell cast as a background task."""
+        if not spell_id:
+            return
+        parent_id = data.get("parentSpellCastId") or data.get("parentTaskId")
+        state.add_background_task(
+            task_id=spell_id,
+            name=spell_name,
+            parent_id=parent_id,
+        )
+
+    def _track_spell_end(
+        self,
+        state: AppState,
+        spell_id: str,
+        result: Any,
+        error: Any,
+        duration: float,
+    ) -> None:
+        """Mark a background spell task complete or errored on SPELL_CASTING_END."""
+        if not spell_id:
+            return
+        status: TaskStatus
+        if error:
+            status = TaskStatus.ERROR
+        elif result is None or result == "":
+            status = TaskStatus.COMPLETE
+        else:
+            status = TaskStatus.COMPLETE
+        state.update_background_task(
+            spell_id,
+            status=status,
+            result=str(result or ""),
+            error=str(error) if error else None,
+        )
+        # Cap progress at 100% on completion.
+        task = state.get_background_task(spell_id)
+        if task is not None and task.status in (
+            TaskStatus.COMPLETE,
+            TaskStatus.ERROR,
+        ):
+            task.progress = 100.0
+
+    def register_subagent_task(
+        self,
+        state: AppState,
+        task_id: str,
+        name: str,
+        *,
+        parent_id: str | None = None,
+    ) -> BackgroundTask | None:
+        """Register a subagent background task in the inspector state."""
+        if not task_id or state is None:
+            return None
+        return state.add_background_task(
+            task_id=task_id, name=name, parent_id=parent_id
+        )
+
+    def update_subagent_task(
+        self,
+        state: AppState,
+        task_id: str,
+        *,
+        status: TaskStatus | str | None = None,
+        progress: float | None = None,
+    ) -> BackgroundTask | None:
+        """Update a subagent background task's status/progress."""
+        return state.update_background_task(
+            task_id, status=status, progress=progress
+        )
 
     @staticmethod
     def _format_duration(seconds: float) -> str:

@@ -10,7 +10,7 @@ from mvgeos_agent.errors import AuthenticationError
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 
 from mvgeos_gui.agent_service import AgentService, resolve_api_key
-from mvgeos_gui.models import ChatMessage, StepType
+from mvgeos_gui.models import ChatMessage, StepType, TaskStatus
 from mvgeos_gui.state import AppState
 
 
@@ -321,6 +321,214 @@ def test_handle_agent_end_finalizes_state(
 
     assert msg.is_streaming is False
     assert app_state.is_channeling is False
+
+
+def test_spell_casting_start_tracks_background_task(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify SPELL_CASTING_START registers a running background task in state."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    start_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_START,
+        data={
+            "spellCastId": "cast-bg-1",
+            "spellName": "bash",
+            "command": "pytest -v",
+        },
+    )
+    agent_service.handle_event(start_event, msg, app_state)
+
+    assert len(app_state.background_tasks) == 1
+    task = app_state.background_tasks[0]
+    assert task.id == "cast-bg-1"
+    assert task.name == "bash"
+    assert task.status == TaskStatus.RUNNING
+    assert task.progress == 0.0
+
+
+def test_spell_casting_start_is_idempotent_on_duplicate_id(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify duplicate spellCastId does not create a second background task."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    start_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_START,
+        data={"spellCastId": "cast-bg-2", "spellName": "read"},
+    )
+    agent_service.handle_event(start_event, msg, app_state)
+    agent_service.handle_event(start_event, msg, app_state)
+
+    assert len(app_state.background_tasks) == 1
+
+
+def test_spell_casting_start_uses_parent_spell_id(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify parentSpellCastId is propagated onto the background task."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    start_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_START,
+        data={
+            "spellCastId": "cast-child",
+            "spellName": "edit",
+            "parentSpellCastId": "cast-parent",
+        },
+    )
+    agent_service.handle_event(start_event, msg, app_state)
+
+    assert app_state.background_tasks[0].parent_id == "cast-parent"
+
+
+def test_spell_casting_end_marks_task_complete(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify SPELL_CASTING_END finalises the background task as complete."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    start_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_START,
+        data={"spellCastId": "cast-bg-3", "spellName": "bash"},
+    )
+    agent_service.handle_event(start_event, msg, app_state)
+
+    end_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_END,
+        data={
+            "spellCastId": "cast-bg-3",
+            "result": "82 passed in 0.45s",
+        },
+    )
+    agent_service.handle_event(end_event, msg, app_state)
+
+    task = app_state.background_tasks[0]
+    assert task.status == TaskStatus.COMPLETE
+    assert task.result == "82 passed in 0.45s"
+    assert task.progress == 100.0
+    assert task.ended_at is not None
+
+
+def test_spell_casting_end_marks_task_error(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify SPELL_CASTING_END with an error marks the task errored."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    start_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_START,
+        data={"spellCastId": "cast-bg-4", "spellName": "bash"},
+    )
+    agent_service.handle_event(start_event, msg, app_state)
+
+    end_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_END,
+        data={
+            "spellCastId": "cast-bg-4",
+            "error": "Command timed out",
+        },
+    )
+    agent_service.handle_event(end_event, msg, app_state)
+
+    task = app_state.background_tasks[0]
+    assert task.status == TaskStatus.ERROR
+    assert task.error == "Command timed out"
+    assert task.progress == 100.0
+
+
+def test_spell_casting_end_unknown_id_is_noop(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify SPELL_CASTING_END for an unknown spell id does not crash."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    end_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_END,
+        data={"spellCastId": "never-started", "result": "ok"},
+    )
+    agent_service.handle_event(end_event, msg, app_state)
+
+    assert app_state.background_tasks == []
+
+
+def test_spell_casting_start_without_id_is_noop(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify a spell cast with no spellCastId does not create a task."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    start_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_START,
+        data={"spellName": "bash"},
+    )
+    agent_service.handle_event(start_event, msg, app_state)
+
+    assert app_state.background_tasks == []
+
+
+def test_register_subagent_task(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify register_subagent_task adds a subagent background task."""
+    task = agent_service.register_subagent_task(
+        app_state, "sub-1", "Reviewer", parent_id="cast-parent"
+    )
+    assert task is not None
+    assert task.id == "sub-1"
+    assert task.name == "Reviewer"
+    assert task.parent_id == "cast-parent"
+    assert task.status == TaskStatus.RUNNING
+
+
+def test_register_subagent_task_idempotent(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify register_subagent_task is idempotent on duplicate id."""
+    agent_service.register_subagent_task(app_state, "sub-2", "First")
+    task = agent_service.register_subagent_task(app_state, "sub-2", "Second")
+    assert len(app_state.background_tasks) == 1
+    assert task.name == "First"
+
+
+def test_update_subagent_task_progress_and_status(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify update_subagent_task updates progress and status."""
+    agent_service.register_subagent_task(app_state, "sub-3", "Worker")
+
+    updated = agent_service.update_subagent_task(
+        app_state, "sub-3", status=TaskStatus.COMPLETE, progress=100.0
+    )
+    assert updated is not None
+    assert updated.status == TaskStatus.COMPLETE
+    assert updated.progress == 100.0
+
+
+def test_update_subagent_task_unknown_id_returns_none(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify update_subagent_task returns None for unknown task id."""
+    assert (
+        agent_service.update_subagent_task(app_state, "missing", progress=50.0)
+        is None
+    )
+
+
+def test_background_tasks_cleared_on_new_conversation(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify new_conversation clears tracked background tasks."""
+    agent_service.register_subagent_task(app_state, "sub-x", "Worker")
+    app_state.new_conversation()
+    assert app_state.background_tasks == []
 
 
 def test_format_duration_variants() -> None:
