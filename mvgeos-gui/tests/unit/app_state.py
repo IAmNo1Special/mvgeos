@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -576,3 +577,131 @@ class TestSubmitPromptAttachments:
         state.pending_attachments = ["file1.py"]
         state.clear_history()
         assert state.pending_attachments == []
+
+
+# --- Active skills tests ---
+
+
+def _make_manifest(
+    name: str = "review",
+    path: str = "/skills/review/SKILL.md",
+    scope: str = "project",
+    description: str = "Review code",
+) -> Any:
+    """Build a minimal SkillManifest for testing."""
+    from mvgeos_runes.types import SkillManifest, SkillScope
+
+    return SkillManifest(
+        name=name,
+        description=description,
+        scope=SkillScope(scope),
+        path=path,
+    )
+
+
+def test_active_skills_default_empty() -> None:
+    """Verify active_skills defaults to an empty list."""
+    state = AppState()
+    assert state.active_skills == []
+
+
+def test_skill_info_from_manifest() -> None:
+    """Verify SkillInfo is derived from a SkillManifest correctly."""
+    state = AppState()
+    manifest = _make_manifest(
+        name="review",
+        path="/skills/review/SKILL.md",
+        scope="user",
+        description="Review code",
+    )
+    info = state.skill_info_from_manifest(manifest)
+    assert info.name == "review"
+    assert info.description == "Review code"
+    assert info.scope == "user"
+    assert info.path == "/skills/review/SKILL.md"
+    assert info.invoked is False
+
+
+def test_add_skill_appends_and_notifies() -> None:
+    """Verify add_skill appends a new skill and notifies listeners."""
+    state = AppState()
+    called: list[bool] = []
+    state.subscribe(lambda: called.append(True))
+
+    manifest = _make_manifest()
+    added = state.add_skill(manifest)
+    assert added is True
+    assert len(state.active_skills) == 1
+    assert state.active_skills[0].name == "review"
+    assert called == [True]
+
+
+def test_add_skill_deduplicates() -> None:
+    """Verify add_skill does not duplicate an existing skill by name."""
+    state = AppState()
+    manifest = _make_manifest()
+    state.add_skill(manifest)
+    state.add_skill(manifest)
+    assert len(state.active_skills) == 1
+
+
+def test_add_skill_returns_false_when_present() -> None:
+    """Verify add_skill returns False when the skill is already tracked."""
+    state = AppState()
+    manifest = _make_manifest()
+    state.add_skill(manifest)
+    assert state.add_skill(manifest) is False
+
+
+def test_remove_skill_by_name() -> None:
+    """Verify remove_skill removes a skill by name."""
+    state = AppState()
+    state.add_skill(_make_manifest(name="review"))
+    state.add_skill(_make_manifest(name="lint", path="/skills/lint/SKILL.md"))
+    removed = state.remove_skill("review")
+    assert removed is True
+    assert [s.name for s in state.active_skills] == ["lint"]
+
+
+def test_remove_skill_unknown_is_safe() -> None:
+    """Verify remove_skill is a safe no-op for unknown names."""
+    state = AppState()
+    state.add_skill(_make_manifest())
+    assert state.remove_skill("nonexistent") is False
+    assert len(state.active_skills) == 1
+
+
+def test_remove_skill_notifies_listeners() -> None:
+    """Verify remove_skill notifies listeners when a skill is removed."""
+    state = AppState()
+    state.add_skill(_make_manifest())
+    called: list[bool] = []
+    state.subscribe(lambda: called.append(True))
+    state.remove_skill("review")
+    assert called == [True]
+
+
+def test_clear_skills_removes_all() -> None:
+    """Verify clear_skills empties the active_skills list."""
+    state = AppState()
+    state.add_skill(_make_manifest(name="review"))
+    state.add_skill(_make_manifest(name="lint", path="/skills/lint/SKILL.md"))
+    state.clear_skills()
+    assert state.active_skills == []
+
+
+def test_clear_skills_empty_is_noop() -> None:
+    """Verify clear_skills does not notify when there are no skills."""
+    state = AppState()
+    called: list[bool] = []
+    state.subscribe(lambda: called.append(True))
+    state.clear_skills()
+    assert called == []
+
+
+def test_new_conversation_clears_skills() -> None:
+    """Verify new_conversation resets active_skills."""
+    state = AppState()
+    state.add_skill(_make_manifest())
+    state.new_conversation()
+    assert state.active_skills == []

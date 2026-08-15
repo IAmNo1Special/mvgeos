@@ -234,6 +234,11 @@ class BaseMvge:
         return self._environment
 
     @property
+    def runner(self) -> RuneRunner | None:
+        """Expose the active RuneRunner for runtime introspection (GUI)."""
+        return self._runner
+
+    @property
     def diagnostics(self) -> list[Diagnostic | SkillDiagnostic]:
         if self._runner is not None:
             return list(self._runner.diagnostics) + list(self._runner.skill_diagnostics)
