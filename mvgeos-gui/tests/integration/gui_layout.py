@@ -553,7 +553,7 @@ async def test_inspector_accordion_expand_collapse(user: User) -> None:
 
 @pytest.mark.asyncio
 async def test_inspector_reactive_multi_item_updates(user: User) -> None:
-    """Verify inspector updates correctly when multiple skills, uploads, and tasks are added."""
+    """Verify inspector updates with multiple skills, uploads, and tasks."""
     state = AppState()
 
     @ui.page("/test_inspector_reactive_multi")

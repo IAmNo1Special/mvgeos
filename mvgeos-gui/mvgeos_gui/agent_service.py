@@ -250,9 +250,7 @@ class AgentService:
 
             # Finalise the background task entry created on SPELL_CASTING_START.
             if target_state is not None:
-                self._track_spell_end(
-                    target_state, spell_id, result, error, duration
-                )
+                self._track_spell_end(target_state, spell_id, result, error, duration)
 
         elif event.type in (MvgeEventType.TURN_END, MvgeEventType.AGENT_END):
             if self._start_time > 0:
@@ -359,9 +357,7 @@ class AgentService:
         progress: float | None = None,
     ) -> BackgroundTask | None:
         """Update a subagent background task's status/progress."""
-        return state.update_background_task(
-            task_id, status=status, progress=progress
-        )
+        return state.update_background_task(task_id, status=status, progress=progress)
 
     @staticmethod
     def _format_duration(seconds: float) -> str:
@@ -463,9 +459,7 @@ class AgentService:
             logger.debug("Failed to read skills from runner", exc_info=True)
             return []
 
-    def populate_skills(
-        self, agent: Any, state: AppState | None
-    ) -> None:
+    def populate_skills(self, agent: Any, state: AppState | None) -> None:
         """Seed state.active_skills from the agent's loaded skill manifests.
 
         Idempotent: skills already tracked are not duplicated. Skills that

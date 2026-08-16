@@ -27,9 +27,7 @@ def _render_background_task_row(task: BackgroundTask) -> None:
     with ui.row().classes("w-full items-center gap-1.5 mb-1"):
         ui.icon(icon_name, size="12px").classes(color_class)
         ui.label(task.name).classes("text-[11px] text-[#e6edf3] truncate")
-        ui.label(status_label).classes(
-            "text-[10px] text-[#6e7681] uppercase"
-        )
+        ui.label(status_label).classes("text-[10px] text-[#6e7681] uppercase")
     if 0 < task.progress <= 1.0:
         ui.linear_progress(value=task.progress, size="xs").classes(
             "w-full h-1.5 mt-0.5"
@@ -142,9 +140,7 @@ def render_inspector(state: AppState) -> ui.column:
                     ui.label("No uploaded files").classes("italic text-[11px]")
                 else:
                     for name in state.uploaded_files:
-                        with ui.row().classes(
-                            "w-full items-center gap-1.5 mb-1"
-                        ):
+                        with ui.row().classes("w-full items-center gap-1.5 mb-1"):
                             ui.icon("insert_drive_file", size="12px").classes(
                                 "text-[#8b949e]"
                             )

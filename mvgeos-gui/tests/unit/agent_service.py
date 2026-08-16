@@ -517,8 +517,7 @@ def test_update_subagent_task_unknown_id_returns_none(
 ) -> None:
     """Verify update_subagent_task returns None for unknown task id."""
     assert (
-        agent_service.update_subagent_task(app_state, "missing", progress=50.0)
-        is None
+        agent_service.update_subagent_task(app_state, "missing", progress=50.0) is None
     )
 
 
