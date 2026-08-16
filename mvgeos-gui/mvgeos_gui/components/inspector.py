@@ -1,7 +1,10 @@
 """Right context inspector panel component with collapsible accordions."""
 
+from __future__ import annotations
+
 from nicegui import ui
 
+from mvgeos_gui.components.diff_review import render_diff_modal
 from mvgeos_gui.models import BackgroundTask, TaskStatus
 from mvgeos_gui.state import AppState
 
@@ -81,7 +84,54 @@ def render_inspector(state: AppState) -> ui.column:
                 ),
                 ui.column().classes("w-full p-2 text-xs text-[#8b949e]"),
             ):
-                ui.label("Working tree clean").classes("italic text-[11px]")
+                if not state.changed_files:
+                    ui.label("Working tree clean").classes("italic text-[11px]")
+                else:
+                    for changed in state.changed_files:
+                        with ui.row().classes(
+                            "w-full items-center justify-between p-1.5 rounded "
+                            "bg-[#13151b] border border-[#252836] mb-1 "
+                            "cursor-pointer hover:border-[#3b82f6]"
+                        ).on(
+                            "click", lambda p=changed.path: state.open_diff_review(p)
+                        ):
+                            with ui.row().classes(
+                                "items-center gap-1.5 overflow-hidden"
+                            ):
+                                ui.icon("description", size="12px").classes(
+                                    "text-[#3b82f6] shrink-0"
+                                )
+                                ui.label(changed.path).classes(
+                                    "text-[11px] text-[#e6edf3] font-mono "
+                                    "truncate max-w-[200px]"
+                                )
+                            with ui.row().classes("items-center gap-1 shrink-0"):
+                                if changed.additions > 0:
+                                    ui.badge(
+                                        f"+{changed.additions}",
+                                        color="green-9",
+                                    ).props("rounded dense").classes(
+                                        "text-[9px] text-white font-mono px-1"
+                                    )
+                                if changed.deletions > 0:
+                                    ui.badge(
+                                        f"-{changed.deletions}",
+                                        color="red-9",
+                                    ).props("rounded dense").classes(
+                                        "text-[9px] text-white font-mono px-1"
+                                    )
+                    with ui.row().classes("w-full mt-1"):
+                        ui.button(
+                            "Review All",
+                            icon="difference",
+                            on_click=lambda: (
+                                state.open_diff_review(state.changed_files[0].path)
+                                if state.changed_files
+                                else None
+                            ),
+                        ).props("flat dense no-caps size=xs").classes(
+                            "text-[10px] text-[#3b82f6]"
+                        ).mark("review_all_diff_btn")
 
             # 3. Artifacts
             with (
@@ -163,4 +213,7 @@ def render_inspector(state: AppState) -> ui.column:
                     for task in state.background_tasks:
                         _render_background_task_row(task)
 
+    selected_view = state.get_selected_diff_view()
+    if selected_view is not None:
+        render_diff_modal(state, selected_view)
     return container

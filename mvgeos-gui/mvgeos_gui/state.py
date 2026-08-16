@@ -24,6 +24,7 @@ from mvgeos_gui.autocomplete import (
     MentionIndex,
     SlashCommandRegistry,
 )
+from mvgeos_gui.git_diff import ChangedFile, get_changed_files, get_diff_for_file
 from mvgeos_gui.models import (
     BackgroundTask,
     ChatMessage,
@@ -93,6 +94,10 @@ class AppState:
     _change_listeners: list[Callable[[], Any]] = field(
         default_factory=list, repr=False, compare=False
     )
+    _selected_diff_path: str | None = field(
+        default=None, repr=False, compare=False
+    )
+    changed_files: list[ChangedFile] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Initialize state invariants."""
@@ -456,3 +461,24 @@ class AppState:
     def clear_history(self) -> None:
         """Clear the current conversation history."""
         self.new_conversation()
+
+    def refresh_changed_files(self) -> None:
+        """Query git for changed files and update reactive state."""
+        self.changed_files = get_changed_files(self.project_path)
+        self.notify()
+
+    def open_diff_review(self, path: str) -> None:
+        """Open the Diff Review modal for the given file path."""
+        self._selected_diff_path = path
+        self.notify()
+
+    def get_selected_diff_view(self) -> Any | None:
+        """Return the DiffView for the currently selected diff file."""
+        if not self._selected_diff_path:
+            return None
+        return get_diff_for_file(self.project_path, self._selected_diff_path)
+
+    def clear_diff_selection(self) -> None:
+        """Clear the selected diff path."""
+        self._selected_diff_path = None
+        self.notify()

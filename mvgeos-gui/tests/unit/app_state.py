@@ -5,12 +5,12 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mvgeos_tome.ledger import TomeLedger
 
-from mvgeos_gui.models import ChatMessage
+from mvgeos_gui.models import ChangedFile, ChatMessage, DiffView
 from mvgeos_gui.state import AppState
 from mvgeos_gui.tome_service import TomeService
 
@@ -705,3 +705,91 @@ def test_new_conversation_clears_skills() -> None:
     state.add_skill(_make_manifest())
     state.new_conversation()
     assert state.active_skills == []
+
+
+class TestChangedFiles:
+    def test_default_changed_files_empty(self) -> None:
+        """Verify changed_files defaults to empty list."""
+        state = AppState()
+        assert state.changed_files == []
+
+    def test_refresh_changed_files_updates_state(self) -> None:
+        """Verify refresh_changed_files updates changed_files from git."""
+        state = AppState()
+        changed = [
+            ChangedFile(
+                path="src/main.py",
+                status="modified",
+                additions=1,
+                deletions=0,
+            ),
+        ]
+        with patch(
+            "mvgeos_gui.state.get_changed_files", return_value=changed
+        ):
+            state.refresh_changed_files()
+        assert len(state.changed_files) == 1
+        assert state.changed_files[0].path == "src/main.py"
+
+    def test_refresh_changed_files_notifies_listeners(self) -> None:
+        """Verify refresh_changed_files notifies listeners."""
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        with patch(
+            "mvgeos_gui.state.get_changed_files", return_value=[]
+        ):
+            state.refresh_changed_files()
+        assert called == [True]
+
+    def test_open_diff_review_sets_selected_path(self) -> None:
+        """Verify open_diff_review sets _selected_diff_path."""
+        state = AppState()
+        state.open_diff_review("src/main.py")
+        assert state._selected_diff_path == "src/main.py"
+
+    def test_open_diff_review_notifies_listeners(self) -> None:
+        """Verify open_diff_review notifies listeners."""
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.open_diff_review("src/main.py")
+        assert called == [True]
+
+    def test_get_selected_diff_view_returns_none_when_empty(self) -> None:
+        """Verify get_selected_diff_view returns None when no path selected."""
+        state = AppState()
+        assert state.get_selected_diff_view() is None
+
+    def test_get_selected_diff_view_returns_view(self) -> None:
+        """Verify get_selected_diff_view returns DiffView for selected path."""
+        state = AppState()
+        state._selected_diff_path = "src/main.py"
+        view = DiffView(
+            file_path="src/main.py",
+            status="modified",
+            additions=1,
+            deletions=0,
+        )
+        with patch(
+            "mvgeos_gui.state.get_diff_for_file", return_value=view
+        ):
+            result = state.get_selected_diff_view()
+        assert result is not None
+        assert result.file_path == "src/main.py"
+
+    def test_clear_diff_selection_clears_path(self) -> None:
+        """Verify clear_diff_selection clears _selected_diff_path."""
+        state = AppState()
+        state._selected_diff_path = "src/main.py"
+        state.clear_diff_selection()
+        assert state._selected_diff_path is None
+
+    def test_clear_diff_selection_notifies_listeners(self) -> None:
+        """Verify clear_diff_selection notifies listeners."""
+        state = AppState()
+        state._selected_diff_path = "src/main.py"
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.clear_diff_selection()
+        assert called == [True]
