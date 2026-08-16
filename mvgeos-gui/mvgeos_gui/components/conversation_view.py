@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from nicegui import ui
 
+from mvgeos_gui.components.artifact_drawer import (
+    render_artifact_card,
+    render_artifact_drawer,
+)
+from mvgeos_gui.components.diff_review import render_diff_modal
 from mvgeos_gui.components.step_cards import (
     render_contemplation_card,
     render_step_card,
@@ -104,6 +109,12 @@ def render_assistant_message(
                 "max-w-none w-full"
             )
 
+        # Artifact Cards
+        if msg.artifacts:
+            with ui.column().classes("w-full gap-2 my-2"):
+                for artifact in msg.artifacts:
+                    render_artifact_card(artifact, state)
+
         # Streaming Cursor Indicator
         if msg.is_streaming:
             with ui.row().classes("items-center gap-2 py-1"):
@@ -182,5 +193,13 @@ def render_conversation_view(state: AppState) -> ui.column:
                     render_user_message(msg)
                 else:
                     render_assistant_message(msg, idx, state)
+
+    selected_view = state.get_selected_diff_view()
+    if selected_view is not None:
+        render_diff_modal(state, selected_view)
+
+    selected_artifact = state.get_selected_artifact()
+    if selected_artifact is not None:
+        render_artifact_drawer(state)
 
     return container

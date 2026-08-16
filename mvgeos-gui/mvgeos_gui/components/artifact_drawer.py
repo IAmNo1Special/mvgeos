@@ -1,0 +1,177 @@
+"""Artifact cards and sliding markdown preview drawer for mvgeos-gui."""
+
+from __future__ import annotations
+
+import re
+
+from nicegui import ui
+
+from mvgeos_gui.models import Artifact, ArtifactType
+from mvgeos_gui.state import AppState
+
+_ARTIFACT_TYPE_ICONS: dict[ArtifactType, str] = {
+    ArtifactType.WALKTHROUGH: "route",
+    ArtifactType.IMPLEMENTATION_PLAN: "checklist",
+    ArtifactType.CODE_REVIEW: "rate_review",
+    ArtifactType.DOCUMENT: "description",
+    ArtifactType.OTHER: "category",
+}
+
+_ARTIFACT_TYPE_COLORS: dict[ArtifactType, str] = {
+    ArtifactType.WALKTHROUGH: "text-[#3b82f6]",
+    ArtifactType.IMPLEMENTATION_PLAN: "text-[#22c55e]",
+    ArtifactType.CODE_REVIEW: "text-[#f59e0b]",
+    ArtifactType.DOCUMENT: "text-[#7c3aed]",
+    ArtifactType.OTHER: "text-[#8b949e]",
+}
+
+
+def _copy_to_clipboard(text: str) -> None:
+    """Copy content to the system clipboard and display feedback toast."""
+    escaped = text.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
+    ui.run_javascript(f"navigator.clipboard.writeText(`{escaped}`)")
+    ui.notify("Copied to clipboard", type="positive", position="bottom")
+
+
+def _download_artifact(artifact: Artifact) -> None:
+    """Download artifact content as a text file."""
+    filename = f"{artifact.title.replace(' ', '_').lower()}.md"
+    blob = (
+        "data:text/plain;charset=utf-8,"
+        f"{artifact.content.replace('#', '%23').replace(chr(10), '%0A')}"
+    )
+    ui.run_javascript(
+        f"const a = document.createElement('a'); a.href = `{blob}`; "
+        f"a.download = `{filename}`; a.click();"
+    )
+    ui.notify(f"Downloading {filename}", type="positive", position="bottom")
+
+
+def _render_markdown_with_mermaid(content: str) -> None:
+    """Render markdown content, extracting mermaid blocks for dedicated rendering."""
+    mermaid_pattern = re.compile(r"```mermaid\n(.*?)\n```", re.DOTALL)
+    parts = mermaid_pattern.split(content)
+
+    for i, part in enumerate(parts):
+        if i % 2 == 0:
+            if part.strip():
+                ui.markdown(part).classes(
+                    "text-xs text-[#e6edf3] leading-relaxed markdown-content "
+                    "max-w-none w-full"
+                )
+        else:
+            with ui.column().classes(
+                "w-full my-3 p-3 rounded-lg bg-[#0f1118] border border-[#252836]"
+            ):
+                ui.label("Mermaid Diagram").classes(
+                    "text-[10px] text-[#64748b] uppercase font-mono mb-2"
+                )
+                try:
+                    ui.mermaid(part.strip()).classes("w-full")
+                except Exception:
+                    ui.code(part.strip()).classes(
+                        "w-full text-[11px] bg-[#08090c] p-2 rounded font-mono"
+                    )
+
+
+def render_artifact_card(artifact: Artifact, state: AppState) -> None:
+    """Render an in-stream Artifact card with title, summary, and action buttons."""
+    icon_name = _ARTIFACT_TYPE_ICONS.get(artifact.artifact_type, "category")
+    color_class = _ARTIFACT_TYPE_COLORS.get(artifact.artifact_type, "text-[#8b949e]")
+    type_label = artifact.artifact_type.value.replace("_", " ").title()
+
+    with (
+        ui.column().classes("w-full max-w-3xl mx-auto px-6 py-2 items-start"),
+        ui.card().classes(
+            "w-full bg-[#1a1d26] border border-[#2b2f3d] rounded-xl p-4 gap-2 shadow-md"
+        ),
+    ):
+        with ui.row().classes("w-full items-center justify-between gap-4"):
+            with ui.row().classes("items-center gap-2"):
+                ui.icon(icon_name, size="16px").classes(color_class)
+                ui.label(artifact.title).classes("text-sm font-semibold text-[#e6edf3]")
+                ui.badge(type_label, color="grey-9").props("rounded dense").classes(
+                    "text-[9px] text-[#8b949e] font-mono uppercase"
+                )
+            with ui.row().classes("items-center gap-1"):
+                ui.label(artifact.created_at).classes(
+                    "text-[10px] text-[#64748b] font-mono"
+                )
+                ui.button(
+                    icon="visibility",
+                    on_click=lambda a_id=artifact.id: state.open_artifact(a_id),
+                ).props("flat dense round size=xs text-color=grey-5").mark(
+                    "review_artifact_btn"
+                )
+                ui.tooltip("Review artifact")
+
+        if artifact.summary:
+            ui.label(artifact.summary).classes("text-xs text-[#8b949e] leading-relaxed")
+
+
+def render_artifact_drawer(state: AppState) -> None:
+    """Render a sliding preview drawer for the selected artifact."""
+    artifact = state.get_selected_artifact()
+    if artifact is None:
+        return
+
+    def _on_close() -> None:
+        state.close_artifact()
+
+    with (
+        ui.dialog().classes("w-full max-w-4xl").on("close", _on_close) as dialog,
+        ui.card().classes(
+            "w-full bg-[#13151b] border border-[#2b2f3d] rounded-xl p-0 overflow-hidden"
+        ),
+    ):
+        with ui.row().classes(
+            "w-full h-11 px-4 items-center justify-between "
+            "border-b border-[#2b2f3d] bg-[#1a1d26]"
+        ):
+            with ui.row().classes("items-center gap-2"):
+                ui.icon("description", size="16px").classes("text-[#3b82f6]")
+                ui.label(artifact.title).classes("text-sm font-medium text-[#e6edf3]")
+                ui.badge(
+                    artifact.artifact_type.value.replace("_", " ").title(),
+                    color="grey-9",
+                ).props("rounded dense").classes(
+                    "text-[9px] text-[#8b949e] font-mono uppercase"
+                )
+            ui.button(
+                icon="close",
+                on_click=lambda: dialog.close(),
+            ).props("flat dense round text-color=grey-5 size=sm")
+
+        with ui.row().classes(
+            "w-full px-4 py-2 items-center gap-2 border-b border-[#2b2f3d] bg-[#1a1d26]"
+        ):
+            ui.button(
+                icon="content_copy",
+                on_click=lambda: _copy_to_clipboard(artifact.content),
+            ).props("flat dense no-caps size=xs text-color=grey-5")
+            ui.tooltip("Copy content")
+            ui.button(
+                icon="download",
+                on_click=lambda: _download_artifact(artifact),
+            ).props("flat dense no-caps size=xs text-color=grey-5")
+            ui.tooltip("Download artifact")
+            if artifact.file_paths:
+                ui.label("Files:").classes("text-[10px] text-[#64748b] font-mono")
+                for path in artifact.file_paths:
+                    ui.label(path).classes("text-[10px] text-[#3b82f6] font-mono")
+
+        content_container = ui.column().classes(
+            "w-full max-h-[70vh] overflow-auto bg-[#0e1117] p-4"
+        )
+        with content_container:
+            if artifact.summary:
+                with ui.row().classes(
+                    "w-full items-center gap-2 p-3 mb-3 rounded-lg "
+                    "bg-[#1e212b] border border-[#2b2f3d]"
+                ):
+                    ui.icon("info", size="14px").classes("text-[#3b82f6]")
+                    ui.label(artifact.summary).classes("text-xs text-[#94a3b8] italic")
+
+            _render_markdown_with_mermaid(artifact.content)
+
+    dialog.open()

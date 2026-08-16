@@ -1,5 +1,9 @@
 """Antigravity UI components for mvgeos-gui."""
 
+from mvgeos_gui.components.artifact_drawer import (
+    render_artifact_card,
+    render_artifact_drawer,
+)
 from mvgeos_gui.components.conversation_view import render_conversation_view
 from mvgeos_gui.components.diff_review import render_diff_modal
 from mvgeos_gui.components.empty_state import render_empty_state
@@ -17,6 +21,8 @@ from mvgeos_gui.components.step_cards import (
 )
 
 __all__ = [
+    "render_artifact_card",
+    "render_artifact_drawer",
     "render_commands_card",
     "render_contemplation_card",
     "render_conversation_view",

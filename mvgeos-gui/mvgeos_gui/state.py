@@ -26,6 +26,7 @@ from mvgeos_gui.autocomplete import (
 )
 from mvgeos_gui.git_diff import ChangedFile, get_changed_files, get_diff_for_file
 from mvgeos_gui.models import (
+    Artifact,
     BackgroundTask,
     ChatMessage,
     SkillInfo,
@@ -96,6 +97,8 @@ class AppState:
     )
     _selected_diff_path: str | None = field(default=None, repr=False, compare=False)
     changed_files: list[ChangedFile] = field(default_factory=list)
+    _selected_artifact_id: str | None = field(default=None, repr=False, compare=False)
+    artifacts: list[Artifact] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Initialize state invariants."""
@@ -480,3 +483,32 @@ class AppState:
         """Clear the selected diff path."""
         self._selected_diff_path = None
         self.notify()
+
+    def add_artifact(self, artifact: Artifact) -> None:
+        """Add an artifact to the session and notify listeners."""
+        self.artifacts.append(artifact)
+        self.notify()
+
+    def get_artifact(self, artifact_id: str) -> Artifact | None:
+        """Look up an artifact by id."""
+        for artifact in self.artifacts:
+            if artifact.id == artifact_id:
+                return artifact
+        return None
+
+    def open_artifact(self, artifact_id: str) -> None:
+        """Select an artifact for preview in the drawer."""
+        if self.get_artifact(artifact_id) is not None:
+            self._selected_artifact_id = artifact_id
+            self.notify()
+
+    def close_artifact(self) -> None:
+        """Clear the selected artifact preview."""
+        self._selected_artifact_id = None
+        self.notify()
+
+    def get_selected_artifact(self) -> Artifact | None:
+        """Return the currently selected artifact for preview."""
+        if not self._selected_artifact_id:
+            return None
+        return self.get_artifact(self._selected_artifact_id)

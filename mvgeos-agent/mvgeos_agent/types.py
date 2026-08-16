@@ -64,6 +64,7 @@ class MvgeEventType(StrEnum):
     SPELL_CASTING_START = "spell_casting_start"
     SPELL_CASTING_UPDATE = "spell_casting_update"
     SPELL_CASTING_END = "spell_casting_end"
+    ARTIFACT_CREATED = "artifact_created"
     COMPACTION_START = "compaction_start"
     COMPACTION_END = "compaction_end"
     ENTRY_APPENDED = "entry_appended"

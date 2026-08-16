@@ -145,7 +145,34 @@ def render_inspector(state: AppState) -> ui.column:
                 ),
                 ui.column().classes("w-full p-2 text-xs text-[#8b949e]"),
             ):
-                ui.label("No artifacts generated").classes("italic text-[11px]")
+                if not state.artifacts:
+                    ui.label("No artifacts generated").classes("italic text-[11px]")
+                else:
+                    for artifact in state.artifacts:
+                        with (
+                            ui.row()
+                            .classes(
+                                "w-full items-center justify-between p-1.5 rounded "
+                                "bg-[#13151b] border border-[#252836] mb-1 "
+                                "cursor-pointer hover:border-[#3b82f6]"
+                            )
+                            .on(
+                                "click",
+                                lambda a_id=artifact.id: state.open_artifact(a_id),
+                            )
+                        ):
+                            with ui.row().classes(
+                                "items-center gap-1.5 overflow-hidden"
+                            ):
+                                ui.icon("description", size="12px").classes(
+                                    "text-[#3b82f6] shrink-0"
+                                )
+                                ui.label(artifact.title).classes(
+                                    "text-[11px] text-[#e6edf3] truncate max-w-[200px]"
+                                )
+                            ui.label(artifact.created_at).classes(
+                                "text-[10px] text-[#64748b] font-mono"
+                            )
 
             # 4. Skills Used
             with (

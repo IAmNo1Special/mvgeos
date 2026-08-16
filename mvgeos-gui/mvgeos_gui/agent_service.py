@@ -15,6 +15,8 @@ from mvgeos_agent.errors import AuthenticationError
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 
 from mvgeos_gui.models import (
+    Artifact,
+    ArtifactType,
     BackgroundTask,
     ChatMessage,
     CommandExecution,
@@ -273,6 +275,24 @@ class AgentService:
                 target_state.is_channeling = False
                 target_state.notify()
             self._is_running = False
+
+        elif event.type == MvgeEventType.ARTIFACT_CREATED:
+            artifact_data = data.get("artifact", {})
+            artifact = Artifact(
+                id=str(artifact_data.get("id", "")),
+                title=str(artifact_data.get("title", "Untitled Artifact")),
+                summary=str(artifact_data.get("summary", "")),
+                content=str(artifact_data.get("content", "")),
+                artifact_type=ArtifactType(
+                    str(artifact_data.get("type", ArtifactType.OTHER))
+                ),
+                file_paths=[str(p) for p in artifact_data.get("file_paths", [])],
+            )
+            target_message.artifacts.append(artifact)
+            if target_state is not None:
+                target_state.add_artifact(artifact)
+            if target_state is not None:
+                target_state.notify()
 
     def _get_or_create_step(
         self, message: ChatMessage, step_type: StepType
