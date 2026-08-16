@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from mvgeos_runes.types import SkillManifest, SkillScope
 from mvgeos_tome.ledger import TomeLedger
 from nicegui import ui
 from nicegui.testing import User
@@ -13,6 +14,21 @@ from nicegui.testing import User
 from mvgeos_gui.app import build_page, init_app
 from mvgeos_gui.state import AppState
 from mvgeos_gui.tome_service import TomeService
+
+
+def _make_manifest(
+    name: str = "review",
+    path: str = "/skills/review/SKILL.md",
+    scope: str = "project",
+    description: str = "Review code",
+) -> SkillManifest:
+    """Build a minimal SkillManifest for testing."""
+    return SkillManifest(
+        name=name,
+        description=description,
+        scope=SkillScope(scope),
+        path=path,
+    )
 
 
 def _init_git_repo(repo_path: Path, branch: str) -> None:
@@ -394,3 +410,119 @@ async def test_new_conversation_hides_conversation_view(
 
     assert state.active_tome_id is None
     assert state.tome_title == "New Conversation"
+
+
+# --- Inspector reactive data tests ---
+
+
+@pytest.mark.asyncio
+async def test_inspector_renders_skills_data(user: User) -> None:
+    """Verify inspector shows skill name and path when skills are active."""
+    state = AppState()
+    state.add_skill(
+        _make_manifest(name="code-review", path="/skills/code-review/SKILL.md")
+    )
+
+    @ui.page("/test_inspector_skills")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_inspector_skills")
+    await user.should_see("code-review")
+    await user.should_see("/skills/code-review/SKILL.md")
+
+
+@pytest.mark.asyncio
+async def test_inspector_renders_uploads_data(user: User) -> None:
+    """Verify inspector shows attached file names when uploads exist."""
+    state = AppState()
+    state.add_attachment("main.py")
+    state.add_attachment("utils.py")
+
+    @ui.page("/test_inspector_uploads")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_inspector_uploads")
+    await user.should_see("main.py")
+    await user.should_see("utils.py")
+
+
+@pytest.mark.asyncio
+async def test_inspector_renders_background_tasks(user: User) -> None:
+    """Verify inspector shows background task name, status, and progress."""
+    state = AppState()
+    state.add_background_task("task-1", "File indexing", progress=0.5)
+    state.add_background_task("task-2", "Code review", progress=0.0)
+
+    @ui.page("/test_inspector_tasks")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_inspector_tasks")
+    await user.should_see("File indexing")
+    await user.should_see("running")
+    await user.should_see("Code review")
+
+
+@pytest.mark.asyncio
+async def test_inspector_reactive_skill_add(user: User) -> None:
+    """Verify inspector updates when a skill is added after render."""
+    state = AppState()
+
+    @ui.page("/test_inspector_reactive_skill")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_inspector_reactive_skill")
+    await user.should_see("No skills invoked in session")
+
+    state.add_skill(_make_manifest(name="test-skill"))
+    await user.should_see("test-skill")
+
+
+@pytest.mark.asyncio
+async def test_inspector_reactive_upload_add(user: User) -> None:
+    """Verify inspector updates when a file is attached after render."""
+    state = AppState()
+
+    @ui.page("/test_inspector_reactive_upload")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_inspector_reactive_upload")
+    await user.should_see("No uploaded files")
+
+    state.add_attachment("config.py")
+    await user.should_see("config.py")
+
+
+@pytest.mark.asyncio
+async def test_inspector_reactive_task_add(user: User) -> None:
+    """Verify inspector updates when a background task is added after render."""
+    state = AppState()
+
+    @ui.page("/test_inspector_reactive_task")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_inspector_reactive_task")
+    await user.should_see("No running background tasks")
+
+    state.add_background_task("task-99", "Database migration", progress=0.3)
+    await user.should_see("Database migration")
+
+
+@pytest.mark.asyncio
+async def test_inspector_empty_state_placeholders(user: User) -> None:
+    """Verify inspector shows placeholder text when all sections are empty."""
+    state = AppState()
+
+    @ui.page("/test_inspector_empty")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_inspector_empty")
+    await user.should_see("No skills invoked in session")
+    await user.should_see("No uploaded files")
+    await user.should_see("No running background tasks")

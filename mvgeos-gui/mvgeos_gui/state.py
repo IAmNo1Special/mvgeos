@@ -99,6 +99,11 @@ class AppState:
         if not self.recent_projects and self.project_path:
             self.recent_projects.append(self.project_path)
 
+    @property
+    def uploaded_files(self) -> list[str]:
+        """Files attached as context for the current session."""
+        return self.pending_attachments
+
     def subscribe(self, listener: Callable[[], Any]) -> None:
         """Subscribe a listener callback to state changes."""
         if listener not in self._change_listeners:
