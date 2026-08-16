@@ -135,13 +135,13 @@ def _run_git(project_path: Path, *args: str) -> str:
         if result.returncode != 0:
             return ""
         return result.stdout
-    except Exception:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         return ""
 
 
 def get_changed_files(project_path: Path) -> list[ChangedFile]:
     """Return modified, added, and deleted files with +N / -N counts."""
-    output = _run_git(project_path, "diff", "--numstat", "--cached", "--no-ext-diff")
+    output = _run_git(project_path, "diff", "--numstat", "--no-ext-diff")
     if not output:
         return []
     files: list[ChangedFile] = []
