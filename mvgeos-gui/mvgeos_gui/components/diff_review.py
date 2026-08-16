@@ -39,19 +39,15 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
                     ui.badge(
                         f"+{add_total}",
                         color="green-9",
-                    ).props("rounded dense").classes(
-                        "text-[10px] text-white font-mono"
-                    )
+                    ).props("rounded dense").classes("text-[10px] text-white font-mono")
                 if del_total > 0:
                     ui.badge(
                         f"-{del_total}",
                         color="red-9",
-                    ).props("rounded dense").classes(
-                        "text-[10px] text-white font-mono"
-                    )
+                    ).props("rounded dense").classes("text-[10px] text-white font-mono")
             ui.button(
                 icon="close",
-                on_click=lambda: (dialog.close()),
+                on_click=lambda: dialog.close(),
             ).props("flat dense round text-color=grey-5 size=sm")
 
         view_mode: list[str] = ["unified"]
@@ -137,9 +133,7 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
                                             "border-r border-[#2b2f3d]"
                                         )
                                         prefix = (
-                                            " "
-                                            if line.line_type == "context"
-                                            else "-"
+                                            " " if line.line_type == "context" else "-"
                                         )
                                         color = (
                                             "text-[#ef4444]"
@@ -173,9 +167,7 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
                                             "border-r border-[#2b2f3d]"
                                         )
                                         prefix = (
-                                            " "
-                                            if line.line_type == "context"
-                                            else "+"
+                                            " " if line.line_type == "context" else "+"
                                         )
                                         color = (
                                             "text-[#22c55e]"
@@ -191,22 +183,18 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
             "w-full px-4 py-2 items-center gap-2 border-b border-[#2b2f3d] bg-[#1a1d26]"
         ):
             ui.label("View:").classes("text-[11px] text-[#8b949e]")
-            ui_unified_active = (
-                view_mode[0] == "unified"
-            )
+            ui_unified_active = view_mode[0] == "unified"
             ui.button(
                 "Unified",
-                on_click=lambda: (_set_mode("unified")),
+                on_click=lambda: _set_mode("unified"),
             ).props(
                 f"flat dense no-caps size=xs "
                 f"{'text-color=primary' if ui_unified_active else 'text-color=grey-5'}"
             ).mark("unified_view_btn")
-            ui_side_active = (
-                view_mode[0] == "side_by_side"
-            )
+            ui_side_active = view_mode[0] == "side_by_side"
             ui.button(
                 "Side by Side",
-                on_click=lambda: (_set_mode("side_by_side")),
+                on_click=lambda: _set_mode("side_by_side"),
             ).props(
                 f"flat dense no-caps size=xs "
                 f"{'text-color=primary' if ui_side_active else 'text-color=grey-5'}"

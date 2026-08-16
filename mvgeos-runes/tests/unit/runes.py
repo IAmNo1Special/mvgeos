@@ -943,13 +943,11 @@ class TestGetDefaultSkillPaths:
     def test_get_default_skill_paths_order(self) -> None:
         paths = get_default_skill_paths("test_agent")
 
-        assert len(paths) == 4
-        # Order: project, user, agent, legacy
+        assert len(paths) == 3
+        # Order: project, user, agent
         assert paths[0][1] == SkillScope.PROJECT
         assert paths[1][1] == SkillScope.USER
         assert paths[2][1] == SkillScope.AGENT
-        assert paths[3][1] == SkillScope.LEGACY
-
         # Agent path should have agent name substituted
         agent_path = paths[2][0]
         assert "test_agent" in str(agent_path)

@@ -347,10 +347,9 @@ def load_runes_from_paths(
 
 # Skill discovery constants
 SKILL_SCOPES = [
-    (SkillScope.PROJECT, Path(".agents/.mvgeos/skills")),
-    (SkillScope.USER, Path("~/.agents/.mvgeos/skills")),
+    (SkillScope.PROJECT, Path(".agents/skills")),
+    (SkillScope.USER, Path("~/.agents/skills")),
     (SkillScope.AGENT, Path("~/.agents/.mvgeos/{agent_name}/skills")),
-    (SkillScope.LEGACY, Path(".agents/skills")),
 ]
 
 NAME_REGEX = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")

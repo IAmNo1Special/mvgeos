@@ -94,9 +94,7 @@ class AppState:
     _change_listeners: list[Callable[[], Any]] = field(
         default_factory=list, repr=False, compare=False
     )
-    _selected_diff_path: str | None = field(
-        default=None, repr=False, compare=False
-    )
+    _selected_diff_path: str | None = field(default=None, repr=False, compare=False)
     changed_files: list[ChangedFile] = field(default_factory=list)
 
     def __post_init__(self) -> None:

@@ -88,12 +88,17 @@ def render_inspector(state: AppState) -> ui.column:
                     ui.label("Working tree clean").classes("italic text-[11px]")
                 else:
                     for changed in state.changed_files:
-                        with ui.row().classes(
-                            "w-full items-center justify-between p-1.5 rounded "
-                            "bg-[#13151b] border border-[#252836] mb-1 "
-                            "cursor-pointer hover:border-[#3b82f6]"
-                        ).on(
-                            "click", lambda p=changed.path: state.open_diff_review(p)
+                        with (
+                            ui.row()
+                            .classes(
+                                "w-full items-center justify-between p-1.5 rounded "
+                                "bg-[#13151b] border border-[#252836] mb-1 "
+                                "cursor-pointer hover:border-[#3b82f6]"
+                            )
+                            .on(
+                                "click",
+                                lambda p=changed.path: state.open_diff_review(p),
+                            )
                         ):
                             with ui.row().classes(
                                 "items-center gap-1.5 overflow-hidden"

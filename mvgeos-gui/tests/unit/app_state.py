@@ -724,9 +724,7 @@ class TestChangedFiles:
                 deletions=0,
             ),
         ]
-        with patch(
-            "mvgeos_gui.state.get_changed_files", return_value=changed
-        ):
+        with patch("mvgeos_gui.state.get_changed_files", return_value=changed):
             state.refresh_changed_files()
         assert len(state.changed_files) == 1
         assert state.changed_files[0].path == "src/main.py"
@@ -736,9 +734,7 @@ class TestChangedFiles:
         state = AppState()
         called: list[bool] = []
         state.subscribe(lambda: called.append(True))
-        with patch(
-            "mvgeos_gui.state.get_changed_files", return_value=[]
-        ):
+        with patch("mvgeos_gui.state.get_changed_files", return_value=[]):
             state.refresh_changed_files()
         assert called == [True]
 
@@ -771,9 +767,7 @@ class TestChangedFiles:
             additions=1,
             deletions=0,
         )
-        with patch(
-            "mvgeos_gui.state.get_diff_for_file", return_value=view
-        ):
+        with patch("mvgeos_gui.state.get_diff_for_file", return_value=view):
             result = state.get_selected_diff_view()
         assert result is not None
         assert result.file_path == "src/main.py"
