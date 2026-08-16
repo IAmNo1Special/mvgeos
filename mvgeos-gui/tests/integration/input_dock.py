@@ -13,6 +13,7 @@ from mvgeos_gui.app import build_page
 from mvgeos_gui.autocomplete import (
     AutocompleteMode,
     CommandKind,
+    MentionChip,
     MentionKind,
 )
 from mvgeos_gui.components.input_dock import (
@@ -535,7 +536,7 @@ class TestAutocompleteHelpers:
         class FakeTextarea:
             value = ""
 
-        _handle_tab(ac, FakeTextarea())  # type: ignore[arg-type]
+        _handle_tab(ac, FakeTextarea(), state_with_project)  # type: ignore[arg-type]
 
     def test_handle_tab_with_selection(self, state_with_project: AppState) -> None:
         """Verify _handle_tab selects current item and updates prompt text."""
@@ -547,11 +548,10 @@ class TestAutocompleteHelpers:
             value = "hello @main"
 
         textarea = FakeTextarea()
-        _handle_tab(ac, textarea)  # type: ignore[arg-type]
+        _handle_tab(ac, textarea, state_with_project)  # type: ignore[arg-type]
 
         assert not ac.is_open
-        # The textarea should have the insertion text in place of the trigger
-        assert "@main" in textarea.value or "main.py" in textarea.value
+        assert textarea.value == "hello "
 
     def test_select_item_valid_index(self, state_with_project: AppState) -> None:
         """Verify selecting a valid item index updates the prompt."""
@@ -566,8 +566,9 @@ class TestAutocompleteHelpers:
         items = ac.get_visible_items()
         assert len(items) > 0
 
-        _select_item(ac, textarea, 0)  # type: ignore[arg-type]
+        _select_item(ac, textarea, 0, state_with_project)  # type: ignore[arg-type]
         assert not ac.is_open
+        assert textarea.value == "hello "
 
     def test_select_item_invalid_index_noop(self, state_with_project: AppState) -> None:
         """Verify selecting an invalid index is a no-op."""
@@ -578,9 +579,9 @@ class TestAutocompleteHelpers:
             value = "@main"
 
         textarea = FakeTextarea()
-        _select_item(ac, textarea, 999)  # type: ignore[arg-type]
+        _select_item(ac, textarea, 999, state_with_project)  # type: ignore[arg-type]
         assert ac.is_open
-        _select_item(ac, textarea, -1)  # type: ignore[arg-type]
+        _select_item(ac, textarea, -1, state_with_project)  # type: ignore[arg-type]
         assert ac.is_open
 
     def test_handle_tab_no_items_noop(self, state_with_project: AppState) -> None:
@@ -594,5 +595,120 @@ class TestAutocompleteHelpers:
             value = "hello @zzznomatch"
 
         textarea = FakeTextarea()
-        _handle_tab(ac, textarea)  # type: ignore[arg-type]
+        _handle_tab(ac, textarea, state_with_project)  # type: ignore[arg-type]
         assert ac.is_open
+
+
+class TestMentionChips:
+    """Tests for chip-based autocomplete selection behavior."""
+
+    @pytest.mark.asyncio
+    async def test_select_item_adds_chip_to_state(
+        self, user: User, state_with_project: AppState
+    ) -> None:
+        """Verify selecting an autocomplete item adds a mention chip."""
+        ac = state_with_project.get_autocomplete_service()
+        ac.process_input("@main")
+
+        @ui.page("/test_select_adds_chip")
+        def page() -> None:
+            build_page(state_with_project)
+
+        await user.open("/test_select_adds_chip")
+
+        textarea = user.find(ui.textarea)
+        textarea.type("@")
+        textarea.trigger("keydown.enter.prevent")
+
+        assert len(state_with_project.selected_mentions) == 1
+        assert state_with_project.selected_mentions[0].text == "@main.py"
+
+    @pytest.mark.asyncio
+    async def test_chips_render_in_input_dock(
+        self, user: User, state_with_project: AppState
+    ) -> None:
+        """Verify mention chips are visible in the input dock."""
+        state_with_project.selected_mentions = [
+            MentionChip(text="@main.py", kind="file", icon="code"),
+            MentionChip(text="/help", kind="slash", icon="slash"),
+        ]
+
+        @ui.page("/test_chips_render")
+        def page() -> None:
+            build_page(state_with_project)
+
+        await user.open("/test_chips_render")
+
+        await user.should_see("@main.py")
+        await user.should_see("/help")
+
+    @pytest.mark.asyncio
+    async def test_backspace_removes_last_chip(
+        self, user: User, state_with_project: AppState
+    ) -> None:
+        """Verify backspace on empty textarea removes the last chip."""
+        state_with_project.selected_mentions = [
+            MentionChip(text="@main.py", kind="file"),
+            MentionChip(text="/help", kind="slash"),
+        ]
+
+        @ui.page("/test_backspace_removes_chip")
+        def page() -> None:
+            build_page(state_with_project)
+
+        await user.open("/test_backspace_removes_chip")
+
+        assert len(state_with_project.selected_mentions) == 2
+
+        textarea = user.find(ui.textarea)
+        textarea.trigger("keydown.backspace")
+
+        assert len(state_with_project.selected_mentions) == 1
+        assert state_with_project.selected_mentions[0].text == "@main.py"
+
+    @pytest.mark.asyncio
+    async def test_submit_prepends_mentions_to_prompt(
+        self, user: User, state_with_project: AppState
+    ) -> None:
+        """Verify submitting a prompt prepends mention chips to the text."""
+        state_with_project.selected_mentions = [
+            MentionChip(text="@main.py", kind="file"),
+        ]
+
+        @ui.page("/test_submit_prepends_mentions")
+        def page() -> None:
+            build_page(state_with_project)
+
+        await user.open("/test_submit_prepends_mentions")
+
+        textarea = user.find(ui.textarea)
+        textarea.type("Analyze this file")
+        textarea.trigger("keydown.enter.prevent")
+
+        assert len(state_with_project.messages) == 2
+        user_msg = state_with_project.messages[0]
+        assert user_msg.content == "@main.py Analyze this file"
+        assert state_with_project.selected_mentions == []
+
+    @pytest.mark.asyncio
+    async def test_submit_mentions_only_no_text(
+        self, user: User, state_with_project: AppState
+    ) -> None:
+        """Verify submitting with only mentions and no extra text works."""
+        state_with_project.selected_mentions = [
+            MentionChip(text="@main.py", kind="file"),
+        ]
+
+        @ui.page("/test_mentions_only_submit")
+        def page() -> None:
+            build_page(state_with_project)
+
+        await user.open("/test_mentions_only_submit")
+
+        textarea = user.find(ui.textarea)
+        textarea.trigger("keydown.enter.prevent")
+
+        assert len(state_with_project.messages) == 2
+        user_msg = state_with_project.messages[0]
+        assert user_msg.content == "@main.py"
+        assert state_with_project.selected_mentions == []

@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from mvgeos_tome.ledger import TomeLedger
 
+from mvgeos_gui.autocomplete import MentionChip
 from mvgeos_gui.models import ChangedFile, ChatMessage, DiffView
 from mvgeos_gui.state import AppState
 from mvgeos_gui.tome_service import TomeService
@@ -577,6 +578,110 @@ class TestSubmitPromptAttachments:
         state.pending_attachments = ["file1.py"]
         state.clear_history()
         assert state.pending_attachments == []
+
+
+class TestSelectedMentions:
+    def test_add_mention_appends_and_notifies(self) -> None:
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        chip = MentionChip(text="@main.py", kind="file", icon="code")
+        state.add_mention(chip)
+        assert state.selected_mentions == [chip]
+        assert called == [True]
+
+    def test_remove_last_mention_removes_recent(self) -> None:
+        state = AppState()
+        state.selected_mentions = [
+            MentionChip(text="@a.py", kind="file"),
+            MentionChip(text="/help", kind="slash"),
+        ]
+        state.remove_last_mention()
+        assert len(state.selected_mentions) == 1
+        assert state.selected_mentions[0].text == "@a.py"
+
+    def test_remove_last_mention_empty_is_noop(self) -> None:
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.remove_last_mention()
+        assert state.selected_mentions == []
+        assert called == []
+
+    def test_clear_mentions_empties_list(self) -> None:
+        state = AppState()
+        state.selected_mentions = [
+            MentionChip(text="@a.py", kind="file"),
+            MentionChip(text="/help", kind="slash"),
+        ]
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.clear_mentions()
+        assert state.selected_mentions == []
+        assert called == [True]
+
+    def test_clear_mentions_empty_is_noop(self) -> None:
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.clear_mentions()
+        assert state.selected_mentions == []
+        assert called == []
+
+    def test_submit_prompt_prepends_mentions(self) -> None:
+        state = AppState()
+        state.selected_mentions = [
+            MentionChip(text="@main.py", kind="file"),
+            MentionChip(text="/help", kind="slash"),
+        ]
+        mock_service = MagicMock()
+        mock_service.run_prompt = AsyncMock()
+        state.agent_service = mock_service
+
+        state.submit_prompt("Analyze this")
+
+        user_msg = state.messages[0]
+        assert user_msg.content == "@main.py /help Analyze this"
+        assert state.selected_mentions == []
+
+    def test_submit_prompt_mentions_only(self) -> None:
+        state = AppState()
+        state.selected_mentions = [
+            MentionChip(text="@main.py", kind="file"),
+        ]
+        mock_service = MagicMock()
+        mock_service.run_prompt = AsyncMock()
+        state.agent_service = mock_service
+
+        state.submit_prompt("")
+
+        user_msg = state.messages[0]
+        assert user_msg.content == "@main.py"
+        assert state.selected_mentions == []
+
+    def test_submit_prompt_no_mentions(self) -> None:
+        state = AppState()
+        mock_service = MagicMock()
+        mock_service.run_prompt = AsyncMock()
+        state.agent_service = mock_service
+
+        state.submit_prompt("Hello world")
+
+        user_msg = state.messages[0]
+        assert user_msg.content == "Hello world"
+        assert state.selected_mentions == []
+
+    def test_new_conversation_clears_mentions(self) -> None:
+        state = AppState()
+        state.selected_mentions = [MentionChip(text="@a.py", kind="file")]
+        state.new_conversation()
+        assert state.selected_mentions == []
+
+    def test_set_project_clears_mentions(self) -> None:
+        state = AppState(project_path=Path("/proj/a"))
+        state.selected_mentions = [MentionChip(text="@a.py", kind="file")]
+        state.set_project(Path("/proj/b"))
+        assert state.selected_mentions == []
 
 
 # --- Active skills tests ---

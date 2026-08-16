@@ -131,6 +131,16 @@ class SlashCommandItem:
     value: str = ""
 
 
+@dataclass
+class MentionChip:
+    """A selected autocomplete item rendered as a chip in the input field."""
+
+    text: str
+    kind: str
+    icon: str = ""
+    path: Path | None = None
+
+
 def _score_query(key: str, query: str) -> tuple[int, int, int] | None:
     """Score a fuzzy subsequence match of *query* against *key*.
 
@@ -505,6 +515,25 @@ class AutocompleteService:
         if isinstance(item, SlashCommandItem):
             return item.name  # already includes / prefix
         return ""
+
+    def create_chip(self, item: object) -> MentionChip | None:
+        """Create a ``MentionChip`` from a selected autocomplete *item*."""
+        text = self.get_insertion_text(item)
+        if not text:
+            return None
+        kind_str = self.get_item_kind(item)
+        icon = ""
+        path = None
+        if isinstance(item, MentionItem) and item.kind == MentionKind.FILE:
+            icon = "insert_drive_file"
+            path = item.path
+        elif kind_str == MentionKind.SKILL:
+            icon = "auto_awesome"
+        elif kind_str == CommandKind.SLASH:
+            icon = "slash"
+        elif kind_str == CommandKind.RUNE:
+            icon = "auto_awesome"
+        return MentionChip(text=text, kind=kind_str, icon=icon, path=path)
 
     def get_word_range(
         self, text: str, cursor_pos: int | None = None

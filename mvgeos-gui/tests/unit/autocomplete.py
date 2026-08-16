@@ -659,3 +659,56 @@ def test_autocomplete_service_command_empty_query_shows_all() -> None:
     names = [i.name for i in items]
     assert "/help" in names
     assert "/quit" in names
+
+
+# ---------------------------------------------------------------------------
+# MentionChip creation
+# ---------------------------------------------------------------------------
+
+
+def test_autocomplete_create_chip_file() -> None:
+    service = _make_service()
+    item = MentionItem(
+        MentionKind.FILE, "src/main.py", "src/main.py", path=Path("src/main.py")
+    )
+    chip = service.create_chip(item)
+    assert chip is not None
+    assert chip.text == "@src/main.py"
+    assert chip.kind == MentionKind.FILE
+    assert chip.path == Path("src/main.py")
+
+
+def test_autocomplete_create_chip_skill() -> None:
+    service = _make_service()
+    item = MentionItem(kind=MentionKind.SKILL, label="debug", value="@debug")
+    chip = service.create_chip(item)
+    assert chip is not None
+    assert chip.text == "@debug"
+    assert chip.kind == MentionKind.SKILL
+    assert chip.icon == "auto_awesome"
+
+
+def test_autocomplete_create_chip_slash_command() -> None:
+    service = _make_service()
+    item = SlashCommandItem(kind=CommandKind.SLASH, name="/help")
+    chip = service.create_chip(item)
+    assert chip is not None
+    assert chip.text == "/help"
+    assert chip.kind == CommandKind.SLASH
+    assert chip.icon == "slash"
+
+
+def test_autocomplete_create_chip_rune_command() -> None:
+    service = _make_service()
+    item = SlashCommandItem(kind=CommandKind.RUNE, name="/debug")
+    chip = service.create_chip(item)
+    assert chip is not None
+    assert chip.text == "/debug"
+    assert chip.kind == CommandKind.RUNE
+    assert chip.icon == "auto_awesome"
+
+
+def test_autocomplete_create_chip_unknown_item() -> None:
+    service = _make_service()
+    chip = service.create_chip("not-an-item")
+    assert chip is None

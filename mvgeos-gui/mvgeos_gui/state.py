@@ -21,6 +21,7 @@ from mvgeos_tome.types import TomeEntryType
 from mvgeos_gui.agent_service import AgentService
 from mvgeos_gui.autocomplete import (
     AutocompleteService,
+    MentionChip,
     MentionIndex,
     SlashCommandRegistry,
 )
@@ -84,6 +85,7 @@ class AppState:
     active_prompt: str = ""
     api_key: str | None = None
     pending_attachments: list[str] = field(default_factory=list)
+    selected_mentions: list[MentionChip] = field(default_factory=list)
     active_skills: list[SkillInfo] = field(default_factory=list)
     agent_service: AgentService | None = field(default=None, repr=False, compare=False)
     active_task: asyncio.Task[Any] | None = field(
@@ -206,6 +208,23 @@ class AppState:
             del self.pending_attachments[index]
             self.notify()
 
+    def add_mention(self, chip: MentionChip) -> None:
+        """Add a mention chip to the current input."""
+        self.selected_mentions.append(chip)
+        self.notify()
+
+    def remove_last_mention(self) -> None:
+        """Remove the most recently added mention chip."""
+        if self.selected_mentions:
+            self.selected_mentions.pop()
+            self.notify()
+
+    def clear_mentions(self) -> None:
+        """Remove all mention chips."""
+        if self.selected_mentions:
+            self.selected_mentions.clear()
+            self.notify()
+
     def clear_attachments(self) -> None:
         """Remove all pending attachments."""
         if self.pending_attachments:
@@ -320,6 +339,7 @@ class AppState:
         self.agent_service = None
         self._autocomplete_service = None
         self.clear_attachments()
+        self.clear_mentions()
         self.add_recent_project(path)
         self.load_tomes()
         self.notify()
@@ -341,6 +361,7 @@ class AppState:
         self.messages = []
         self.total_mana_used = 0
         self.pending_attachments.clear()
+        self.selected_mentions.clear()
         self.background_tasks.clear()
         self.clear_skills()
         self.load_tomes()
@@ -409,11 +430,18 @@ class AppState:
 
     def submit_prompt(self, prompt: str) -> None:
         """Submit a new user prompt and start channeling Mvge response."""
-        text = prompt.strip()
-        if not text or self.is_channeling:
+        if self.is_channeling:
             return
 
-        # Append user message bubble
+        mention_text = " ".join(chip.text for chip in self.selected_mentions)
+        text = prompt.strip()
+        if not mention_text and not text:
+            return
+
+        if mention_text:
+            text = f"{mention_text} {text}" if text else mention_text
+        self.selected_mentions.clear()
+
         attachments = list(self.pending_attachments)
         self.pending_attachments.clear()
         user_msg = ChatMessage(role="user", content=text, attachments=attachments)
