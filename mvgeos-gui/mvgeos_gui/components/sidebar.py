@@ -147,15 +147,21 @@ def render_sidebar(state: AppState) -> ui.column:
         # Bottom section with generous bottom padding
         with ui.column().classes("w-full border-t border-[#2b2f3d] pt-3 pb-2 gap-2"):
             if state.sidebar_expanded:
-                with ui.row().classes(
-                    "w-full items-center justify-between px-2 text-[#8b949e] "
-                    "hover:text-[#e6edf3] cursor-pointer"
+                with (
+                    ui.row()
+                    .classes(
+                        "w-full items-center justify-between px-2 text-[#8b949e] "
+                        "hover:text-[#e6edf3] cursor-pointer"
+                    )
+                    .on("click", state.open_app_settings)
                 ):
                     with ui.row().classes("items-center gap-2"):
                         ui.icon("settings", size="18px")
                         ui.label("Settings").classes("text-xs font-medium")
                     ui.label("v0.1.0").classes("text-[10px] text-[#64748b]")
             else:
-                ui.button(icon="settings").props("flat dense round text-color=grey-5")
+                ui.button(icon="settings", on_click=state.open_app_settings).props(
+                    "flat dense round text-color=grey-5"
+                )
 
     return container

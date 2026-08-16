@@ -7,7 +7,11 @@ from mvgeos_gui.components.empty_state import render_empty_state
 from mvgeos_gui.components.header import render_header
 from mvgeos_gui.components.input_dock import render_input_dock
 from mvgeos_gui.components.inspector import render_inspector
+from mvgeos_gui.components.settings_modal import render_app_settings_modal
 from mvgeos_gui.components.sidebar import render_sidebar
+from mvgeos_gui.components.workspace_settings_modal import (
+    render_workspace_settings_modal,
+)
 from mvgeos_gui.state import AppState
 
 
@@ -42,5 +46,8 @@ def render_shell(state: AppState) -> ui.row:
 
         # 3. Right Context Inspector
         render_inspector(state)
+
+    render_app_settings_modal(state)
+    render_workspace_settings_modal(state)
 
     return shell_container

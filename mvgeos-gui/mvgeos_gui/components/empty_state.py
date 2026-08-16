@@ -40,6 +40,13 @@ def render_empty_state(state: AppState) -> ui.column:
                     ui.label(project_name).classes("font-medium max-w-[200px] truncate")
                     ui.icon("expand_more", size="15px").classes("text-[#8b949e]")
 
+                ui.button(
+                    icon="settings",
+                    on_click=state.open_workspace_settings,
+                ).props("flat dense round text-color=grey-5 size=xs").mark(
+                    "workspace_settings_btn"
+                )
+
                 # Dropdown Menu
                 with ui.menu().classes(
                     "w-80 bg-[#13151b] border border-[#2b2f3d] p-2 "

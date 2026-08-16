@@ -787,3 +787,57 @@ class TestChangedFiles:
         state.subscribe(lambda: called.append(True))
         state.clear_diff_selection()
         assert called == [True]
+
+
+class TestSettingsModals:
+    def test_open_app_settings_sets_flag(self) -> None:
+        state = AppState()
+        assert state._show_app_settings is False
+        state.open_app_settings()
+        assert state._show_app_settings is True
+
+    def test_open_app_settings_closes_workspace(self) -> None:
+        state = AppState()
+        state._show_workspace_settings = True
+        state.open_app_settings()
+        assert state._show_workspace_settings is False
+        assert state._show_app_settings is True
+
+    def test_close_app_settings_clears_flag(self) -> None:
+        state = AppState()
+        state._show_app_settings = True
+        state.close_app_settings()
+        assert state._show_app_settings is False
+
+    def test_open_workspace_settings_sets_flag(self) -> None:
+        state = AppState()
+        assert state._show_workspace_settings is False
+        state.open_workspace_settings()
+        assert state._show_workspace_settings is True
+
+    def test_open_workspace_settings_closes_app(self) -> None:
+        state = AppState()
+        state._show_app_settings = True
+        state.open_workspace_settings()
+        assert state._show_app_settings is False
+        assert state._show_workspace_settings is True
+
+    def test_close_workspace_settings_clears_flag(self) -> None:
+        state = AppState()
+        state._show_workspace_settings = True
+        state.close_workspace_settings()
+        assert state._show_workspace_settings is False
+
+    def test_open_app_settings_notifies_listeners(self) -> None:
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.open_app_settings()
+        assert called == [True]
+
+    def test_open_workspace_settings_notifies_listeners(self) -> None:
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.open_workspace_settings()
+        assert called == [True]

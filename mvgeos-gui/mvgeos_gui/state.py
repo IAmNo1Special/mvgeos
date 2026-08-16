@@ -24,6 +24,7 @@ from mvgeos_gui.autocomplete import (
     MentionIndex,
     SlashCommandRegistry,
 )
+from mvgeos_gui.config_service import ConfigService
 from mvgeos_gui.git_diff import ChangedFile, get_changed_files, get_diff_for_file
 from mvgeos_gui.models import (
     Artifact,
@@ -99,6 +100,11 @@ class AppState:
     changed_files: list[ChangedFile] = field(default_factory=list)
     _selected_artifact_id: str | None = field(default=None, repr=False, compare=False)
     artifacts: list[Artifact] = field(default_factory=list)
+    _config_service: ConfigService = field(
+        default_factory=ConfigService, repr=False, compare=False
+    )
+    _show_app_settings: bool = False
+    _show_workspace_settings: bool = False
 
     def __post_init__(self) -> None:
         """Initialize state invariants."""
@@ -284,6 +290,28 @@ class AppState:
     def toggle_inspector(self) -> None:
         """Toggle right context inspector visibility."""
         self.inspector_expanded = not self.inspector_expanded
+        self.notify()
+
+    def open_app_settings(self) -> None:
+        """Open the Application Settings modal."""
+        self._show_app_settings = True
+        self._show_workspace_settings = False
+        self.notify()
+
+    def close_app_settings(self) -> None:
+        """Close the Application Settings modal."""
+        self._show_app_settings = False
+        self.notify()
+
+    def open_workspace_settings(self) -> None:
+        """Open the Project Workspace Settings modal."""
+        self._show_workspace_settings = True
+        self._show_app_settings = False
+        self.notify()
+
+    def close_workspace_settings(self) -> None:
+        """Close the Project Workspace Settings modal."""
+        self._show_workspace_settings = False
         self.notify()
 
     def set_project(self, path: Path) -> None:
