@@ -148,7 +148,7 @@ class AgentService:
             kind = data.get("kind", "text")
             if text:
                 if kind == "contemplation":
-                    target_message.contemplation += text
+                    target_message.contemplation.append(text)
                 else:
                     target_message.content += text
                     if (
@@ -159,10 +159,7 @@ class AgentService:
                             target_message.content
                         )
                         if thoughts:
-                            sep = "\n\n" if target_message.contemplation else ""
-                            target_message.contemplation = (
-                                f"{target_message.contemplation}{sep}{thoughts}"
-                            )
+                            target_message.contemplation.extend(thoughts)
                             target_message.content = cleaned
                 target_message.is_streaming = True
                 if target_state is not None:
@@ -194,23 +191,25 @@ class AgentService:
                 path = (
                     data.get("path")
                     or data.get("file_path")
-                    or data.get("params", {}).get("path", "file")
+                    or data.get("params", {}).get("path", "")
                 )
-                lines = data.get("lines") or data.get("params", {}).get("lines")
-                step = self._get_or_create_step(target_message, StepType.FILES)
-                step.files.append(
-                    FileExploration(
-                        path=str(path),
-                        operation=spell_name,
-                        lines=str(lines) if lines else None,
+                if path:
+                    lines = data.get("lines") or data.get("params", {}).get("lines")
+                    step = self._get_or_create_step(target_message, StepType.FILES)
+                    step.files.append(
+                        FileExploration(
+                            path=str(path),
+                            operation=spell_name,
+                            lines=str(lines) if lines else None,
+                        )
                     )
-                )
-                step.title = f"Explored {len(step.files)} file(s)"
+                    step.title = f"Explored {len(step.files)} file(s)"
                 # Reading a SKILL.md file marks that skill as invoked.
                 if str(path).endswith("SKILL.md"):
                     self.mark_skill_invoked(str(path), state=target_state)
             else:
                 step = self._get_or_create_step(target_message, StepType.WORKED)
+                step.spell_name = spell_name
                 step.details.append(f"Executing {spell_name}...")
                 elapsed = time.monotonic() - self._start_time
                 step.title = f"Worked for {self._format_duration(elapsed)}"
@@ -247,6 +246,7 @@ class AgentService:
                     step.title = (
                         f"Worked for {self._format_duration(step.duration_seconds)}"
                     )
+                    step.result = str(result or error or "")
             if target_state is not None:
                 target_state.notify()
 
@@ -265,10 +265,7 @@ class AgentService:
             if target_message.content:
                 cleaned, thoughts = extract_contemplation_tags(target_message.content)
                 if thoughts:
-                    sep = "\n\n" if target_message.contemplation else ""
-                    target_message.contemplation = (
-                        f"{target_message.contemplation}{sep}{thoughts}"
-                    )
+                    target_message.contemplation.extend(thoughts)
                     target_message.content = cleaned
             target_message.is_streaming = False
             if target_state is not None:

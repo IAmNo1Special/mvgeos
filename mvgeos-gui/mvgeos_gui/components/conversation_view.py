@@ -92,9 +92,9 @@ def render_assistant_message(
                         )
                 ui.label(msg.timestamp).classes("text-[10px] text-[#64748b] font-mono")
 
-        # Contemplation / Reasoning Card
-        if msg.contemplation:
-            render_contemplation_card(msg.contemplation, msg.is_streaming)
+        # Contemplation / Reasoning Cards
+        for thought in msg.contemplation:
+            render_contemplation_card(thought, msg.is_streaming)
 
         # Intermediate Execution Steps
         if msg.steps:
@@ -135,7 +135,7 @@ def render_assistant_message(
                 "border-t border-[#252836]/60"
             ):
                 # Copy Button
-                copy_text = msg.content or msg.contemplation
+                copy_text = msg.content or "\n\n".join(msg.contemplation)
                 with ui.button(
                     icon="content_copy",
                     on_click=lambda c=copy_text: _copy_to_clipboard(c),

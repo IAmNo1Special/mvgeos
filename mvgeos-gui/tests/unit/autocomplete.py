@@ -513,6 +513,24 @@ def test_autocomplete_get_insertion_text_skill() -> None:
     assert service.get_insertion_text(item) == "@debug-skill"
 
 
+def test_autocomplete_get_insertion_text_slash_skill_returns_slash_prefix() -> None:
+    service = _make_service()
+    item = MentionItem(
+        kind=MentionKind.SKILL, label="debug-skill", value="@debug-skill"
+    )
+    service.mode = AutocompleteMode.COMMAND
+    assert service.get_insertion_text(item) == "/debug-skill"
+
+
+def test_autocomplete_get_insertion_text_mention_skill_returns_at_prefix() -> None:
+    service = _make_service()
+    item = MentionItem(
+        kind=MentionKind.SKILL, label="debug-skill", value="@debug-skill"
+    )
+    service.mode = AutocompleteMode.MENTION
+    assert service.get_insertion_text(item) == "@debug-skill"
+
+
 def test_autocomplete_get_insertion_text_command() -> None:
     service = _make_service()
     item = SlashCommandItem(kind=CommandKind.SLASH, name="/help", value="/help")

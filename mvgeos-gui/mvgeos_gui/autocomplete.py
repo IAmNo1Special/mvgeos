@@ -511,9 +511,11 @@ class AutocompleteService:
         if isinstance(item, MentionItem):
             if item.kind == MentionKind.FILE:
                 return f"@{item.value}"
-            return item.value  # skills already have @ prefix
+            if self.mode == AutocompleteMode.COMMAND:
+                return f"/{item.label}"
+            return item.value
         if isinstance(item, SlashCommandItem):
-            return item.name  # already includes / prefix
+            return item.name
         return ""
 
     def create_chip(self, item: object) -> MentionChip | None:

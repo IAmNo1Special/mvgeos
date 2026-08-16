@@ -38,7 +38,7 @@ from mvgeos_gui.models import (
 from mvgeos_gui.tome_service import TomeListEntry, TomeService
 
 
-def _extract_text_and_contemplation(content: Any) -> tuple[str, str]:
+def _extract_text_and_contemplation(content: Any) -> tuple[str, list[str]]:
     """Extract plain text and contemplation from message content."""
     if isinstance(content, str):
         return extract_contemplation_tags(content)
@@ -57,11 +57,10 @@ def _extract_text_and_contemplation(content: Any) -> tuple[str, str]:
             elif isinstance(item, str):
                 text_parts.append(item)
         full_text = "\n".join(text_parts)
-        cleaned, tag_thoughts = extract_contemplation_tags(full_text)
-        if tag_thoughts:
-            thought_parts.append(tag_thoughts)
-        return cleaned, "\n\n".join(thought_parts).strip()
-    return str(content or ""), ""
+        _, tag_thoughts = extract_contemplation_tags(full_text)
+        thought_parts.extend(tag_thoughts)
+        return full_text, thought_parts
+    return str(content or ""), []
 
 
 @dataclass

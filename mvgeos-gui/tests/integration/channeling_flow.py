@@ -178,7 +178,7 @@ async def test_contemplation_card_in_conversation(user: User) -> None:
     state.messages.append(
         ChatMessage(
             role="assistant",
-            contemplation="User wants greeting. Respond politely.",
+            contemplation=["User wants greeting. Respond politely."],
             content="Hey there! How can I help you today?",
             model="nvidia/nemotron-3-ultra-550b-a55b:free",
         )
