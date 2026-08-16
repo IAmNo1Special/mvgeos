@@ -526,3 +526,61 @@ async def test_inspector_empty_state_placeholders(user: User) -> None:
     await user.should_see("No skills invoked in session")
     await user.should_see("No uploaded files")
     await user.should_see("No running background tasks")
+
+
+@pytest.mark.asyncio
+async def test_inspector_accordion_expand_collapse(user: User) -> None:
+    """Verify clicking an accordion header expands and collapses the section."""
+    state = AppState()
+    state.add_skill(
+        _make_manifest(name="code-review", path="/skills/code-review/SKILL.md")
+    )
+    state.add_attachment("main.py")
+    state.add_background_task("task-1", "File indexing", progress=0.5)
+
+    @ui.page("/test_inspector_accordion")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_inspector_accordion")
+    await user.should_see("Skills Used")
+    await user.should_see("code-review")
+    await user.should_see("Uploads")
+    await user.should_see("main.py")
+    await user.should_see("Background Tasks")
+    await user.should_see("File indexing")
+
+
+@pytest.mark.asyncio
+async def test_inspector_reactive_multi_item_updates(user: User) -> None:
+    """Verify inspector updates correctly when multiple skills, uploads, and tasks are added."""
+    state = AppState()
+
+    @ui.page("/test_inspector_reactive_multi")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_inspector_reactive_multi")
+    await user.should_see("No skills invoked in session")
+    await user.should_see("No uploaded files")
+    await user.should_see("No running background tasks")
+
+    state.add_skill(
+        _make_manifest(name="code-review", path="/skills/code-review/SKILL.md")
+    )
+    state.add_skill(
+        _make_manifest(name="test-runner", path="/skills/test-runner/SKILL.md")
+    )
+    state.add_attachment("main.py")
+    state.add_attachment("utils.py")
+    state.add_background_task("task-1", "File indexing", progress=0.5)
+    state.add_background_task("task-2", "Code review", progress=0.0)
+
+    await user.should_see("code-review")
+    await user.should_see("test-runner")
+    await user.should_see("/skills/test-runner/SKILL.md")
+    await user.should_see("main.py")
+    await user.should_see("utils.py")
+    await user.should_see("File indexing")
+    await user.should_see("running")
+    await user.should_see("Code review")
