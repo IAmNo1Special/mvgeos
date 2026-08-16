@@ -7,6 +7,7 @@ import contextlib
 import os
 import shutil
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -23,7 +24,13 @@ from mvgeos_gui.autocomplete import (
     MentionIndex,
     SlashCommandRegistry,
 )
-from mvgeos_gui.models import ChatMessage, extract_contemplation_tags
+from mvgeos_gui.models import (
+    BackgroundTask,
+    ChatMessage,
+    SkillInfo,
+    TaskStatus,
+    extract_contemplation_tags,
+)
 from mvgeos_gui.tome_service import TomeListEntry, TomeService
 
 
@@ -74,10 +81,12 @@ class AppState:
     active_prompt: str = ""
     api_key: str | None = None
     pending_attachments: list[str] = field(default_factory=list)
+    active_skills: list[SkillInfo] = field(default_factory=list)
     agent_service: AgentService | None = field(default=None, repr=False, compare=False)
     active_task: asyncio.Task[Any] | None = field(
         default=None, repr=False, compare=False
     )
+    background_tasks: list[BackgroundTask] = field(default_factory=list)
     _autocomplete_service: AutocompleteService | None = field(
         default=None, repr=False, compare=False
     )
@@ -89,6 +98,11 @@ class AppState:
         """Initialize state invariants."""
         if not self.recent_projects and self.project_path:
             self.recent_projects.append(self.project_path)
+
+    @property
+    def uploaded_files(self) -> list[str]:
+        """Files attached as context for the current session."""
+        return self.pending_attachments
 
     def subscribe(self, listener: Callable[[], Any]) -> None:
         """Subscribe a listener callback to state changes."""
@@ -127,6 +141,47 @@ class AppState:
         loads, _diagnostics = load_skills_from_paths(paths)
         return [load.manifest for load in loads]
 
+    @staticmethod
+    def skill_info_from_manifest(manifest: SkillManifest) -> SkillInfo:
+        """Convert a SkillManifest into the inspector-friendly SkillInfo shape."""
+        return SkillInfo(
+            name=manifest.name,
+            description=manifest.description,
+            scope=manifest.scope.value if manifest.scope else "",
+            path=manifest.path,
+        )
+
+    def add_skill(self, manifest: SkillManifest) -> bool:
+        """Add a skill to active_skills if not already present.
+
+        Returns True when the skill was newly added (state changed).
+        """
+        info = self.skill_info_from_manifest(manifest)
+        for existing in self.active_skills:
+            if existing.name == info.name:
+                return False
+        self.active_skills.append(info)
+        self.notify()
+        return True
+
+    def remove_skill(self, name: str) -> bool:
+        """Remove a skill from active_skills by name.
+
+        Returns True when a skill was actually removed.
+        """
+        for index, existing in enumerate(self.active_skills):
+            if existing.name == name:
+                del self.active_skills[index]
+                self.notify()
+                return True
+        return False
+
+    def clear_skills(self) -> None:
+        """Remove all tracked skills."""
+        if self.active_skills:
+            self.active_skills.clear()
+            self.notify()
+
     def add_attachment(self, name: str) -> None:
         """Add a file name to the pending attachments bound to next submission."""
         if name and name not in self.pending_attachments:
@@ -143,6 +198,76 @@ class AppState:
         """Remove all pending attachments."""
         if self.pending_attachments:
             self.pending_attachments.clear()
+            self.notify()
+
+    def add_background_task(
+        self,
+        task_id: str,
+        name: str,
+        *,
+        parent_id: str | None = None,
+        progress: float = 0.0,
+    ) -> BackgroundTask:
+        """Register a new background task (idempotent on duplicate id)."""
+        existing = self.get_background_task(task_id)
+        if existing is not None:
+            return existing
+        task = BackgroundTask(
+            id=task_id,
+            name=name,
+            parent_id=parent_id,
+            progress=progress,
+        )
+        self.background_tasks.append(task)
+        self.notify()
+        return task
+
+    def update_background_task(
+        self,
+        task_id: str,
+        *,
+        status: TaskStatus | str | None = None,
+        progress: float | None = None,
+        result: str | None = None,
+        error: str | None = None,
+    ) -> BackgroundTask | None:
+        """Update fields on an existing background task (no-op if unknown)."""
+        task = self.get_background_task(task_id)
+        if task is None:
+            return None
+        if status is not None:
+            task.status = TaskStatus(status)
+        if progress is not None:
+            task.progress = progress
+        if result is not None:
+            task.result = result
+        if error is not None:
+            task.error = error
+        if task.status in (TaskStatus.COMPLETE, TaskStatus.ERROR):
+            task.ended_at = time.monotonic()
+        self.notify()
+        return task
+
+    def remove_background_task(self, task_id: str) -> bool:
+        """Remove a background task by id. Returns True if removed."""
+        for i, task in enumerate(self.background_tasks):
+            if task.id == task_id:
+                del self.background_tasks[i]
+                self.notify()
+                return True
+        return False
+
+    def get_background_task(self, task_id: str) -> BackgroundTask | None:
+        """Look up a background task by id."""
+        for task in self.background_tasks:
+            if task.id == task_id:
+                return task
+        return None
+
+    def clear_background_tasks(self) -> None:
+        """Remove all tracked background tasks."""
+        if self.background_tasks:
+            self.background_tasks.clear()
             self.notify()
 
     def toggle_sidebar(self) -> None:
@@ -182,6 +307,8 @@ class AppState:
         self.messages = []
         self.total_mana_used = 0
         self.pending_attachments.clear()
+        self.background_tasks.clear()
+        self.clear_skills()
         self.load_tomes()
 
     def load_tomes(self) -> None:

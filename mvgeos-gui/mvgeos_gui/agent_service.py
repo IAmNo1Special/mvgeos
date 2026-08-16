@@ -15,11 +15,13 @@ from mvgeos_agent.errors import AuthenticationError
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 
 from mvgeos_gui.models import (
+    BackgroundTask,
     ChatMessage,
     CommandExecution,
     ExecutionStep,
     FileExploration,
     StepType,
+    TaskStatus,
     extract_contemplation_tags,
 )
 
@@ -66,6 +68,8 @@ class AgentService:
         self._active_task: asyncio.Task[Any] | None = None
         self._start_time: float = 0.0
         self._pending_spell_starts: dict[str, float] = {}
+        self._invoked_skill_names: set[str] = set()
+        self._loaded_skill_names: set[str] = set()
 
     @property
     def project_path(self) -> Path:
@@ -86,15 +90,18 @@ class AgentService:
                 api_key=self._api_key or "mock-key",
                 state=state,
             )
-            return self._agent
+        else:
+            from coding_mvge.mvge import CodingMvge
 
-        from coding_mvge.mvge import CodingMvge
+            self._agent = CodingMvge(
+                api_key=self._api_key or "mock-key",
+                session_dir=state.tome_service.tome_dir,
+                session_resume=state.active_tome_id,
+            )
 
-        self._agent = CodingMvge(
-            api_key=self._api_key or "mock-key",
-            session_dir=state.tome_service.tome_dir,
-            session_resume=state.active_tome_id,
-        )
+        # When the agent is created, seed active_skills from the runner's
+        # loaded skill manifests so the inspector reflects available skills.
+        self.populate_skills(self._agent, state)
         return self._agent
 
     def _ensure_listeners(self, agent: Any) -> None:
@@ -129,6 +136,9 @@ class AgentService:
             target_message.is_streaming = True
             if target_state is not None:
                 target_state.is_channeling = True
+                # Seed active_skills from the agent's loaded skill manifests.
+                if self._agent is not None:
+                    self.populate_skills(self._agent, target_state)
                 target_state.notify()
 
         elif event.type == MvgeEventType.MESSAGE_UPDATE:
@@ -194,6 +204,9 @@ class AgentService:
                     )
                 )
                 step.title = f"Explored {len(step.files)} file(s)"
+                # Reading a SKILL.md file marks that skill as invoked.
+                if str(path).endswith("SKILL.md"):
+                    self.mark_skill_invoked(str(path), state=target_state)
             else:
                 step = self._get_or_create_step(target_message, StepType.WORKED)
                 step.details.append(f"Executing {spell_name}...")
@@ -201,6 +214,10 @@ class AgentService:
                 step.title = f"Worked for {self._format_duration(elapsed)}"
             if target_state is not None:
                 target_state.notify()
+
+            # Track long-running spells as background tasks in the inspector.
+            if target_state is not None:
+                self._track_spell_start(target_state, spell_id, spell_name, data)
 
         elif event.type == MvgeEventType.SPELL_CASTING_END:
             spell_id = data.get("spellCastId", "")
@@ -230,6 +247,10 @@ class AgentService:
                     )
             if target_state is not None:
                 target_state.notify()
+
+            # Finalise the background task entry created on SPELL_CASTING_START.
+            if target_state is not None:
+                self._track_spell_end(target_state, spell_id, result, error, duration)
 
         elif event.type in (MvgeEventType.TURN_END, MvgeEventType.AGENT_END):
             if self._start_time > 0:
@@ -263,6 +284,81 @@ class AgentService:
         message.steps.append(step)
         return step
 
+    def _track_spell_start(
+        self,
+        state: AppState,
+        spell_id: str,
+        spell_name: str,
+        data: dict[str, Any],
+    ) -> None:
+        """Register a long-running spell cast as a background task."""
+        if not spell_id:
+            return
+        parent_id = data.get("parentSpellCastId") or data.get("parentTaskId")
+        state.add_background_task(
+            task_id=spell_id,
+            name=spell_name,
+            parent_id=parent_id,
+        )
+
+    def _track_spell_end(
+        self,
+        state: AppState,
+        spell_id: str,
+        result: Any,
+        error: Any,
+        duration: float,
+    ) -> None:
+        """Mark a background spell task complete or errored on SPELL_CASTING_END."""
+        if not spell_id:
+            return
+        status: TaskStatus
+        if error:
+            status = TaskStatus.ERROR
+        elif result is None or result == "":
+            status = TaskStatus.COMPLETE
+        else:
+            status = TaskStatus.COMPLETE
+        state.update_background_task(
+            spell_id,
+            status=status,
+            result=str(result or ""),
+            error=str(error) if error else None,
+        )
+        # Cap progress at 100% on completion.
+        task = state.get_background_task(spell_id)
+        if task is not None and task.status in (
+            TaskStatus.COMPLETE,
+            TaskStatus.ERROR,
+        ):
+            task.progress = 100.0
+
+    def register_subagent_task(
+        self,
+        state: AppState,
+        task_id: str,
+        name: str,
+        *,
+        parent_id: str | None = None,
+    ) -> BackgroundTask | None:
+        """Register a subagent background task in the inspector state."""
+        if not task_id or state is None:
+            return None
+        return state.add_background_task(
+            task_id=task_id, name=name, parent_id=parent_id
+        )
+
+    def update_subagent_task(
+        self,
+        state: AppState,
+        task_id: str,
+        *,
+        status: TaskStatus | str | None = None,
+        progress: float | None = None,
+    ) -> BackgroundTask | None:
+        """Update a subagent background task's status/progress."""
+        return state.update_background_task(task_id, status=status, progress=progress)
+
     @staticmethod
     def _format_duration(seconds: float) -> str:
         if seconds < 1.0:
@@ -282,6 +378,7 @@ class AgentService:
         self._active_state = state
         self._start_time = time.monotonic()
         self._pending_spell_starts.clear()
+        self.reset_skill_tracking()
         state.is_channeling = True
         message.is_streaming = True
         state.notify()
@@ -345,3 +442,67 @@ class AgentService:
         self._is_running = False
         self._active_message = None
         self._active_state = None
+
+    # --- Skill tracking helpers ---
+
+    def _runner_skills(self, agent: Any) -> list[Any]:
+        """Return the list of SkillManifest from the agent's RuneRunner."""
+        runner = getattr(agent, "runner", None)
+        if runner is None:
+            return []
+        getter = getattr(runner, "get_skills", None)
+        if not callable(getter):
+            return []
+        try:
+            return list(getter())
+        except Exception:
+            logger.debug("Failed to read skills from runner", exc_info=True)
+            return []
+
+    def populate_skills(self, agent: Any, state: AppState | None) -> None:
+        """Seed state.active_skills from the agent's loaded skill manifests.
+
+        Idempotent: skills already tracked are not duplicated. Skills that
+        were previously invoked remain marked as invoked.
+        """
+        if state is None:
+            return
+        manifests = self._runner_skills(agent)
+        for manifest in manifests:
+            name = getattr(manifest, "name", "")
+            if not name:
+                continue
+            if name in self._loaded_skill_names:
+                continue
+            self._loaded_skill_names.add(name)
+            state.add_skill(manifest)
+        if state.active_skills:
+            state.notify()
+
+    def mark_skill_invoked(self, path: str, state: AppState | None = None) -> None:
+        """Record that a skill was invoked by reading one of its files."""
+        if not path:
+            return
+        normalized = str(path)
+        target_state = state or self._active_state
+        if target_state is None:
+            return
+        for skill in target_state.active_skills:
+            if not skill.path:
+                continue
+            skill_root = skill.path.rstrip("/")
+            skill_md = f"{skill_root}/SKILL.md"
+            matched = (
+                normalized == skill.path
+                or normalized == skill_md
+                or normalized.startswith(skill_root + "/")
+            )
+            if matched and skill.name not in self._invoked_skill_names:
+                self._invoked_skill_names.add(skill.name)
+                skill.invoked = True
+                target_state.notify()
+
+    def reset_skill_tracking(self) -> None:
+        """Clear per-session skill invocation tracking."""
+        self._invoked_skill_names.clear()
+        self._loaded_skill_names.clear()

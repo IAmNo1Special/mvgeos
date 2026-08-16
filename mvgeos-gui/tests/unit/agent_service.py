@@ -10,7 +10,7 @@ from mvgeos_agent.errors import AuthenticationError
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 
 from mvgeos_gui.agent_service import AgentService, resolve_api_key
-from mvgeos_gui.models import ChatMessage, StepType
+from mvgeos_gui.models import ChatMessage, StepType, TaskStatus
 from mvgeos_gui.state import AppState
 
 
@@ -323,6 +323,213 @@ def test_handle_agent_end_finalizes_state(
     assert app_state.is_channeling is False
 
 
+def test_spell_casting_start_tracks_background_task(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify SPELL_CASTING_START registers a running background task in state."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    start_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_START,
+        data={
+            "spellCastId": "cast-bg-1",
+            "spellName": "bash",
+            "command": "pytest -v",
+        },
+    )
+    agent_service.handle_event(start_event, msg, app_state)
+
+    assert len(app_state.background_tasks) == 1
+    task = app_state.background_tasks[0]
+    assert task.id == "cast-bg-1"
+    assert task.name == "bash"
+    assert task.status == TaskStatus.RUNNING
+    assert task.progress == 0.0
+
+
+def test_spell_casting_start_is_idempotent_on_duplicate_id(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify duplicate spellCastId does not create a second background task."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    start_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_START,
+        data={"spellCastId": "cast-bg-2", "spellName": "read"},
+    )
+    agent_service.handle_event(start_event, msg, app_state)
+    agent_service.handle_event(start_event, msg, app_state)
+
+    assert len(app_state.background_tasks) == 1
+
+
+def test_spell_casting_start_uses_parent_spell_id(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify parentSpellCastId is propagated onto the background task."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    start_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_START,
+        data={
+            "spellCastId": "cast-child",
+            "spellName": "edit",
+            "parentSpellCastId": "cast-parent",
+        },
+    )
+    agent_service.handle_event(start_event, msg, app_state)
+
+    assert app_state.background_tasks[0].parent_id == "cast-parent"
+
+
+def test_spell_casting_end_marks_task_complete(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify SPELL_CASTING_END finalises the background task as complete."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    start_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_START,
+        data={"spellCastId": "cast-bg-3", "spellName": "bash"},
+    )
+    agent_service.handle_event(start_event, msg, app_state)
+
+    end_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_END,
+        data={
+            "spellCastId": "cast-bg-3",
+            "result": "82 passed in 0.45s",
+        },
+    )
+    agent_service.handle_event(end_event, msg, app_state)
+
+    task = app_state.background_tasks[0]
+    assert task.status == TaskStatus.COMPLETE
+    assert task.result == "82 passed in 0.45s"
+    assert task.progress == 100.0
+    assert task.ended_at is not None
+
+
+def test_spell_casting_end_marks_task_error(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify SPELL_CASTING_END with an error marks the task errored."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    start_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_START,
+        data={"spellCastId": "cast-bg-4", "spellName": "bash"},
+    )
+    agent_service.handle_event(start_event, msg, app_state)
+
+    end_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_END,
+        data={
+            "spellCastId": "cast-bg-4",
+            "error": "Command timed out",
+        },
+    )
+    agent_service.handle_event(end_event, msg, app_state)
+
+    task = app_state.background_tasks[0]
+    assert task.status == TaskStatus.ERROR
+    assert task.error == "Command timed out"
+    assert task.progress == 100.0
+
+
+def test_spell_casting_end_unknown_id_is_noop(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify SPELL_CASTING_END for an unknown spell id does not crash."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    end_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_END,
+        data={"spellCastId": "never-started", "result": "ok"},
+    )
+    agent_service.handle_event(end_event, msg, app_state)
+
+    assert app_state.background_tasks == []
+
+
+def test_spell_casting_start_without_id_is_noop(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify a spell cast with no spellCastId does not create a task."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    start_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_START,
+        data={"spellName": "bash"},
+    )
+    agent_service.handle_event(start_event, msg, app_state)
+
+    assert app_state.background_tasks == []
+
+
+def test_register_subagent_task(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify register_subagent_task adds a subagent background task."""
+    task = agent_service.register_subagent_task(
+        app_state, "sub-1", "Reviewer", parent_id="cast-parent"
+    )
+    assert task is not None
+    assert task.id == "sub-1"
+    assert task.name == "Reviewer"
+    assert task.parent_id == "cast-parent"
+    assert task.status == TaskStatus.RUNNING
+
+
+def test_register_subagent_task_idempotent(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify register_subagent_task is idempotent on duplicate id."""
+    agent_service.register_subagent_task(app_state, "sub-2", "First")
+    task = agent_service.register_subagent_task(app_state, "sub-2", "Second")
+    assert len(app_state.background_tasks) == 1
+    assert task.name == "First"
+
+
+def test_update_subagent_task_progress_and_status(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify update_subagent_task updates progress and status."""
+    agent_service.register_subagent_task(app_state, "sub-3", "Worker")
+
+    updated = agent_service.update_subagent_task(
+        app_state, "sub-3", status=TaskStatus.COMPLETE, progress=100.0
+    )
+    assert updated is not None
+    assert updated.status == TaskStatus.COMPLETE
+    assert updated.progress == 100.0
+
+
+def test_update_subagent_task_unknown_id_returns_none(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify update_subagent_task returns None for unknown task id."""
+    assert (
+        agent_service.update_subagent_task(app_state, "missing", progress=50.0) is None
+    )
+
+
+def test_background_tasks_cleared_on_new_conversation(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify new_conversation clears tracked background tasks."""
+    agent_service.register_subagent_task(app_state, "sub-x", "Worker")
+    app_state.new_conversation()
+    assert app_state.background_tasks == []
+
+
 def test_format_duration_variants() -> None:
     """Verify _format_duration correctly renders seconds and minutes."""
     assert AgentService._format_duration(0.4) == "0.4s"
@@ -434,6 +641,259 @@ def test_agent_service_cancel_method(agent_service: AgentService) -> None:
     agent_service.cancel()
     mock_task.cancel.assert_called_once()
     assert agent_service.is_running is False
+
+
+# --- Skill tracking tests ---
+
+
+def _make_skill_manifest(
+    name: str = "review",
+    path: str = "/skills/review/SKILL.md",
+    scope: str = "project",
+    description: str = "Review code",
+) -> Any:
+    """Build a minimal SkillManifest for testing."""
+    from mvgeos_runes.types import SkillManifest, SkillScope
+
+    return SkillManifest(
+        name=name,
+        description=description,
+        scope=SkillScope(scope),
+        path=path,
+    )
+
+
+def test_populate_skills_seeds_active_skills(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify populate_skills adds manifests from the agent's runner."""
+    manifest = _make_skill_manifest()
+    mock_runner = MagicMock()
+    mock_runner.get_skills.return_value = [manifest]
+    mock_agent = MagicMock()
+    mock_agent.runner = mock_runner
+
+    agent_service.populate_skills(mock_agent, app_state)
+
+    assert len(app_state.active_skills) == 1
+    skill = app_state.active_skills[0]
+    assert skill.name == "review"
+    assert skill.description == "Review code"
+    assert skill.scope == "project"
+    assert skill.path == "/skills/review/SKILL.md"
+
+
+def test_populate_skills_is_idempotent(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify populate_skills does not duplicate already-tracked skills."""
+    manifest = _make_skill_manifest()
+    mock_runner = MagicMock()
+    mock_runner.get_skills.return_value = [manifest]
+    mock_agent = MagicMock()
+    mock_agent.runner = mock_runner
+
+    agent_service.populate_skills(mock_agent, app_state)
+    agent_service.populate_skills(mock_agent, app_state)
+
+    assert len(app_state.active_skills) == 1
+
+
+def test_populate_skills_handles_missing_runner(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify populate_skills is a safe no-op when the agent has no runner."""
+    mock_agent = MagicMock()
+    mock_agent.runner = None
+
+    agent_service.populate_skills(mock_agent, app_state)
+    assert app_state.active_skills == []
+
+
+def test_populate_skills_handles_get_skills_failure(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify populate_skills tolerates a failing get_skills call."""
+    mock_runner = MagicMock()
+    mock_runner.get_skills.side_effect = RuntimeError("boom")
+    mock_agent = MagicMock()
+    mock_agent.runner = mock_runner
+
+    agent_service.populate_skills(mock_agent, app_state)
+    assert app_state.active_skills == []
+
+
+def test_mark_skill_invoked_by_skill_md_path(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify reading a SKILL.md file marks the skill as invoked."""
+    manifest = _make_skill_manifest(path="/skills/review")
+    mock_runner = MagicMock()
+    mock_runner.get_skills.return_value = [manifest]
+    mock_agent = MagicMock()
+    mock_agent.runner = mock_runner
+    agent_service.populate_skills(mock_agent, app_state)
+
+    assert app_state.active_skills[0].invoked is False
+
+    # Simulate the agent reading the skill's SKILL.md file.
+    agent_service.mark_skill_invoked("/skills/review/SKILL.md", state=app_state)
+
+    assert app_state.active_skills[0].invoked is True
+
+
+def test_mark_skill_invoked_deduplicates(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify the same skill is only marked invoked once."""
+    manifest = _make_skill_manifest(path="/skills/review")
+    mock_runner = MagicMock()
+    mock_runner.get_skills.return_value = [manifest]
+    mock_agent = MagicMock()
+    mock_agent.runner = mock_runner
+    agent_service.populate_skills(mock_agent, app_state)
+
+    agent_service.mark_skill_invoked("/skills/review/SKILL.md", state=app_state)
+    agent_service.mark_skill_invoked("/skills/review/SKILL.md", state=app_state)
+
+    assert app_state.active_skills[0].invoked is True
+
+
+def test_mark_skill_invoked_no_match_is_safe(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify mark_skill_invoked is a no-op when path matches no skill."""
+    agent_service.mark_skill_invoked("/some/random/file.py", state=app_state)
+    assert app_state.active_skills == []
+
+
+def test_mark_skill_invoked_empty_path_is_safe(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify mark_skill_invoked tolerates an empty path."""
+    agent_service.mark_skill_invoked("", state=app_state)
+    assert app_state.active_skills == []
+
+
+def test_mark_skill_invoked_no_state_is_safe(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify mark_skill_invoked is a no-op without an active state."""
+    agent_service._active_state = None
+    agent_service.mark_skill_invoked("/skills/review/SKILL.md")
+    assert app_state.active_skills == []
+
+
+def test_reset_skill_tracking_clears_invocation_state(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify reset_skill_tracking clears the invocation bookkeeping."""
+    agent_service._invoked_skill_names.add("review")
+    agent_service._loaded_skill_names.add("review")
+    agent_service.reset_skill_tracking()
+    assert agent_service._invoked_skill_names == set()
+    assert agent_service._loaded_skill_names == set()
+
+
+def test_get_or_create_agent_populates_skills(
+    app_state: AppState, tmp_path: Path
+) -> None:
+    """Verify get_or_create_agent seeds active_skills on agent creation."""
+    manifest = _make_skill_manifest()
+    mock_runner = MagicMock()
+    mock_runner.get_skills.return_value = [manifest]
+    mock_agent = MagicMock()
+    mock_agent.runner = mock_runner
+
+    service = AgentService(
+        project_path=tmp_path,
+        api_key="test-key",
+        agent_factory=lambda **kwargs: mock_agent,
+    )
+
+    service.get_or_create_agent(app_state)
+    assert len(app_state.active_skills) == 1
+    assert app_state.active_skills[0].name == "review"
+
+
+def test_handle_agent_start_populates_skills(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify AGENT_START seeds active_skills from the bound agent's runner."""
+    manifest = _make_skill_manifest()
+    mock_runner = MagicMock()
+    mock_runner.get_skills.return_value = [manifest]
+    mock_agent = MagicMock()
+    mock_agent.runner = mock_runner
+    agent_service._agent = mock_agent
+
+    msg = ChatMessage(role="assistant", is_streaming=False)
+    app_state.messages.append(msg)
+    app_state.is_channeling = False
+
+    event = MvgeEvent(type=MvgeEventType.AGENT_START, data={})
+    agent_service.handle_event(event, msg, app_state)
+
+    assert msg.is_streaming is True
+    assert app_state.is_channeling is True
+    assert len(app_state.active_skills) == 1
+    assert app_state.active_skills[0].name == "review"
+
+
+def test_handle_read_skill_md_marks_invoked(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify reading a SKILL.md path via the read spell marks it invoked."""
+    manifest = _make_skill_manifest(path="/skills/review")
+    mock_runner = MagicMock()
+    mock_runner.get_skills.return_value = [manifest]
+    mock_agent = MagicMock()
+    mock_agent.runner = mock_runner
+    agent_service._agent = mock_agent
+    agent_service.populate_skills(mock_agent, app_state)
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    start_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_START,
+        data={
+            "spellCastId": "cast-skill-1",
+            "spellName": "read",
+            "path": "/skills/review/SKILL.md",
+        },
+    )
+    agent_service.handle_event(start_event, msg, app_state)
+
+    assert app_state.active_skills[0].invoked is True
+
+
+def test_handle_read_non_skill_path_does_not_invoke(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify reading a non-SKILL.md path does not mark any skill invoked."""
+    manifest = _make_skill_manifest(path="/skills/review")
+    mock_runner = MagicMock()
+    mock_runner.get_skills.return_value = [manifest]
+    mock_agent = MagicMock()
+    mock_agent.runner = mock_runner
+    agent_service._agent = mock_agent
+    agent_service.populate_skills(mock_agent, app_state)
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    start_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_START,
+        data={
+            "spellCastId": "cast-file-1",
+            "spellName": "read",
+            "path": "src/main.py",
+        },
+    )
+    agent_service.handle_event(start_event, msg, app_state)
+
+    assert app_state.active_skills[0].invoked is False
 
 
 @pytest.mark.asyncio

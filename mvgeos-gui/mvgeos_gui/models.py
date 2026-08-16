@@ -1,8 +1,9 @@
-"""Data models for conversation messages and execution steps in mvgeos-gui."""
+"""Data models for conversation messages, execution steps, and background tasks."""
 
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -14,6 +15,40 @@ class StepType(StrEnum):
     WORKED = "worked"
     FILES = "files"
     COMMANDS = "commands"
+
+
+class TaskStatus(StrEnum):
+    """Lifecycle status of a background task tracked by the inspector."""
+
+    RUNNING = "running"
+    COMPLETE = "complete"
+    ERROR = "error"
+
+
+@dataclass
+class BackgroundTask:
+    """A long-running background task (spell or subagent) tracked in state."""
+
+    id: str
+    name: str
+    status: TaskStatus = TaskStatus.RUNNING
+    progress: float = 0.0
+    parent_id: str | None = None
+    started_at: float = field(default_factory=time.monotonic)
+    ended_at: float | None = None
+    result: str = ""
+    error: str | None = None
+
+
+@dataclass
+class SkillInfo:
+    """Summary of a discovered Skill rendered in the context inspector."""
+
+    name: str
+    description: str = ""
+    scope: str = ""
+    path: str = ""
+    invoked: bool = False
 
 
 @dataclass
