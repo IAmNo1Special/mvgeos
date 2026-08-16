@@ -84,6 +84,8 @@ class ExecutionStep:
     files: list[FileExploration] = field(default_factory=list)
     details: list[str] = field(default_factory=list)
     is_complete: bool = False
+    spell_name: str = ""
+    result: str = ""
 
 
 @dataclass
@@ -134,7 +136,7 @@ class ChatMessage:
 
     role: str
     content: str = ""
-    contemplation: str = ""
+    contemplation: list[str] = field(default_factory=list)
     timestamp: str = field(default_factory=lambda: datetime.now(UTC).strftime("%H:%M"))
     model: str | None = None
     mana_used: int = 0
@@ -170,13 +172,13 @@ class Artifact:
     created_at: str = field(default_factory=lambda: datetime.now(UTC).strftime("%H:%M"))
 
 
-def extract_contemplation_tags(text: str) -> tuple[str, str]:
+def extract_contemplation_tags(text: str) -> tuple[str, list[str]]:
     """Extract <think>...</think> or <thought>...</thought> tags from text.
 
-    Returns (cleaned_content, extracted_contemplation).
+    Returns (cleaned_content, extracted_contemplation_list).
     """
     if not text:
-        return "", ""
+        return "", []
 
     pattern = re.compile(
         r"<(?:think|thought)>(.*?)</(?:think|thought)>",
@@ -200,5 +202,5 @@ def extract_contemplation_tags(text: str) -> tuple[str, str]:
         thoughts.append(unclosed_match.group(1).strip())
         cleaned = unclosed.sub("", cleaned)
 
-    extracted_thoughts = "\n\n".join(t for t in thoughts if t)
+    extracted_thoughts = [t for t in thoughts if t]
     return cleaned.strip(), extracted_thoughts

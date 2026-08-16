@@ -178,7 +178,7 @@ async def test_contemplation_card_in_conversation(user: User) -> None:
     state.messages.append(
         ChatMessage(
             role="assistant",
-            contemplation="User wants greeting. Respond politely.",
+            contemplation=["User wants greeting. Respond politely."],
             content="Hey there! How can I help you today?",
             model="nvidia/nemotron-3-ultra-550b-a55b:free",
         )
@@ -192,3 +192,30 @@ async def test_contemplation_card_in_conversation(user: User) -> None:
     await user.should_see("Thought")
     await user.should_see("User wants greeting. Respond politely.")
     await user.should_see("Hey there! How can I help you today?")
+
+
+@pytest.mark.asyncio
+async def test_multiple_contemplation_segments(user: User) -> None:
+    """Verify each reasoning segment renders in its own Thought card."""
+    state = AppState(project_path=Path("C:/demo/project"))
+    state.messages.append(
+        ChatMessage(
+            role="assistant",
+            contemplation=[
+                "First, I need to understand the request.",
+                "Now I will plan the implementation.",
+            ],
+            content="Here is the implementation plan.",
+            model="nvidia/nemotron-3-ultra-550b-a55b:free",
+        )
+    )
+
+    @ui.page("/test_multi_thought")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_multi_thought")
+    await user.should_see("Thought")
+    await user.should_see("First, I need to understand the request.")
+    await user.should_see("Now I will plan the implementation.")
+    await user.should_see("Here is the implementation plan.")

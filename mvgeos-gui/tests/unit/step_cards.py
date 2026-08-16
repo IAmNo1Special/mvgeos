@@ -109,6 +109,26 @@ async def test_render_step_card_dispatcher(user: User) -> None:
 
 
 @pytest.mark.asyncio
+async def test_render_worked_card_with_spell_name_and_result(user: User) -> None:
+    """Verify WORKED card renders spell_name as title and result in code block."""
+    step = ExecutionStep(
+        step_type=StepType.WORKED,
+        title="Worked for 2.5s",
+        spell_name="edit",
+        result="Saved edits to config.py",
+        is_complete=True,
+    )
+
+    @ui.page("/test_worked_card_with_result")
+    def page() -> None:
+        render_worked_card(step)
+
+    await user.open("/test_worked_card_with_result")
+    await user.should_see("edit")
+    await user.should_see("Saved edits to config.py")
+
+
+@pytest.mark.asyncio
 async def test_render_contemplation_card(user: User) -> None:
     """Verify 'Thought' contemplation card renders reasoning text."""
     thought_text = "The user said 'hey' - I should respond politely."

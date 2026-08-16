@@ -143,7 +143,7 @@ def test_handle_message_update_contemplation(
         data={"text": "Thinking deeply...", "kind": "contemplation"},
     )
     agent_service.handle_event(event, msg, app_state)
-    assert msg.contemplation == "Thinking deeply..."
+    assert msg.contemplation == ["Thinking deeply..."]
     assert msg.content == ""
 
 
@@ -159,7 +159,7 @@ def test_handle_message_update_inline_think_tags(
         data={"text": "<think>Let me formulate response</think>Hello!"},
     )
     agent_service.handle_event(event, msg, app_state)
-    assert msg.contemplation == "Let me formulate response"
+    assert msg.contemplation == ["Let me formulate response"]
     assert msg.content == "Hello!"
 
 
@@ -172,19 +172,19 @@ def test_extract_contemplation_tags_helper() -> None:
         "<thought>Initial plan</thought>Actual output"
     )
     assert cleaned == "Actual output"
-    assert thought == "Initial plan"
+    assert thought == ["Initial plan"]
 
     # Multiple closed tags
     cleaned, thought = extract_contemplation_tags(
         "<think>Thought 1</think>Output<think>Thought 2</think>"
     )
     assert cleaned == "Output"
-    assert thought == "Thought 1\n\nThought 2"
+    assert thought == ["Thought 1", "Thought 2"]
 
     # Plain text without tags
     cleaned, thought = extract_contemplation_tags("Just plain text")
     assert cleaned == "Just plain text"
-    assert thought == ""
+    assert thought == []
 
 
 def test_handle_provider_response_mana_tracking(
@@ -276,6 +276,27 @@ def test_handle_file_exploration_spell_dispatch(
     assert file_steps[0].files[0].details == "file contents..."
 
 
+def test_handle_file_spell_missing_path_does_not_append_file(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify read spell without a path does not append a FileExploration."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    start_event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_START,
+        data={
+            "spellCastId": "cast-file-2",
+            "spellName": "read",
+        },
+    )
+    agent_service.handle_event(start_event, msg, app_state)
+
+    file_steps = [s for s in msg.steps if s.step_type == StepType.FILES]
+    assert len(file_steps) == 1
+    assert file_steps[0].files == []
+
+
 def test_handle_generic_worked_step(
     agent_service: AgentService, app_state: AppState
 ) -> None:
@@ -295,6 +316,7 @@ def test_handle_generic_worked_step(
 
     worked_steps = [s for s in msg.steps if s.step_type == StepType.WORKED]
     assert len(worked_steps) == 1
+    assert worked_steps[0].spell_name == "edit"
     assert "edit" in worked_steps[0].details[0]
 
     end_event = MvgeEvent(
@@ -306,6 +328,7 @@ def test_handle_generic_worked_step(
     )
     agent_service.handle_event(end_event, msg, app_state)
     assert worked_steps[0].duration_seconds >= 0.0
+    assert worked_steps[0].result == "Saved edits"
 
 
 def test_handle_agent_end_finalizes_state(
@@ -952,7 +975,7 @@ async def test_multi_turn_prompt_isolation(
     app_state.messages.append(msg1)
     await agent_service.run_prompt("hey there", app_state, msg1)
 
-    assert msg1.contemplation == "Turn 1 Thought"
+    assert msg1.contemplation == ["Turn 1 Thought"]
     assert msg1.content == "Turn 1 Response"
 
     # Turn 2
@@ -962,9 +985,9 @@ async def test_multi_turn_prompt_isolation(
     await agent_service.run_prompt("read README.md", app_state, msg2)
 
     # Turn 1 must NOT be polluted by Turn 2
-    assert msg1.contemplation == "Turn 1 Thought"
+    assert msg1.contemplation == ["Turn 1 Thought"]
     assert msg1.content == "Turn 1 Response"
 
     # Turn 2 has its own distinct content
-    assert msg2.contemplation == "Turn 2 Thought"
+    assert msg2.contemplation == ["Turn 2 Thought"]
     assert msg2.content == "Turn 2 Response"

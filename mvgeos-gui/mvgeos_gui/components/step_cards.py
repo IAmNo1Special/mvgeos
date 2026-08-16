@@ -35,9 +35,10 @@ def render_contemplation_card(
 
 def render_worked_card(step: ExecutionStep) -> ui.expansion:
     """Render a collapsible 'Worked for Xs' execution card."""
+    title = step.spell_name or step.title or "Worked for 0.0s"
     with (
         ui.expansion(
-            text=step.title or "Worked for 0.0s",
+            text=title,
             icon="schedule" if step.is_complete else "hourglass_top",
         )
         .props("dense dense-toggle header-class=bg-[#1e212b] dark")
@@ -56,6 +57,15 @@ def render_worked_card(step: ExecutionStep) -> ui.expansion:
             ui.label("Execution completed.").classes(
                 "text-[11px] text-[#64748b] italic"
             )
+        if step.result:
+            with (
+                ui.expansion("Result", icon="unfold_more")
+                .props("dense dense-toggle dark")
+                .classes("text-[10px] text-[#64748b]")
+            ):
+                ui.code(step.result).classes(
+                    "w-full text-[10px] bg-[#0e1117] p-2 rounded max-h-32 overflow-auto"
+                )
     return expansion
 
 
