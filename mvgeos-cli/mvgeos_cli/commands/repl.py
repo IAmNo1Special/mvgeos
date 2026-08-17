@@ -74,9 +74,9 @@ SLASH_COMMANDS: dict[str, str] = {
     "/model": "Switch or list models: /model [id] or /model --free",
     "/models": "List available models: /models [--free]",
     "/mode": "Toggle queue mode (all/one-at-a-time): /mode or /m",
-    "/new": "Start a new session",
-    "/session": "Show current session info",
-    "/resume": "Resume a previous session: /resume <path>",
+    "/new": "Start a new tome",
+    "/tome": "Show current tome info",
+    "/resume": "Resume a previous tome: /resume <path>",
     "/spells": "List or set enabled spells: /spells [comma-separated]",
     "/steer": "Steer agent mid-run: /steer <message>",
     "/followup": "Queue follow-up for post-run: /followup <message>",
@@ -209,16 +209,16 @@ def _fit_footer(items: list[tuple[str, str]], width: int) -> list[tuple[str, str
     return items
 
 
-def _format_session_info(
+def _format_tome_info(
     agent: CodingMvge, branch: str | None = None, fit: bool = True
 ) -> list[tuple[str, str]]:
     cwd = _format_cwd()
     if branch:
         cwd = f"{cwd} ({branch})"
     items: list[tuple[str, str]] = [("bold", f" {cwd}")]
-    sid = agent.session_id
-    if sid:
-        items.append(("dim", f"  session {sid[:8]}"))
+    tid = agent.tome_id
+    if tid:
+        items.append(("dim", f"  tome {tid[:8]}"))
     mana_style, mana_text = _mana_context(agent)
     items.append((mana_style, f"  {mana_text}"))
     right = agent._model_id
@@ -337,9 +337,9 @@ def _handle_command(
             out(f"  [cyan]{name:<15}[/cyan] {desc}")
         return ReplAction.CONTINUE
 
-    if cmd == "/session":
-        sid = agent.session_id or "none"
-        out(f"[dim]Session ID: {sid}[/dim]")
+    if cmd == "/tome":
+        tid = agent.tome_id or "none"
+        out(f"[dim]Tome ID: {tid}[/dim]")
         out(f"[dim]Model: {agent._model_id}[/dim]")
         builtin = agent.enabled_spells
         rune_spells = []
@@ -426,10 +426,10 @@ def _handle_command(
 
     if cmd == "/resume":
         if args:
-            agent._session_resume = args.strip()
-            out(f"[green]Will resume: {agent._session_resume}[/green]")
+            agent._tome_resume = args.strip()
+            out(f"[green]Will resume: {agent._tome_resume}[/green]")
             return ReplAction.NEW_SESSION
-        out(format_error("Usage: /resume <path-to-session.jsonl>"))
+        out(format_error("Usage: /resume <path-to-tome.jsonl>"))
         return ReplAction.CONTINUE
 
     out(format_error(f"Unknown command: {cmd}"))
@@ -873,7 +873,7 @@ async def _create_agent(
     api_key: str,
     spells: str,
     extension_dir: str | None,
-    session_dir: str | None,
+    tome_dir: str | None,
     resume: str | None,
     provider: str | None,
     temperature: float,
@@ -900,8 +900,8 @@ async def _create_agent(
         api_key=api_key,
         spells=spells_list,
         extension_dir=extension_dir,
-        session_dir=Path(session_dir) if session_dir else None,
-        session_resume=resume,
+        tome_dir=Path(tome_dir) if tome_dir else None,
+        tome_resume=resume,
         provider_name=provider,
         environment=env,
     )
@@ -919,7 +919,7 @@ async def run_repl(
     temperature: float = 0.7,
     max_tokens: int = 4096,
     contemplation: str = "medium",
-    session_dir: str | None = None,
+    tome_dir: str | None = None,
     agent_name: str = DEFAULT_AGENT_NAME,
 ) -> None:
     if api_key is None:
@@ -936,7 +936,7 @@ async def run_repl(
             api_key=api_key,
             spells=spells,
             extension_dir=extension_dir,
-            session_dir=session_dir,
+            tome_dir=tome_dir,
             resume=resume,
             provider=provider,
             temperature=temperature,
@@ -956,8 +956,8 @@ async def run_repl(
 
     console.print("[green]MvgeOS REPL[/green]")
     console.print(f"[dim]Model: {model}[/dim]")
-    if agent.session_id:
-        console.print(f"[dim]Session: {agent.session_id}[/dim]")
+    if agent.tome_id:
+        console.print(f"[dim]Tome: {agent.tome_id}[/dim]")
     console.print(
         "[dim]Type /help for commands, Ctrl+C to interrupt, Ctrl+D to quit[/dim]"
     )
@@ -995,7 +995,7 @@ async def run_repl(
     branch = _git_branch()
 
     def get_toolbar() -> list[tuple[str, str]]:
-        return _format_session_info(agent, branch)
+        return _format_tome_info(agent, branch)
 
     renderer = StreamRenderer()
     unsubs: list[object] = [
@@ -1064,11 +1064,11 @@ async def run_repl(
                     )
                 continue
             if action == ReplAction.NEW_SESSION:
-                console.print("[yellow]Starting a new session...[/yellow]")
+                console.print("[yellow]Starting a new tome...[/yellow]")
                 await agent.close()
                 agent._initialized = False
                 await agent.initialize()
-                console.print(f"[green]New session: {agent.session_id}[/green]")
+                console.print(f"[green]New tome: {agent.tome_id}[/green]")
             continue
 
         renderer.reset()

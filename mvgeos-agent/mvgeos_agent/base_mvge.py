@@ -56,8 +56,8 @@ from mvgeos_agent.types import (
     MvgeSpell,
     MvgeState,
     QueueMode,
-    SessionResumeError,
     SummonerRequest,
+    TomeResumeError,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,8 +81,8 @@ class BaseMvge:
         *,
         name: str = DEFAULT_AGENT_NAME,
         extension_dir: str | None = None,
-        session_dir: Path | None = None,
-        session_resume: str | None = None,
+        tome_dir: Path | None = None,
+        tome_resume: str | None = None,
         provider_name: str | None = None,
         runes_paths: Sequence[str] | None = None,
         compaction: CompactionSettings = DEFAULT_COMPACTION_SETTINGS,
@@ -91,8 +91,8 @@ class BaseMvge:
         self._api_key = api_key
         self._name = name
         self._extension_dir = extension_dir
-        self._session_dir = session_dir or DEFAULT_TOME_DIR
-        self._session_resume = session_resume
+        self._tome_dir = tome_dir or DEFAULT_TOME_DIR
+        self._tome_resume = tome_resume
         self._provider_name = provider_name
         self._compaction_settings = compaction
 
@@ -190,7 +190,7 @@ class BaseMvge:
         self._prompt_source = environment.resolved_prompt.source
         self._model: Model | None = None
         self._realm: Realm | None = None
-        self._agent_session: MvgeTome | None = None
+        self._agent_tome: MvgeTome | None = None
         self._tome_ledger: TomeLedger | None = None
         self._loop: MvgeLoop | None = None
         self._harness: MvgeHarness | None = None
@@ -201,9 +201,8 @@ class BaseMvge:
         self._initialized = False
 
     @property
-    def session_id(self) -> str | None:
+    def tome_id(self) -> str | None:
         if self._tome_ledger is not None:
-            # Get the first tome's ID
             tomes = self._tome_ledger.list_tomes()
             if tomes:
                 return tomes[0].id
@@ -452,7 +451,7 @@ class BaseMvge:
         await self._load_runes()
 
         # Initialize tome ledger (needed for both new and resumed sessions)
-        self._tome_ledger = TomeLedger(self._session_dir)
+        self._tome_ledger = TomeLedger(self._tome_dir)
 
         # Emit BEFORE_MVGE_START to allow runes to inject prompt additions
         base_prompt = await self._build_system_prompt_async()
@@ -478,17 +477,17 @@ class BaseMvge:
             self._model, self._api_key, self._provider_name
         )
 
-        if self._session_resume:
-            meta = self._tome_ledger.open_tome(self._session_resume)
+        if self._tome_resume:
+            meta = self._tome_ledger.open_tome(self._tome_resume)
             if meta is None:
-                raise SessionResumeError(self._session_resume)
-            self._agent_session = MvgeTome(self._tome_ledger, meta, self._runner)
-            await self._agent_session.start(reason="resume")
+                raise TomeResumeError(self._tome_resume)
+            self._agent_tome = MvgeTome(self._tome_ledger, meta, self._runner)
+            await self._agent_tome.start(reason="resume")
 
-        if self._agent_session is None:
+        if self._agent_tome is None:
             meta = self._tome_ledger.create_tome(str(Path.cwd()))
-            self._agent_session = MvgeTome(self._tome_ledger, meta, self._runner)
-            await self._agent_session.start(reason="startup")
+            self._agent_tome = MvgeTome(self._tome_ledger, meta, self._runner)
+            await self._agent_tome.start(reason="startup")
 
         self._state = MvgeState(
             system_prompt=final_prompt,
@@ -503,14 +502,14 @@ class BaseMvge:
             exclude_contemplation=self._exclude_contemplation,
             queue_mode=self._queue_mode,
             rune_runner=self._runner,
-            agent_session=self._agent_session,
+            agent_tome=self._agent_tome,
             event_bus=self._event_bus,
         )
 
-        assert self._agent_session is not None
+        assert self._agent_tome is not None
         self._harness = MvgeHarness(
             state=self._state,
-            tome=self._agent_session,
+            tome=self._agent_tome,
             realm=self._realm,
             model=self._model,
             compaction_settings=self._compaction_settings,
@@ -638,8 +637,8 @@ class BaseMvge:
             self._abort_controller.abort()
 
     async def close(self) -> None:
-        if self._agent_session is not None:
-            await self._agent_session.shutdown(reason="quit")
+        if self._agent_tome is not None:
+            await self._agent_tome.shutdown(reason="quit")
         for watcher in self._watchers:
             await watcher.stop()
         self._watchers.clear()
@@ -650,8 +649,7 @@ class BaseMvge:
             await self._provider_registry.close()
         self._initialized = False
         self._runner = None
-        self._agent_session = None
-        self._session_manager = None
+        self._agent_tome = None
         self._loop = None
         self._harness = None
         self._state = None

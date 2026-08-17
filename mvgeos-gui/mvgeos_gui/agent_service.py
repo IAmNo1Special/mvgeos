@@ -97,8 +97,8 @@ class AgentService:
 
             self._agent = CodingMvge(
                 api_key=self._api_key or "mock-key",
-                session_dir=state.tome_service.tome_dir,
-                session_resume=state.active_tome_id,
+                tome_dir=state.tome_service.tome_dir,
+                tome_resume=state.active_tome_id,
             )
 
         # When the agent is created, seed active_skills from the runner's

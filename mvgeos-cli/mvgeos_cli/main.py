@@ -70,7 +70,7 @@ async def _run_agent(
     extension_dir: str | None,
     resume: str | None,
     provider_name: str | None,
-    session_dir: str | None,
+    tome_dir: str | None,
     tui: bool,
     agent_name: str = DEFAULT_AGENT_NAME,
     prompts: list[str] | None = None,
@@ -123,7 +123,7 @@ async def _run_agent(
                     temperature=temperature,
                     max_tokens=max_tokens,
                     contemplation=contemplation_level,
-                    session_dir=session_dir,
+                    tome_dir=tome_dir,
                     agent_name=agent_name,
                 )
                 return 0
@@ -138,7 +138,7 @@ async def _run_agent(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 contemplation=contemplation_level,
-                session_dir=session_dir,
+                tome_dir=tome_dir,
                 agent_name=agent_name,
             )
             return 0
@@ -149,7 +149,7 @@ async def _run_agent(
             api_key=api_key,
             spells=spells_joined,
             extension_dir=extension_dir,
-            session_dir=session_dir,
+            tome_dir=tome_dir,
             resume=resume,
             provider=provider_name,
             temperature=temperature,
@@ -166,7 +166,7 @@ async def _run_agent(
             await agent.close()
 
 
-def _get_session_dir() -> Path:
+def _get_tome_dir() -> Path:
     return DEFAULT_TOME_DIR
 
 
@@ -255,10 +255,10 @@ def _repl_callback(
         "-p",
         help="Provider name (from extension registration)",
     ),
-    session_dir: str | None = typer.Option(
+    tome_dir: str | None = typer.Option(
         None,
-        "--session-dir",
-        help="Custom session storage directory",
+        "--tome-dir",
+        help="Custom tome storage directory",
     ),
     tui: bool = typer.Option(
         False,
@@ -316,7 +316,7 @@ def _repl_callback(
             extension_dir=extension_dir,
             resume=resume,
             provider_name=provider,
-            session_dir=session_dir,
+            tome_dir=tome_dir,
             tui=tui,
             agent_name=agent_name,
             prompts=prompts,

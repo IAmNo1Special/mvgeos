@@ -71,7 +71,7 @@ async def test_harness_runs_compaction_callback() -> None:
 async def test_harness_state_initialization_and_properties() -> None:
     mock_state = MagicMock(spec=MvgeState)
     mock_tome = MagicMock()
-    mock_state.agent_session = mock_tome
+    mock_state.agent_tome = mock_tome
     mock_state.invocations = []
 
     harness = MvgeHarness(state=mock_state, tome=mock_tome)
@@ -93,7 +93,7 @@ async def test_harness_switch_tome() -> None:
 
     harness.switch_tome(tome2)
     assert harness.tome == tome2
-    assert mock_state.agent_session == tome2
+    assert mock_state.agent_tome == tome2
 
 
 @pytest.mark.asyncio

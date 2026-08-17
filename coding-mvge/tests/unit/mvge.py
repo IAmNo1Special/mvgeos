@@ -65,7 +65,7 @@ def _install_mock(agent: CodingMvge, text: str = "Hello") -> _MockRealm:
     mock_session.shutdown = AsyncMock()
     mock_session.active_leaf_id_async = AsyncMock(return_value=None)
     mock_session.record_message_async = AsyncMock(return_value=None)
-    agent._agent_session = mock_session
+    agent._agent_tome = mock_session
     agent._state = MvgeState(
         system_prompt="test",
         model={"id": "test-model", "name": "Test"},
@@ -73,7 +73,7 @@ def _install_mock(agent: CodingMvge, text: str = "Hello") -> _MockRealm:
         spells=[],
         invocations=[],
         rune_runner=None,
-        agent_session=agent._agent_session,
+        agent_tome=agent._agent_tome,
     )
     from mvgeos_agent.harness import MvgeHarness
     from mvgeos_agent.loop import MvgeLoop
@@ -144,9 +144,9 @@ class TestCodingMvgeInit:
         assert agent._max_tokens == 4096
         assert agent._contemplation_level == "medium"
 
-    def test_default_session_dir(self) -> None:
+    def test_default_tome_dir(self) -> None:
         agent = CodingMvge(api_key="k")
-        assert agent._session_dir == Path.home() / ".agents" / ".mvgeos" / "tomes"
+        assert agent._tome_dir == Path.home() / ".agents" / ".mvgeos" / "tomes"
 
 
 class TestCodingMvgeBuildSpells:
@@ -651,9 +651,9 @@ class TestSeekerRuneActiveSpells:
 
 
 class TestCodingMvgeProperties:
-    def test_session_id_none_before_init(self) -> None:
+    def test_tome_id_none_before_init(self) -> None:
         agent = CodingMvge(api_key="k")
-        assert agent.session_id is None
+        assert agent.tome_id is None
 
     def test_enabled_spells(self) -> None:
         agent = CodingMvge(api_key="k", spells=["bash", "grep"])
@@ -678,7 +678,7 @@ class TestCodingMvgeRun:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                session_dir=Path(tmpdir),
+                tome_dir=Path(tmpdir),
                 spells=[],
             )
             _install_mock(agent)
@@ -705,7 +705,7 @@ class TestCodingMvgeRun:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                session_dir=Path(tmpdir),
+                tome_dir=Path(tmpdir),
                 spells=[],
             )
             _install_mock(agent)
@@ -719,7 +719,7 @@ class TestCodingMvgeRun:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                session_dir=Path(tmpdir),
+                tome_dir=Path(tmpdir),
                 spells=[],
             )
             _install_mock(agent)
@@ -734,7 +734,7 @@ class TestCodingMvgeRun:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                session_dir=Path(tmpdir),
+                tome_dir=Path(tmpdir),
                 spells=[],
             )
             _install_mock(agent)
@@ -749,7 +749,7 @@ class TestCodingMvgeRun:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                session_dir=Path(tmpdir),
+                tome_dir=Path(tmpdir),
                 spells=["bash", "read"],
             )
             _install_mock(agent)
@@ -763,7 +763,7 @@ class TestCodingMvgeRun:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                session_dir=Path(tmpdir),
+                tome_dir=Path(tmpdir),
             )
             mock = _install_mock(agent)
             await agent.run("test")
@@ -777,7 +777,7 @@ class TestCodingMvgeRun:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                session_dir=Path(tmpdir),
+                tome_dir=Path(tmpdir),
                 spells=[],
             )
             _install_mock(agent)
@@ -797,7 +797,7 @@ class TestCodingMvgeRun:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                session_dir=Path(tmpdir),
+                tome_dir=Path(tmpdir),
                 spells=[],
             )
             _install_mock(agent)
@@ -826,16 +826,16 @@ class TestCodingMvgeSwitchModel:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                session_dir=Path(tmpdir),
+                tome_dir=Path(tmpdir),
                 spells=[],
             )
             await agent.initialize()
-            session_before = agent.session_id
-            assert session_before is not None
+            tome_before = agent.tome_id
+            assert tome_before is not None
 
             await agent.switch_model(target)
 
-            assert agent.session_id == session_before
+            assert agent.tome_id == tome_before
             assert agent._model_id == target
             assert agent._model is not None
             assert agent._model.id == target
@@ -849,16 +849,16 @@ class TestCodingMvgeSwitchModel:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                session_dir=Path(tmpdir),
+                tome_dir=Path(tmpdir),
                 spells=[],
             )
             await agent.initialize()
-            session_before = agent.session_id
+            tome_before = agent.tome_id
 
             with pytest.raises(ValueError, match="Unknown model"):
                 await agent.switch_model("unknown/model")
 
-            assert agent.session_id == session_before
+            assert agent.tome_id == tome_before
             assert agent._model_id == "unknown/model"
             assert agent._model is not None
             assert agent._model.id == DEFAULT_MODEL
@@ -869,7 +869,7 @@ class TestCodingMvgeSwitchModel:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                session_dir=Path(tmpdir),
+                tome_dir=Path(tmpdir),
                 spells=[],
             )
             await agent.initialize()
@@ -899,7 +899,7 @@ class TestCodingMvgeToolCalls:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                session_dir=Path(tmpdir),
+                tome_dir=Path(tmpdir),
                 spells=["bash"],
             )
             _install_mock(agent)
@@ -972,7 +972,7 @@ class TestCodingMvgeToolCalls:
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
                 api_key="test-key",
-                session_dir=Path(tmpdir),
+                tome_dir=Path(tmpdir),
                 spells=["bash", "read"],
             )
             _install_mock(agent)

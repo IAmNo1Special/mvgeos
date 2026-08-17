@@ -682,9 +682,9 @@ class TestMvgeLoopInputHook:
         assert call_data["content"] == "my input"
 
 
-class TestMvgeLoopSessionHooks:
+class TestMvgeLoopTomeHooks:
     @pytest.mark.asyncio
-    async def test_session_start_emitted_when_agent_session_in_state(
+    async def test_tome_start_emitted_when_agent_tome_in_state(
         self,
     ) -> None:
         from mvgeos_tome.ledger import TomeLedger
@@ -705,7 +705,7 @@ class TestMvgeLoopSessionHooks:
                 model={"id": "test-model", "name": "Test"},
                 invocations=[SummonerRequest(role="user", content="hi")],
                 rune_runner=runner,
-                agent_session=session,
+                agent_tome=session,
             )
 
             model_obj = Model(
@@ -741,7 +741,7 @@ class TestMvgeLoopSessionHooks:
             assert call_data["reason"] == "startup"
 
     @pytest.mark.asyncio
-    async def test_session_shutdown_emitted_when_agent_session_in_state(
+    async def test_tome_shutdown_emitted_when_agent_tome_in_state(
         self,
     ) -> None:
         from mvgeos_tome.ledger import TomeLedger
@@ -762,7 +762,7 @@ class TestMvgeLoopSessionHooks:
                 model={"id": "test-model", "name": "Test"},
                 invocations=[SummonerRequest(role="user", content="hi")],
                 rune_runner=runner,
-                agent_session=session,
+                agent_tome=session,
             )
 
             model_obj = Model(
@@ -986,7 +986,7 @@ async def test_record_invocation_spell_result_serializes_structured_json() -> No
             system_prompt="test",
             model={"id": "test-provider/test-model", "name": "Test"},
             invocations=[],
-            agent_session=session,
+            agent_tome=session,
         )
         loop = MvgeLoop(state)
 

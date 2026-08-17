@@ -362,7 +362,7 @@ class MvgeState:
     exclude_contemplation: bool = False
     queue_mode: QueueMode = QueueMode.ONE_AT_A_TIME
     rune_runner: RuneRunner | None = None
-    agent_session: MvgeTome | None = None
+    agent_tome: MvgeTome | None = None
     event_bus: EventBus | None = None
     events: list[MvgeEvent] = field(default_factory=list)
     steer_queue: list[SummonerRequest] = field(default_factory=list)
@@ -372,8 +372,8 @@ class MvgeState:
         self._spell_index = {s.name: s for s in self.spells}
 
 
-class SessionResumeError(Exception):
-    """Raised when resuming a session fails."""
+class TomeResumeError(Exception):
+    """Raised when resuming a tome fails."""
 
 
 @dataclass

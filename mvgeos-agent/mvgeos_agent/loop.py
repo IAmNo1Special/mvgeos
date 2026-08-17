@@ -706,7 +706,7 @@ class MvgeLoop:
         return event.data
 
     async def _record_invocation(self, event: MvgeEvent) -> None:
-        session: MvgeTome | None = self._state.agent_session
+        session: MvgeTome | None = self._state.agent_tome
         if session is None:
             return
         invocation = event.data.get("invocation")

@@ -170,7 +170,7 @@ async def test_switch_to_cancelled(
     tome = MvgeTome(tome_ledger, tome_metadata, runner)
     await tome.start(reason="startup")
 
-    result = await tome.switch_to(Path("/path/to/target.jsonl"), Path("/tmp"))
+    result = await tome.switch_to(Path("/path/to/target.jsonl"))
     assert result is None
 
 
@@ -183,7 +183,7 @@ async def test_switch_to_invalid_tome_id(
     await tome.start(reason="startup")
 
     # Invalid format - no 32-char hex
-    result = await tome.switch_to(Path("/path/to/invalid.jsonl"), Path("/tmp"))
+    result = await tome.switch_to(Path("/path/to/invalid.jsonl"))
     assert result is None
 
 
@@ -196,7 +196,7 @@ async def test_switch_to_tome_not_found(
     await tome.start(reason="startup")
 
     # Valid format but tome doesn't exist
-    result = await tome.switch_to(Path("/path/to/" + "a" * 32 + ".jsonl"), Path("/tmp"))
+    result = await tome.switch_to(Path("/path/to/" + "a" * 32 + ".jsonl"))
     assert result is None
 
 
@@ -212,7 +212,7 @@ async def test_switch_to_success(
     meta2 = tome_ledger.create_tome("/test2")
     target_file = tome_ledger.tome_file(meta2.id)
 
-    result = await tome.switch_to(target_file, Path("/tmp"))
+    result = await tome.switch_to(target_file)
     assert result is not None
     assert result.tome_id == meta2.id
 
@@ -235,7 +235,7 @@ async def test_fork_at_cancelled(
         tome_id=tome_metadata.id, role="user", content="test"
     )
 
-    result = await tome.fork_at(entry.id, Path("/tmp"))
+    result = await tome.fork_at(entry.id)
     assert result is None
 
 
@@ -252,7 +252,7 @@ async def test_fork_at_success(
         tome_id=tome_metadata.id, role="user", content="test"
     )
 
-    result = await tome.fork_at(entry.id, Path("/tmp"))
+    result = await tome.fork_at(entry.id)
     assert result is not None
     assert result.tome_id != tome_metadata.id
 
@@ -266,7 +266,7 @@ async def test_fork_at_invalid_entry_creates_branched(
     await tome.start(reason="startup")
 
     # Invalid entry ID - ledger doesn't validate, creates branched tome anyway
-    result = await tome.fork_at("nonexistent-entry", Path("/tmp"))
+    result = await tome.fork_at("nonexistent-entry")
     assert result is not None
     assert result.tome_id != tome_metadata.id
 

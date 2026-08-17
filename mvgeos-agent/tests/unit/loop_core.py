@@ -445,7 +445,7 @@ class TestRunLoopCallbacks:
         assert "RuneRunner" not in source
         assert "SigilHook" not in source
         assert "rune_runner" not in source
-        assert "agent_session" not in source
+        assert "agent_tome" not in source
         assert hasattr(loop_module, "run_loop")
 
 

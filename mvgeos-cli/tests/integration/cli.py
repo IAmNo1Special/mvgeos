@@ -9,7 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from mvgeos_cli.commands.repl import _create_agent
-from mvgeos_cli.main import _get_session_dir, _run_agent, app
+from mvgeos_cli.main import _get_tome_dir, _run_agent, app
 
 runner = CliRunner()
 
@@ -20,8 +20,8 @@ def test_main_is_callable() -> None:
     assert callable(main)
 
 
-def test_get_session_dir() -> None:
-    path = _get_session_dir()
+def test_get_tome_dir() -> None:
+    path = _get_tome_dir()
     assert path == Path.home() / ".agents" / ".mvgeos" / "tomes"
 
 
@@ -100,7 +100,7 @@ def test_repl_callback_with_options(mock_run_agent: AsyncMock) -> None:
             "/tmp/session.jsonl",
             "--provider",
             "test-provider",
-            "--session-dir",
+            "--tome-dir",
             "/tmp/sessions",
             "--tui",
             "--incantation",
@@ -118,7 +118,7 @@ def test_repl_callback_with_options(mock_run_agent: AsyncMock) -> None:
     assert call_kwargs["extension_dir"] == "/tmp/ext"
     assert call_kwargs["resume"] == "/tmp/session.jsonl"
     assert call_kwargs["provider_name"] == "test-provider"
-    assert call_kwargs["session_dir"] == "/tmp/sessions"
+    assert call_kwargs["tome_dir"] == "/tmp/sessions"
     assert call_kwargs["tui"] is True
 
 
@@ -237,7 +237,7 @@ async def test_run_agent_closes_agent_on_error() -> None:
             extension_dir=None,
             resume=None,
             provider_name=None,
-            session_dir=None,
+            tome_dir=None,
             tui=False,
         )
 
@@ -262,7 +262,7 @@ async def test_bug4_single_registry_and_rune_providers(tmp_path: Path) -> None:
     )
     (rune_dir / "index.py").write_text(index_code, encoding="utf-8")
 
-    session_dir = tmp_path / "sessions"
+    tome_dir = tmp_path / "tomes"
 
     with (
         patch("mvgeos_provider.openrouter.OpenRouterRealm.stream"),
@@ -274,7 +274,7 @@ async def test_bug4_single_registry_and_rune_providers(tmp_path: Path) -> None:
             api_key="sk-or-v1-test-key",
             spells="bash,read",
             extension_dir=str(tmp_path),
-            session_dir=str(session_dir),
+            tome_dir=str(tome_dir),
             resume=None,
             provider=None,
             temperature=0.7,

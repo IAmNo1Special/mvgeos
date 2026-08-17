@@ -47,9 +47,7 @@ class MvgeHarness:
         else:
             raise ValueError("MvgeHarness requires either 'loop' or 'state'")
 
-        self._tome: MvgeTome | None = tome or getattr(
-            self._state, "agent_session", None
-        )
+        self._tome: MvgeTome | None = tome or getattr(self._state, "agent_tome", None)
         self._realm = realm
         self._model = model
         self._compaction_settings = compaction_settings
@@ -88,7 +86,7 @@ class MvgeHarness:
     def switch_tome(self, tome: MvgeTome) -> None:
         """Switch active Tome session reference and update CompactionRunner."""
         self._tome = tome
-        self._state.agent_session = tome
+        self._state.agent_tome = tome
         if self._compaction is not None:
             self._compaction._tome = tome
 

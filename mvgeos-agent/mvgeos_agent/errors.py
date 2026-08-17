@@ -60,11 +60,11 @@ class MaxTurnsExceededError(MvgeError):
         self.max_turns = max_turns
 
 
-class SessionResumeError(MvgeError):
+class TomeResumeError(MvgeError):
     def __init__(self, path: str, cause: Exception | None = None) -> None:
         super().__init__(
-            "session_resume_failed",
-            f"Failed to resume session: {path}",
+            "tome_resume_failed",
+            f"Failed to resume tome: {path}",
             cause,
         )
 

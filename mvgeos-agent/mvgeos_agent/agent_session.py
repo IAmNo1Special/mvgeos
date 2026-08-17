@@ -113,7 +113,6 @@ class MvgeTome:
     async def switch_to(
         self,
         target_file: Path,
-        session_dir: Path,
     ) -> MvgeTome | None:
         switch_result = await self.before_switch(str(target_file))
         if switch_result and switch_result.get("cancelled"):
@@ -146,7 +145,6 @@ class MvgeTome:
     async def fork_at(
         self,
         entry_id: str,
-        session_dir: Path,
     ) -> MvgeTome | None:
         fork_result = await self.before_fork(entry_id)
         if fork_result and fork_result.get("cancelled"):

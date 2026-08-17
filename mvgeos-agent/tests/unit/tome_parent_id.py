@@ -68,7 +68,7 @@ class TestMvgeLoopRecordInvocationParentId:
                 contemplation_level=ContemplationLevel.OFF,
                 spells=[],
                 invocations=[],
-                agent_session=tome,
+                agent_tome=tome,
             )
             loop = MvgeLoop(state)
 

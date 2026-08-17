@@ -43,7 +43,7 @@ from mvgeos_cli.commands.repl import (
     _check_and_warn_missing_deps,
     _create_agent,
     _fit_footer,
-    _format_session_info,
+    _format_tome_info,
     _git_branch,
     _handle_command,
     _render_live_rate_limit,
@@ -363,7 +363,7 @@ class TuiApp:
             self.transcript.scroll_to_bottom()
 
     def _footer_text(self) -> FormattedText:
-        items = list(_format_session_info(self.agent, self._branch, fit=False))
+        items = list(_format_tome_info(self.agent, self._branch, fit=False))
         mode = getattr(self.agent, "queue_mode", "one-at-a-time")
         if self._busy:
             items.append(("", f"  (working • mode: {mode})"))
@@ -446,7 +446,7 @@ class TuiApp:
             except ValueError as e:
                 self._out(format_error(e))
                 return
-            self._out(f"[green]New session: {self.agent.session_id}[/green]")
+            self._out(f"[green]New tome: {self.agent.tome_id}[/green]")
         self.application.invalidate()
 
     async def run(self) -> None:
@@ -463,7 +463,7 @@ async def run_tui(
     temperature: float = 0.7,
     max_tokens: int = 4096,
     contemplation: str = "medium",
-    session_dir: str | None = None,
+    tome_dir: str | None = None,
     agent_name: str = DEFAULT_AGENT_NAME,
 ) -> None:
     if api_key is None:
@@ -480,7 +480,7 @@ async def run_tui(
             api_key=api_key,
             spells=spells,
             extension_dir=extension_dir,
-            session_dir=session_dir,
+            tome_dir=tome_dir,
             resume=resume,
             provider=provider,
             temperature=temperature,
