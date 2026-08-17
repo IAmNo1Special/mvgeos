@@ -8,26 +8,26 @@ from mvgeos_tome.ledger import TomeLedger
 from mvgeos_tome.locking import FileLock
 
 
-def test_lock_path_normalization() -> None:
-    lock1 = FileLock("dir/tome")
-    assert lock1.path == Path("dir/tome.lock")
+def test_lock_path_normalization(tmp_path: Path) -> None:
+    lock1 = FileLock(tmp_path / "tome")
+    assert lock1.path == tmp_path / "tome.lock"
 
-    lock2 = FileLock(Path("dir/tome"))
-    assert lock2.path == Path("dir/tome.lock")
+    lock2 = FileLock(Path(tmp_path / "tome"))
+    assert lock2.path == tmp_path / "tome.lock"
 
-    lock3 = FileLock("dir/.lock")
-    assert lock3.path == Path("dir/.lock")
+    lock3 = FileLock(tmp_path / ".lock")
+    assert lock3.path == tmp_path / ".lock"
     assert not str(lock3.path).endswith(".lock.lock")
 
-    lock4 = FileLock(Path("dir/.lock"))
-    assert lock4.path == Path("dir/.lock")
+    lock4 = FileLock(Path(tmp_path / ".lock"))
+    assert lock4.path == tmp_path / ".lock"
 
-    lock5 = FileLock(Path("dir/tome.lock"))
-    assert lock5.path == Path("dir/tome.lock")
+    lock5 = FileLock(Path(tmp_path / "tome.lock"))
+    assert lock5.path == tmp_path / "tome.lock"
 
 
-def test_filelock_instance_created_in_init() -> None:
-    lock = FileLock("dir/test")
+def test_filelock_instance_created_in_init(tmp_path: Path) -> None:
+    lock = FileLock(tmp_path / "test")
     assert lock._lock is not None
     assert isinstance(lock._lock, filelock.FileLock)
 
