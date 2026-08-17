@@ -57,6 +57,15 @@ def render_worked_card(step: ExecutionStep) -> ui.expansion:
             ui.label("Execution completed.").classes(
                 "text-[11px] text-[#64748b] italic"
             )
+        if step.params:
+            with (
+                ui.expansion("Parameters", icon="unfold_more")
+                .props("dense dense-toggle dark")
+                .classes("text-[10px] text-[#64748b]")
+            ):
+                ui.code(str(step.params)).classes(
+                    "w-full text-[10px] bg-[#0e1117] p-2 rounded max-h-32 overflow-auto"
+                )
         if step.result:
             with (
                 ui.expansion("Result", icon="unfold_more")

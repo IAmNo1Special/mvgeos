@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
 
 class StepType(StrEnum):
@@ -86,6 +87,7 @@ class ExecutionStep:
     is_complete: bool = False
     spell_name: str = ""
     result: str = ""
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

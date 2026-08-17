@@ -129,6 +129,28 @@ async def test_render_worked_card_with_spell_name_and_result(user: User) -> None
 
 
 @pytest.mark.asyncio
+async def test_render_worked_card_with_params(user: User) -> None:
+    """Verify WORKED card renders params when present."""
+    step = ExecutionStep(
+        step_type=StepType.WORKED,
+        title="Worked for 1.0s",
+        spell_name="edit",
+        params={"path": "config.py", "content": "hello"},
+        result="Saved edits to config.py",
+        is_complete=True,
+    )
+
+    @ui.page("/test_worked_card_with_params")
+    def page() -> None:
+        render_worked_card(step)
+
+    await user.open("/test_worked_card_with_params")
+    await user.should_see("edit")
+    await user.should_see("Parameters")
+    await user.should_see("'path': 'config.py'")
+
+
+@pytest.mark.asyncio
 async def test_render_contemplation_card(user: User) -> None:
     """Verify 'Thought' contemplation card renders reasoning text."""
     thought_text = "The user said 'hey' - I should respond politely."

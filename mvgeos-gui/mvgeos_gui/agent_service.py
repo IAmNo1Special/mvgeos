@@ -210,6 +210,7 @@ class AgentService:
             else:
                 step = self._get_or_create_step(target_message, StepType.WORKED)
                 step.spell_name = spell_name
+                step.params = data.get("arguments", {})
                 step.details.append(f"Executing {spell_name}...")
                 elapsed = time.monotonic() - self._start_time
                 step.title = f"Worked for {self._format_duration(elapsed)}"

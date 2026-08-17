@@ -101,6 +101,7 @@ class SpellDispatcher:
                     data={
                         "spellCastId": tool_call["id"],
                         "spellName": tool_call["name"],
+                        "arguments": tool_call.get("arguments", {}),
                     },
                 )
             )
@@ -205,7 +206,11 @@ class SpellDispatcher:
         await emit(
             MvgeEvent(
                 type=MvgeEventType.SPELL_CASTING_START,
-                data={"spellCastId": spell_cast_id, "spellName": spell_name},
+                data={
+                    "spellCastId": spell_cast_id,
+                    "spellName": spell_name,
+                    "arguments": tool_call.get("arguments", {}),
+                },
             )
         )
 

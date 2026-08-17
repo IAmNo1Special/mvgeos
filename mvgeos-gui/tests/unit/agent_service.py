@@ -309,6 +309,7 @@ def test_handle_generic_worked_step(
             "spellCastId": "cast-edit-1",
             "spellName": "edit",
             "path": "config.py",
+            "arguments": {"path": "config.py", "content": "hello"},
         },
     )
     agent_service.handle_event(start_event, msg, app_state)
@@ -316,6 +317,7 @@ def test_handle_generic_worked_step(
     worked_steps = [s for s in msg.steps if s.step_type == StepType.WORKED]
     assert len(worked_steps) == 1
     assert worked_steps[0].spell_name == "edit"
+    assert worked_steps[0].params == {"path": "config.py", "content": "hello"}
     assert "edit" in worked_steps[0].details[0]
 
     end_event = MvgeEvent(
