@@ -5,7 +5,7 @@ description = "Session persistence using JSONL storage with file locking and in-
 requires-python = ">=3.14"
 license = {text = "MIT"}
 dependencies = [
-    "filelock>=3.32.2",
+    "filelock>=3.32.3",
 ]
 
 [project.optional-dependencies]
