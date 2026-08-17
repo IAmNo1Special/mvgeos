@@ -365,6 +365,8 @@ def load_skill_manifest(path: Path) -> SkillManifest | None:
     except OSError:
         return None
 
+    content = content.lstrip("\ufeff")
+
     if not content.startswith("---"):
         return None
 
@@ -449,6 +451,8 @@ def load_skill_manifests(
     manifests: list[SkillManifest] = []
     for entry in skills_dir.iterdir():
         if not entry.is_dir():
+            continue
+        if entry.name.startswith("."):
             continue
         manifest = load_skill_manifest(entry)
         if manifest is None:

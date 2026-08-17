@@ -742,6 +742,23 @@ Content"""
             assert manifest is not None
             assert manifest.disable_model_invocation is True
 
+    def test_load_skill_manifest_bom_stripped(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_dir = Path(tmpdir) / "test-skill"
+            skill_dir.mkdir()
+            skill_md = skill_dir / "SKILL.md"
+            skill_data = (
+                b"\xef\xbb\xbf---\nname: test-skill\ndescription: Test skill\n"
+                b"---\nContent"
+            )
+            skill_md.write_bytes(skill_data)
+
+            manifest = load_skill_manifest(skill_dir)
+
+            assert manifest is not None
+            assert manifest.name == "test-skill"
+            assert manifest.description == "Test skill"
+
 
 class TestLoadSkillManifests:
     def test_load_skill_manifests_multiple(self) -> None:
@@ -800,6 +817,31 @@ Content""",
             assert len(diagnostics) == 1
             assert diagnostics[0].kind == SkillDiagnosticKind.PARSE_WARNING
             assert diagnostics[0].skill_name == "bad-skill"
+
+    def test_load_skill_manifests_skips_dot_dirs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skills_dir = Path(tmpdir)
+
+            dot_dir = skills_dir / ".obsidian"
+            dot_dir.mkdir()
+            (dot_dir / "SKILL.md").write_text("no frontmatter", encoding="utf-8")
+
+            good_dir = skills_dir / "real-skill"
+            good_dir.mkdir()
+            (good_dir / "SKILL.md").write_text(
+                """---
+name: real-skill
+description: A real skill
+---
+Content""",
+                encoding="utf-8",
+            )
+
+            diagnostics: list = []
+            manifests = load_skill_manifests(skills_dir, diagnostics=diagnostics)
+            assert len(manifests) == 1
+            assert manifests[0].name == "real-skill"
+            assert len(diagnostics) == 0
 
 
 class TestLoadSkillsFromPaths:
