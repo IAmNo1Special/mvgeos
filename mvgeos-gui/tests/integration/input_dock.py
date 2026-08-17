@@ -6,15 +6,19 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from mvgeos_runes.types import SkillManifest, SkillScope
 from nicegui import ui
 from nicegui.testing import User
 
 from mvgeos_gui.app import build_page
 from mvgeos_gui.autocomplete import (
     AutocompleteMode,
+    AutocompleteService,
     CommandKind,
     MentionChip,
+    MentionIndex,
     MentionKind,
+    SlashCommandRegistry,
 )
 from mvgeos_gui.components.input_dock import (
     _autocomplete_icon,
@@ -40,6 +44,22 @@ def state_with_project(temp_project: Path) -> AppState:
     """Create AppState pointed at the temp project."""
     state = AppState(project_path=temp_project)
     state.get_autocomplete_service()
+    return state
+
+
+@pytest.fixture
+def state_with_skill(temp_project: Path) -> AppState:
+    """Create AppState with a test skill injected into the autocomplete service."""
+    state = AppState(project_path=temp_project)
+    skill = SkillManifest(
+        name="test-skill",
+        description="Test skill",
+        scope=SkillScope.PROJECT,
+        path=temp_project,
+    )
+    index = MentionIndex(temp_project, skills=[skill])
+    registry = SlashCommandRegistry()
+    state._autocomplete_service = AutocompleteService(index, registry)
     return state
 
 
@@ -174,6 +194,44 @@ class TestAutocompletePopup:
         assert ac.is_open
         assert ac.mode == AutocompleteMode.COMMAND
         await user.should_see("/help")
+
+    @pytest.mark.asyncio
+    async def test_slash_popup_shows_skill(
+        self, user: User, state_with_skill: AppState
+    ) -> None:
+        """Verify slash popup shows available skills."""
+        ac = state_with_skill.get_autocomplete_service()
+        ac.process_input("/test-skill")
+
+        @ui.page("/test_slash_shows_skill")
+        def page() -> None:
+            build_page(state_with_skill)
+
+        await user.open("/test_slash_shows_skill")
+
+        assert ac.is_open
+        assert ac.mode == AutocompleteMode.COMMAND
+        await user.should_see("test-skill")
+
+    @pytest.mark.asyncio
+    async def test_select_skill_from_slash_popup_inserts_slash_prefix(
+        self, user: User, state_with_skill: AppState
+    ) -> None:
+        """Verify selecting a skill from the slash popup inserts /skillname."""
+        ac = state_with_skill.get_autocomplete_service()
+        ac.process_input("/test-skill")
+
+        @ui.page("/test_select_skill_slash")
+        def page() -> None:
+            build_page(state_with_skill)
+
+        await user.open("/test_select_skill_slash")
+
+        textarea = user.find(ui.textarea)
+        textarea.trigger("keydown.enter.prevent")
+
+        assert len(state_with_skill.selected_mentions) == 1
+        assert state_with_skill.selected_mentions[0].text == "/test-skill"
 
     @pytest.mark.asyncio
     async def test_type_at_popup_above_textarea(
