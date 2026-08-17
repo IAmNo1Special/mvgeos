@@ -57,9 +57,10 @@ def _extract_text_and_contemplation(content: Any) -> tuple[str, list[str]]:
             elif isinstance(item, str):
                 text_parts.append(item)
         full_text = "\n".join(text_parts)
-        _, tag_thoughts = extract_contemplation_tags(full_text)
-        thought_parts.extend(tag_thoughts)
-        return full_text, thought_parts
+        cleaned, tag_thoughts = extract_contemplation_tags(full_text)
+        if tag_thoughts:
+            thought_parts.extend(tag_thoughts)
+        return cleaned, [t for t in thought_parts if t]
     return str(content or ""), []
 
 
