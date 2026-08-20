@@ -1137,3 +1137,39 @@ def test_handle_interleaved_thoughts_and_events(
     assert parts[2].text == "The config is in prod mode. Let's explain."
     assert parts[3].part_type == MessagePartType.TEXT
     assert parts[3].text == "Here is the explanation for prod mode."
+
+
+class TestEnsureListeners:
+    def test_does_not_double_bind(self, tmp_path: Path) -> None:
+        """_ensure_listeners must not re-bind handlers when called twice."""
+        from unittest.mock import MagicMock
+
+        service = AgentService(project_path=tmp_path, api_key="test-key")
+
+        mock_agent = MagicMock()
+        mock_agent._gui_listeners_bound = False
+        mock_agent.on = MagicMock()
+
+        service._ensure_listeners(mock_agent)
+        first_call_count = mock_agent.on.call_count
+
+        service._ensure_listeners(mock_agent)
+        second_call_count = mock_agent.on.call_count
+
+        assert first_call_count == second_call_count, (
+            "Listeners were re-bound on second _ensure_listeners call"
+        )
+        assert mock_agent._gui_listeners_bound is True
+
+    def test_does_not_rebind_with_truthy_non_true_flag(self, tmp_path: Path) -> None:
+        """_ensure_listeners must not re-bind when flag is any truthy value."""
+        from unittest.mock import MagicMock
+
+        service = AgentService(project_path=tmp_path, api_key="test-key")
+        mock_agent = MagicMock()
+        mock_agent._gui_listeners_bound = 1  # truthy but not True
+        mock_agent.on = MagicMock()
+
+        service._ensure_listeners(mock_agent)
+
+        mock_agent.on.assert_not_called()

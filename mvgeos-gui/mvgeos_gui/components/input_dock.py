@@ -283,7 +283,6 @@ def render_input_dock(state: AppState) -> ui.column:
             ac_service.subscribe_items_changed(popup_view.refresh)
 
             popup_view()
-            _render_mention_chips(state)
             _render_attachment_chips(state)
 
             with ui.row().classes("w-full items-center justify-between px-1"):

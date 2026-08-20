@@ -511,7 +511,7 @@ class AppState:
         ledger = self.tome_service.ledger
         try:
             entries = ledger.get_entries(tome_id)
-        except (ValueError, KeyError):
+        except ValueError, KeyError:
             self.messages = []
             return
 
@@ -534,6 +534,7 @@ class AppState:
                         )
                     )
         self.messages = reconstructed
+        self.notify()
 
     def switch_to_tome(self, tome_id: str) -> None:
         """Load a Tome session and switch the active conversation."""

@@ -351,7 +351,7 @@ class TestSwitchToTome:
 
         state.switch_to_tome(tome_id)
 
-        assert called == [True]
+        assert called == [True, True]
 
 
 class TestForkTome:
@@ -987,3 +987,21 @@ async def test_notify_handles_awaitable_response() -> None:
     state.notify()
     await asyncio.sleep(0)
     assert fired == [True]
+
+
+class TestLoadMessagesForTome:
+    def test_notifies_listeners_after_loading(self, tmp_path: Path) -> None:
+        """load_messages_for_tome must notify subscribers after loading entries."""
+        state, tome_dir = _make_state_with_tomes(str(tmp_path))
+        tome_id = _create_tome(tome_dir, str(tmp_path))
+        ledger = state.tome_service.ledger
+        ledger.append_message(tome_id, "user", "Hello")
+        ledger.append_message(tome_id, "assistant", "Hi there")
+
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+
+        state.load_messages_for_tome(tome_id)
+
+        assert called == [True]
+        assert len(state.messages) == 2

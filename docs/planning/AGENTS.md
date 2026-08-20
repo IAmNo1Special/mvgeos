@@ -23,16 +23,15 @@
 
 ## 🎯 NEXT PRIORITIES (In Order)
 
-### 1. Implement Seeker Protocol as Rune ⭐ HIGH
+### 1. Implement Seeker Protocol as Rune ⭐ HIGH ✅ DONE
 
 **Docs**: `docs/architecture/ARCHITECTURE_TOOL_SEARCH.md`, `docs/architecture/ARCHITECTURE_SKILL_SEARCH.md`, `docs/architecture/ARCHITECTURE_MCP_SEARCH.md`
 
-Package the three Seekers as an `mvgeos-runes-seeker` extension:
-
-- [ ] Create `mvgeos-runes-seeker` package with `__init__.py` exporting `ToolSearchSpell`, `SkillSearchSpell`, `MCPSearchSpell`
-- [ ] Wire up rune manifest entry point
-- [ ] Integration tests: rune load → spell registration → harness execute
-- [ ] Wire into `base_mvge.py` via rune loader (not hardcoded)
+Implemented as external rune at `~/.agents/.mvgeos/runes/00-seeker/`:
+- `mvgeos_runes_seeker` package with `ToolSearchSpell`, `SkillSearchSpell`, `SkillExecuteSpell`, `MCPSearchSpell`
+- Manifest with `before_mvge_start`/`session_shutdown` hooks, `ripgrep` system dep
+- 4 spells registered: `tool_search`, `skill_search`, `skill_execute`, `mcp_search`
+- Auto-loaded via rune loader (project/user/agent scope precedence)
 
 ---
 
@@ -144,5 +143,3 @@ mvgeos/
 ---
 
 *Update this file after completing each task. Keep it current for the next agent.*
-
-

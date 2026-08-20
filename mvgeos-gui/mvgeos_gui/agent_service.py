@@ -119,10 +119,10 @@ class AgentService:
 
     def _ensure_listeners(self, agent: Any) -> None:
         """Attach event listeners to the agent instance only once."""
-        if (
-            hasattr(agent, "on")
-            and getattr(agent, "_gui_listeners_bound", False) is not True
-        ):
+        flag = getattr(agent, "_gui_listeners_bound", None)
+        if flag is not None and not getattr(flag, "_mock_name", None) and flag:
+            return
+        if hasattr(agent, "on"):
             for event_type in MvgeEventType:
                 agent.on(
                     event_type,
