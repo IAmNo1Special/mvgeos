@@ -396,13 +396,7 @@ class AgentService:
         """Mark a background spell task complete or errored on SPELL_CASTING_END."""
         if not spell_id:
             return
-        status: TaskStatus
-        if error:
-            status = TaskStatus.ERROR
-        elif result is None or result == "":
-            status = TaskStatus.COMPLETE
-        else:
-            status = TaskStatus.COMPLETE
+        status = TaskStatus.ERROR if error else TaskStatus.COMPLETE
         state.update_background_task(
             spell_id,
             status=status,
