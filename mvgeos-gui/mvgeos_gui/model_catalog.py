@@ -4,6 +4,16 @@ from __future__ import annotations
 
 from mvgeos_provider.model_registry import ModelRegistry
 
+_MODEL_REGISTRY: ModelRegistry | None = None
+
+
+def _get_registry() -> ModelRegistry:
+    global _MODEL_REGISTRY
+    if _MODEL_REGISTRY is None:
+        _MODEL_REGISTRY = ModelRegistry()
+    return _MODEL_REGISTRY
+
+
 _PROVIDER_LABELS = {
     "nvidia": "NVIDIA",
     "google": "Google",
@@ -40,7 +50,7 @@ def _provider_label(provider: str) -> str:
 
 
 def get_model_options() -> dict[str, str]:
-    registry = ModelRegistry()
+    registry = _get_registry()
     models = registry.list_all()
 
     free: dict[str, str] = {}
@@ -65,8 +75,9 @@ def get_model_options() -> dict[str, str]:
 
 
 def get_flat_model_ids() -> list[str]:
-    registry = ModelRegistry()
-    return [m.id for m in registry.list_all() if m.id and not m.id.startswith("~")]
+    return [
+        m.id for m in _get_registry().list_all() if m.id and not m.id.startswith("~")
+    ]
 
 
 FALLBACK_MODELS = [

@@ -11,6 +11,13 @@ from mvgeos_gui.model_catalog import (
 )
 
 
+def _mock_registry(models: list[MagicMock]) -> MagicMock:
+    """Create a mock registry that returns the given models."""
+    mock_registry = MagicMock()
+    mock_registry.list_all.return_value = models
+    return mock_registry
+
+
 class TestProviderLabel:
     def test_known_providers(self) -> None:
         assert _provider_label("nvidia") == "NVIDIA"
@@ -30,8 +37,8 @@ class TestGetModelOptions:
         mock_model.free = True
         mock_model.provider = "nvidia"
 
-        with patch("mvgeos_gui.model_catalog.ModelRegistry") as mock_registry_cls:
-            mock_registry_cls.return_value.list_all.return_value = [mock_model]
+        with patch("mvgeos_gui.model_catalog._get_registry") as mock_get_registry:
+            mock_get_registry.return_value = _mock_registry([mock_model])
             options = get_model_options()
 
         assert options == {
@@ -51,11 +58,8 @@ class TestGetModelOptions:
         mock_paid.free = False
         mock_paid.provider = "nvidia"
 
-        with patch("mvgeos_gui.model_catalog.ModelRegistry") as mock_registry_cls:
-            mock_registry_cls.return_value.list_all.return_value = [
-                mock_paid,
-                mock_free,
-            ]
+        with patch("mvgeos_gui.model_catalog._get_registry") as mock_get_registry:
+            mock_get_registry.return_value = _mock_registry([mock_paid, mock_free])
             options = get_model_options()
 
         keys = list(options.keys())
@@ -75,19 +79,16 @@ class TestGetModelOptions:
         mock_alias.free = False
         mock_alias.provider = "deepseek"
 
-        with patch("mvgeos_gui.model_catalog.ModelRegistry") as mock_registry_cls:
-            mock_registry_cls.return_value.list_all.return_value = [
-                mock_normal,
-                mock_alias,
-            ]
+        with patch("mvgeos_gui.model_catalog._get_registry") as mock_get_registry:
+            mock_get_registry.return_value = _mock_registry([mock_normal, mock_alias])
             options = get_model_options()
 
         assert "~deepseek/deepseek-v4-flash-latest" not in options
         assert "nvidia/nemotron-3-ultra-550b-a55b" in options
 
     def test_empty_registry_returns_empty_dict(self) -> None:
-        with patch("mvgeos_gui.model_catalog.ModelRegistry") as mock_registry_cls:
-            mock_registry_cls.return_value.list_all.return_value = []
+        with patch("mvgeos_gui.model_catalog._get_registry") as mock_get_registry:
+            mock_get_registry.return_value = _mock_registry([])
             options = get_model_options()
 
         assert options == {}
@@ -98,8 +99,8 @@ class TestGetFlatModelIds:
         mock_model = MagicMock()
         mock_model.id = "nvidia/nemotron-3-ultra-550b-a55b:free"
 
-        with patch("mvgeos_gui.model_catalog.ModelRegistry") as mock_registry_cls:
-            mock_registry_cls.return_value.list_all.return_value = [mock_model]
+        with patch("mvgeos_gui.model_catalog._get_registry") as mock_get_registry:
+            mock_get_registry.return_value = _mock_registry([mock_model])
             ids = get_flat_model_ids()
 
         assert ids == ["nvidia/nemotron-3-ultra-550b-a55b:free"]
@@ -110,11 +111,8 @@ class TestGetFlatModelIds:
         mock_alias = MagicMock()
         mock_alias.id = "~deepseek/deepseek-v4-flash-latest"
 
-        with patch("mvgeos_gui.model_catalog.ModelRegistry") as mock_registry_cls:
-            mock_registry_cls.return_value.list_all.return_value = [
-                mock_normal,
-                mock_alias,
-            ]
+        with patch("mvgeos_gui.model_catalog._get_registry") as mock_get_registry:
+            mock_get_registry.return_value = _mock_registry([mock_normal, mock_alias])
             ids = get_flat_model_ids()
 
         assert "~deepseek/deepseek-v4-flash-latest" not in ids
