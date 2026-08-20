@@ -36,6 +36,7 @@ from mvgeos_agent.constants import (
     DEFAULT_TOME_DIR,
     resolve_rune_paths,
 )
+from mvgeos_agent.core_loop import StreamFn
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.event_bus import EventBus
 from mvgeos_agent.harness import (
@@ -44,7 +45,7 @@ from mvgeos_agent.harness import (
     CompactionSettings,
     MvgeHarness,
 )
-from mvgeos_agent.loop import MvgeLoop, StreamFn
+from mvgeos_agent.mvge_loop import MvgeLoop
 from mvgeos_agent.snapshot import RuntimeSnapshot
 from mvgeos_agent.types import (
     AbortController,

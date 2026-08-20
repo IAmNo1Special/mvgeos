@@ -71,7 +71,7 @@ class TestMvgeLoop:
 
     @pytest.mark.asyncio
     async def test_loop_single_turn_no_spells(self, state: MvgeState) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         model_obj = Model(
             id="test-model",
@@ -104,7 +104,7 @@ class TestMvgeLoop:
     async def test_loop_with_spell_cast(
         self, state: MvgeState, mock_spell: MvgeSpell
     ) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         model_obj = Model(
             id="test-model",
@@ -153,7 +153,7 @@ class TestMvgeLoop:
     async def test_loop_spell_timeout(
         self, state: MvgeState, mock_spell: MvgeSpell
     ) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         async def slow_execute(*args: Any, **kwargs: Any) -> dict[str, Any]:
             await asyncio.sleep(10)
@@ -214,7 +214,7 @@ class TestMvgeLoop:
 
     @pytest.mark.asyncio
     async def test_loop_persists_spell_use_invocation(self, state: MvgeState) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         model_obj = Model(
             id="test-model",
@@ -267,7 +267,7 @@ class TestMvgeLoop:
 
     @pytest.mark.asyncio
     async def test_loop_accumulates_mana_used(self, state: MvgeState) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         model_obj = Model(
             id="test-model",
@@ -297,7 +297,7 @@ class TestMvgeLoop:
 
     @pytest.mark.asyncio
     async def test_loop_error_handling(self, state: MvgeState) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         async def error_stream_gen(
             invocations: list[Any] | None = None, signal: Any | None = None
@@ -312,7 +312,7 @@ class TestMvgeLoop:
     @pytest.mark.asyncio
     async def test_loop_raises_rate_limit_error(self, state: MvgeState) -> None:
         from mvgeos_agent.errors import RateLimitError
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         model_obj = Model(
             id="test-model",
@@ -338,7 +338,7 @@ class TestMvgeLoop:
     @pytest.mark.asyncio
     async def test_loop_raises_auth_error(self, state: MvgeState) -> None:
         from mvgeos_agent.errors import AuthenticationError
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         model_obj = Model(
             id="test-model",
@@ -365,7 +365,7 @@ class TestMvgeLoop:
     async def test_loop_generic_provider_error_stays_runtime_error(
         self, state: MvgeState
     ) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         model_obj = Model(
             id="test-model",
@@ -390,7 +390,7 @@ class TestMvgeLoop:
 
     @pytest.mark.asyncio
     async def test_loop_no_initial_invocation(self) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         state = MvgeState(system_prompt="test")
 
@@ -410,7 +410,7 @@ class TestMvgeLoop:
 class TestMvgeLoopProviderHooks:
     @pytest.mark.asyncio
     async def test_before_provider_request_is_emitted(self) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         state = MvgeState(
             system_prompt="test",
@@ -452,7 +452,7 @@ class TestMvgeLoopProviderHooks:
 
     @pytest.mark.asyncio
     async def test_after_provider_response_is_emitted(self) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         state = MvgeState(
             system_prompt="test",
@@ -494,7 +494,7 @@ class TestMvgeLoopProviderHooks:
 
     @pytest.mark.asyncio
     async def test_before_provider_headers_chain_applies_headers(self) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         state = MvgeState(
             system_prompt="test",
@@ -542,7 +542,7 @@ class TestMvgeLoopProviderHooks:
 
     @pytest.mark.asyncio
     async def test_provider_hooks_error_propagates(self) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         state = MvgeState(
             system_prompt="test",
@@ -589,7 +589,7 @@ class TestMvgeLoopProviderHooks:
 class TestMvgeLoopContextTransform:
     @pytest.mark.asyncio
     async def test_context_transform_modifies_invocations(self) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         state = MvgeState(
             system_prompt="test",
@@ -638,7 +638,7 @@ class TestMvgeLoopContextTransform:
 class TestMvgeLoopInputHook:
     @pytest.mark.asyncio
     async def test_input_hook_emitted_for_summoner_request(self) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         state = MvgeState(
             system_prompt="test",
@@ -690,7 +690,7 @@ class TestMvgeLoopTomeHooks:
         from mvgeos_tome.ledger import TomeLedger
 
         from mvgeos_agent.agent_session import MvgeTome
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         with tempfile.TemporaryDirectory() as tmp:
             ledger = TomeLedger(Path(tmp))
@@ -747,7 +747,7 @@ class TestMvgeLoopTomeHooks:
         from mvgeos_tome.ledger import TomeLedger
 
         from mvgeos_agent.agent_session import MvgeTome
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         with tempfile.TemporaryDirectory() as tmp:
             ledger = TomeLedger(Path(tmp))
@@ -809,13 +809,13 @@ class TestPromptSourceIntrospection:
         assert state.prompt_source == PromptSource.AGENT_MD
 
     def test_loop_context_has_prompt_source_default(self) -> None:
-        from mvgeos_agent.loop import LoopContext
+        from mvgeos_agent.core_loop import LoopContext
 
         ctx = LoopContext(system_prompt="test")
         assert ctx.prompt_source == PromptSource.BUILTIN
 
     def test_loop_context_prompt_source_from_state(self) -> None:
-        from mvgeos_agent.loop import LoopContext
+        from mvgeos_agent.core_loop import LoopContext
 
         ctx = LoopContext(system_prompt="test", prompt_source=PromptSource.PROJECT_MD)
         assert ctx.prompt_source == PromptSource.PROJECT_MD
@@ -824,7 +824,8 @@ class TestPromptSourceIntrospection:
     async def test_loop_passes_prompt_source_to_context(self) -> None:
         from unittest.mock import patch
 
-        from mvgeos_agent.loop import LoopContext, MvgeLoop
+        from mvgeos_agent.core_loop import LoopContext
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         state = MvgeState(
             system_prompt="test",
@@ -857,10 +858,16 @@ class TestPromptSourceIntrospection:
             captured["context"] = context
             return []
 
-        with patch("mvgeos_agent.loop.run_loop", side_effect=fake_run_loop):
-            await loop.run(
-                lambda inv: _make_stream(responses), {"id": "test-model"}, "none"
-            )
+        with patch("mvgeos_agent.mvge_loop.run_loop", side_effect=fake_run_loop):
+
+            def stream_fn(inv, sig=None):
+                async def gen():
+                    for r in responses:
+                        yield r
+
+                return gen()
+
+            await loop.run(stream_fn, {"id": "test-model"}, "none")
 
         assert captured["context"].prompt_source == PromptSource.AGENT_MD
 
@@ -878,7 +885,7 @@ async def _make_stream(
 @pytest.mark.asyncio
 async def test_loop_streaming_deduplication_and_contemplation() -> None:
     from mvgeos_agent.event_bus import EventBus
-    from mvgeos_agent.loop import MvgeLoop
+    from mvgeos_agent.mvge_loop import MvgeLoop
     from mvgeos_agent.types import ContentType, MvgeEvent, MvgeEventType
 
     event_bus = EventBus()
@@ -973,7 +980,7 @@ async def test_record_invocation_spell_result_serializes_structured_json() -> No
     from mvgeos_tome.ledger import TomeLedger
 
     from mvgeos_agent.agent_session import MvgeTome
-    from mvgeos_agent.loop import MvgeLoop
+    from mvgeos_agent.mvge_loop import MvgeLoop
     from mvgeos_agent.types import MvgeEvent, MvgeEventType
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -1073,7 +1080,7 @@ class TestMvgeLoopQueueMode:
     async def test_all_mode_drains_entire_steer_queue(
         self, state: MvgeState, model_obj: Model
     ) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         state.queue_mode = QueueMode.ALL
         state.steer_queue = [
@@ -1103,7 +1110,7 @@ class TestMvgeLoopQueueMode:
     async def test_one_at_a_time_drains_single_steer_message(
         self, state: MvgeState, model_obj: Model
     ) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         state.queue_mode = QueueMode.ONE_AT_A_TIME
         state.steer_queue = [
@@ -1149,7 +1156,7 @@ class TestMvgeLoopQueueMode:
     async def test_one_at_a_time_drains_single_followup_message(
         self, state: MvgeState, model_obj: Model
     ) -> None:
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
 
         state.queue_mode = QueueMode.ONE_AT_A_TIME
         state.followup_queue = [

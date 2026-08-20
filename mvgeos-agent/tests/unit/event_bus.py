@@ -81,7 +81,7 @@ class TestEventBusIntegration:
     async def test_loop_emits_to_event_bus(self) -> None:
         from mvgeos_provider.types import Model, RealmResponse
 
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
         from mvgeos_agent.types import (
             ContemplationLevel,
             MvgeResponse,
@@ -150,7 +150,7 @@ class TestEventBusIntegration:
     async def test_loop_no_event_bus_no_crash(self) -> None:
         from mvgeos_provider.types import Model, RealmResponse
 
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
         from mvgeos_agent.types import (
             ContemplationLevel,
             MvgeResponse,

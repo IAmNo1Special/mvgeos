@@ -251,7 +251,7 @@ class TestTomePersistence:
         """The runner must actually swap the transcript during a real run."""
         from collections.abc import AsyncIterator
 
-        from mvgeos_agent.loop import MvgeLoop
+        from mvgeos_agent.mvge_loop import MvgeLoop
         from mvgeos_agent.types import MvgeSpell, MvgeState
 
         spell = MagicMock(spec=MvgeSpell)

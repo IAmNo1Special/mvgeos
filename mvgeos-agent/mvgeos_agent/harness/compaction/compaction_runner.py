@@ -16,7 +16,7 @@ from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 
 if TYPE_CHECKING:
     from mvgeos_agent.agent_session import MvgeTome
-    from mvgeos_agent.loop import EmitSink
+    from mvgeos_agent.core_loop import EmitSink
 
 from mvgeos_agent.harness.compaction.compaction import (
     DEFAULT_COMPACTION_SETTINGS,

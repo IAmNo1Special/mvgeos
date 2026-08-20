@@ -7,7 +7,7 @@ import pytest
 from mvgeos_tome.ledger import TomeLedger
 
 from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.loop import MvgeLoop
+from mvgeos_agent.mvge_loop import MvgeLoop
 from mvgeos_agent.types import (
     ContemplationLevel,
     ContentType,

@@ -24,7 +24,7 @@ from mvgeos_agent.types import (
 )
 
 if TYPE_CHECKING:
-    from mvgeos_agent.loop import EmitSink, LoopCallbacks, LoopContext
+    from mvgeos_agent.core_loop import EmitSink, LoopCallbacks, LoopContext
 
 _TRUNCATED_SPELL_CALL = (
     "Spell '{name}' was not cast: the response hit the output Mana limit, so its "

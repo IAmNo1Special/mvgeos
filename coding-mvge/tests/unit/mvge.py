@@ -76,7 +76,7 @@ def _install_mock(agent: CodingMvge, text: str = "Hello") -> _MockRealm:
         agent_tome=agent._agent_tome,
     )
     from mvgeos_agent.harness import MvgeHarness
-    from mvgeos_agent.loop import MvgeLoop
+    from mvgeos_agent.mvge_loop import MvgeLoop
 
     agent._loop = MvgeLoop(agent._state)
     agent._harness = MvgeHarness(agent._loop)
