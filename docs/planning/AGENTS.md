@@ -1,7 +1,7 @@
 # MvgeOS TODO — Agent Task Tracker
 
-**Last Updated**: 2026-08-13
-**Current Status**: Core engine, provider, tome persistence, rune loader, CLI, and coding agent implemented with 1,008 passing tests (2 skipped) and 94.38% coverage.
+**Last Updated**: 2026-08-19
+**Current Status**: Core engine, provider, tome persistence, rune loader, CLI, desktop GUI, and coding agent implemented with 1,641 passing tests (2 skipped) and 93.39% coverage.
 **Location**: `C:\Users\ivmno\Desktop\mvgeos\`
 
 ---
@@ -15,8 +15,9 @@
 | mvgeos-tome | 27 passed | 90% | ✅ | ✅ |
 | mvgeos-runes | 178 passed | 97% | ✅ | ✅ |
 | mvgeos-cli | 306 passed | 95% | ✅ | ✅ |
+| mvgeos-gui | 633 passed | 93% | ✅ | ✅ |
 | coding-mvge | 65 passed (1 skipped) | 97% | ✅ | ✅ |
-| **TOTAL** | **1,008 passed (2 skipped)** | **94.38%** | ✅ | ✅ |
+| **TOTAL** | **1,641 passed (2 skipped)** | **93.39%** | ✅ | ✅ |
 
 ---
 
@@ -41,10 +42,10 @@ Package the three Seekers as an `mvgeos-runes-seeker` extension:
 cd C:\Users\ivmno\Desktop\mvgeos
 
 # Tests (must pass, 90%+ coverage target)
-uv run pytest --cov
+uv run python -m pytest --cov
 
 # Type checking (must pass)
-uv run mypy -p mvgeos_agent -p mvgeos_provider -p mvgeos_tome -p mvgeos_runes -p mvgeos_cli -p coding_mvge
+uv run mypy
 
 # Linting (must pass)
 uv run ruff check
@@ -68,6 +69,7 @@ mvgeos/
 ├── mvgeos-tome/       # JSONL session persistence
 ├── mvgeos-runes/      # Extension system
 ├── mvgeos-cli/        # CLI entry point
+├── mvgeos-gui/        # Desktop GUI application (NiceGUI)
 ├── coding-mvge/      # Coding agent package
 ├── docs/adr/          # ADRs
 ├── .github/workflows/ci.yml

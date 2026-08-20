@@ -9,6 +9,7 @@ mvgeos/
 ├── mvgeos-tome/          # JSONL session persistence with locking + index
 ├── mvgeos-runes/         # Extension manifest, loader, sigil hooks
 ├── mvgeos-cli/           # CLI entry point (mvgeos command)
+├── mvgeos-gui/           # Desktop GUI application (NiceGUI + PyWebView)
 ├── coding-mvge/         # Coding agent package (BaseMvge subclass)
 ├── .agents/.mvgeos/      # dotagents protocol compliance (created at runtime)
 │   ├── runes/              # Rune extensions
@@ -84,6 +85,19 @@ orchestrating the other packages.
 
 **Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-tome,
 mvgeos-runes, rich, typer, prompt_toolkit
+
+### mvgeos-gui
+
+Native desktop graphical user interface matching the 1:1 Google Antigravity IDE
+design. Connects directly to `CodingMvge` and `MvgeHarness` in-process with a live
+event bus. Provides a three-column layout with project navigation, interactive chat
+viewport with step cards, floating autocomplete input dock (`@` mentions, `/` commands),
+git diff viewer, and slide-over artifact markdown inspector.
+
+**Entry point**: `mvgeos-gui` command → `mvgeos_gui.main:main`
+
+**Dependencies**: nicegui, pywebview, pathspec, coding-mvge, mvgeos-agent,
+mvgeos-cli, mvgeos-provider, mvgeos-runes, mvgeos-tome
 
 ### coding-mvge
 
@@ -186,6 +200,7 @@ turn_end, agent_end, compaction_start/end, queue_update.
 - **File locking**: filelock (cross-platform)
 - **HTTP client**: httpx (provider realm)
 - **CLI**: typer, rich (console rendering), prompt_toolkit (TUI)
+- **Desktop GUI**: nicegui, pywebview (OS-native windowing)
 - **Pre-commit**: pre-commit framework (ruff + mypy + pytest checks)
 - **Config compliance**: dotagents protocol at `.agents/.mvgeos/`
 - **Changelog**: git-cliff at `cliff.toml` — conventional commits

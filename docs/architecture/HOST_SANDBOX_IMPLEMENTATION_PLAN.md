@@ -44,7 +44,7 @@ Establish host sandbox ownership in `mvgeos-agent` while strictly avoiding inver
 #### [MODIFY] [rune_api.py](file:///c:/Users/ivmno/Desktop/mvgeos/mvgeos-runes/mvgeos_runes/rune_api.py)
 - Expose `@property def sandbox(self) -> MvgeSandbox` on `RuneAPI` returning `self._runner.sandbox`.
 
-#### [MODIFY] [test_rune_api.py](file:///c:/Users/ivmno/Desktop/mvgeos/mvgeos-runes/tests_runes/test_rune_api.py)
+#### [MODIFY] [test_rune_api.py](file:///c:/Users/ivmno/Desktop/mvgeos/mvgeos-runes/tests/integration/rune_api.py)
 - Add unit tests verifying `api.sandbox` property returns `MvgeSandbox` instance.
 
 ---
@@ -55,7 +55,7 @@ Establish host sandbox ownership in `mvgeos-agent` while strictly avoiding inver
 - Update `rune_factory(api: RuneAPI)` to instantiate `engine = GoapEngine(sandbox=api.sandbox)`.
 - Update `SynthesizedRuneSpell.execute` to execute code via `self._engine.sandbox.execute_code(...)`.
 
-#### [MODIFY] [test_heal_my_goap_integration.py](file:///c:/Users/ivmno/Desktop/mvgeos/coding-agent/tests_coding_agent/test_heal_my_goap_integration.py)
+#### [MODIFY] [heal_my_goap_integration.py](file:///c:/Users/ivmno/Desktop/mvgeos/coding-mvge/tests/integration/heal_my_goap_integration.py)
 - Update integration tests to verify MvgeOS host sandbox dependency injection.
 
 ---
@@ -72,10 +72,10 @@ Establish host sandbox ownership in `mvgeos-agent` while strictly avoiding inver
    ```
 2. **`mvgeos` Test Suite**:
    ```bash
-   uv run pytest --cov
-   uv run mypy mvgeos-runes/ coding-agent/ mvgeos-agent/
-   uvx ruff check mvgeos-runes/ coding-agent/ mvgeos-agent/ --line-length 88 --fix
-   uvx ruff format mvgeos-runes/ coding-agent/ mvgeos-agent/ --line-length 88
+   uv run python -m pytest --cov
+   uv run mypy
+   uv run ruff check mvgeos-runes/ coding-mvge/ mvgeos-agent/ --fix
+   uv run ruff format mvgeos-runes/ coding-mvge/ mvgeos-agent/
    ```
 
 ### Manual & Interactive Verification
