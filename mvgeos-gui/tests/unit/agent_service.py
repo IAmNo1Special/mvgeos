@@ -1,6 +1,7 @@
 """Unit tests for AgentService event sink and channeling bridge."""
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -1173,3 +1174,81 @@ class TestEnsureListeners:
         service._ensure_listeners(mock_agent)
 
         mock_agent.on.assert_not_called()
+
+
+class TestPendingSpellStartsCleanup:
+    def test_agent_end_clears_pending_spell_starts(
+        self, agent_service: AgentService, app_state: AppState
+    ) -> None:
+        """AGENT_END must clear any orphaned pending spell starts."""
+        msg = ChatMessage(role="assistant", is_streaming=True)
+        app_state.messages.append(msg)
+
+        start_event = MvgeEvent(
+            type=MvgeEventType.SPELL_CASTING_START,
+            data={"spellCastId": "cast-orphan", "spellName": "bash"},
+        )
+        agent_service.handle_event(start_event, msg, app_state)
+
+        assert "cast-orphan" in agent_service._pending_spell_starts
+
+        end_event = MvgeEvent(type=MvgeEventType.AGENT_END, data={})
+        agent_service.handle_event(end_event, msg, app_state)
+
+        assert "cast-orphan" not in agent_service._pending_spell_starts
+
+    def test_turn_end_clears_pending_spell_starts(
+        self, agent_service: AgentService, app_state: AppState
+    ) -> None:
+        """TURN_END must clear any orphaned pending spell starts."""
+        msg = ChatMessage(role="assistant", is_streaming=True)
+        app_state.messages.append(msg)
+
+        start_event = MvgeEvent(
+            type=MvgeEventType.SPELL_CASTING_START,
+            data={"spellCastId": "cast-orphan-2", "spellName": "read"},
+        )
+        agent_service.handle_event(start_event, msg, app_state)
+
+        assert "cast-orphan-2" in agent_service._pending_spell_starts
+
+        end_event = MvgeEvent(type=MvgeEventType.TURN_END, data={})
+        agent_service.handle_event(end_event, msg, app_state)
+
+        assert "cast-orphan-2" not in agent_service._pending_spell_starts
+
+
+class TestGetOrCreateAgentApiKeyGuard:
+    def test_raises_without_api_key_and_factory(self, tmp_path: Path) -> None:
+        """get_or_create_agent must raise when api_key is None and no factory."""
+        service = AgentService(project_path=tmp_path, api_key="")
+        service._api_key = None
+
+        with pytest.raises(RuntimeError, match="API key"):
+            service.get_or_create_agent(AppState(project_path=tmp_path))
+
+    def test_uses_factory_even_without_api_key(self, tmp_path: Path) -> None:
+        """Factory path passes api_key=None through when no key configured."""
+        mock_agent = MagicMock()
+        factory = MagicMock(return_value=mock_agent)
+        service = AgentService(project_path=tmp_path, api_key="", agent_factory=factory)
+        service._api_key = None
+
+        agent = service.get_or_create_agent(AppState(project_path=tmp_path))
+        assert agent is mock_agent
+        _, kwargs = factory.call_args
+        assert kwargs["api_key"] is None
+
+
+class TestSubmitPromptNoLoop:
+    def test_logs_warning_without_running_event_loop(
+        self, app_state: AppState, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """submit_prompt must log a warning and clean up without an event loop."""
+        with caplog.at_level(logging.WARNING):
+            app_state.submit_prompt("hello")
+
+        assert any("event loop" in record.message.lower() for record in caplog.records)
+        assert len(app_state.messages) == 1
+        assert app_state.messages[0].role == "user"
+        assert app_state.is_channeling is False

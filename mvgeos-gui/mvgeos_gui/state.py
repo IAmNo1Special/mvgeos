@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+import logging
 import os
 import shutil
 import subprocess
@@ -42,6 +43,8 @@ from mvgeos_gui.models import (
     extract_ordered_content,
 )
 from mvgeos_gui.tome_service import TomeListEntry, TomeService
+
+logger = logging.getLogger(__name__)
 
 
 def _extract_parts_and_content(
@@ -597,7 +600,13 @@ class AppState:
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            loop = None
+            logger.warning(
+                "submit_prompt called without a running event loop — prompt dropped"
+            )
+            self.messages.pop()
+            self.is_channeling = False
+            self.notify()
+            return
         if loop is not None:
             task = asyncio.ensure_future(service.run_prompt(text, self, assistant_msg))
 

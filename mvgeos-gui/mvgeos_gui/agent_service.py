@@ -100,14 +100,20 @@ class AgentService:
         if self._agent_factory is not None:
             self._agent = self._agent_factory(
                 project_path=self._project_path,
-                api_key=self._api_key or "mock-key",
+                api_key=self._api_key,
                 state=state,
             )
         else:
+            if not self._api_key:
+                raise RuntimeError(
+                    "Cannot instantiate CodingMvge without an API key. "
+                    "Set OPENROUTER_API_KEY, pass --api-key, or configure "
+                    "an agent_factory."
+                )
             from coding_mvge.mvge import CodingMvge
 
             self._agent = CodingMvge(
-                api_key=self._api_key or "mock-key",
+                api_key=self._api_key,
                 tome_dir=state.tome_service.tome_dir,
                 tome_resume=state.active_tome_id,
             )
@@ -312,6 +318,7 @@ class AgentService:
                 self._track_spell_end(target_state, spell_id, result, error, duration)
 
         elif event.type in (MvgeEventType.TURN_END, MvgeEventType.AGENT_END):
+            self._pending_spell_starts.clear()
             if self._start_time > 0:
                 elapsed = max(0.0, time.monotonic() - self._start_time)
                 for step in target_message.steps:
