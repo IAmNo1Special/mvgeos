@@ -90,8 +90,8 @@ def test_calculate_initial_window_geometry_fallback_when_no_screens() -> None:
     """Verify fallback geometry when screen detection returns empty list."""
     with patch("webview.screens", []):
         w, h, x, y = calculate_initial_window_geometry()
-        assert w == 1200
-        assert h == 750
+        assert w == 1400
+        assert h == 900
         assert x is None
         assert y is None
 
@@ -102,8 +102,8 @@ def test_calculate_initial_window_geometry_fallback_on_error() -> None:
     mock_screens.__getitem__.side_effect = RuntimeError("Screen detection failed")
     with patch("webview.screens", mock_screens):
         w, h, x, y = calculate_initial_window_geometry()
-        assert w == 1200
-        assert h == 750
+        assert w == 1400
+        assert h == 900
         assert x is None
         assert y is None
 

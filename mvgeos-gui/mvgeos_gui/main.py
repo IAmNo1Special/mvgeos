@@ -61,17 +61,20 @@ def calculate_initial_window_geometry(
     except Exception:
         pass
 
-    return min(target_width, 1200), min(target_height, 750), None, None
+    return target_width, target_height, None, None
 
 
-def enable_windows_dark_titlebar(title: str = APP_TITLE) -> None:
-    """Apply immersive dark mode to Windows native titlebar."""
+def enable_windows_dark_titlebar(title: str = APP_TITLE) -> bool:
+    """Apply immersive dark mode to Windows native titlebar.
+
+    Returns True if the titlebar was found and updated, False otherwise.
+    """
     if platform.system() != "Windows":
-        return
+        return False
     with contextlib.suppress(Exception):
         windll = getattr(ctypes, "windll", None)
         if windll is None:
-            return
+            return False
         hwnd = windll.user32.FindWindowW(None, title)
         if hwnd:
             dwmwa_use_immersive_dark_mode = 20
@@ -82,6 +85,8 @@ def enable_windows_dark_titlebar(title: str = APP_TITLE) -> None:
                 ctypes.byref(value),
                 ctypes.sizeof(value),
             )
+            return True
+    return False
 
 
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:
@@ -158,8 +163,10 @@ def main() -> None:
         if platform.system() == "Windows":
 
             async def _apply_dark_titlebar() -> None:
-                await asyncio.sleep(0.3)
-                enable_windows_dark_titlebar(APP_TITLE)
+                for _ in range(20):  # up to ~2 seconds
+                    if enable_windows_dark_titlebar(APP_TITLE):
+                        return
+                    await asyncio.sleep(0.1)
 
             app.on_startup(_apply_dark_titlebar)
 
