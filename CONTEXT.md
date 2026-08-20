@@ -140,8 +140,8 @@ Both accept a `signal` that is currently ignored, reserved so the abort work doe
 
 The system-wide default model across all MvgeOS packages and test suites is `nvidia/nemotron-3-ultra-550b-a55b:free` (`DEFAULT_MODEL` in `mvgeos_agent.constants`).
 
-## Known gaps
+## Operational Capabilities
 
-- **Abort** — `signal` parameters exist on `MvgeSpell.execute` but are always `None`; there is no `abort()` on the Mvge. Pi threads an `AbortSignal` end to end.
-- **Queue modes** — `ONE_AT_A_TIME` drains one message per turn; `ALL` drains the entire queue. Both `queue_mode` and `one-at-a-time` semantics implemented.
+- **Abort**: Implemented via `AbortController`, `AbortSignal`, and `BaseMvge.abort()`, providing cooperative cancellation across channeling and spell execution.
+- **Queue modes**: `ONE_AT_A_TIME` drains one message per turn; `ALL` drains the entire queue. Both `queue_mode` and `one-at-a-time` semantics implemented.
 

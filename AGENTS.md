@@ -101,6 +101,7 @@ MvgeOS is a monorepo with uv workspaces:
 | mvgeos-tome | JSONL session persistence with file locking |
 | mvgeos-runes | Rune/Extension manifest, loader, sigil hooks |
 | mvgeos-cli | CLI entry point (`mvgeos` command) |
+| mvgeos-gui | Desktop GUI application powered by NiceGUI with 1:1 Antigravity UI |
 | coding-mvge | Coding agent package |
 
 Config follows dotagents protocol at `~/.agents/.mvgeos/`.
