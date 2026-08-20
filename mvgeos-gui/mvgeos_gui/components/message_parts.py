@@ -11,13 +11,12 @@ from mvgeos_gui.components.step_cards import (
 )
 from mvgeos_gui.models import ChatMessage, MessagePartType
 from mvgeos_gui.state import AppState
+from mvgeos_gui.utils import copy_to_clipboard
 
 
 def _copy_to_clipboard(text: str) -> None:
     """Copy content to the system clipboard and display feedback toast."""
-    escaped = text.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
-    ui.run_javascript(f"navigator.clipboard.writeText(`{escaped}`)")
-    ui.notify("Copied to clipboard", type="positive", position="bottom")
+    copy_to_clipboard(text)
 
 
 def render_message_header(msg: ChatMessage) -> ui.row:

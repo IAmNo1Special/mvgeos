@@ -15,6 +15,7 @@ from mvgeos_gui.components.message_parts import (
 from mvgeos_gui.components.terminal_panel import render_terminal_panel
 from mvgeos_gui.model_catalog import get_model_options
 from mvgeos_gui.state import AppState
+from mvgeos_gui.utils import copy_to_clipboard
 
 EXAMPLE_PROMPTS = [
     "Explain this project structure",
@@ -135,6 +136,7 @@ def render_chat_panel(state: AppState) -> ui.column:
                     .classes("flex-1 w-full overflow-y-auto space-y-4")
                     .props('id="chat-messages-area"')
                 ) as messages_area:
+
                     @ui.refreshable
                     def messages_view() -> None:
                         if not state.messages and not state.is_streaming:
@@ -576,9 +578,7 @@ def _toolbar_button(icon: str, title: str, active: bool = False, on_click=None) 
 
 def _copy_to_clipboard(text: str) -> None:
     """Copy text to clipboard."""
-    escaped = text.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
-    ui.run_javascript(f"navigator.clipboard.writeText(`{escaped}`)")
-    ui.notify("Copied to clipboard", type="positive", position="bottom")
+    copy_to_clipboard(text)
 
 
 def _scroll_to_bottom(element_id: int | None = None, force: bool = False) -> None:

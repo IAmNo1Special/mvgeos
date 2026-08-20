@@ -15,21 +15,18 @@ from mvgeos_gui.components.step_cards import (
 )
 from mvgeos_gui.models import ChatMessage, MessagePartType
 from mvgeos_gui.state import AppState
+from mvgeos_gui.utils import copy_to_clipboard
 
 
 def _copy_to_clipboard(text: str) -> None:
     """Copy content to the system clipboard and display feedback toast."""
-    escaped = text.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
-    ui.run_javascript(f"navigator.clipboard.writeText(`{escaped}`)")
-    ui.notify("Copied to clipboard", type="positive", position="bottom")
+    copy_to_clipboard(text)
 
 
 def render_user_message(msg: ChatMessage) -> ui.column:
     """Render a styled user prompt container bubble."""
     with (
-        ui.column().classes(
-            "w-full px-6 py-3 items-end"
-        ) as container,
+        ui.column().classes("w-full px-6 py-3 items-end") as container,
         ui.card().classes(
             "w-auto max-w-[85%] bg-[#1e212b] border border-[#2b2f3d] "
             "rounded-2xl p-4 gap-2 shadow-md"
@@ -55,9 +52,7 @@ def render_assistant_message(
 ) -> ui.column:
     """Render an Mvge response bubble with live markdown, Mana, and step cards."""
     with (
-        ui.column().classes(
-            "w-full px-6 py-3 items-start"
-        ) as container,
+        ui.column().classes("w-full px-6 py-3 items-start") as container,
         ui.card().classes(
             "w-full bg-[#181a20] border border-[#2b2f3d] rounded-2xl "
             "p-4 gap-3 shadow-lg"

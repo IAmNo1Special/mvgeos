@@ -8,6 +8,7 @@ from nicegui import ui
 
 from mvgeos_gui.models import Artifact, ArtifactType
 from mvgeos_gui.state import AppState
+from mvgeos_gui.utils import copy_to_clipboard, download_artifact
 
 _ARTIFACT_TYPE_ICONS: dict[ArtifactType, str] = {
     ArtifactType.WALKTHROUGH: "route",
@@ -28,23 +29,12 @@ _ARTIFACT_TYPE_COLORS: dict[ArtifactType, str] = {
 
 def _copy_to_clipboard(text: str) -> None:
     """Copy content to the system clipboard and display feedback toast."""
-    escaped = text.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
-    ui.run_javascript(f"navigator.clipboard.writeText(`{escaped}`)")
-    ui.notify("Copied to clipboard", type="positive", position="bottom")
+    copy_to_clipboard(text)
 
 
 def _download_artifact(artifact: Artifact) -> None:
     """Download artifact content as a text file."""
-    filename = f"{artifact.title.replace(' ', '_').lower()}.md"
-    blob = (
-        "data:text/plain;charset=utf-8,"
-        f"{artifact.content.replace('#', '%23').replace(chr(10), '%0A')}"
-    )
-    ui.run_javascript(
-        f"const a = document.createElement('a'); a.href = `{blob}`; "
-        f"a.download = `{filename}`; a.click();"
-    )
-    ui.notify(f"Downloading {filename}", type="positive", position="bottom")
+    download_artifact(artifact.title, artifact.content)
 
 
 def _render_markdown_with_mermaid(content: str) -> None:
