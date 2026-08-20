@@ -145,9 +145,9 @@ def render_files_card(step: ExecutionStep) -> ui.expansion:
                             "max-h-32 overflow-auto"
                         )
                     if hidden > 0:
-                        ui.label(
-                            f"... ({hidden} more lines, expand to view)"
-                        ).classes("text-[10px] text-[#64748b] italic")
+                        ui.label(f"... ({hidden} more lines, expand to view)").classes(
+                            "text-[10px] text-[#64748b] italic"
+                        )
     return expansion
 
 

@@ -1,7 +1,7 @@
 # MvgeOS TODO — Agent Task Tracker
 
-**Last Updated**: 2026-08-19
-**Current Status**: Core engine, provider, tome persistence, rune loader, CLI, desktop GUI, and coding agent implemented with 1,641 passing tests (2 skipped) and 93.39% coverage.
+**Last Updated**: 2026-08-20
+**Current Status**: Core engine, provider, tome persistence, rune loader, CLI, desktop GUI, and coding agent implemented with 1,667 passing tests (2 skipped) and 93%+ coverage.
 **Location**: `C:\Users\ivmno\Desktop\mvgeos\`
 
 ---
@@ -13,11 +13,11 @@
 | mvgeos-agent | 334 passed (1 skipped) | 96% | ✅ | ✅ |
 | mvgeos-provider | 98 passed | 93% | ✅ | ✅ |
 | mvgeos-tome | 27 passed | 90% | ✅ | ✅ |
-| mvgeos-runes | 178 passed | 97% | ✅ | ✅ |
-| mvgeos-cli | 306 passed | 95% | ✅ | ✅ |
+| mvgeos-runes | 191 passed | 97% | ✅ | ✅ |
+| mvgeos-cli | 405 passed | 95% | ✅ | ✅ |
 | mvgeos-gui | 633 passed | 93% | ✅ | ✅ |
 | coding-mvge | 65 passed (1 skipped) | 97% | ✅ | ✅ |
-| **TOTAL** | **1,641 passed (2 skipped)** | **93.39%** | ✅ | ✅ |
+| **TOTAL** | **1,667 passed (2 skipped)** | **93%+** | ✅ | ✅ |
 
 ---
 
