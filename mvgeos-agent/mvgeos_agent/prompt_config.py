@@ -1,12 +1,41 @@
-from __future__ import annotations
-
 import logging
+import os
+import platform
+import sys
 from pathlib import Path
 
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_agent.prompt_loader import PromptLoader
 
 logger = logging.getLogger(__name__)
+
+
+def get_environment_info(cwd: str | Path | None = None) -> list[str]:
+    """Return OS and default terminal environment details (without date/time)."""
+    os_name = platform.system()
+    os_release = platform.release()
+    arch = platform.machine()
+
+    lines = [
+        f"- Operating System: {os_name} {os_release} ({sys.platform}, {arch})",
+    ]
+
+    if sys.platform == "win32":
+        lines.append("- Shell: PowerShell (powershell.exe)")
+        lines.append(
+            "- Shell Syntax: Use PowerShell syntax and cmdlets. Chain commands "
+            "with ';' rather than '&&'. Use non-interactive flags (e.g. "
+            "'Get-Date' instead of interactive 'date')."
+        )
+    else:
+        shell = os.environ.get("SHELL", "/bin/bash")
+        lines.append(f"- Shell: {shell}")
+
+    effective_cwd = str(cwd) if cwd else str(Path.cwd())
+    lines.append(f"- Working Directory: {effective_cwd}")
+
+    return lines
+
 
 _SYSTEM_PROMPT_BODY = (
     "You are Mvge, a concise AI coding agent. "
@@ -71,8 +100,11 @@ def _render_prompt(
         parts.append("\nGuidelines:")
         parts.extend(f"- {guideline}" for guideline in guidelines)
 
-    if cwd:
-        parts.append(f"\nCurrent working directory: {cwd}")
+    parts.append("\nEnvironment:")
+    parts.extend(get_environment_info(cwd))
+
+    if append_text:
+        parts.append(f"\n{append_text}")
 
     return "\n".join(parts)
 

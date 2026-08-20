@@ -67,8 +67,10 @@ class TestGuidelinesFromConfigDir:
             prompt = build_system_prompt(spells=[], config_dir=config)
 
             # "Guidelines:" also appears in the default prompt body, so take
-            # the trailing section that the builder appends last.
-            guidelines_block = prompt.rsplit("Guidelines:", 1)[1]
+            # the section between Guidelines: and Environment:
+            guidelines_block = prompt.rsplit("Guidelines:", 1)[1].split("Environment:")[
+                0
+            ]
             assert guidelines_block.strip().splitlines() == ["- One", "- Two"]
 
     def test_empty_guidelines_file_falls_back_to_defaults(self) -> None:

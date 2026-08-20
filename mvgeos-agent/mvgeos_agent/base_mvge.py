@@ -326,18 +326,11 @@ class BaseMvge:
     def _render_prompt(
         self, body: str, spell_names: list[str], guidelines: list[str]
     ) -> str:
-        """Render a prompt with body, spells, and guidelines."""
-        parts = [body]
-        if spell_names:
-            spell_list = "\n".join(f"  - {s}" for s in spell_names)
-        else:
-            spell_list = "  (none)"
-        parts.append(f"\nActive spells:\n{spell_list}")
-        if guidelines:
-            parts.append("\nGuidelines:")
-            parts.extend(f"- {g}" for g in guidelines)
-        parts.append(f"\nCurrent working directory: {Path.cwd()}")
-        return "\n".join(parts)
+        """Render a prompt with body, spells, guidelines, and environment."""
+        from mvgeos_agent.prompt_config import _render_prompt as render_p
+
+        cwd = str(getattr(self._config_manager, "_project_dir", "") or Path.cwd())
+        return render_p(body=body, spells=spell_names, guidelines=guidelines, cwd=cwd)
 
     async def _build_system_prompt_async(self) -> str:
         """Async version that supports rune prompt injection via sigil hooks.

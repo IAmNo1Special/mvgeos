@@ -30,7 +30,10 @@ def test_build_system_prompt_no_spells() -> None:
 
 def test_build_system_prompt_with_cwd() -> None:
     prompt = build_system_prompt(spells=["bash"], cwd="/test/path")
-    assert "Current working directory: /test/path" in prompt
+    assert "Working Directory: /test/path" in prompt
+    assert "Environment:" in prompt
+    assert "Operating System:" in prompt
+    assert "Shell:" in prompt
 
 
 def test_build_system_prompt_with_custom_prompt() -> None:
