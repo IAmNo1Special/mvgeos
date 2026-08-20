@@ -493,8 +493,10 @@ class AgentService:
                         state.notify()
 
             keepalive_task = asyncio.create_task(_keepalive())
+            # Create the agent run task so it can be cancelled via cancel()
+            self._active_task = asyncio.create_task(agent.run(prompt))
             try:
-                await agent.run(prompt)
+                await self._active_task
             finally:
                 keepalive_stop.set()
                 with contextlib.suppress(Exception):
@@ -542,6 +544,7 @@ class AgentService:
             self._is_running = False
             self._active_message = None
             self._active_state = None
+            self._active_task = None
             state.notify()
 
     def cancel(self) -> None:
@@ -549,6 +552,7 @@ class AgentService:
         if self._active_task is not None:
             with contextlib.suppress(Exception):
                 self._active_task.cancel()
+            self._active_task = None
         self._is_running = False
         self._active_message = None
         self._active_state = None
