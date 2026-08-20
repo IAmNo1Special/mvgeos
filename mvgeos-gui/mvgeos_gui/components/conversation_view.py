@@ -13,7 +13,7 @@ from mvgeos_gui.components.step_cards import (
     render_contemplation_card,
     render_step_card,
 )
-from mvgeos_gui.models import ChatMessage
+from mvgeos_gui.models import ChatMessage, MessagePartType
 from mvgeos_gui.state import AppState
 
 
@@ -28,7 +28,7 @@ def render_user_message(msg: ChatMessage) -> ui.column:
     """Render a styled user prompt container bubble."""
     with (
         ui.column().classes(
-            "w-full max-w-3xl mx-auto px-6 py-3 items-end"
+            "w-full px-6 py-3 items-end"
         ) as container,
         ui.card().classes(
             "w-auto max-w-[85%] bg-[#1e212b] border border-[#2b2f3d] "
@@ -56,7 +56,7 @@ def render_assistant_message(
     """Render an Mvge response bubble with live markdown, Mana, and step cards."""
     with (
         ui.column().classes(
-            "w-full max-w-3xl mx-auto px-6 py-3 items-start"
+            "w-full px-6 py-3 items-start"
         ) as container,
         ui.card().classes(
             "w-full bg-[#181a20] border border-[#2b2f3d] rounded-2xl "
@@ -92,28 +92,19 @@ def render_assistant_message(
                         )
                 ui.label(msg.timestamp).classes("text-[10px] text-[#64748b] font-mono")
 
-        # Contemplation / Reasoning Cards
-        for thought in msg.contemplation:
-            render_contemplation_card(thought, msg.is_streaming)
-
-        # Intermediate Execution Steps
-        if msg.steps:
-            with ui.column().classes("w-full gap-1 my-1"):
-                for step in msg.steps:
-                    render_step_card(step)
-
-        # Live Markdown Response Content
-        if msg.content:
-            ui.markdown(msg.content).classes(
-                "text-xs text-[#e6edf3] leading-relaxed markdown-content "
-                "max-w-none w-full"
-            )
-
-        # Artifact Cards
-        if msg.artifacts:
-            with ui.column().classes("w-full gap-2 my-2"):
-                for artifact in msg.artifacts:
-                    render_artifact_card(artifact, state)
+        # Sequential Message Parts (Contemplation, Steps, Text, Artifacts)
+        for part in msg.get_parts():
+            if part.part_type == MessagePartType.CONTEMPLATION and part.text:
+                render_contemplation_card(part.text, msg.is_streaming)
+            elif part.part_type == MessagePartType.STEP and part.step:
+                render_step_card(part.step)
+            elif part.part_type == MessagePartType.TEXT and part.text:
+                ui.markdown(part.text).classes(
+                    "text-xs text-[#e6edf3] leading-relaxed markdown-content "
+                    "max-w-none w-full"
+                )
+            elif part.part_type == MessagePartType.ARTIFACT and part.artifact:
+                render_artifact_card(part.artifact, state)
 
         # Streaming Cursor Indicator
         if msg.is_streaming:

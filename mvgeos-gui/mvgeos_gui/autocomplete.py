@@ -565,6 +565,28 @@ class AutocompleteService:
         self._notify_listeners()
         return text
 
+    def on_text_change(self, text: str, cursor_pos: int | None = None) -> bool:
+        """Update autocomplete state on text change (alias for process_input)."""
+        return self.process_input(text, cursor_pos)
+
+    def get_selected_item(self) -> object | None:
+        """Return the currently selected item or None."""
+        if (
+            not self.items
+            or self.selected_index < 0
+            or self.selected_index >= len(self.items)
+        ):
+            return None
+        return self.items[self.selected_index]
+
+    def select_next(self) -> None:
+        """Move the selection cursor down by one (alias for move_down)."""
+        self.move_down()
+
+    def select_prev(self) -> None:
+        """Move the selection cursor up by one (alias for move_up)."""
+        self.move_up()
+
     def move_down(self) -> None:
         """Move the selection cursor down by one."""
         if self.items and self.selected_index < len(self.items) - 1:

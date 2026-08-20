@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import os
 import shutil
 import subprocess
@@ -31,37 +32,123 @@ from mvgeos_gui.models import (
     Artifact,
     BackgroundTask,
     ChatMessage,
+    ExecutionStep,
+    MessagePart,
+    MessagePartType,
     SkillInfo,
+    StepType,
     TaskStatus,
     extract_contemplation_tags,
+    extract_ordered_content,
 )
 from mvgeos_gui.tome_service import TomeListEntry, TomeService
 
 
-def _extract_text_and_contemplation(content: Any) -> tuple[str, list[str]]:
-    """Extract plain text and contemplation from message content."""
+def _extract_parts_and_content(
+    content: Any,
+) -> tuple[str, list[str], list[MessagePart]]:
+    """Extract text, contemplation list, and sequential MessageParts.
+
+    Returns (plain_text, contemplation_list, sequential_parts).
+    """
+    parts: list[MessagePart] = []
+    text_parts: list[str] = []
+    thought_parts: list[str] = []
+
     if isinstance(content, str):
-        return extract_contemplation_tags(content)
+        cleaned, thoughts = extract_contemplation_tags(content)
+        ordered = extract_ordered_content(content)
+        if ordered:
+            for item in ordered:
+                itype = item.get("type")
+                itext = item.get("text", "")
+                if not itext:
+                    continue
+                if itype == "thought":
+                    parts.append(
+                        MessagePart(part_type=MessagePartType.CONTEMPLATION, text=itext)
+                    )
+                else:
+                    parts.append(
+                        MessagePart(part_type=MessagePartType.TEXT, text=itext)
+                    )
+        elif cleaned or thoughts:
+            for t in thoughts:
+                parts.append(
+                    MessagePart(part_type=MessagePartType.CONTEMPLATION, text=t)
+                )
+            if cleaned:
+                parts.append(MessagePart(part_type=MessagePartType.TEXT, text=cleaned))
+        return cleaned, thoughts, parts
+
     if isinstance(content, list):
-        text_parts: list[str] = []
-        thought_parts: list[str] = []
         for item in content:
             if isinstance(item, dict):
                 item_type = item.get("type")
-                if item_type == "contemplation":
-                    thought_parts.append(str(item.get("text", "")))
+                if item_type in ("contemplation", "thinking"):
+                    t_text = str(item.get("text", "") or item.get("thinking", ""))
+                    if t_text:
+                        thought_parts.append(t_text)
+                        parts.append(
+                            MessagePart(
+                                part_type=MessagePartType.CONTEMPLATION,
+                                text=t_text,
+                            )
+                        )
                 elif item_type == "text":
-                    text_parts.append(str(item.get("text", "")))
+                    txt = str(item.get("text", ""))
+                    if txt:
+                        cleaned, tag_thoughts = extract_contemplation_tags(txt)
+                        if tag_thoughts:
+                            thought_parts.extend(tag_thoughts)
+                            for t in tag_thoughts:
+                                parts.append(
+                                    MessagePart(
+                                        part_type=MessagePartType.CONTEMPLATION,
+                                        text=t,
+                                    )
+                                )
+                        if cleaned:
+                            text_parts.append(cleaned)
+                            parts.append(
+                                MessagePart(
+                                    part_type=MessagePartType.TEXT,
+                                    text=cleaned,
+                                )
+                            )
+                elif item_type in ("tool_call", "tool_use"):
+                    step_type = (
+                        StepType.COMMANDS
+                        if item.get("name") == "bash"
+                        else (
+                            StepType.FILES
+                            if item.get("name") in ("read", "grep", "find", "list")
+                            else StepType.WORKED
+                        )
+                    )
+                    step = ExecutionStep(
+                        step_type=step_type,
+                        spell_name=str(item.get("name", "")),
+                        params=item.get("arguments", {}),
+                        is_complete=True,
+                    )
+                    parts.append(MessagePart(part_type=MessagePartType.STEP, step=step))
                 elif "text" in item:
-                    text_parts.append(str(item["text"]))
+                    txt = str(item["text"])
+                    text_parts.append(txt)
+                    parts.append(MessagePart(part_type=MessagePartType.TEXT, text=txt))
             elif isinstance(item, str):
                 text_parts.append(item)
-        full_text = "\n".join(text_parts)
-        cleaned, tag_thoughts = extract_contemplation_tags(full_text)
-        if tag_thoughts:
-            thought_parts.extend(tag_thoughts)
-        return cleaned, [t for t in thought_parts if t]
-    return str(content or ""), []
+                parts.append(MessagePart(part_type=MessagePartType.TEXT, text=item))
+        return "\n".join(text_parts), [t for t in thought_parts if t], parts
+
+    return str(content or ""), [], parts
+
+
+def _extract_text_and_contemplation(content: Any) -> tuple[str, list[str]]:
+    """Extract plain text and contemplation from message content."""
+    text, thoughts, _ = _extract_parts_and_content(content)
+    return text, thoughts
 
 
 @dataclass
@@ -71,7 +158,6 @@ class AppState:
     project_path: Path = field(default_factory=Path.cwd)
     active_tome_id: str | None = None
     tome_title: str = "New Conversation"
-    sidebar_expanded: bool = True
     inspector_expanded: bool = True
     selected_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
     recent_projects: list[Path] = field(default_factory=list)
@@ -107,6 +193,20 @@ class AppState:
     )
     _show_app_settings: bool = False
     _show_workspace_settings: bool = False
+    current_view: str = "chat"
+    sidebar_open: bool = True
+    review_open: bool = False
+    is_streaming: bool = False
+    streaming_content: str = ""
+    streaming_thinking: str = ""
+    streaming_tool_calls: list = field(default_factory=list)
+    session_loading: bool = False
+    pi_status: str = "idle"
+    terminal_open: bool = False
+    chat_side_panel: str | None = None
+    _sidebar_width: int = 260
+    _review_width: int = 320
+    _command_palette_open: bool = False
 
     def __post_init__(self) -> None:
         """Initialize state invariants."""
@@ -123,11 +223,24 @@ class AppState:
         if listener not in self._change_listeners:
             self._change_listeners.append(listener)
 
+    def unsubscribe(self, listener: Callable[[], Any]) -> None:
+        """Unsubscribe a listener callback from state changes."""
+        if listener in self._change_listeners:
+            self._change_listeners.remove(listener)
+
     def notify(self) -> None:
         """Notify all change listeners."""
-        for listener in self._change_listeners:
+        for listener in list(self._change_listeners):
             with contextlib.suppress(Exception):
-                listener()
+                result = listener()
+                if inspect.isawaitable(result):
+                    with contextlib.suppress(RuntimeError):
+                        asyncio.get_running_loop().create_task(result)
+                elif hasattr(result, "_fire"):
+                    fire = result._fire()
+                    if inspect.isawaitable(fire):
+                        with contextlib.suppress(RuntimeError):
+                            asyncio.get_running_loop().create_task(fire)
 
     def get_agent_service(self) -> AgentService:
         """Retrieve or initialize the active AgentService instance."""
@@ -213,6 +326,12 @@ class AppState:
         self.selected_mentions.append(chip)
         self.notify()
 
+    def remove_selected_mention(self, index: int) -> None:
+        """Remove a selected mention chip by index."""
+        if 0 <= index < len(self.selected_mentions):
+            del self.selected_mentions[index]
+            self.notify()
+
     def remove_last_mention(self) -> None:
         """Remove the most recently added mention chip."""
         if self.selected_mentions:
@@ -224,6 +343,10 @@ class AppState:
         if self.selected_mentions:
             self.selected_mentions.clear()
             self.notify()
+
+    def clear_selected_mentions(self) -> None:
+        """Remove all selected mention chips."""
+        self.clear_mentions()
 
     def clear_attachments(self) -> None:
         """Remove all pending attachments."""
@@ -301,11 +424,6 @@ class AppState:
             self.background_tasks.clear()
             self.notify()
 
-    def toggle_sidebar(self) -> None:
-        """Toggle left navigation sidebar visibility."""
-        self.sidebar_expanded = not self.sidebar_expanded
-        self.notify()
-
     def toggle_inspector(self) -> None:
         """Toggle right context inspector visibility."""
         self.inspector_expanded = not self.inspector_expanded
@@ -331,6 +449,21 @@ class AppState:
     def close_workspace_settings(self) -> None:
         """Close the Project Workspace Settings modal."""
         self._show_workspace_settings = False
+        self.notify()
+
+    @property
+    def command_palette_open(self) -> bool:
+        """Whether the command palette is visible."""
+        return self._command_palette_open
+
+    def set_command_palette_open(self, open: bool) -> None:
+        """Set command palette visibility."""
+        self._command_palette_open = open
+        self.notify()
+
+    def toggle_command_palette(self) -> None:
+        """Toggle command palette visibility."""
+        self._command_palette_open = not self._command_palette_open
         self.notify()
 
     def set_project(self, path: Path) -> None:
@@ -378,7 +511,7 @@ class AppState:
         ledger = self.tome_service.ledger
         try:
             entries = ledger.get_entries(tome_id)
-        except ValueError, KeyError:
+        except (ValueError, KeyError):
             self.messages = []
             return
 
@@ -388,7 +521,7 @@ class AppState:
                 payload = entry.payload
                 role = str(payload.get("role", "assistant"))
                 if role in ("user", "assistant"):
-                    text, contemplation = _extract_text_and_contemplation(
+                    text, contemplation, parts = _extract_parts_and_content(
                         payload.get("content", "")
                     )
                     reconstructed.append(
@@ -396,6 +529,7 @@ class AppState:
                             role=role,
                             content=text,
                             contemplation=contemplation,
+                            parts=parts,
                             model=payload.get("model"),
                         )
                     )
@@ -459,10 +593,25 @@ class AppState:
 
         # Start agent task
         service = self.get_agent_service()
-        with contextlib.suppress(RuntimeError):
-            self.active_task = asyncio.create_task(
-                service.run_prompt(text, self, assistant_msg)
-            )
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop is not None:
+            task = asyncio.ensure_future(service.run_prompt(text, self, assistant_msg))
+
+            def _on_done(future: asyncio.Task[Any]) -> None:
+                with contextlib.suppress(asyncio.CancelledError):
+                    exc = future.exception()
+                    if exc is not None:
+                        assistant_msg.is_error = True
+                        assistant_msg.error_message = str(exc)
+                        assistant_msg.is_streaming = False
+                        self.is_channeling = False
+                        self.notify()
+
+            task.add_done_callback(_on_done)
+            self.active_task = task
 
     def stop_channeling(self) -> None:
         """Cancel and halt active agent channeling."""
@@ -568,3 +717,51 @@ class AppState:
         if not self._selected_artifact_id:
             return None
         return self.get_artifact(self._selected_artifact_id)
+
+    def set_current_view(self, view: str) -> None:
+        """Switch the main content view."""
+        self.current_view = view
+        self.notify()
+
+    def toggle_sidebar(self) -> None:
+        """Toggle left sidebar visibility."""
+        self.sidebar_open = not self.sidebar_open
+        self.notify()
+
+    def toggle_review(self) -> None:
+        """Toggle right review rail visibility."""
+        self.review_open = not self.review_open
+        self.notify()
+
+    def toggle_terminal(self) -> None:
+        """Toggle terminal panel visibility."""
+        self.terminal_open = not self.terminal_open
+        self.notify()
+
+    def set_pi_status(self, status: str) -> None:
+        """Update the Mvge process status."""
+        self.pi_status = status
+        self.notify()
+
+    def set_streaming(
+        self, content: str, thinking: str = "", tool_calls: list | None = None
+    ) -> None:
+        """Update streaming state for the active assistant message."""
+        self.is_streaming = True
+        self.streaming_content = content
+        self.streaming_thinking = thinking
+        self.streaming_tool_calls = tool_calls or []
+        self.notify()
+
+    def clear_streaming(self) -> None:
+        """Clear streaming state."""
+        self.is_streaming = False
+        self.streaming_content = ""
+        self.streaming_thinking = ""
+        self.streaming_tool_calls = []
+        self.notify()
+
+    def set_chat_side_panel(self, panel: str | None) -> None:
+        """Set the active side panel in chat (files, diff, or None)."""
+        self.chat_side_panel = panel
+        self.notify()

@@ -219,3 +219,52 @@ async def test_multiple_contemplation_segments(user: User) -> None:
     await user.should_see("First, I need to understand the request.")
     await user.should_see("Now I will plan the implementation.")
     await user.should_see("Here is the implementation plan.")
+
+
+@pytest.mark.asyncio
+async def test_interleaved_thoughts_and_steps_flow(user: User) -> None:
+    """Verify interleaved thoughts and tool steps render in order without merging."""
+    from mvgeos_gui.models import MessagePart, MessagePartType
+
+    state = AppState(project_path=Path("C:/demo/project"))
+    step = ExecutionStep(
+        step_type=StepType.FILES,
+        title="Explored 1 file(s)",
+        files=[
+            FileExploration(path="auth.py", operation="read", details="class Auth: ...")
+        ],
+        is_complete=True,
+    )
+    msg = ChatMessage(
+        role="assistant",
+        parts=[
+            MessagePart(
+                part_type=MessagePartType.CONTEMPLATION,
+                text="Checking auth implementation before editing.",
+            ),
+            MessagePart(
+                part_type=MessagePartType.STEP,
+                step=step,
+            ),
+            MessagePart(
+                part_type=MessagePartType.CONTEMPLATION,
+                text="Now I see how Auth is structured. Proceeding with answer.",
+            ),
+            MessagePart(
+                part_type=MessagePartType.TEXT,
+                text="Auth is configured properly.",
+            ),
+        ],
+        model="nvidia/nemotron-3-ultra-550b-a55b:free",
+    )
+    state.messages.append(msg)
+
+    @ui.page("/test_interleaved_thoughts")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_interleaved_thoughts")
+    await user.should_see("Checking auth implementation before editing.")
+    await user.should_see("Explored 1 file(s)")
+    await user.should_see("Now I see how Auth is structured. Proceeding with answer.")
+    await user.should_see("Auth is configured properly.")

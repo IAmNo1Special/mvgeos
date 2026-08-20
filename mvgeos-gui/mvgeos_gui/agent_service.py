@@ -11,7 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from mvgeos_agent.errors import AuthenticationError
+from mvgeos_agent.errors import AuthenticationError, RateLimitError
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 
 from mvgeos_gui.models import (
@@ -22,6 +22,8 @@ from mvgeos_gui.models import (
     CommandExecution,
     ExecutionStep,
     FileExploration,
+    MessagePart,
+    MessagePartType,
     StepType,
     TaskStatus,
     extract_contemplation_tags,
@@ -72,6 +74,15 @@ class AgentService:
         self._pending_spell_starts: dict[str, float] = {}
         self._invoked_skill_names: set[str] = set()
         self._loaded_skill_names: set[str] = set()
+        self._last_notify_time: float = 0.0
+        self._notify_interval: float = 0.05
+
+    def _notify_throttled(self, state: AppState) -> None:
+        """Rate-limit state notifications during rapid token streaming."""
+        now = time.monotonic()
+        if now - self._last_notify_time >= self._notify_interval:
+            self._last_notify_time = now
+            state.notify()
 
     @property
     def project_path(self) -> Path:
@@ -149,21 +160,64 @@ class AgentService:
             if text:
                 if kind == "contemplation":
                     target_message.contemplation.append(text)
-                else:
-                    target_message.content += text
                     if (
-                        "<think>" in target_message.content
-                        or "<thought>" in target_message.content
+                        target_message.parts
+                        and target_message.parts[-1].part_type
+                        == MessagePartType.CONTEMPLATION
                     ):
-                        cleaned, thoughts = extract_contemplation_tags(
-                            target_message.content
+                        target_message.parts[-1].text += text
+                    else:
+                        target_message.parts.append(
+                            MessagePart(
+                                part_type=MessagePartType.CONTEMPLATION,
+                                text=text,
+                            )
                         )
+                else:
+                    if "<think>" in text or "<thought>" in text:
+                        cleaned, thoughts = extract_contemplation_tags(text)
                         if thoughts:
                             target_message.contemplation.extend(thoughts)
-                            target_message.content = cleaned
+                            for t in thoughts:
+                                target_message.parts.append(
+                                    MessagePart(
+                                        part_type=MessagePartType.CONTEMPLATION,
+                                        text=t,
+                                    )
+                                )
+                        if cleaned:
+                            target_message.content += cleaned
+                            if (
+                                target_message.parts
+                                and target_message.parts[-1].part_type
+                                == MessagePartType.TEXT
+                            ):
+                                target_message.parts[-1].text += cleaned
+                            else:
+                                target_message.parts.append(
+                                    MessagePart(
+                                        part_type=MessagePartType.TEXT,
+                                        text=cleaned,
+                                    )
+                                )
+                    else:
+                        target_message.content += text
+                        if (
+                            target_message.parts
+                            and target_message.parts[-1].part_type
+                            == MessagePartType.TEXT
+                        ):
+                            target_message.parts[-1].text += text
+                        else:
+                            target_message.parts.append(
+                                MessagePart(
+                                    part_type=MessagePartType.TEXT,
+                                    text=text,
+                                )
+                            )
                 target_message.is_streaming = True
                 if target_state is not None:
-                    target_state.notify()
+                    self._notify_throttled(target_state)
 
         elif event.type == MvgeEventType.AFTER_PROVIDER_RESPONSE:
             mana = data.get("mana_used", 0)
@@ -214,6 +268,7 @@ class AgentService:
                 step.details.append(f"Executing {spell_name}...")
                 elapsed = time.monotonic() - self._start_time
                 step.title = f"Worked for {self._format_duration(elapsed)}"
+
             if target_state is not None:
                 target_state.notify()
 
@@ -228,7 +283,7 @@ class AgentService:
             result = data.get("result", "")
             error = data.get("error")
 
-            for step in target_message.steps:
+            for step in reversed(target_message.steps):
                 if step.step_type == StepType.COMMANDS and step.commands:
                     last_cmd = step.commands[-1]
                     if not last_cmd.output and not last_cmd.is_error:
@@ -248,6 +303,7 @@ class AgentService:
                         f"Worked for {self._format_duration(step.duration_seconds)}"
                     )
                     step.result = str(result or error or "")
+                    break
             if target_state is not None:
                 target_state.notify()
 
@@ -287,6 +343,9 @@ class AgentService:
                 file_paths=[str(p) for p in artifact_data.get("file_paths", [])],
             )
             target_message.artifacts.append(artifact)
+            target_message.parts.append(
+                MessagePart(part_type=MessagePartType.ARTIFACT, artifact=artifact)
+            )
             if target_state is not None:
                 target_state.add_artifact(artifact)
             if target_state is not None:
@@ -295,11 +354,18 @@ class AgentService:
     def _get_or_create_step(
         self, message: ChatMessage, step_type: StepType
     ) -> ExecutionStep:
-        for s in message.steps:
-            if s.step_type == step_type:
-                return s
+        """Get the active contiguous step or create a new sequential step card."""
+        if (
+            message.parts
+            and message.parts[-1].part_type == MessagePartType.STEP
+            and message.parts[-1].step is not None
+            and message.parts[-1].step.step_type == step_type
+        ):
+            return message.parts[-1].step
+
         step = ExecutionStep(step_type=step_type)
         message.steps.append(step)
+        message.parts.append(MessagePart(part_type=MessagePartType.STEP, step=step))
         return step
 
     def _track_spell_start(
@@ -424,7 +490,21 @@ class AgentService:
             if hasattr(agent, "switch_model") and state.selected_model:
                 await agent.switch_model(state.selected_model)
 
-            await agent.run(prompt)
+            keepalive_stop = asyncio.Event()
+
+            async def _keepalive() -> None:
+                while not keepalive_stop.is_set():
+                    await asyncio.sleep(5)
+                    if not keepalive_stop.is_set():
+                        state.notify()
+
+            keepalive_task = asyncio.create_task(_keepalive())
+            try:
+                await agent.run(prompt)
+            finally:
+                keepalive_stop.set()
+                with contextlib.suppress(Exception):
+                    keepalive_task.cancel()
         except asyncio.CancelledError:
             logger.info("Agent run cancelled by summoner")
             message.content += "\n\n*(Cancelled by summoner)*"
@@ -437,6 +517,24 @@ class AgentService:
                 "is invalid or unauthorized.\n\n"
                 "Please check your `OPENROUTER_API_KEY` environment variable "
                 "or re-run `mvgeos setup`."
+            )
+        except RateLimitError as exc:
+            logger.warning("Rate limit exceeded: %s", exc)
+            message.is_error = True
+            message.error_message = str(exc)
+            retry_hint = (
+                f"\n\n*Please wait {exc.retry_after:.0f}s before retrying.*"
+                if exc.retry_after
+                else ""
+            )
+            message.content = (
+                "**Rate Limit Exceeded (HTTP 429)**: The model provider is "
+                "temporarily rate-limiting requests.\n\n"
+                "- **Free tier models** (`:free`) frequently experience upstream "
+                "capacity limits and daily caps.\n"
+                "- **Suggested actions**: Try switching to another model via the "
+                "model selector below, or wait a few moments and try again."
+                f"{retry_hint}"
             )
         except Exception as exc:
             logger.exception("Error executing agent prompt: %s", exc)

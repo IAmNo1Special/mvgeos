@@ -5,7 +5,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mvgeos_gui.main import enable_windows_dark_titlebar, main, parse_args
+from mvgeos_gui.main import (
+    calculate_initial_window_geometry,
+    enable_windows_dark_titlebar,
+    main,
+    parse_args,
+)
 
 
 def test_parse_args_defaults() -> None:
@@ -46,6 +51,63 @@ def test_parse_args_custom_values() -> None:
     assert args.reload is True
 
 
+def test_calculate_initial_window_geometry_large_screen() -> None:
+    """Verify centered geometry calculation for a standard 1080p display."""
+    screen_mock = MagicMock(width=1920, height=1080, x=0, y=0)
+    with patch("webview.screens", [screen_mock]):
+        w, h, x, y = calculate_initial_window_geometry()
+        assert w == 1400
+        assert h == 900
+        assert x == (1920 - 1400) // 2
+        assert y == (1080 - 900) // 2
+
+
+def test_calculate_initial_window_geometry_small_screen() -> None:
+    """Verify window shrinks and centers on smaller displays (e.g., 1280x800)."""
+    screen_mock = MagicMock(width=1280, height=800, x=0, y=0)
+    with patch("webview.screens", [screen_mock]):
+        w, h, x, y = calculate_initial_window_geometry()
+        assert w < 1280
+        assert h < 800
+        assert x == (1280 - w) // 2
+        assert y == (800 - h) // 2
+        assert x > 0
+        assert y > 0
+
+
+def test_calculate_initial_window_geometry_offset_screen() -> None:
+    """Verify window centers properly on secondary display with non-zero origin."""
+    screen_mock = MagicMock(width=1920, height=1080, x=1920, y=100)
+    with patch("webview.screens", [screen_mock]):
+        w, h, x, y = calculate_initial_window_geometry()
+        assert w == 1400
+        assert h == 900
+        assert x == 1920 + (1920 - 1400) // 2
+        assert y == 100 + (1080 - 900) // 2
+
+
+def test_calculate_initial_window_geometry_fallback_when_no_screens() -> None:
+    """Verify fallback geometry when screen detection returns empty list."""
+    with patch("webview.screens", []):
+        w, h, x, y = calculate_initial_window_geometry()
+        assert w == 1200
+        assert h == 750
+        assert x is None
+        assert y is None
+
+
+def test_calculate_initial_window_geometry_fallback_on_error() -> None:
+    """Verify fallback geometry when screen querying raises an exception."""
+    mock_screens = MagicMock()
+    mock_screens.__getitem__.side_effect = RuntimeError("Screen detection failed")
+    with patch("webview.screens", mock_screens):
+        w, h, x, y = calculate_initial_window_geometry()
+        assert w == 1200
+        assert h == 750
+        assert x is None
+        assert y is None
+
+
 @patch("mvgeos_gui.main.ui.run")
 @patch("mvgeos_gui.main.app.on_startup")
 @patch("mvgeos_gui.main.platform.system", return_value="Windows")
@@ -61,7 +123,10 @@ def test_main_runs_native_by_default(
         assert kwargs.get("title") == "MvgeOS"
         assert kwargs.get("port") == 8000
         assert kwargs.get("host") == "127.0.0.1"
-        mock_on_startup.assert_called_once()
+        assert any(
+            call.args[0].__name__ == "_apply_dark_titlebar"
+            for call in mock_on_startup.call_args_list
+        )
 
 
 @pytest.mark.asyncio
@@ -75,7 +140,7 @@ async def test_startup_hook_invokes_dark_titlebar(mock_system: MagicMock) -> Non
         patch("sys.argv", ["mvgeos-gui"]),
     ):
         main()
-        startup_callback = mock_on_startup.call_args[0][0]
+        startup_callback = mock_on_startup.call_args_list[-1][0][0]
         await startup_callback()
         mock_dark.assert_called_with("MvgeOS")
 

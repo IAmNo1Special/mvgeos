@@ -16,6 +16,54 @@ DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 APP_TITLE = "MvgeOS"
 
 
+def calculate_initial_window_geometry(
+    target_width: int = 1400,
+    target_height: int = 900,
+    min_width: int = 800,
+    min_height: int = 500,
+    max_screen_ratio_w: float = 0.90,
+    max_screen_ratio_h: float = 0.88,
+) -> tuple[int, int, int | None, int | None]:
+    """Calculate centered window dimensions and coordinates based on primary display.
+
+    Uses pywebview's cross-platform screens API (``webview.screens``) to determine
+    the display resolution and center coordinates across Windows, macOS, and Linux.
+
+    Returns:
+        tuple[int, int, int | None, int | None]: (width, height, x, y)
+    """
+    try:
+        import webview
+
+        screens = getattr(webview, "screens", None)
+        if screens:
+            primary = screens[0]
+            screen_w = int(primary.width)
+            screen_h = int(primary.height)
+            screen_x = int(getattr(primary, "x", 0))
+            screen_y = int(getattr(primary, "y", 0))
+
+            if screen_w > 0 and screen_h > 0:
+                # Cap dimensions to screen ratio to prevent bleeding off screen
+                max_w = max(min_width, int(screen_w * max_screen_ratio_w))
+                max_h = max(min_height, int(screen_h * max_screen_ratio_h))
+
+                width = min(target_width, max_w)
+                height = min(target_height, max_h)
+
+                # Ensure width/height do not exceed physical screen
+                width = min(width, screen_w)
+                height = min(height, screen_h)
+
+                x = screen_x + max(0, (screen_w - width) // 2)
+                y = screen_y + max(0, (screen_h - height) // 2)
+                return width, height, x, y
+    except Exception:
+        pass
+
+    return min(target_width, 1200), min(target_height, 750), None, None
+
+
 def enable_windows_dark_titlebar(title: str = APP_TITLE) -> None:
     """Apply immersive dark mode to Windows native titlebar."""
     if platform.system() != "Windows":
@@ -97,14 +145,25 @@ def main() -> None:
     )
     init_app(state)
 
-    if not args.web and platform.system() == "Windows":
+    width, height, x, y = calculate_initial_window_geometry()
+
+    if not args.web:
         app.native.window_args["background_color"] = "#181a20"
+        app.native.window_args["min_size"] = (800, 500)
+        if x is not None:
+            app.native.window_args["x"] = x
+        if y is not None:
+            app.native.window_args["y"] = y
 
-        async def _apply_dark_titlebar() -> None:
-            await asyncio.sleep(0.3)
-            enable_windows_dark_titlebar(APP_TITLE)
+        if platform.system() == "Windows":
 
-        app.on_startup(_apply_dark_titlebar)
+            async def _apply_dark_titlebar() -> None:
+                await asyncio.sleep(0.3)
+                enable_windows_dark_titlebar(APP_TITLE)
+
+            app.on_startup(_apply_dark_titlebar)
+
+    app.on_shutdown(state.stop_channeling)
 
     with contextlib.suppress(KeyboardInterrupt):
         ui.run(
@@ -112,10 +171,12 @@ def main() -> None:
             host=args.host,
             port=args.port,
             title=APP_TITLE,
-            window_size=(1400, 900),
+            window_size=(width, height),
             reload=args.reload,
             dark=True,
+            reconnect_timeout=60.0,
         )
+    state.stop_channeling()
 
 
 if __name__ == "__main__":

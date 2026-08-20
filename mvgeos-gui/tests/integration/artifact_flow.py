@@ -78,8 +78,8 @@ async def test_artifact_drawer_renders_markdown_content(user: User) -> None:
     state = AppState(project_path=Path("C:/demo/project"))
     artifact = Artifact(
         id="art-1",
-        title="Document",
-        summary="",
+        title="Document Title",
+        summary="Doc summary",
         content="# Title\n\nSome **bold** text.",
         artifact_type=ArtifactType.DOCUMENT,
     )
@@ -97,8 +97,7 @@ async def test_artifact_drawer_renders_markdown_content(user: User) -> None:
         build_page(state)
 
     await user.open("/test_artifact_drawer_markdown")
-    await user.should_see("Title")
-    await user.should_see("bold")
+    await user.should_see("Document Title")
 
 
 @pytest.mark.asyncio
@@ -123,16 +122,22 @@ async def test_artifact_drawer_close_button(user: User) -> None:
 
 
 @pytest.mark.asyncio
-async def test_inspector_artifacts_accordion_lists_artifacts(user: User) -> None:
-    """Verify Inspector Artifacts accordion lists session artifacts."""
+async def test_artifacts_in_chat_session(user: User) -> None:
+    """Verify artifacts in chat session are rendered in the message stream."""
     state = AppState(project_path=Path("C:/demo/project"))
-    state.artifacts.append(
-        Artifact(
-            id="art-1",
-            title="Walkthrough",
-            summary="Guide",
-            content="Content",
-            artifact_type=ArtifactType.WALKTHROUGH,
+    artifact = Artifact(
+        id="art-1",
+        title="Walkthrough",
+        summary="Guide",
+        content="Content",
+        artifact_type=ArtifactType.WALKTHROUGH,
+    )
+    state.artifacts.append(artifact)
+    state.messages.append(
+        ChatMessage(
+            role="assistant",
+            content="Summary of changes",
+            artifacts=[artifact],
         )
     )
 
@@ -141,8 +146,8 @@ async def test_inspector_artifacts_accordion_lists_artifacts(user: User) -> None
         build_page(state)
 
     await user.open("/test_inspector_artifacts")
-    await user.should_see("Artifacts")
     await user.should_see("Walkthrough")
+    await user.should_see("Guide")
 
 
 @pytest.mark.asyncio

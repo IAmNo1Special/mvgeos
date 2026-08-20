@@ -7,14 +7,9 @@ from typing import Any
 from nicegui import ui
 
 from mvgeos_gui.config_service import AppSettings, ConfigService
+from mvgeos_gui.model_catalog import get_model_options
 from mvgeos_gui.state import AppState
 
-AVAILABLE_MODELS = [
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "google/gemini-2.5-pro",
-    "anthropic/claude-3.5-sonnet",
-    "openai/gpt-4o",
-]
 AVAILABLE_THEMES = ["dark", "light"]
 
 
@@ -105,11 +100,12 @@ def render_app_settings_modal(state: AppState) -> None:
                 with ui.column().classes("flex-1 gap-1"):
                     ui.label("Default Model").classes("text-xs text-[#8b949e]")
                     ui.select(
-                        AVAILABLE_MODELS,
+                        options=get_model_options(),
                         value=str(edited["default_model"]),
                         on_change=lambda e: edited.__setitem__(
                             "default_model", e.value
                         ),
+                        with_input=True,
                     ).props("dense outlined dark").classes("w-full").mark(
                         "model_select"
                     )

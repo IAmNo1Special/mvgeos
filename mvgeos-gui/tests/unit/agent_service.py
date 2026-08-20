@@ -6,7 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mvgeos_agent.errors import AuthenticationError
+from mvgeos_agent.errors import AuthenticationError, RateLimitError
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 
 from mvgeos_gui.agent_service import AgentService, resolve_api_key
@@ -129,6 +129,26 @@ def test_handle_message_update_event(
     event2 = MvgeEvent(type=MvgeEventType.MESSAGE_UPDATE, data={"text": " world!"})
     agent_service.handle_event(event2, msg, app_state)
     assert msg.content == "Hello world!"
+
+
+def test_notify_throttled_during_streaming(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify rapid MESSAGE_UPDATE events are throttled to prevent UI freezing."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    notified: list[int] = []
+    app_state.subscribe(lambda: notified.append(1))
+
+    # Send 10 rapid events with 0-delay
+    for i in range(10):
+        event = MvgeEvent(type=MvgeEventType.MESSAGE_UPDATE, data={"text": f"token{i}"})
+        agent_service.handle_event(event, msg, app_state)
+
+    # First event notifies, subsequent rapid events within 50ms are throttled
+    assert len(notified) == 1
+    assert msg.content == "".join(f"token{i}" for i in range(10))
 
 
 def test_handle_message_update_contemplation(
@@ -638,6 +658,52 @@ async def test_run_prompt_authentication_error(
 
 
 @pytest.mark.asyncio
+async def test_run_prompt_rate_limit_error(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify run_prompt handles RateLimitError gracefully without traceback."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(side_effect=RateLimitError("Rate limit exceeded"))
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.on = MagicMock()
+    agent_service._agent = mock_agent
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("Test 429", app_state, msg)
+    assert msg.is_error is True
+    assert msg.error_message == "Rate limit exceeded"
+    assert "Rate Limit Exceeded (HTTP 429)" in msg.content
+    assert "Suggested actions" in msg.content
+    assert msg.is_streaming is False
+    assert app_state.is_channeling is False
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_rate_limit_error_with_retry_after(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify run_prompt includes retry-after hint when available."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(
+        side_effect=RateLimitError("Rate limit exceeded", retry_after=12.0)
+    )
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.on = MagicMock()
+    agent_service._agent = mock_agent
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("Test 429 with retry", app_state, msg)
+    assert msg.is_error is True
+    assert "Please wait 12s before retrying" in msg.content
+    assert msg.is_streaming is False
+    assert app_state.is_channeling is False
+
+
+@pytest.mark.asyncio
 async def test_run_prompt_exception_handling(
     agent_service: AgentService, app_state: AppState
 ) -> None:
@@ -992,3 +1058,82 @@ async def test_multi_turn_prompt_isolation(
     # Turn 2 has its own distinct content
     assert msg2.contemplation == ["Turn 2 Thought"]
     assert msg2.content == "Turn 2 Response"
+
+
+def test_handle_interleaved_thoughts_and_events(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify thoughts separated by tool steps or text create separate parts."""
+    from mvgeos_gui.models import MessagePartType
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    # 1. First thought
+    agent_service.handle_event(
+        MvgeEvent(
+            type=MvgeEventType.MESSAGE_UPDATE,
+            data={
+                "text": "I should read the config file first.",
+                "kind": "contemplation",
+            },
+        ),
+        msg,
+        app_state,
+    )
+
+    # 2. Tool step (read config.json)
+    agent_service.handle_event(
+        MvgeEvent(
+            type=MvgeEventType.SPELL_CASTING_START,
+            data={
+                "spellCastId": "cast-1",
+                "spellName": "read",
+                "path": "config.json",
+            },
+        ),
+        msg,
+        app_state,
+    )
+    agent_service.handle_event(
+        MvgeEvent(
+            type=MvgeEventType.SPELL_CASTING_END,
+            data={"spellCastId": "cast-1", "result": '{"env": "prod"}'},
+        ),
+        msg,
+        app_state,
+    )
+
+    # 3. Second thought (after tool execution)
+    agent_service.handle_event(
+        MvgeEvent(
+            type=MvgeEventType.MESSAGE_UPDATE,
+            data={
+                "text": "The config is in prod mode. Let's explain.",
+                "kind": "contemplation",
+            },
+        ),
+        msg,
+        app_state,
+    )
+
+    # 4. Final text response
+    agent_service.handle_event(
+        MvgeEvent(
+            type=MvgeEventType.MESSAGE_UPDATE,
+            data={"text": "Here is the explanation for prod mode."},
+        ),
+        msg,
+        app_state,
+    )
+
+    # Check parts
+    parts = msg.parts
+    assert len(parts) == 4
+    assert parts[0].part_type == MessagePartType.CONTEMPLATION
+    assert parts[0].text == "I should read the config file first."
+    assert parts[1].part_type == MessagePartType.STEP
+    assert parts[2].part_type == MessagePartType.CONTEMPLATION
+    assert parts[2].text == "The config is in prod mode. Let's explain."
+    assert parts[3].part_type == MessagePartType.TEXT
+    assert parts[3].text == "Here is the explanation for prod mode."

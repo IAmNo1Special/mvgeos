@@ -79,7 +79,7 @@ def resolve_git_branch(cwd: str | Path) -> str | None:
             timeout=5,
             check=False,
         )
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+    except FileNotFoundError, subprocess.TimeoutExpired, OSError:
         return None
     if result.returncode != 0:
         return None

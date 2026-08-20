@@ -14,17 +14,10 @@ from mvgeos_gui.autocomplete import (
     MentionItem,
     MentionKind,
 )
+from mvgeos_gui.model_catalog import get_model_options
 
 if TYPE_CHECKING:
     from mvgeos_gui.state import AppState
-
-
-AVAILABLE_MODELS = [
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "google/gemini-2.5-pro",
-    "anthropic/claude-3.5-sonnet",
-    "openai/gpt-4o",
-]
 
 
 def _truncate(text: str, length: int) -> str:
@@ -211,12 +204,12 @@ def render_input_dock(state: AppState) -> ui.column:
     controls.
     """
     ac_service = state.get_autocomplete_service()
-    wrapper = ui.column().classes("w-full max-w-3xl mx-auto px-6 pb-8 pt-2 shrink-0")
+    wrapper = ui.column().classes("w-full px-6 pb-6 pt-2 shrink-0")
 
     with wrapper:
         card = ui.card().classes(
             "w-full bg-[#1e212b] border border-[#2b2f3d] "
-            "rounded-2xl p-4 gap-3 shadow-2xl relative "
+            "rounded-2xl p-3 gap-3 shadow-2xl relative "
             "focus-within:border-[#3b82f6] transition-colors"
         )
 
@@ -320,8 +313,8 @@ def _render_autocomplete_popup(
     with (
         ui.element("div")
         .classes(
-            "absolute z-50 w-full max-w-xs bg-[#2b2f3d] border border-[#3b82f6] "
-            "rounded-lg shadow-xl max-h-48 overflow-y-auto bottom-full mb-1 -mx-4"
+            "absolute z-50 w-full bg-[#2b2f3d] border border-[#3b82f6] "
+            "rounded-lg shadow-xl max-h-48 overflow-y-auto bottom-full mb-1"
         )
         .props(f"id={popup_id}")
     ):
@@ -479,9 +472,10 @@ def _render_left_toolbar(state: AppState) -> None:
             ui.tooltip("Add context files or images")
 
         ui.select(
-            options=AVAILABLE_MODELS,
+            options=get_model_options(),
             value=state.selected_model,
             on_change=lambda e: state.switch_model(e.value),
+            with_input=True,
         ).props(
             "dense options-dense borderless dark options-dark rounded text-xs"
         ).classes("text-xs text-[#8b949e] font-mono max-w-[220px]")

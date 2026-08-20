@@ -135,7 +135,7 @@ def _run_git(project_path: Path, *args: str) -> str:
         if result.returncode != 0:
             return ""
         return result.stdout
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except subprocess.CalledProcessError, FileNotFoundError:
         return ""
 
 

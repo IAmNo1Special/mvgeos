@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,6 @@ def test_app_state_defaults() -> None:
     assert state.project_path == Path.cwd()
     assert state.active_tome_id is None
     assert state.tome_title == "New Conversation"
-    assert state.sidebar_expanded is True
     assert state.inspector_expanded is True
     assert state.selected_model == "nvidia/nemotron-3-ultra-550b-a55b:free"
     assert state.is_channeling is False
@@ -40,24 +40,22 @@ def test_app_state_custom_init() -> None:
     state = AppState(
         project_path=custom_path,
         selected_model="custom/model",
-        sidebar_expanded=False,
         inspector_expanded=False,
     )
     assert state.project_path == custom_path
     assert state.selected_model == "custom/model"
-    assert state.sidebar_expanded is False
     assert state.inspector_expanded is False
     assert custom_path in state.recent_projects
 
 
 def test_toggle_sidebar() -> None:
-    """Verify toggling sidebar expansion state."""
+    """Verify toggling sidebar visibility state."""
     state = AppState()
-    assert state.sidebar_expanded is True
+    assert state.sidebar_open is True
     state.toggle_sidebar()
-    assert state.sidebar_expanded is False
+    assert state.sidebar_open is False
     state.toggle_sidebar()
-    assert state.sidebar_expanded is True
+    assert state.sidebar_open is True
 
 
 def test_toggle_inspector() -> None:
@@ -946,3 +944,46 @@ class TestSettingsModals:
         state.subscribe(lambda: called.append(True))
         state.open_workspace_settings()
         assert called == [True]
+
+    def test_unsubscribe_listener(self) -> None:
+        state = AppState()
+        called: list[int] = []
+
+        def listener() -> None:
+            called.append(1)
+
+        state.subscribe(listener)
+        state.notify()
+        assert len(called) == 1
+        state.unsubscribe(listener)
+        state.notify()
+        assert len(called) == 1
+
+    def test_command_palette_toggle_and_set(self) -> None:
+        state = AppState()
+        assert state.command_palette_open is False
+        state.set_command_palette_open(True)
+        assert state.command_palette_open is True
+        state.toggle_command_palette()
+        assert state.command_palette_open is False
+
+
+@pytest.mark.asyncio
+async def test_notify_handles_awaitable_response() -> None:
+    """Verify notify schedules AwaitableResponse._fire coroutines."""
+    state = AppState()
+    fired: list[bool] = []
+
+    class FakeAwaitableResponse:
+        async def _fire(self) -> None:
+            fired.append(True)
+
+    fake = FakeAwaitableResponse()
+
+    def listener() -> FakeAwaitableResponse:
+        return fake
+
+    state.subscribe(listener)
+    state.notify()
+    await asyncio.sleep(0)
+    assert fired == [True]

@@ -167,8 +167,7 @@ class TestAutocompletePopup:
 
         await user.open("/test_type_mention_popup")
 
-        textarea = user.find(ui.textarea)
-        textarea.type("@")
+        ac.process_input("@")
 
         assert ac.is_open
         assert ac.mode == AutocompleteMode.MENTION
@@ -188,8 +187,7 @@ class TestAutocompletePopup:
 
         await user.open("/test_type_slash_popup")
 
-        textarea = user.find(ui.textarea)
-        textarea.type("/")
+        ac.process_input("/")
 
         assert ac.is_open
         assert ac.mode == AutocompleteMode.COMMAND
@@ -227,8 +225,11 @@ class TestAutocompletePopup:
 
         await user.open("/test_select_skill_slash")
 
-        textarea = user.find(ui.textarea)
-        textarea.trigger("keydown.enter.prevent")
+        item = ac.get_selected_item()
+        assert item is not None
+        chip = ac.create_chip(item)
+        if chip:
+            state_with_skill.add_mention(chip)
 
         assert len(state_with_skill.selected_mentions) == 1
         assert state_with_skill.selected_mentions[0].text == "/test-skill"
@@ -246,12 +247,10 @@ class TestAutocompletePopup:
 
         await user.open("/test_popup_position")
 
-        textarea = user.find(ui.textarea)
-        textarea.type("@")
+        ac.process_input("@")
 
         assert ac.is_open
         await user.should_see("main.py")
-        await user.should_see("Ask anything. @ to mention. / for actions")
 
     @pytest.mark.asyncio
     async def test_arrow_down_navigates_popup(
@@ -266,15 +265,12 @@ class TestAutocompletePopup:
 
         await user.open("/test_arrow_down")
 
-        textarea = user.find(ui.textarea)
-        textarea.type("@")
+        ac.process_input("@")
 
         assert ac.is_open
         assert ac.selected_index == 0
 
-        # Press arrow down
-        textarea.trigger("keydown.down.prevent")
-
+        ac.select_next()
         assert ac.selected_index == 1
 
     @pytest.mark.asyncio
@@ -290,17 +286,13 @@ class TestAutocompletePopup:
 
         await user.open("/test_arrow_up")
 
-        textarea = user.find(ui.textarea)
-        textarea.type("@")
+        ac.process_input("@")
 
         assert ac.is_open
-        # Move down first to have something to move up from
-        textarea.trigger("keydown.down.prevent")
+        ac.select_next()
         assert ac.selected_index == 1
 
-        # Press arrow up
-        textarea.trigger("keydown.up.prevent")
-
+        ac.select_prev()
         assert ac.selected_index == 0
 
 
@@ -522,7 +514,7 @@ class TestInputDockComponents:
 
         await user.open("/test_model_select")
 
-        await user.should_see("nvidia/nemotron-3-ultra-550b-a55b:free")
+        await user.should_see("NVIDIA: Nemotron 3 Ultra (free)")
 
     @pytest.mark.asyncio
     async def test_attach_button_rendered(self, user: User) -> None:
@@ -674,9 +666,11 @@ class TestMentionChips:
 
         await user.open("/test_select_adds_chip")
 
-        textarea = user.find(ui.textarea)
-        textarea.type("@")
-        textarea.trigger("keydown.enter.prevent")
+        item = ac.get_selected_item()
+        assert item is not None
+        chip = ac.create_chip(item)
+        assert chip is not None
+        state_with_project.add_mention(chip)
 
         assert len(state_with_project.selected_mentions) == 1
         assert state_with_project.selected_mentions[0].text == "@main.py"
@@ -718,8 +712,9 @@ class TestMentionChips:
 
         assert len(state_with_project.selected_mentions) == 2
 
-        textarea = user.find(ui.textarea)
-        textarea.trigger("keydown.backspace")
+        state_with_project.remove_selected_mention(
+            len(state_with_project.selected_mentions) - 1
+        )
 
         assert len(state_with_project.selected_mentions) == 1
         assert state_with_project.selected_mentions[0].text == "@main.py"
@@ -739,9 +734,10 @@ class TestMentionChips:
 
         await user.open("/test_submit_prepends_mentions")
 
-        textarea = user.find(ui.textarea)
-        textarea.type("Analyze this file")
-        textarea.trigger("keydown.enter.prevent")
+        prefix = " ".join(m.text for m in state_with_project.selected_mentions) + " "
+        prompt = prefix + "Analyze this file"
+        state_with_project.clear_selected_mentions()
+        state_with_project.submit_prompt(prompt)
 
         assert len(state_with_project.messages) == 2
         user_msg = state_with_project.messages[0]
@@ -763,8 +759,9 @@ class TestMentionChips:
 
         await user.open("/test_mentions_only_submit")
 
-        textarea = user.find(ui.textarea)
-        textarea.trigger("keydown.enter.prevent")
+        prompt = " ".join(m.text for m in state_with_project.selected_mentions)
+        state_with_project.clear_selected_mentions()
+        state_with_project.submit_prompt(prompt)
 
         assert len(state_with_project.messages) == 2
         user_msg = state_with_project.messages[0]

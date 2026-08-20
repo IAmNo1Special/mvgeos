@@ -1,53 +1,212 @@
-"""3-column obsidian shell layout component."""
+"""Application shell layout: sidebar + main + review rail + status bar."""
 
 from nicegui import ui
 
-from mvgeos_gui.components.conversation_view import render_conversation_view
-from mvgeos_gui.components.empty_state import render_empty_state
-from mvgeos_gui.components.header import render_header
-from mvgeos_gui.components.input_dock import render_input_dock
-from mvgeos_gui.components.inspector import render_inspector
-from mvgeos_gui.components.settings_modal import render_app_settings_modal
+from mvgeos_gui.components.artifact_drawer import render_artifact_drawer
+from mvgeos_gui.components.chat_panel import render_chat_panel
+from mvgeos_gui.components.command_palette import render_command_palette
+from mvgeos_gui.components.diagnostics_panel import render_diagnostics_panel
+from mvgeos_gui.components.home_screen import render_home_screen
+from mvgeos_gui.components.notes_panel import render_notes_panel
+from mvgeos_gui.components.packages_panel import render_packages_panel
+from mvgeos_gui.components.review_rail import render_review_rail
+from mvgeos_gui.components.sessions_panel import render_sessions_panel
+from mvgeos_gui.components.settings_panel import render_settings_panel
 from mvgeos_gui.components.sidebar import render_sidebar
-from mvgeos_gui.components.workspace_settings_modal import (
-    render_workspace_settings_modal,
-)
+from mvgeos_gui.components.skills_panel import render_skills_panel
+from mvgeos_gui.components.status_bar import render_status_bar
+from mvgeos_gui.components.timeline_panel import render_timeline_panel
 from mvgeos_gui.state import AppState
 
 
-def render_shell(state: AppState) -> ui.row:
-    """Render the full 3-column obsidian shell layout."""
-    shell_container = ui.row().classes(
-        "w-screen h-screen max-h-screen overflow-hidden m-0 p-0 flex "
-        "flex-row no-wrap bg-[#181a20]"
-    )
+def render_shell(state: AppState) -> None:
+    """Render the full 3-pane MvgeOS desktop shell."""
+    ui.query(".nicegui-content").classes("p-0 m-0")
+    ui.add_css("body { overflow: hidden; }")
 
-    with shell_container:
-        # 1. Left Navigation Sidebar
-        render_sidebar(state)
-
-        # 2. Center Main Viewport
-        with ui.column().classes(
-            "flex-grow h-full max-h-screen flex flex-col justify-between "
-            "overflow-hidden p-0 m-0 relative bg-[#181a20]"
+    with ui.column().classes(
+        "w-screen h-screen max-h-screen overflow-hidden m-0 p-0 flex flex-col"
+    ):
+        with ui.row().classes(
+            "flex-1 w-full h-full overflow-hidden m-0 p-0 flex flex-row no-wrap"
         ):
-            # Top Navigation Header
-            render_header(state)
+            last_sidebar_state = [
+                (
+                    state.sidebar_open,
+                    state.current_view,
+                    state.active_tome_id,
+                    len(state.loaded_tomes),
+                    str(state.project_path),
+                )
+            ]
 
-            # Center Scrollable View (Empty State or Chat Stream)
-            with ui.scroll_area().classes("w-full flex-grow relative"):
-                if state.active_tome_id is not None or bool(state.messages):
-                    render_conversation_view(state)
-                else:
-                    render_empty_state(state)
+            @ui.refreshable
+            def sidebar_container() -> None:
+                if state.sidebar_open:
+                    render_sidebar(state)
+                last_sidebar_state[0] = (
+                    state.sidebar_open,
+                    state.current_view,
+                    state.active_tome_id,
+                    len(state.loaded_tomes),
+                    str(state.project_path),
+                )
 
-            # Floating Bottom Input Dock with proper clearance
-            render_input_dock(state)
+            sidebar_container()
 
-        # 3. Right Context Inspector
-        render_inspector(state)
+            def _on_sidebar_check() -> None:
+                cur = (
+                    state.sidebar_open,
+                    state.current_view,
+                    state.active_tome_id,
+                    len(state.loaded_tomes),
+                    str(state.project_path),
+                )
+                if cur != last_sidebar_state[0]:
+                    sidebar_container.refresh()
 
-    render_app_settings_modal(state)
-    render_workspace_settings_modal(state)
+            state.subscribe(_on_sidebar_check)
 
-    return shell_container
+            with ui.column().classes(
+                "flex-1 w-full h-full flex flex-col overflow-hidden"
+            ):
+                current_rendered_view = [state.current_view]
+
+                @ui.refreshable
+                def main_content() -> None:
+                    view = state.current_view
+                    current_rendered_view[0] = view
+                    if view == "home":
+                        render_home_screen(state)
+                    elif view == "settings":
+                        render_settings_panel(state)
+                    elif view == "sessions":
+                        render_sessions_panel(state)
+                    elif view == "skills":
+                        render_skills_panel(state)
+                    elif view == "notes":
+                        render_notes_panel(state)
+                    elif view == "diagnostics":
+                        render_diagnostics_panel(state)
+                    elif view == "timeline":
+                        render_timeline_panel(state)
+                    elif view == "packages":
+                        render_packages_panel(state)
+                    else:
+                        render_chat_panel(state)
+
+                main_content()
+
+                def _on_view_change() -> None:
+                    if current_rendered_view[0] != state.current_view:
+                        main_content.refresh()
+
+                state.subscribe(_on_view_change)
+
+            last_review_state = [
+                (
+                    state.review_open,
+                    state.current_view,
+                    len(state.changed_files),
+                    state._selected_diff_path,
+                )
+            ]
+
+            @ui.refreshable
+            def review_container() -> None:
+                if state.review_open and state.current_view == "chat":
+                    render_review_rail(state)
+                last_review_state[0] = (
+                    state.review_open,
+                    state.current_view,
+                    len(state.changed_files),
+                    state._selected_diff_path,
+                )
+
+            review_container()
+
+            def _on_review_check() -> None:
+                cur = (
+                    state.review_open,
+                    state.current_view,
+                    len(state.changed_files),
+                    state._selected_diff_path,
+                )
+                if cur != last_review_state[0]:
+                    review_container.refresh()
+
+            state.subscribe(_on_review_check)
+
+        with ui.row().classes("w-full h-7 shrink-0 overflow-hidden"):
+            last_status_state = [
+                (
+                    state.pi_status,
+                    state.selected_model,
+                    state.total_mana_used,
+                    state.is_channeling,
+                    state.sidebar_open,
+                    state.review_open,
+                    state.terminal_open,
+                )
+            ]
+
+            @ui.refreshable
+            def status_bar_container() -> None:
+                render_status_bar(state)
+                last_status_state[0] = (
+                    state.pi_status,
+                    state.selected_model,
+                    state.total_mana_used,
+                    state.is_channeling,
+                    state.sidebar_open,
+                    state.review_open,
+                    state.terminal_open,
+                )
+
+            status_bar_container()
+
+            def _on_status_check() -> None:
+                cur = (
+                    state.pi_status,
+                    state.selected_model,
+                    state.total_mana_used,
+                    state.is_channeling,
+                    state.sidebar_open,
+                    state.review_open,
+                    state.terminal_open,
+                )
+                if cur != last_status_state[0]:
+                    status_bar_container.refresh()
+
+            state.subscribe(_on_status_check)
+
+    last_overlay_state = [
+        (
+            getattr(state, "_command_palette_open", False),
+            getattr(state, "_selected_artifact_id", None),
+            len(state.artifacts),
+        )
+    ]
+
+    @ui.refreshable
+    def overlay_dialogs() -> None:
+        render_command_palette(state)
+        render_artifact_drawer(state)
+        last_overlay_state[0] = (
+            getattr(state, "_command_palette_open", False),
+            getattr(state, "_selected_artifact_id", None),
+            len(state.artifacts),
+        )
+
+    overlay_dialogs()
+
+    def _on_overlay_check() -> None:
+        cur = (
+            getattr(state, "_command_palette_open", False),
+            getattr(state, "_selected_artifact_id", None),
+            len(state.artifacts),
+        )
+        if cur != last_overlay_state[0]:
+            overlay_dialogs.refresh()
+
+    state.subscribe(_on_overlay_check)
