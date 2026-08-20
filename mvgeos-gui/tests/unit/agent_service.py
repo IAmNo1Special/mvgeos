@@ -576,7 +576,7 @@ def test_background_tasks_cleared_on_new_conversation(
 
 def test_format_duration_variants() -> None:
     """Verify _format_duration correctly renders seconds and minutes."""
-    assert AgentService._format_duration(0.4) == "0.4s"
+    assert AgentService._format_duration(0.4) == "400ms"
     assert AgentService._format_duration(25.3) == "25.3s"
     assert AgentService._format_duration(125.0) == "2m 5s"
 

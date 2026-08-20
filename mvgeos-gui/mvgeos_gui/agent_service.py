@@ -446,7 +446,7 @@ class AgentService:
     @staticmethod
     def _format_duration(seconds: float) -> str:
         if seconds < 1.0:
-            return f"{seconds:.1f}s"
+            return f"{seconds * 1000:.0f}ms"
         if seconds < 60.0:
             return f"{seconds:.1f}s"
         mins = int(seconds // 60)
