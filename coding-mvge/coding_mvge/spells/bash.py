@@ -6,7 +6,6 @@ import os
 import signal
 import sys
 from pathlib import Path
-from typing import Any
 
 from mvgeos_agent.types import SpellResult, SpellStatus
 
@@ -81,6 +80,10 @@ def resolve_timeout_ms(timeout_ms: int | None = None) -> int:
 async def kill_process_tree(proc: asyncio.subprocess.Process) -> None:
     """Cleanly terminate child process trees upon timeout or termination."""
     if proc.returncode is not None:
+        transport = getattr(proc, "_transport", None)
+        if transport is not None:
+            with contextlib.suppress(Exception):
+                transport.close()
         return
 
     try:
@@ -95,6 +98,10 @@ async def kill_process_tree(proc: asyncio.subprocess.Process) -> None:
                 stderr=asyncio.subprocess.DEVNULL,
             )
             await kill_proc.wait()
+            kill_transport = getattr(kill_proc, "_transport", None)
+            if kill_transport is not None:
+                with contextlib.suppress(Exception):
+                    kill_transport.close()
         else:
             try:
                 sig = getattr(signal, "SIGKILL", signal.SIGTERM)
@@ -110,6 +117,11 @@ async def kill_process_tree(proc: asyncio.subprocess.Process) -> None:
     with contextlib.suppress(Exception):
         await proc.wait()
 
+    proc_transport = getattr(proc, "_transport", None)
+    if proc_transport is not None:
+        with contextlib.suppress(Exception):
+            proc_transport.close()
+
 
 async def cast_bash(
     command: str,
@@ -117,7 +129,11 @@ async def cast_bash(
     timeout_ms: int | None = None,
     workspace_root: str | Path | None = None,
 ) -> SpellResult:
-    """Execute a shell command with working directory confinement and timeout."""
+    """Execute a shell command with working directory confinement and timeout.
+
+    On Windows, commands run via PowerShell.
+    On Unix/macOS, commands run via default shell.
+    """
     try:
         resolved_root = resolve_workspace_root(workspace_root)
         target_cwd = validate_working_directory(cwd, resolved_root)
@@ -130,18 +146,29 @@ async def cast_bash(
             error_message=str(exc),
         )
 
-    extra_kwargs: dict[str, Any] = {}
-    if sys.platform != "win32":
-        extra_kwargs["start_new_session"] = True
-
+    proc: asyncio.subprocess.Process | None = None
     try:
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(target_cwd),
-            **extra_kwargs,
-        )
+        if sys.platform == "win32":
+            proc = await asyncio.create_subprocess_exec(
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(target_cwd),
+            )
+        else:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(target_cwd),
+                start_new_session=True,
+            )
         try:
             stdout, stderr = await asyncio.wait_for(
                 proc.communicate(), timeout=effective_timeout_ms / 1000
@@ -154,6 +181,9 @@ async def cast_bash(
                 content="",
                 error_message=f"Command timed out after {effective_timeout_ms}ms",
             )
+        except BaseException:
+            await kill_process_tree(proc)
+            raise
 
         if proc.returncode != 0:
             return SpellResult(

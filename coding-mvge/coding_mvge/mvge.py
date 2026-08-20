@@ -27,9 +27,11 @@ class _BuiltinSpell(MvgeSpell):
         workspace_root: Path | None = None,
         timeout_ms: int | None = None,
     ) -> None:
+        doc = getattr(func, "__doc__", "")
+        desc = doc.split("\n\n")[0].strip() if doc else f"Run the {name} tool."
         super().__init__(
             name=name,
-            description=f"Run the {name} tool.",
+            description=desc,
             parameters=generate_spell_schema(func),
         )
         self._func = func
