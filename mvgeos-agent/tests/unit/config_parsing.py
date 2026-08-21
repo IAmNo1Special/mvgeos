@@ -6,9 +6,11 @@ from typing import Any
 
 import pytest
 
-from mvgeos_agent.config_manager import ConfigLayer, ConfigValue
+from mvgeos_agent.base_mvge import BaseMvge
+from mvgeos_agent.config_manager import ConfigLayer, ConfigManager, ConfigValue
 from mvgeos_agent.config_parsing import AgentConfig, ConfigParsing
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME, DEFAULT_MODEL, resolve_rune_paths
+from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.types import QueueMode
 
 
@@ -123,6 +125,10 @@ class TestSpellNames:
         cfg = ConfigParsing.resolve({})
         assert cfg.spell_names is None
 
+    def test_string_input_spreads_into_chars(self) -> None:
+        cfg = ConfigParsing.resolve(_cfg(spells_enabled="bash"))
+        assert cfg.spell_names == ["b", "a", "s", "h"]
+
 
 class TestRunesPathsResolution:
     def test_constructor_arg_wins_over_config(self) -> None:
@@ -147,9 +153,6 @@ class TestRunesPathsResolution:
 
 class TestBaseMvgeParity:
     def test_base_mvge_matches_config_parsing(self, tmp_path: Path) -> None:
-        from mvgeos_agent.base_mvge import BaseMvge
-        from mvgeos_agent.environment import MvgeEnvironment
-
         custom_defaults = {
             "model": "parity-model",
             "temperature": "invalid",
@@ -157,6 +160,7 @@ class TestBaseMvgeParity:
             "contemplation_level": "high",
             "contemplation_budget": "256",
             "exclude_contemplation": True,
+            "queue_mode": "all",
             "spells_enabled": ["bash", "read"],
             "rune_paths": [str(tmp_path / "runes")],
         }
@@ -181,9 +185,7 @@ class TestBaseMvgeParity:
         assert agent._runes_paths == cfg.runes_paths
 
 
-def _parity_mgr(tmp_path: Path, defaults: dict[str, Any]) -> Any:
-    from mvgeos_agent.config_manager import ConfigManager
-
+def _parity_mgr(tmp_path: Path, defaults: dict[str, Any]) -> ConfigManager:
     return ConfigManager(
         agent_name="test-agent",
         project_dir=tmp_path,
