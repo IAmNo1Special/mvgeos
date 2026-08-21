@@ -24,7 +24,7 @@ repos:
 
       - id: pytest
         name: pytest
-        entry: uv run python -m pytest --import-mode=importlib --cov
+        entry: uv run python -m pytest --import-mode=importlib --cov=coding-mvge/coding_mvge --cov=mvgeos-agent/mvgeos_agent --cov=mvgeos-provider/mvgeos_provider --cov=mvgeos-runes/mvgeos_runes --cov=mvgeos-tome/mvgeos_tome --cov=mvgeos-cli/mvgeos_cli --cov=mvgeos-gui/mvgeos_gui --cov-fail-under=70 coding-mvge/tests/unit mvgeos-agent/tests/unit mvgeos-provider/tests/unit mvgeos-runes/tests/unit mvgeos-tome/tests/unit mvgeos-cli/tests/unit mvgeos-gui/tests/unit
         language: system
         types: [python]
         pass_filenames: false
