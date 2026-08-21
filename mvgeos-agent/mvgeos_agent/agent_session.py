@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-import re
-from pathlib import Path
 from typing import Any
 
 from mvgeos_runes.rune_runner import RuneRunner
@@ -109,62 +107,6 @@ class MvgeTome:
         if isinstance(result, dict) and result.get("cancel"):
             return {"cancelled": True}
         return {"cancelled": False}
-
-    async def switch_to(
-        self,
-        target_file: Path,
-    ) -> MvgeTome | None:
-        switch_result = await self.before_switch(str(target_file))
-        if switch_result and switch_result.get("cancelled"):
-            return None
-
-        await self.shutdown(reason="resume", target_session_file=str(target_file))
-        try:
-            # Parse tome_id from target_file
-            # target_file is like: .../entries/tome-id.jsonl
-            match = re.search(r"([a-f0-9]{32})\.jsonl$", str(target_file))
-            if not match:
-                logger.error(
-                    "Could not parse tome_id from target_file: %s", target_file
-                )
-                return None
-            target_tome_id = match.group(1)
-
-            metadata = self._ledger.open_tome(target_tome_id)
-            if metadata is None:
-                logger.error("Failed to open target tome: %s", target_tome_id)
-                return None
-        except (ValueError, FileNotFoundError) as e:
-            logger.exception("Failed to open target tome: %s", e)
-            return None
-
-        new_tome = MvgeTome(self._ledger, metadata, self._rune_runner)
-        await new_tome.start(reason="resume")
-        return new_tome
-
-    async def fork_at(
-        self,
-        entry_id: str,
-    ) -> MvgeTome | None:
-        fork_result = await self.before_fork(entry_id)
-        if fork_result and fork_result.get("cancelled"):
-            return None
-
-        target_file = self.tome_file
-        await self.shutdown(reason="fork", target_session_file=target_file)
-        try:
-            new_metadata = self._ledger.create_branched_tome(
-                parent_tome_id=self._metadata.id,
-                cwd=self._metadata.cwd,
-                fork_from_leaf_id=entry_id,
-            )
-        except (KeyError, ValueError) as e:
-            logger.exception("Failed to fork tome: %s", e)
-            return None
-
-        new_tome = MvgeTome(self._ledger, new_metadata, self._rune_runner)
-        await new_tome.start(reason="fork")
-        return new_tome
 
     def record_message(
         self,
