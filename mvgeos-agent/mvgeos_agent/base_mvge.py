@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from mvgeos_provider.base import Realm
-from mvgeos_provider.models import get_model
+from mvgeos_provider.composer import ModelComposer
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 from mvgeos_runes.loader import (
@@ -122,6 +122,7 @@ class BaseMvge:
         self._runes_paths = parsed.runes_paths
 
         self._provider_registry = RealmRegistry()
+        self._model_composer = ModelComposer(self._provider_registry)
         self._runner: RuneRunner | None = None
         self._watchers: list[RuneWatcher] = []
         self._prompt_source = environment.resolved_prompt.source
@@ -230,27 +231,10 @@ class BaseMvge:
         self.steer(text)
 
     def _compose_model(self, model_id: str) -> Model:
-        model = self._provider_registry.compose_model(
+        model, _ = self._model_composer.compose(
             model_id, self._api_key, self._provider_name
         )
-        if model is not None:
-            return model
-
-        model_info = get_model(model_id)
-        if model_info is None:
-            raise ValueError(f"Unknown model: {model_id}")
-        return Model(
-            id=model_info.id,
-            name=model_info.name,
-            realm=model_info.realm,
-            base_url=model_info.base_url,
-            api_key=self._api_key,
-            max_completion_mana=model_info.max_completion_mana,
-            context_window=model_info.context_window,
-            max_tokens=model_info.max_tokens,
-            headers=dict(model_info.headers or {}),
-            supported_parameters=list(model_info.supported_parameters),
-        )
+        return model
 
     def _build_spells(self) -> list[MvgeSpell]:
         """Override in subclass to provide agent-specific spells."""
@@ -401,10 +385,8 @@ class BaseMvge:
         # Build final system prompt from prompt_data (may have been modified by runes)
         final_prompt = str(prompt_data.get("base_prompt", base_prompt))
 
-        self._model = self._compose_model(self._model_id)
-
-        self._realm = self._provider_registry.create_realm(
-            self._model, self._api_key, self._provider_name
+        self._model, self._realm = self._model_composer.compose(
+            self._model_id, self._api_key, self._provider_name
         )
 
         if self._tome_resume:
@@ -526,13 +508,13 @@ class BaseMvge:
             return
 
         assert self._model is not None
-        new_model = self._compose_model(model_id)
+        new_model, new_realm = self._model_composer.compose(
+            model_id, self._api_key, self._provider_name
+        )
         if new_model.provider != self._model.provider:
             if self._realm is not None:
                 await self._realm.close()
-            self._realm = self._provider_registry.create_realm(
-                new_model, self._api_key, self._provider_name
-            )
+            self._realm = new_realm
         self._model = new_model
         assert self._state is not None
         self._state.model = dataclasses.asdict(new_model)
