@@ -29,12 +29,10 @@ from mvgeos_runes.watcher import RuneWatcher
 from mvgeos_tome.ledger import TomeLedger
 
 from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.config_manager import ConfigLayer, ConfigValue
+from mvgeos_agent.config_parsing import ConfigParsing
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
-    DEFAULT_MODEL,
     DEFAULT_TOME_DIR,
-    resolve_rune_paths,
 )
 from mvgeos_agent.core_loop import StreamFn
 from mvgeos_agent.environment import MvgeEnvironment
@@ -107,83 +105,21 @@ class BaseMvge:
         self._environment = environment
         self._config_manager = environment.config_manager
 
-        def _get(
-            key: str, default: Any, layer: ConfigLayer = ConfigLayer.DEFAULTS
-        ) -> Any:
-            return environment.config.get(key, ConfigValue(default, layer)).value
-
-        self._model_id = str(_get("model", DEFAULT_MODEL))
-
-        raw_temp = _get("temperature", 0.7)
-        try:
-            if isinstance(raw_temp, bool):
-                raise TypeError("temperature cannot be boolean")
-            self._temperature = float(raw_temp)
-        except ValueError, TypeError:
-            logger.warning(
-                "Invalid temperature in config (%r); falling back to default %s",
-                raw_temp,
-                0.7,
-            )
-            self._temperature = 0.7
-
-        raw_max_tokens = _get("max_tokens", 4096)
-        try:
-            if isinstance(raw_max_tokens, bool):
-                raise TypeError("max_tokens cannot be boolean")
-            self._max_tokens = int(raw_max_tokens)
-        except ValueError, TypeError:
-            logger.warning(
-                "Invalid max_tokens in config (%r); falling back to default %s",
-                raw_max_tokens,
-                4096,
-            )
-            self._max_tokens = 4096
-
-        raw_level = str(_get("contemplation_level", "medium"))
-        if raw_level in ("none", "low", "medium", "high"):
-            self._contemplation_level = raw_level
-        else:
-            logger.warning(
-                "Invalid contemplation_level in config (%r); "
-                "falling back to default 'medium'",
-                raw_level,
-            )
-            self._contemplation_level = "medium"
-
-        self._contemplation_budget: int | None = None
-        raw_budget = _get("contemplation_budget", None)
-        if raw_budget is not None:
-            try:
-                if isinstance(raw_budget, bool):
-                    raise TypeError("contemplation_budget cannot be boolean")
-                self._contemplation_budget = int(raw_budget)
-            except ValueError, TypeError:
-                logger.warning(
-                    "Invalid contemplation_budget in config (%r); "
-                    "falling back to default None",
-                    raw_budget,
-                )
-                self._contemplation_budget = None
-        else:
-            self._contemplation_budget = None
-
-        self._exclude_contemplation = bool(_get("exclude_contemplation", False))
-        self._queue_mode: QueueMode = QueueMode.ONE_AT_A_TIME
-
-        spells_enabled = _get("spells_enabled", [])
-        self._spell_names = list(spells_enabled) if spells_enabled else None
-
-        if runes_paths is not None:
-            self._runes_paths = [Path(str(p)).expanduser() for p in runes_paths]
-        else:
-            rune_paths_config = _get("rune_paths", None)
-            if rune_paths_config:
-                self._runes_paths = [
-                    Path(str(p)).expanduser() for p in rune_paths_config
-                ]
-            else:
-                self._runes_paths = resolve_rune_paths(name, extension_dir)
+        parsed = ConfigParsing.resolve(
+            environment.config,
+            agent_name=name,
+            extension_dir=extension_dir,
+            runes_paths=runes_paths,
+        )
+        self._model_id = parsed.model_id
+        self._temperature = parsed.temperature
+        self._max_tokens = parsed.max_tokens
+        self._contemplation_level = parsed.contemplation_level
+        self._contemplation_budget = parsed.contemplation_budget
+        self._exclude_contemplation = parsed.exclude_contemplation
+        self._queue_mode: QueueMode = parsed.queue_mode
+        self._spell_names = parsed.spell_names
+        self._runes_paths = parsed.runes_paths
 
         self._provider_registry = RealmRegistry()
         self._runner: RuneRunner | None = None
