@@ -187,7 +187,7 @@ class ChatMessage:
     is_streaming: bool = False
     steps: list[ExecutionStep] = field(default_factory=list)
     parts: list[MessagePart] = field(default_factory=list)
-    timeline: list[dict] = field(default_factory=list)
+    timeline: list[dict[str, Any]] = field(default_factory=list)
     feedback: str | None = None
     is_error: bool = False
     error_message: str | None = None
@@ -250,7 +250,7 @@ def extract_contemplation_tags(text: str) -> tuple[str, list[str]]:
     return cleaned.strip(), extracted_thoughts
 
 
-def extract_ordered_content(text: str) -> list[dict]:
+def extract_ordered_content(text: str) -> list[dict[str, str]]:
     """Extract text and contemplation segments in original chronological order.
 
     Returns list of {"type": "text"|"thought", "text": str} entries.
@@ -262,7 +262,7 @@ def extract_ordered_content(text: str) -> list[dict]:
         r"<(?:think|thought)>(.*?)</(?:think|thought)>",
         re.DOTALL | re.IGNORECASE,
     )
-    parts = []
+    parts: list[dict[str, str]] = []
     last_end = 0
 
     for match in pattern.finditer(text):

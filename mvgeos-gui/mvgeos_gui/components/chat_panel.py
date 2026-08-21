@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Callable
 from typing import Any
 
 from nicegui import ui
@@ -397,7 +398,7 @@ def _render_composer(state: AppState) -> None:
                 _scroll_to_bottom(element_id=None, force=True)
                 state.submit_prompt(text)
 
-            def handle_enter(e) -> None:
+            def handle_enter(e: object) -> None:
                 # If autocomplete popup is open, enter selects the item
                 if ac_service.is_open:
                     item = ac_service.get_selected_item()
@@ -409,7 +410,7 @@ def _render_composer(state: AppState) -> None:
                 # Shift+Enter inserts newline, normal Enter submits
                 handle_submit()
 
-            def handle_tab(e) -> None:
+            def handle_tab(e: object) -> None:
                 if ac_service.is_open:
                     item = ac_service.get_selected_item()
                     if item:
@@ -417,11 +418,11 @@ def _render_composer(state: AppState) -> None:
                             ac_service, prompt_input, item, state
                         )
 
-            def handle_arrow_down(e) -> None:
+            def handle_arrow_down(e: object) -> None:
                 if ac_service.is_open:
                     ac_service.select_next()
 
-            def handle_arrow_up(e) -> None:
+            def handle_arrow_up(e: object) -> None:
                 if ac_service.is_open:
                     ac_service.select_prev()
 
@@ -561,7 +562,12 @@ def _render_composer(state: AppState) -> None:
                 state.subscribe(_on_action_check)
 
 
-def _toolbar_button(icon: str, title: str, active: bool = False, on_click=None) -> None:
+def _toolbar_button(
+    icon: str,
+    title: str,
+    active: bool = False,
+    on_click: Callable[[], Any] | None = None,
+) -> None:
     """Render a toolbar icon button."""
     btn_cls = (
         "bg-card text-primary"

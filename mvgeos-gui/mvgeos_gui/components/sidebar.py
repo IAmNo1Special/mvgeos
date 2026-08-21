@@ -143,6 +143,8 @@ def render_sidebar(state: AppState) -> ui.column:
                 ui.label("Settings").classes("text-xs text-[#8b949e]")
             ui.label("v0.1.0").classes("text-[10px] text-[#64748b] ml-auto")
 
+    return container
+
 
 def _sidebar_item(label: str, view: str, active: bool, state: AppState) -> None:
     """Render a single sidebar navigation item."""

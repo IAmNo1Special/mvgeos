@@ -23,7 +23,7 @@ def render_message_header(msg: ChatMessage) -> ui.row:
     """Render the header row: avatar, model badge, mana usage, timestamp."""
     with ui.row().classes(
         "w-full items-center justify-between pb-2 border-b border-[#252836]"
-    ):
+    ) as row:
         with ui.row().classes("items-center gap-2"):
             with ui.row().classes(
                 "w-6 h-6 rounded-lg bg-[#3b82f6]/20 border "
@@ -48,6 +48,8 @@ def render_message_header(msg: ChatMessage) -> ui.row:
                         "text-[10px] text-[#f59e0b] font-mono"
                     )
             ui.label(msg.timestamp).classes("text-[10px] text-[#64748b] font-mono")
+
+    return row
 
 
 def render_message_parts(msg: ChatMessage, state: AppState) -> None:
@@ -111,7 +113,7 @@ def render_streaming_indicator(msg: ChatMessage) -> ui.row | None:
     """Render the streaming cursor indicator."""
     if not msg.is_streaming:
         return None
-    with ui.row().classes("items-center gap-2 py-1"):
+    with ui.row().classes("items-center gap-2 py-1") as row:
         ui.spinner("dots", size="sm", color="primary")
         stream_label = (
             "Contemplating..."
@@ -121,6 +123,7 @@ def render_streaming_indicator(msg: ChatMessage) -> ui.row | None:
         ui.label(stream_label).classes(
             "text-[11px] text-[#8b949e] italic animate-pulse"
         )
+    return row
 
 
 def render_error_display(msg: ChatMessage) -> ui.row | None:
@@ -130,9 +133,10 @@ def render_error_display(msg: ChatMessage) -> ui.row | None:
     error_message = getattr(msg, "error_message", None)
     if not error_message:
         return None
-    with ui.row().classes("items-start gap-2 mb-2"):
+    with ui.row().classes("items-start gap-2 mb-2") as row:
         ui.icon("error", size="14px").classes("text-[#ef4444]")
         ui.label(error_message).classes("text-xs text-[#ef4444]")
+    return row
 
 
 def render_message_footer(
@@ -143,7 +147,7 @@ def render_message_footer(
         return None
     with ui.row().classes(
         "w-full items-center justify-end gap-1 pt-2 border-t border-[#252836]/60"
-    ):
+    ) as row:
         copy_text = msg.content or "\n\n".join(msg.contemplation)
         with ui.button(
             icon="content_copy", on_click=lambda c=copy_text: _copy_to_clipboard(c)
@@ -163,6 +167,8 @@ def render_message_footer(
             on_click=lambda i=msg_idx: state.set_message_feedback(i, "down"),
         ).props(f"flat dense round size=xs text-color={down_color}"):
             ui.tooltip("Poor response")
+
+    return row
 
 
 def render_assistant_message(

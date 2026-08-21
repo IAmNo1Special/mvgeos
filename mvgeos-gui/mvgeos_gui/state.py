@@ -10,10 +10,10 @@ import os
 import shutil
 import subprocess
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_runes.loader import get_default_skill_paths, load_skills_from_paths
@@ -129,10 +129,11 @@ def _extract_parts_and_content(
                             else StepType.WORKED
                         )
                     )
+                    raw_params: object = item.get("arguments", {})
                     step = ExecutionStep(
                         step_type=step_type,
                         spell_name=str(item.get("name", "")),
-                        params=item.get("arguments", {}),
+                        params=raw_params if isinstance(raw_params, dict) else {},
                         is_complete=True,
                     )
                     parts.append(MessagePart(part_type=MessagePartType.STEP, step=step))
@@ -202,7 +203,7 @@ class AppState:
     is_streaming: bool = False
     streaming_content: str = ""
     streaming_thinking: str = ""
-    streaming_tool_calls: list = field(default_factory=list)
+    streaming_tool_calls: list[dict[str, Any]] = field(default_factory=list)
     session_loading: bool = False
     pi_status: str = "idle"
     terminal_open: bool = False
@@ -238,12 +239,16 @@ class AppState:
                 result = listener()
                 if inspect.isawaitable(result):
                     with contextlib.suppress(RuntimeError):
-                        asyncio.get_running_loop().create_task(result)
+                        asyncio.get_running_loop().create_task(
+                            cast(Coroutine[Any, Any, None], result)
+                        )
                 elif hasattr(result, "_fire"):
                     fire = result._fire()
                     if inspect.isawaitable(fire):
                         with contextlib.suppress(RuntimeError):
-                            asyncio.get_running_loop().create_task(fire)
+                            asyncio.get_running_loop().create_task(
+                                cast(Coroutine[Any, Any, None], fire)
+                            )
 
     def get_agent_service(self) -> AgentService:
         """Retrieve or initialize the active AgentService instance."""
@@ -754,7 +759,10 @@ class AppState:
         self.notify()
 
     def set_streaming(
-        self, content: str, thinking: str = "", tool_calls: list | None = None
+        self,
+        content: str,
+        thinking: str = "",
+        tool_calls: list[dict[str, Any]] | None = None,
     ) -> None:
         """Update streaming state for the active assistant message."""
         self.is_streaming = True
