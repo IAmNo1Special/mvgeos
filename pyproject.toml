@@ -114,8 +114,6 @@ omit = [
     "*/temp/*",
     "*/tmp*/**",
     "*/AppData/Local/Temp/**",
-    "*test_heal_my_goap*",
-    "*test_interactive_cli_demo*",
     "*/heal_my_goap/*",
     "*/.agents/.mvgeos/runes/*",
 ]
