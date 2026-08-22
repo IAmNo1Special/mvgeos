@@ -106,8 +106,7 @@ class CodingMvge(BaseMvge):
     def _build_spells(self) -> list[MvgeSpell]:
         # Rune spells are driven entirely by the runner's active-spell set
         # (seeded with all registered rune spells, narrowed/widened by runes
-        # such as the Seeker Rune via set_active_spells). No rune spell names
-        # are hardcoded here.
+        # via set_active_spells). No rune spell names are hardcoded here.
         rune_spells: list[MvgeSpell] = []
         if self._runner is not None:
             active = set(self._runner.get_active_spells())

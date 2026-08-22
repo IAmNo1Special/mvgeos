@@ -3,8 +3,9 @@ name = "mvgeos-cli"
 version = "0.1.0"
 description = "CLI entry point for MvgeOS"
 requires-python = ">=3.14"
-license = {text = "MIT"}
+license = "MIT"
 dependencies = [
+    "coding-mvge",
     "mvgeos-agent",
     "mvgeos-provider",
     "mvgeos-tome",
@@ -17,24 +18,16 @@ dependencies = [
 [project.scripts]
 mvgeos = "mvgeos_cli.main:main"
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
-]
-
 [tool.uv.sources]
+coding-mvge = { workspace = true }
 mvgeos-agent = { workspace = true }
 mvgeos-provider = { workspace = true }
 mvgeos-tome = { workspace = true }
 mvgeos-runes = { workspace = true }
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["mvgeos_cli"]
+requires = ["uv_build>=0.11.2,<0.12"]
+build-backend = "uv_build"
 
 [tool.ruff]
 extend = "../pyproject.toml"

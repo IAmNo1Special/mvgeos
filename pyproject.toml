@@ -3,7 +3,7 @@ name = "mvgeos"
 version = "0.1.0"
 description = "MvgeOS — a Python-based AI coding agent"
 requires-python = ">=3.14"
-license = {text = "MIT"}
+license = "MIT"
 dependencies = []
 
 [dependency-groups]
@@ -76,16 +76,8 @@ select = [
 [tool.mypy]
 python_version = "3.14"
 strict = true
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
+# warn_unreachable is the one strict-mode gap worth closing explicitly;
+# every other previously listed flag is implied by strict or default-on.
 warn_unreachable = true
 exclude = ["/tests/", "/scripts/"]
 
@@ -110,11 +102,14 @@ consider_namespace_packages = false
 addopts = "--import-mode=importlib -W ignore::RuntimeWarning"
 
 [tool.coverage.run]
+branch = true
+# Omit patterns are evidence-based: each entry corresponds to out-of-tree
+# code observed in the bare-run report (charter section 2). The user-scope
+# rune dir catches real runes imported during tests; the Temp patterns
+# cover pytest tmp_path artifacts on Windows and Linux respectively.
 omit = [
-    "*/temp/*",
-    "*/tmp*/**",
     "*/AppData/Local/Temp/**",
-    "*/heal_my_goap/*",
+    "*/tmp*/**",
     "*/.agents/.mvgeos/runes/*",
 ]
 

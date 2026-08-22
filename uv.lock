@@ -308,22 +308,13 @@ dependencies = [
     { name = "mvgeos-tome" },
 ]
 
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "mvgeos-agent", editable = "mvgeos-agent" },
     { name = "mvgeos-provider", editable = "mvgeos-provider" },
     { name = "mvgeos-runes", editable = "mvgeos-runes" },
     { name = "mvgeos-tome", editable = "mvgeos-tome" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
 ]
-provides-extras = ["dev"]
 
 [[package]]
 name = "colorama"
@@ -605,18 +596,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e8/ac/fb4c578f4a3256561548cd825646680edcadb9440f3f68add95ade1eb791/ifaddr-0.2.0.tar.gz", hash = "sha256:cc0cbfcaabf765d44595825fb96a99bb12c79716b73b44330ea38ee2b0c4aed4", size = 10485, upload-time = "2022-06-15T21:40:27.561Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9c/1f/19ebc343cc71a7ffa78f17018535adc5cbdd87afb31d7c34874680148b32/ifaddr-0.2.0-py3-none-any.whl", hash = "sha256:085e0305cfe6f16ab12d72e2024030f5d52674afad6911bb1eee207177b8a748", size = 12314, upload-time = "2022-06-15T21:40:25.756Z" },
-]
-
-[[package]]
-name = "importlib-metadata"
-version = "9.0.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "zipp" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a9/01/15bb152d77b21318514a96f43af312635eb2500c96b55398d020c93d86ea/importlib_metadata-9.0.0.tar.gz", hash = "sha256:a4f57ab599e6a2e3016d7595cfd72eb4661a5106e787a95bcc90c7105b831efc", size = 56405, upload-time = "2026-03-20T06:42:56.999Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/38/3d/2d244233ac4f76e38533cfcb2991c9eb4c7bf688ae0a036d30725b8faafe/importlib_metadata-9.0.0-py3-none-any.whl", hash = "sha256:2d21d1cc5a017bd0559e36150c21c830ab1dc304dedd1b7ea85d20f45ef3edd7", size = 27789, upload-time = "2026-03-20T06:42:55.665Z" },
 ]
 
 [[package]]
@@ -907,36 +886,26 @@ name = "mvgeos-agent"
 version = "0.1.0"
 source = { editable = "mvgeos-agent" }
 dependencies = [
-    { name = "filelock" },
     { name = "mvgeos-provider" },
     { name = "mvgeos-runes" },
     { name = "mvgeos-tome" },
     { name = "pydantic" },
 ]
 
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
 [package.metadata]
 requires-dist = [
-    { name = "filelock", specifier = ">=3.32.3" },
     { name = "mvgeos-provider", editable = "mvgeos-provider" },
     { name = "mvgeos-runes", editable = "mvgeos-runes" },
     { name = "mvgeos-tome", editable = "mvgeos-tome" },
     { name = "pydantic", specifier = ">=2.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
 ]
-provides-extras = ["dev"]
 
 [[package]]
 name = "mvgeos-cli"
 version = "0.1.0"
 source = { editable = "mvgeos-cli" }
 dependencies = [
+    { name = "coding-mvge" },
     { name = "mvgeos-agent" },
     { name = "mvgeos-provider" },
     { name = "mvgeos-runes" },
@@ -946,25 +915,17 @@ dependencies = [
     { name = "typer" },
 ]
 
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
 [package.metadata]
 requires-dist = [
+    { name = "coding-mvge", editable = "coding-mvge" },
     { name = "mvgeos-agent", editable = "mvgeos-agent" },
     { name = "mvgeos-provider", editable = "mvgeos-provider" },
     { name = "mvgeos-runes", editable = "mvgeos-runes" },
     { name = "mvgeos-tome", editable = "mvgeos-tome" },
     { name = "prompt-toolkit", specifier = ">=3.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "rich", specifier = ">=13.0" },
     { name = "typer", specifier = ">=0.27.1" },
 ]
-provides-extras = ["dev"]
 
 [[package]]
 name = "mvgeos-gui"
@@ -983,12 +944,6 @@ dependencies = [
     { name = "pywebview" },
 ]
 
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "coding-mvge", editable = "coding-mvge" },
@@ -1000,59 +955,34 @@ requires-dist = [
     { name = "mvgeos-tome", editable = "mvgeos-tome" },
     { name = "nicegui", specifier = ">=2.10.0" },
     { name = "pathspec", specifier = ">=0.12.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "pywebview", specifier = ">=6.2.1" },
 ]
-provides-extras = ["dev"]
 
 [[package]]
 name = "mvgeos-provider"
 version = "0.1.0"
 source = { editable = "mvgeos-provider" }
 dependencies = [
-    { name = "filelock" },
     { name = "httpx" },
 ]
 
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
 [package.metadata]
-requires-dist = [
-    { name = "filelock", specifier = ">=3.32.3" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
-]
-provides-extras = ["dev"]
+requires-dist = [{ name = "httpx", specifier = ">=0.27" }]
 
 [[package]]
 name = "mvgeos-runes"
 version = "0.1.0"
 source = { editable = "mvgeos-runes" }
 dependencies = [
-    { name = "importlib-metadata" },
+    { name = "pyyaml" },
     { name = "watchdog" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "importlib-metadata", specifier = ">=8.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "watchdog", specifier = ">=6.0.0" },
 ]
-provides-extras = ["dev"]
 
 [[package]]
 name = "mvgeos-tome"
@@ -1062,19 +992,8 @@ dependencies = [
     { name = "filelock" },
 ]
 
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
 [package.metadata]
-requires-dist = [
-    { name = "filelock", specifier = ">=3.32.3" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
-]
-provides-extras = ["dev"]
+requires-dist = [{ name = "filelock", specifier = ">=3.32.3" }]
 
 [[package]]
 name = "mypy"
@@ -2043,13 +1962,4 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/dd/37/91eb2e5ca883a529c1b390348a74cd9fc0512171727f547ce70bfe02be5c/yarl-1.24.5-cp314-cp314t-win_amd64.whl", hash = "sha256:5c88e5815a49d289e599f3513aa7fde0bc2092ff188f99c940f007f90f53d104", size = 102450, upload-time = "2026-07-20T02:07:39.578Z" },
     { url = "https://files.pythonhosted.org/packages/bf/f4/ed5c402ac8fde4403ed3366c2716bfddc8a6677ebd59f3d62772cc7fe468/yarl-1.24.5-cp314-cp314t-win_arm64.whl", hash = "sha256:cf139c02f5f23ef6532040a30ff662c00a318c952334f211046b8e60b7f17688", size = 97222, upload-time = "2026-07-20T02:07:41.55Z" },
     { url = "https://files.pythonhosted.org/packages/61/02/962c1cbfc401a30c1d034dc67ff395f64b52302c6d62de556c1fca99acc0/yarl-1.24.5-py3-none-any.whl", hash = "sha256:a33700d13d9b7d84fd10947b09ff69fb9a792e519c8cb9764a3ca70baa6c23a7", size = 58612, upload-time = "2026-07-20T02:07:43.461Z" },
-]
-
-[[package]]
-name = "zipp"
-version = "4.1.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b9/d8/eab98a517c14134c0b2eb4e2387bc5f457334293ec5d2dd3857ec2966802/zipp-4.1.0.tar.gz", hash = "sha256:4cb57381f544315db7688e976e922a2b18cdb513d21cc194eb42232ba2a3e602", size = 26214, upload-time = "2026-05-18T20:08:57.967Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3a/13/547360d81e6d88d58492968ffda9f9542854f11310ee556fef14260cc886/zipp-4.1.0-py3-none-any.whl", hash = "sha256:25ad4e16390cd314347dd8f1de67a2ac538ae658ed4ab9db16029c07c188e97f", size = 10238, upload-time = "2026-05-18T20:08:57.045Z" },
 ]

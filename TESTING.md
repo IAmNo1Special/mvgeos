@@ -23,7 +23,9 @@ Requirements:
 
 - Tests live at `<package>/tests/unit/<module>.py` and
   `<package>/tests/integration/<module>.py`, mirroring source structure
-  (e.g., `mvgeos-agent/tests/unit/types.py` tests `mvgeos_agent/types.py`).
+  (e.g., `mvgeos-agent/tests/unit/types.py` tests the module importable as
+  `mvgeos_agent.types`, which lives at `mvgeos-agent/src/mvgeos_agent/types.py`
+  under each package's src layout).
 - File names are flat `*.py` without a `test_` prefix (`python_files = "*.py"`
   in the root pyproject).
 - Test directories must never contain an `__init__.py`: with
@@ -57,7 +59,10 @@ pyproject to avoid "couldn't parse" coverage warnings.
 ## 3. Coverage floors
 
 - The hermetic whole — unit + integration combined — must clear **90%**
-  statement coverage.
+  coverage measured with branch analysis enabled
+  (`[tool.coverage.run] branch = true` in pyproject). Branch coverage is the
+  floor's unit of account: untested `else` arms and error paths count, which
+  statement coverage hides.
 - The floor is enforced through `[tool.coverage.report] fail_under = 90` in
   pyproject — exactly one number and one enforcement point; do not add
   per-tier floors. Locally, a bare full-suite run (`pytest --cov`) applies
@@ -88,6 +93,14 @@ pyproject to avoid "couldn't parse" coverage warnings.
 All invocations use the module form (`uv run python -m <module> ...`). On
 Windows, direct executable spawn is blocked by Application Control policy;
 only the module invocation form is guaranteed to work everywhere.
+
+All invocations run from the **repository root**. Pytest configuration lives
+only in the root pyproject (`--import-mode=importlib`, `python_files`,
+`testpaths`); pytest has no config-inheritance mechanism, so running from
+inside a package directory bypasses it and silently changes collection
+semantics — the cross-package test-shadowing failure the importlib mode
+exists to prevent. (Ruff is exempt: subpackages inherit via
+`extend = "../pyproject.toml"`.)
 
 ```powershell
 # Full suite with the 90% combined coverage floor (bare run)

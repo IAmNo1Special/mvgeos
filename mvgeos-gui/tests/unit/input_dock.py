@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import ast
+import importlib.util
 from pathlib import Path
 
-_PACKAGE_ROOT = Path(__file__).resolve().parent.parent.parent / "mvgeos_gui"
+_SPEC = importlib.util.find_spec("mvgeos_gui")
+assert _SPEC is not None
+assert _SPEC.origin is not None
+_PACKAGE_ROOT = Path(_SPEC.origin).resolve().parent
 
 
 def test_input_dock_renders_mention_chips_exactly_once() -> None:

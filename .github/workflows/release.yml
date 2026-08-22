@@ -32,7 +32,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: uv sync --all-packages --extra dev
+      - run: uv sync --all-packages
       - name: Full suite with combined coverage floor (>= 90%)
         run: uv run python -m pytest --cov
 
