@@ -121,7 +121,4 @@ Run the full output — no tail truncation. Chain commands in PowerShell with
 The CI contract: CI runs the hermetic unit+integration suite with a 90%
 combined coverage floor on every push and pull request; the release workflow
 performs full verification at tag time; pre-commit provides fast feedback on
-staged work without any coverage gating. Where current workflow files lag this
-contract — unit-only CI gates, pre-commit coverage thresholds, no release-time
-test job — bringing them into compliance is mandatory follow-up work tracked
-in the issue tracker.
+staged work without any coverage gating.
