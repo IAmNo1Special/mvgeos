@@ -29,8 +29,6 @@ Requirements:
 - Test directories must never contain an `__init__.py`: with
   `--import-mode=importlib`, packaged test dirs collapse to identical dotted
   paths across packages and silently shadow each other.
-- No third tier exists. References to "e2e" or "harness" test tiers are
-  obsolete; network-dependent end-to-end runs are not part of this suite.
 
 ## 2. Hermeticity
 
