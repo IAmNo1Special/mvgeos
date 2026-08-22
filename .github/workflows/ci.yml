@@ -33,6 +33,20 @@ jobs:
           mvgeos-cli/tests/unit
           mvgeos-gui/tests/unit
 
+  # Full suite (unit + integration) with the pyproject 90% coverage floor.
+  # PRs stay on the fast unit-only job; main pushes get the complete gate.
+  full-tests:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --all-packages --extra dev
+      - run: uv run pytest --cov
+
   lint:
     runs-on: ubuntu-latest
     steps:
