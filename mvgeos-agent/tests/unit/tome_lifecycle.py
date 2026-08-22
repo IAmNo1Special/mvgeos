@@ -33,6 +33,23 @@ async def _emitted(runner: MagicMock, hook: SigilHook) -> list[dict]:
     return [c.args[1] for c in runner.emit_async.await_args_list if c.args[0] == hook]
 
 
+def _track(runner: MagicMock) -> list[SigilHook]:
+    order: list[SigilHook] = []
+
+    async def _record(hook: SigilHook, data: dict) -> None:
+        order.append(hook)
+
+    runner.emit_first = AsyncMock(side_effect=_record)
+    runner.emit_async = AsyncMock(side_effect=_record)
+    return order
+
+
+async def _assert_source_still_running(runner: MagicMock, source: MvgeTome) -> None:
+    shutdowns = await _emitted(runner, SigilHook.SESSION_SHUTDOWN)
+    assert shutdowns == []
+    assert source.record_message("user", "hi") is not None
+
+
 class TestOpenOrCreate:
     @pytest.mark.asyncio
     async def test_without_resume_creates_new_tome(self) -> None:
@@ -124,6 +141,26 @@ class TestForkAt:
         assert starts[-1]["tomeId"] == branched.id
 
     @pytest.mark.asyncio
+    async def test_success_hook_order(self) -> None:
+        ledger = MagicMock()
+        branched = _metadata("c" * 32, cwd="/test")
+        ledger.create_branched_tome.return_value = branched
+        runner = _mock_runner()
+        source = _started_source(ledger, runner)
+        await source.start(reason="startup")
+        order = _track(runner)
+
+        lifecycle = TomeLifecycle(ledger, runner)
+        result = await lifecycle.fork_at(source, "entry-1")
+
+        assert result is not None
+        assert order == [
+            SigilHook.SESSION_BEFORE_FORK,
+            SigilHook.SESSION_SHUTDOWN,
+            SigilHook.SESSION_START,
+        ]
+
+    @pytest.mark.asyncio
     async def test_cancelled_by_sigil_returns_none(self) -> None:
         ledger = MagicMock()
         runner = _mock_runner()
@@ -149,6 +186,7 @@ class TestForkAt:
         result = await lifecycle.fork_at(source, "entry-1")
 
         assert result is None
+        await _assert_source_still_running(runner, source)
 
 
 class TestSwitchTo:
@@ -173,6 +211,27 @@ class TestSwitchTo:
         assert shutdowns[-1]["targetSessionFile"] == str(target_file)
         starts = await _emitted(runner, SigilHook.SESSION_START)
         assert starts[-1]["reason"] == "resume"
+
+    @pytest.mark.asyncio
+    async def test_success_hook_order(self) -> None:
+        target_meta = _metadata("d" * 32)
+        ledger = MagicMock()
+        ledger.open_tome.return_value = target_meta
+        runner = _mock_runner()
+        source = _started_source(ledger, runner)
+        await source.start(reason="startup")
+        order = _track(runner)
+        target_file = Path("/tomes") / f"{'d' * 32}.jsonl"
+
+        lifecycle = TomeLifecycle(ledger, runner)
+        result = await lifecycle.switch_to(source, target_file)
+
+        assert result is not None
+        assert order == [
+            SigilHook.SESSION_BEFORE_SWITCH,
+            SigilHook.SESSION_SHUTDOWN,
+            SigilHook.SESSION_START,
+        ]
 
     @pytest.mark.asyncio
     async def test_cancelled_by_sigil_returns_none(self) -> None:
@@ -200,6 +259,7 @@ class TestSwitchTo:
 
         assert result is None
         ledger.open_tome.assert_not_called()
+        await _assert_source_still_running(runner, source)
 
     @pytest.mark.asyncio
     async def test_unknown_target_tome_returns_none(self) -> None:
@@ -213,3 +273,18 @@ class TestSwitchTo:
         result = await lifecycle.switch_to(source, Path("/t") / f"{'e' * 32}.jsonl")
 
         assert result is None
+        await _assert_source_still_running(runner, source)
+
+    @pytest.mark.asyncio
+    async def test_open_tome_error_returns_none(self) -> None:
+        ledger = MagicMock()
+        ledger.open_tome.side_effect = ValueError("boom")
+        runner = _mock_runner()
+        source = _started_source(ledger, runner)
+        await source.start(reason="startup")
+
+        lifecycle = TomeLifecycle(ledger, runner)
+        result = await lifecycle.switch_to(source, Path("/t") / f"{'e' * 32}.jsonl")
+
+        assert result is None
+        await _assert_source_still_running(runner, source)

@@ -41,6 +41,21 @@ def started_source(
     return MvgeTome(tome_ledger, tome_metadata, rune_runner)
 
 
+def _record_shutdowns(rune_runner: RuneRunner) -> list[SigilHook]:
+    seen: list[SigilHook] = []
+
+    def recorder(data: dict) -> dict:
+        seen.append(SigilHook.SESSION_SHUTDOWN)
+        return {}
+
+    rune_runner.register_handler(SigilHook.SESSION_SHUTDOWN, recorder)
+    return seen
+
+
+def _assert_no_shutdown(seen: list[SigilHook]) -> None:
+    assert SigilHook.SESSION_SHUTDOWN not in seen
+
+
 @pytest.mark.asyncio
 async def test_switch_to_cancelled(
     rune_runner: RuneRunner, started_source: MvgeTome
@@ -50,10 +65,12 @@ async def test_switch_to_cancelled(
 
     rune_runner.register_handler(SigilHook.SESSION_BEFORE_SWITCH, canceller)
     await started_source.start(reason="startup")
+    seen = _record_shutdowns(rune_runner)
 
     lifecycle = TomeLifecycle(started_source.ledger, rune_runner)
     result = await lifecycle.switch_to(started_source, Path("/path/to/target.jsonl"))
     assert result is None
+    _assert_no_shutdown(seen)
 
 
 @pytest.mark.asyncio
@@ -61,11 +78,13 @@ async def test_switch_to_invalid_tome_id(
     rune_runner: RuneRunner, started_source: MvgeTome
 ) -> None:
     await started_source.start(reason="startup")
+    seen = _record_shutdowns(rune_runner)
 
     # Invalid format - no 32-char hex
     lifecycle = TomeLifecycle(started_source.ledger, rune_runner)
     result = await lifecycle.switch_to(started_source, Path("/path/to/invalid.jsonl"))
     assert result is None
+    _assert_no_shutdown(seen)
 
 
 @pytest.mark.asyncio
@@ -73,12 +92,14 @@ async def test_switch_to_tome_not_found(
     rune_runner: RuneRunner, started_source: MvgeTome
 ) -> None:
     await started_source.start(reason="startup")
+    seen = _record_shutdowns(rune_runner)
 
     # Valid format but tome doesn't exist
     lifecycle = TomeLifecycle(started_source.ledger, rune_runner)
     target_file = Path("/path/to") / f"{'a' * 32}.jsonl"
     result = await lifecycle.switch_to(started_source, target_file)
     assert result is None
+    _assert_no_shutdown(seen)
 
 
 @pytest.mark.asyncio
@@ -106,6 +127,7 @@ async def test_fork_at_cancelled(
 
     rune_runner.register_handler(SigilHook.SESSION_BEFORE_FORK, canceller)
     await started_source.start(reason="startup")
+    seen = _record_shutdowns(rune_runner)
 
     entry = tome_ledger.append_message(
         tome_id=started_source.tome_id, role="user", content="test"
@@ -114,6 +136,23 @@ async def test_fork_at_cancelled(
     lifecycle = TomeLifecycle(tome_ledger, rune_runner)
     result = await lifecycle.fork_at(started_source, entry.id)
     assert result is None
+    _assert_no_shutdown(seen)
+
+
+@pytest.mark.asyncio
+async def test_fork_at_ledger_rejection_keeps_source_running(
+    tome_ledger: TomeLedger, rune_runner: RuneRunner
+) -> None:
+    ghost_meta = TomeMetadata(id="f" * 32, created_at="now", cwd="/test")
+    source = MvgeTome(tome_ledger, ghost_meta, rune_runner)
+    await source.start(reason="startup")
+    seen = _record_shutdowns(rune_runner)
+
+    lifecycle = TomeLifecycle(tome_ledger, rune_runner)
+    result = await lifecycle.fork_at(source, "entry-1")
+
+    assert result is None
+    _assert_no_shutdown(seen)
 
 
 @pytest.mark.asyncio

@@ -67,14 +67,12 @@ class TomeLifecycle:
         """Fork the source session at an entry and start the branched tome.
 
         Returns None when a SESSION_BEFORE_FORK sigil cancels the fork or the
-        ledger rejects the branch.
+        ledger rejects the branch; failures leave the source session running.
         """
         fork_result = await source.before_fork(entry_id)
         if fork_result and fork_result.get("cancelled"):
             return None
 
-        target_file = source.tome_file
-        await source.shutdown(reason="fork", target_session_file=target_file)
         try:
             new_metadata = self._ledger.create_branched_tome(
                 parent_tome_id=source.metadata.id,
@@ -85,19 +83,20 @@ class TomeLifecycle:
             logger.exception("Failed to fork tome: %s", e)
             return None
 
+        await source.shutdown(reason="fork", target_session_file=source.tome_file)
         return await self.start_from_metadata(new_metadata, reason="fork")
 
     async def switch_to(self, source: MvgeTome, target_file: Path) -> MvgeTome | None:
         """Shut the source session down and resume the tome behind a file.
 
         Returns None when a SESSION_BEFORE_SWITCH sigil cancels the switch,
-        the file name carries no tome id, or the target tome cannot be opened.
+        the file name carries no tome id, or the target tome cannot be opened;
+        failures leave the source session running.
         """
         switch_result = await source.before_switch(str(target_file))
         if switch_result and switch_result.get("cancelled"):
             return None
 
-        await source.shutdown(reason="resume", target_session_file=str(target_file))
         match = _TOME_FILE_PATTERN.search(str(target_file))
         if not match:
             logger.error("Could not parse tome_id from target_file: %s", target_file)
@@ -113,4 +112,5 @@ class TomeLifecycle:
             logger.exception("Failed to open target tome: %s", e)
             return None
 
+        await source.shutdown(reason="resume", target_session_file=str(target_file))
         return await self.start_from_metadata(metadata, reason="resume")
