@@ -21,7 +21,23 @@ permissions:
   issues: write
 
 jobs:
+  # Verification gate: red code cannot ship. Bare full-suite run so the
+  # pyproject [tool.coverage.report] fail_under = 90 floor applies
+  # (TESTING.md sections 3 and 6). Both publish jobs below depend on this.
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --all-packages --extra dev
+      - name: Full suite with combined coverage floor (>= 90%)
+        run: uv run python -m pytest --cov
+
   release:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -60,6 +76,7 @@ jobs:
           generate_release_notes: false
 
   changelog:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
