@@ -60,9 +60,13 @@ pyproject to avoid "couldn't parse" coverage warnings.
 
 - The hermetic whole — unit + integration combined — must clear **90%**
   statement coverage.
-- A bare full-suite run (`pytest --cov`) enforces that floor through
-  `[tool.coverage.report] fail_under = 90` in pyproject. There is exactly one
-  number and one enforcement point; do not add per-tier floors.
+- The floor is enforced through `[tool.coverage.report] fail_under = 90` in
+  pyproject — exactly one number and one enforcement point; do not add
+  per-tier floors. Locally, a bare full-suite run (`pytest --cov`) applies
+  it. In CI, per-package matrix legs measure coverage with the gate disabled
+  (`--cov-fail-under=0`: a leg cannot clear the combined floor, so the flag
+  neutralizes rather than competes) and the aggregate job applies the floor
+  once after merging all legs (`coverage combine`, then `coverage report`).
 - Pre-commit runs tests with **no coverage gate at all**: no `--cov`,
   no `--cov-fail-under`. Staged-work feedback measures correctness, not
   coverage.
@@ -109,7 +113,7 @@ Run the full output — no tail truncation. Chain commands in PowerShell with
 
 | Requirement | Enforced by | When |
 | --- | --- | --- |
-| Hermetic unit + integration run with 90% combined floor | CI test job (`pytest --cov`, pyproject `fail_under = 90`) | every push to `main` and PR |
+| Hermetic unit + integration run with 90% combined floor | CI per-package matrix (`pytest --cov` per leg) plus an aggregate job (`coverage combine`, then `coverage report` against pyproject `fail_under = 90`) | every push to `main` and PR |
 | Lint, format, types | CI lint job (`ruff check`, `ruff format --check`, `mypy .`) | every push to `main` and PR |
 | Fast staged-work checks (lint, format, types, unit tests) | pre-commit hooks | every local commit |
 | Release-time full verification (full suite + coverage floor) | release workflow | every `v*` tag |

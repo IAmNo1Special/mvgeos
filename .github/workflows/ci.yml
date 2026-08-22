@@ -7,48 +7,76 @@ on:
     branches: [main]
 
 jobs:
+  # One leg per package: unit + integration tiers, fully hermetic
+  # (mocked seams, no secrets, no network). Bare --cov reproduces the
+  # bare full-suite run's measurement semantics (everything imported);
+  # the per-leg union then matches it once combined. The gate is
+  # disabled here because a single package cannot clear the combined
+  # floor -- enforcement happens once, in the aggregate job below.
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - coding-mvge
+          - mvgeos-agent
+          - mvgeos-provider
+          - mvgeos-runes
+          - mvgeos-tome
+          - mvgeos-cli
+          - mvgeos-gui
+    env:
+      COVERAGE_FILE: .coverage.${{ matrix.package }}
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - run: uv sync --all-packages --extra dev
-      - run: >-
-          uv run pytest --import-mode=importlib
-          --cov=coding-mvge/coding_mvge
-          --cov=mvgeos-agent/mvgeos_agent
-          --cov=mvgeos-provider/mvgeos_provider
-          --cov=mvgeos-runes/mvgeos_runes
-          --cov=mvgeos-tome/mvgeos_tome
-          --cov=mvgeos-cli/mvgeos_cli
-          --cov=mvgeos-gui/mvgeos_gui
-          --cov-fail-under=70
-          coding-mvge/tests/unit
-          mvgeos-agent/tests/unit
-          mvgeos-provider/tests/unit
-          mvgeos-runes/tests/unit
-          mvgeos-tome/tests/unit
-          mvgeos-cli/tests/unit
-          mvgeos-gui/tests/unit
+      - name: Test ${{ matrix.package }} (unit + integration)
+        run: >-
+          uv run python -m pytest
+          --cov
+          --cov-report=term-missing
+          --cov-fail-under=0
+          ${{ matrix.package }}/tests/unit
+          ${{ matrix.package }}/tests/integration
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-data-${{ matrix.package }}
+          path: .coverage.*
+          include-hidden-files: true
+          if-no-files-found: error
 
-  # Full suite (unit + integration) with the pyproject 90% coverage floor.
-  # PRs stay on the fast unit-only job; main pushes get the complete gate.
-  full-tests:
-    if: github.event_name == 'push'
+  # Aggregates the per-leg data files and enforces the combined floor.
+  # The floor lives only in pyproject [tool.coverage.report]
+  # fail_under = 90; `coverage report` reads it from there.
+  coverage:
+    needs: test
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - run: uv sync --all-packages --extra dev
-      - run: uv run pytest --cov
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-data-*
+          path: coverage-data
+          merge-multiple: true
+      - name: Combine coverage across packages
+        run: uv run python -m coverage combine coverage-data
+      - name: Enforce combined coverage floor (>= 90%)
+        run: uv run python -m coverage report
 
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
