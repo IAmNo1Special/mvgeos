@@ -40,6 +40,8 @@ Test paths follow pattern: `mvgeos-agent/tests/unit/<module>.py` and `mvgeos-age
 | `CompactionRunner` | Orchestrates transcript compaction and summary generation |
 | `SpellDispatcher` | Executes tool call batches concurrently or sequentially |
 | `MvgeTome` | Session wrapper over `TomeLedger`; emits session sigils; switch/fork |
+| `TomeLifecycle` | Creates/opens tomes and starts MvgeTome sessions; fork/switch orchestration |
+| `RuneLifecycle` | Loads runes/skills into a RuneRunner and owns hot-reload watchers |
 
 ## Spell Schema
 

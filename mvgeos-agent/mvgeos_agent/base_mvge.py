@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import logging
 from collections.abc import AsyncIterator, Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -10,21 +9,13 @@ from mvgeos_provider.base import Realm
 from mvgeos_provider.composer import ModelComposer
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
-from mvgeos_runes.loader import (
-    get_default_skill_paths,
-    load_runes_from_paths,
-    load_skills_from_paths,
-)
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     Diagnostic,
-    RuneContext,
-    RuneScope,
     RuneShortcut,
     SkillDiagnostic,
     SpellDefinition,
 )
-from mvgeos_runes.watcher import RuneWatcher
 from mvgeos_tome.ledger import TomeLedger
 
 from mvgeos_agent.agent_session import MvgeTome
@@ -44,6 +35,7 @@ from mvgeos_agent.harness import (
 )
 from mvgeos_agent.mvge_loop import MvgeLoop
 from mvgeos_agent.prompt_assembly import PromptAssembly
+from mvgeos_agent.rune_lifecycle import RuneLifecycle
 from mvgeos_agent.snapshot import RuntimeSnapshot
 from mvgeos_agent.types import (
     AbortController,
@@ -58,8 +50,6 @@ from mvgeos_agent.types import (
     SummonerRequest,
     TomeResumeError,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class BaseMvge:
@@ -124,7 +114,7 @@ class BaseMvge:
         self._provider_registry = RealmRegistry()
         self._model_composer = ModelComposer(self._provider_registry)
         self._runner: RuneRunner | None = None
-        self._watchers: list[RuneWatcher] = []
+        self._rune_lifecycle: RuneLifecycle | None = None
         self._prompt_source = environment.resolved_prompt.source
         self._model: Model | None = None
         self._realm: Realm | None = None
@@ -403,71 +393,20 @@ class BaseMvge:
 
     async def _load_runes(self) -> None:
         """Load runes from all three levels (global, agent, project)."""
-        paths_with_scope = self._build_rune_paths_with_scope()
-        loads, diagnostics = load_runes_from_paths(paths_with_scope, self._name)
-
-        if self._runner is None:
-            self._runner = RuneRunner()
-            self._runner.bind_context(
-                RuneContext(
-                    cwd=str(Path.cwd()),
-                    mode="cli",
-                    agent_name=self._name,
-                    api_key=self._api_key,
-                )
+        if self._rune_lifecycle is None:
+            self._rune_lifecycle = RuneLifecycle(
+                agent_name=self._name,
+                api_key=self._api_key,
+                runes_paths=self._runes_paths,
+                environment=self._environment,
+                provider_registry=self._provider_registry,
+                runner=self._runner,
             )
-
-        if loads:
-            await self._runner.load_rune_loads(loads, diagnostics)
-            for pname, pconfig in self._runner.get_registered_providers().items():
-                if isinstance(pconfig, dict):
-                    self._provider_registry.register_provider(pname, pconfig)
-        elif diagnostics:
-            self._runner._diagnostics.extend(diagnostics)
-
-        # Load skills from standard scopes
-        skill_paths = get_default_skill_paths(self._name)
-        skill_loads, skill_diagnostics = load_skills_from_paths(skill_paths, self._name)
-        if skill_loads:
-            self._runner.load_skills(skill_loads, diagnostics=skill_diagnostics)
-        elif skill_diagnostics:
-            self._runner._skill_diagnostics.extend(skill_diagnostics)
-
-        if skill_diagnostics:
-            for diag in skill_diagnostics:
-                logger.warning(
-                    "Skill diagnostic: %s (skill=%s, scope=%s, path=%s)",
-                    diag.message,
-                    diag.skill_name,
-                    diag.scope.value if diag.scope else "unknown",
-                    diag.path,
-                )
-
-        self._environment = dataclasses.replace(
-            self._environment,
-            diagnostics=list(self._runner.diagnostics)
-            + list(self._runner.skill_diagnostics),
-            runner=self._runner,
-        )
-
-        for path, _ in paths_with_scope:
-            if path.exists():
-                watcher = RuneWatcher(path, self._runner)
-                await watcher.start()
-                self._watchers.append(watcher)
-
-    def _build_rune_paths_with_scope(self) -> list[tuple[Path, RuneScope]]:
-        result: list[tuple[Path, RuneScope]] = []
-        for path in self._runes_paths:
-            resolved = Path(str(path).replace("{agent_name}", self._name)).expanduser()
-            if ".mvgeos/runes" in str(path) and "{agent_name}" not in str(path):
-                scope = RuneScope.USER
-            elif "{agent_name}" in str(path):
-                scope = RuneScope.AGENT
-            else:
-                scope = RuneScope.PROJECT
-            result.append((resolved, scope))
-        return result
+        self._runner = await self._rune_lifecycle.load()
+        await self._rune_lifecycle.start()
+        refreshed = self._rune_lifecycle.environment
+        if refreshed is not None:
+            self._environment = refreshed
 
     async def switch_model(self, model_id: str) -> None:
         """Switch the active model, preserving the current session context."""
@@ -521,9 +460,9 @@ class BaseMvge:
     async def close(self) -> None:
         if self._agent_tome is not None:
             await self._agent_tome.shutdown(reason="quit")
-        for watcher in self._watchers:
-            await watcher.stop()
-        self._watchers.clear()
+        if self._rune_lifecycle is not None:
+            await self._rune_lifecycle.shutdown()
+            self._rune_lifecycle = None
         if self._realm is not None:
             await self._realm.close()
             self._realm = None
