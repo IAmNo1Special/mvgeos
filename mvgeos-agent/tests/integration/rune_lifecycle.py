@@ -84,14 +84,14 @@ async def _reference_inline_load(
         for pname, pconfig in runner.get_registered_providers().items():
             registry.register_provider(pname, pconfig)
     elif diagnostics:
-        runner._diagnostics.extend(diagnostics)
+        runner.extend_diagnostics(diagnostics)
 
     skill_paths = get_default_skill_paths(agent_name)
     skill_loads, skill_diagnostics = load_skills_from_paths(skill_paths, agent_name)
     if skill_loads:
         runner.load_skills(skill_loads, diagnostics=skill_diagnostics)
     elif skill_diagnostics:
-        runner._skill_diagnostics.extend(skill_diagnostics)
+        runner.extend_skill_diagnostics(skill_diagnostics)
 
     return runner
 

@@ -126,6 +126,14 @@ class RuneRunner:
     def diagnostics(self) -> list[Diagnostic]:
         return list(self._diagnostics)
 
+    def extend_diagnostics(self, diagnostics: list[Diagnostic]) -> None:
+        """Append loader diagnostics for paths that produced no runes."""
+        self._diagnostics.extend(diagnostics)
+
+    def extend_skill_diagnostics(self, diagnostics: list[SkillDiagnostic]) -> None:
+        """Append loader diagnostics for paths that produced no skills."""
+        self._skill_diagnostics.extend(diagnostics)
+
     def bind_context(self, context: RuneContext) -> None:
         self._context = context
 
