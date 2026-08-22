@@ -1,23 +1,27 @@
+# --no-sync is load-bearing: pre-commit stashes unstaged changes (including
+# manifests) while hooks run; uv run's default auto-sync would then reinstall
+# the environment against the stashed state, corrupting workspace editables.
+# Sync explicitly via `uv sync` instead — never implicitly from a hook.
 repos:
   - repo: local
     hooks:
       - id: ruff-check
         name: ruff check
-        entry: uv run python -m ruff check
+        entry: uv run --no-sync python -m ruff check
         language: system
         types: [python]
         pass_filenames: true
 
       - id: ruff-format
         name: ruff format
-        entry: uv run python -m ruff format --check
+        entry: uv run --no-sync python -m ruff format --check
         language: system
         types: [python]
         pass_filenames: true
 
       - id: mypy
         name: mypy
-        entry: uv run python -m mypy .
+        entry: uv run --no-sync python -m mypy .
         language: system
         types: [python]
         pass_filenames: false
@@ -26,7 +30,7 @@ repos:
       # CI owns coverage measurement over the hermetic whole.
       - id: pytest
         name: unit tests
-        entry: uv run python -m pytest coding-mvge/tests/unit mvgeos-agent/tests/unit mvgeos-provider/tests/unit mvgeos-runes/tests/unit mvgeos-tome/tests/unit mvgeos-cli/tests/unit mvgeos-gui/tests/unit
+        entry: uv run --no-sync python -m pytest coding-mvge/tests/unit mvgeos-agent/tests/unit mvgeos-provider/tests/unit mvgeos-runes/tests/unit mvgeos-tome/tests/unit mvgeos-cli/tests/unit mvgeos-gui/tests/unit
         language: system
         types: [python]
         pass_filenames: false
