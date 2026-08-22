@@ -200,7 +200,7 @@ class BaseMvge:
 
     @property
     def queue_mode(self) -> QueueMode:
-        return getattr(self, "_queue_mode", QueueMode.ONE_AT_A_TIME)
+        return self._queue_mode
 
     @queue_mode.setter
     def queue_mode(self, mode: QueueMode | str) -> None:
