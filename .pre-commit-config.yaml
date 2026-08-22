@@ -3,14 +3,14 @@ repos:
     hooks:
       - id: ruff-check
         name: ruff check
-        entry: uv run ruff check
+        entry: uv run python -m ruff check
         language: system
         types: [python]
         pass_filenames: true
 
       - id: ruff-format
         name: ruff format
-        entry: uv run ruff format --check
+        entry: uv run python -m ruff format --check
         language: system
         types: [python]
         pass_filenames: true
@@ -22,9 +22,11 @@ repos:
         types: [python]
         pass_filenames: false
 
+      # Fast unit-suite smoke run: no coverage gate (TESTING.md section 3).
+      # CI owns coverage measurement over the hermetic whole.
       - id: pytest
-        name: pytest
-        entry: uv run python -m pytest --import-mode=importlib --cov=coding-mvge/coding_mvge --cov=mvgeos-agent/mvgeos_agent --cov=mvgeos-provider/mvgeos_provider --cov=mvgeos-runes/mvgeos_runes --cov=mvgeos-tome/mvgeos_tome --cov=mvgeos-cli/mvgeos_cli --cov=mvgeos-gui/mvgeos_gui --cov-fail-under=70 coding-mvge/tests/unit mvgeos-agent/tests/unit mvgeos-provider/tests/unit mvgeos-runes/tests/unit mvgeos-tome/tests/unit mvgeos-cli/tests/unit mvgeos-gui/tests/unit
+        name: unit tests
+        entry: uv run python -m pytest coding-mvge/tests/unit mvgeos-agent/tests/unit mvgeos-provider/tests/unit mvgeos-runes/tests/unit mvgeos-tome/tests/unit mvgeos-cli/tests/unit mvgeos-gui/tests/unit
         language: system
         types: [python]
         pass_filenames: false
