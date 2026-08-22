@@ -131,6 +131,16 @@ class SlashCommandItem:
     value: str = ""
 
 
+@dataclass
+class MentionChip:
+    """A selected autocomplete item rendered as a chip in the input field."""
+
+    text: str
+    kind: str
+    icon: str = ""
+    path: Path | None = None
+
+
 def _score_query(key: str, query: str) -> tuple[int, int, int] | None:
     """Score a fuzzy subsequence match of *query* against *key*.
 
@@ -501,10 +511,31 @@ class AutocompleteService:
         if isinstance(item, MentionItem):
             if item.kind == MentionKind.FILE:
                 return f"@{item.value}"
-            return item.value  # skills already have @ prefix
+            if self.mode == AutocompleteMode.COMMAND:
+                return f"/{item.label}"
+            return item.value
         if isinstance(item, SlashCommandItem):
-            return item.name  # already includes / prefix
+            return item.name
         return ""
+
+    def create_chip(self, item: object) -> MentionChip | None:
+        """Create a ``MentionChip`` from a selected autocomplete *item*."""
+        text = self.get_insertion_text(item)
+        if not text:
+            return None
+        kind_str = self.get_item_kind(item)
+        icon = ""
+        path = None
+        if isinstance(item, MentionItem) and item.kind == MentionKind.FILE:
+            icon = "insert_drive_file"
+            path = item.path
+        elif kind_str == MentionKind.SKILL:
+            icon = "auto_awesome"
+        elif kind_str == CommandKind.SLASH:
+            icon = "slash"
+        elif kind_str == CommandKind.RUNE:
+            icon = "auto_awesome"
+        return MentionChip(text=text, kind=kind_str, icon=icon, path=path)
 
     def get_word_range(
         self, text: str, cursor_pos: int | None = None
@@ -533,6 +564,28 @@ class AutocompleteService:
         self.close()
         self._notify_listeners()
         return text
+
+    def on_text_change(self, text: str, cursor_pos: int | None = None) -> bool:
+        """Update autocomplete state on text change (alias for process_input)."""
+        return self.process_input(text, cursor_pos)
+
+    def get_selected_item(self) -> object | None:
+        """Return the currently selected item or None."""
+        if (
+            not self.items
+            or self.selected_index < 0
+            or self.selected_index >= len(self.items)
+        ):
+            return None
+        return self.items[self.selected_index]
+
+    def select_next(self) -> None:
+        """Move the selection cursor down by one (alias for move_down)."""
+        self.move_down()
+
+    def select_prev(self) -> None:
+        """Move the selection cursor up by one (alias for move_up)."""
+        self.move_up()
 
     def move_down(self) -> None:
         """Move the selection cursor down by one."""

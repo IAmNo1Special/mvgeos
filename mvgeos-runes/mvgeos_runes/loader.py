@@ -347,10 +347,9 @@ def load_runes_from_paths(
 
 # Skill discovery constants
 SKILL_SCOPES = [
-    (SkillScope.PROJECT, Path(".agents/.mvgeos/skills")),
-    (SkillScope.USER, Path("~/.agents/.mvgeos/skills")),
+    (SkillScope.PROJECT, Path(".agents/skills")),
+    (SkillScope.USER, Path("~/.agents/skills")),
     (SkillScope.AGENT, Path("~/.agents/.mvgeos/{agent_name}/skills")),
-    (SkillScope.LEGACY, Path(".agents/skills")),
 ]
 
 NAME_REGEX = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -365,6 +364,8 @@ def load_skill_manifest(path: Path) -> SkillManifest | None:
         content = skill_md_path.read_text(encoding="utf-8")
     except OSError:
         return None
+
+    content = content.lstrip("\ufeff")
 
     if not content.startswith("---"):
         return None
@@ -450,6 +451,8 @@ def load_skill_manifests(
     manifests: list[SkillManifest] = []
     for entry in skills_dir.iterdir():
         if not entry.is_dir():
+            continue
+        if entry.name.startswith("."):
             continue
         manifest = load_skill_manifest(entry)
         if manifest is None:

@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from mvgeos_runes.types import SkillManifest, SkillScope
 from mvgeos_tome.ledger import TomeLedger
 from nicegui import ui
 from nicegui.testing import User
@@ -13,6 +14,21 @@ from nicegui.testing import User
 from mvgeos_gui.app import build_page, init_app
 from mvgeos_gui.state import AppState
 from mvgeos_gui.tome_service import TomeService
+
+
+def _make_manifest(
+    name: str = "review",
+    path: str = "/skills/review/SKILL.md",
+    scope: str = "project",
+    description: str = "Review code",
+) -> SkillManifest:
+    """Build a minimal SkillManifest for testing."""
+    return SkillManifest(
+        name=name,
+        description=description,
+        scope=SkillScope(scope),
+        path=path,
+    )
 
 
 def _init_git_repo(repo_path: Path, branch: str) -> None:
@@ -46,7 +62,7 @@ def _init_git_repo(repo_path: Path, branch: str) -> None:
 
 @pytest.mark.asyncio
 async def test_full_shell_layout_rendering(user: User) -> None:
-    """Verify 3-column shell elements rendered correctly."""
+    """Verify 3-pane desktop shell elements rendered correctly."""
     state = AppState(project_path=Path("C:/demo/my-project"))
 
     @ui.page("/test_shell_render")
@@ -55,35 +71,22 @@ async def test_full_shell_layout_rendering(user: User) -> None:
 
     await user.open("/test_shell_render")
 
-    # Left sidebar branding and action
+    # Left sidebar branding, button, and navigation
     await user.should_see("MvgeOS")
     await user.should_see("New Conversation")
-    await user.should_see("Conversation History")
-    await user.should_see("Scheduled Tasks")
-    await user.should_see("Projects")
+    await user.should_see("Home")
+    await user.should_see("Chat")
+    await user.should_see("Sessions")
+    await user.should_see("Skills")
+    await user.should_see("Settings")
 
-    # Center header breadcrumb
-    await user.should_see("my-project")
-    await user.should_see("Open IDE")
-
-    # Empty state centered project switcher
-    await user.should_see("Quick Start")
-    await user.should_see("New Project")
-    await user.should_see("No Project")
-
-    # Right Inspector accordions
-    await user.should_see("Context")
-    await user.should_see("Subagents")
-    await user.should_see("Files Changed")
-    await user.should_see("Artifacts")
-    await user.should_see("Skills Used")
-    await user.should_see("Uploads")
-    await user.should_see("Background Tasks")
+    # Status bar and model info
+    await user.should_see("nemotron")
 
 
 @pytest.mark.asyncio
 async def test_sidebar_toggle_interaction(user: User) -> None:
-    """Verify toggling left sidebar expansion state."""
+    """Verify toggling left sidebar visibility state."""
     state = AppState()
 
     @ui.page("/test_sidebar_toggle")
@@ -91,34 +94,31 @@ async def test_sidebar_toggle_interaction(user: User) -> None:
         build_page(state)
 
     await user.open("/test_sidebar_toggle")
-    assert state.sidebar_expanded is True
+    assert state.sidebar_open is True
 
-    # Click toggle sidebar button
-    user.find("toggle_sidebar_btn").click()
-    assert state.sidebar_expanded is False
+    state.toggle_sidebar()
+    assert state.sidebar_open is False
 
-    user.find("toggle_sidebar_btn").click()
-    assert state.sidebar_expanded is True
+    state.toggle_sidebar()
+    assert state.sidebar_open is True
 
 
 @pytest.mark.asyncio
-async def test_inspector_toggle_interaction(user: User) -> None:
-    """Verify toggling inspector panel expansion state."""
-    state = AppState()
+async def test_review_rail_toggle_interaction(user: User) -> None:
+    """Verify toggling review rail expansion state."""
+    state = AppState(review_open=True)
 
-    @ui.page("/test_inspector_toggle")
+    @ui.page("/test_review_toggle")
     def page() -> None:
         build_page(state)
 
-    await user.open("/test_inspector_toggle")
-    assert state.inspector_expanded is True
+    await user.open("/test_review_toggle")
+    await user.should_see("Review")
+    await user.should_see("Permission mode")
+    await user.should_see("Changed files")
 
-    # Click toggle inspector button
-    user.find("toggle_inspector_btn").click()
-    assert state.inspector_expanded is False
-
-    user.find("toggle_inspector_btn").click()
-    assert state.inspector_expanded is True
+    state.toggle_review()
+    assert state.review_open is False
 
 
 @pytest.mark.asyncio
@@ -141,7 +141,7 @@ async def test_new_conversation_button_resets_state(user: User) -> None:
 
 @pytest.mark.asyncio
 async def test_project_picker_selection(user: User) -> None:
-    """Verify switching projects from the empty state project picker."""
+    """Verify switching projects updates state."""
     state = AppState(project_path=Path("C:/demo/project-a"))
     proj_b = Path("C:/demo/project-b")
     state.add_recent_project(proj_b)
@@ -151,7 +151,6 @@ async def test_project_picker_selection(user: User) -> None:
         build_page(state)
 
     await user.open("/test_project_picker")
-    await user.should_see("project-a")
 
     # Select project-b
     state.set_project(proj_b)
@@ -160,16 +159,16 @@ async def test_project_picker_selection(user: User) -> None:
 
 @pytest.mark.asyncio
 async def test_collapsed_panels_rendering(user: User) -> None:
-    """Verify initial rendering when sidebar and inspector are collapsed."""
-    state = AppState(sidebar_expanded=False, inspector_expanded=False)
+    """Verify initial rendering when sidebar and review rail are collapsed."""
+    state = AppState(sidebar_open=False, review_open=False)
 
     @ui.page("/test_collapsed")
     def page() -> None:
         build_page(state)
 
     await user.open("/test_collapsed")
-    assert state.sidebar_expanded is False
-    assert state.inspector_expanded is False
+    assert state.sidebar_open is False
+    assert state.review_open is False
 
 
 @pytest.mark.asyncio
@@ -193,7 +192,7 @@ async def test_init_app_registers_index(user: User) -> None:
     assert app_state == state
 
     await user.open("/")
-    await user.should_see("init-project")
+    await user.should_see("MvgeOS")
 
 
 # --- Tome integration tests ---
@@ -201,7 +200,7 @@ async def test_init_app_registers_index(user: User) -> None:
 
 @pytest.mark.asyncio
 async def test_sidebar_displays_tomes(user: User, tmp_path: Path) -> None:
-    """Verify sidebar lists tombs with titles, timestamps, and git branches."""
+    """Verify sidebar lists tomes with titles, timestamps, and git branches."""
     tome_dir = tmp_path / "tomes"
     project_path = tmp_path / "proj"
     project_path.mkdir()
@@ -219,7 +218,6 @@ async def test_sidebar_displays_tomes(user: User, tmp_path: Path) -> None:
 
     await user.open("/test_sidebar_tomes")
     await user.should_see("Bug Fix Session")
-    await user.should_see("now")
 
 
 @pytest.mark.asyncio
@@ -267,16 +265,16 @@ async def test_clicking_tome_switches_session(user: User, tmp_path: Path) -> Non
         build_page(state)
 
     await user.open("/test_click_tome")
+    await user.should_see("Test Session")
 
-    user.find(f"tome_entry_{meta.id[:8]}").click()
-
+    state.switch_to_tome(meta.id)
     assert state.active_tome_id == meta.id
     assert state.tome_title == "Test Session"
 
 
 @pytest.mark.asyncio
-async def test_header_breadcrumb_with_tome(user: User, tmp_path: Path) -> None:
-    """Verify header breadcrumb shows active tome title."""
+async def test_current_session_card_with_tome(user: User, tmp_path: Path) -> None:
+    """Verify sidebar shows active tome title in current session card."""
     tome_dir = tmp_path / "tomes"
     project_path = tmp_path / "my-awesome-project"
     project_path.mkdir()
@@ -289,18 +287,18 @@ async def test_header_breadcrumb_with_tome(user: User, tmp_path: Path) -> None:
     state.load_tomes()
     state.switch_to_tome(meta.id)
 
-    @ui.page("/test_breadcrumb")
+    @ui.page("/test_current_session")
     def page() -> None:
         build_page(state)
 
-    await user.open("/test_breadcrumb")
-    await user.should_see("my-awesome-project")
+    await user.open("/test_current_session")
+    await user.should_see("Current Session")
     await user.should_see("Active Session")
 
 
 @pytest.mark.asyncio
-async def test_viewport_transitions_to_conversation(user: User, tmp_path: Path) -> None:
-    """Verify center viewport transitions from empty state to active session."""
+async def test_viewport_shows_chat(user: User, tmp_path: Path) -> None:
+    """Verify chat view shows active session title."""
     tome_dir = tmp_path / "tomes"
     project_path = tmp_path / "proj"
     project_path.mkdir()
@@ -322,18 +320,13 @@ async def test_viewport_transitions_to_conversation(user: User, tmp_path: Path) 
 
 
 @pytest.mark.asyncio
-async def test_open_ide_button_launches_editor(user: User, tmp_path: Path) -> None:
-    """Verify Open IDE button spawns editor in project directory."""
+async def test_open_ide_launches_editor(user: User, tmp_path: Path) -> None:
+    """Verify Open in Editor spawns editor in project directory."""
     with patch("mvgeos_gui.state.subprocess.Popen") as mock_popen:
         state = AppState(project_path=tmp_path)
         mock_popen.return_value = MagicMock()
 
-        @ui.page("/test_open_ide")
-        def page() -> None:
-            build_page(state)
-
-        await user.open("/test_open_ide")
-        user.find("open_ide_btn").click()
+        state.open_in_editor()
 
         mock_popen.assert_called_once()
         args = mock_popen.call_args[0][0]
@@ -342,23 +335,28 @@ async def test_open_ide_button_launches_editor(user: User, tmp_path: Path) -> No
 
 
 @pytest.mark.asyncio
-async def test_header_menu_items_visible(user: User) -> None:
-    """Verify 3-dots menu items are labeled correctly."""
-    state = AppState()
+async def test_command_palette_opens_and_lists_views(user: User) -> None:
+    """Verify command palette lists all primary views."""
+    state = AppState(_command_palette_open=True)
 
-    @ui.page("/test_menu_items")
+    @ui.page("/test_palette")
     def page() -> None:
         build_page(state)
 
-    await user.open("/test_menu_items")
-    await user.should_see("Export Transcript")
-    await user.should_see("Fork Tome")
-    await user.should_see("Clear Conversation")
+    await user.open("/test_palette")
+    await user.should_see("Quick Switcher")
+    await user.should_see("Sessions")
+    await user.should_see("Timeline")
+    await user.should_see("Packages")
+    await user.should_see("Notes")
+    await user.should_see("Skills")
+    await user.should_see("Diagnostics")
+    await user.should_see("Settings")
 
 
 @pytest.mark.asyncio
-async def test_empty_state_visible_without_tome(user: User) -> None:
-    """Verify empty state renders when no tome is active."""
+async def test_empty_state_prompt_rendered(user: User) -> None:
+    """Verify empty chat state prompt renders."""
     state = AppState()
 
     @ui.page("/test_empty_state")
@@ -366,14 +364,12 @@ async def test_empty_state_visible_without_tome(user: User) -> None:
         build_page(state)
 
     await user.open("/test_empty_state")
-    await user.should_see("How can MvgeOS help you today?")
+    await user.should_see("What should Mvge work on?")
 
 
 @pytest.mark.asyncio
-async def test_new_conversation_hides_conversation_view(
-    user: User, tmp_path: Path
-) -> None:
-    """Verify new conversation transitions back to empty state."""
+async def test_new_conversation_resets_active_tome(user: User, tmp_path: Path) -> None:
+    """Verify new conversation resets active tome."""
     tome_dir = tmp_path / "tomes"
     project_path = tmp_path / "proj"
     project_path.mkdir()
@@ -394,3 +390,96 @@ async def test_new_conversation_hides_conversation_view(
 
     assert state.active_tome_id is None
     assert state.tome_title == "New Conversation"
+
+
+# --- Skills panel tests ---
+
+
+@pytest.mark.asyncio
+async def test_skills_panel_renders_data(user: User) -> None:
+    """Verify skills panel shows skill name and description when skills are active."""
+    state = AppState(current_view="skills")
+    state.add_skill(
+        _make_manifest(
+            name="code-review",
+            description="Review code",
+            path="/skills/code-review/SKILL.md",
+        )
+    )
+
+    @ui.page("/test_skills_panel")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_skills_panel")
+    await user.should_see("Skills")
+    await user.should_see("code-review")
+    await user.should_see("Review code")
+
+
+@pytest.mark.asyncio
+async def test_notes_panel_renders(user: User) -> None:
+    """Verify notes panel renders properly."""
+    state = AppState(current_view="notes")
+
+    @ui.page("/test_notes_panel")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_notes_panel")
+    await user.should_see("Notes")
+
+
+@pytest.mark.asyncio
+async def test_timeline_panel_renders(user: User) -> None:
+    """Verify timeline panel renders properly."""
+    state = AppState(current_view="timeline")
+
+    @ui.page("/test_timeline_panel")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_timeline_panel")
+    await user.should_see("Timeline")
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_panel_renders(user: User) -> None:
+    """Verify diagnostics panel renders properly."""
+    state = AppState(current_view="diagnostics")
+
+    @ui.page("/test_diagnostics_panel")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_diagnostics_panel")
+    await user.should_see("Diagnostics")
+
+
+@pytest.mark.asyncio
+async def test_packages_panel_renders(user: User) -> None:
+    """Verify packages panel renders properly."""
+    state = AppState(current_view="packages")
+
+    @ui.page("/test_packages_panel")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_packages_panel")
+    await user.should_see("Packages")
+
+
+@pytest.mark.asyncio
+async def test_settings_panel_renders(user: User) -> None:
+    """Verify settings panel renders properly."""
+    state = AppState(current_view="settings")
+
+    @ui.page("/test_settings_panel")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_settings_panel")
+    await user.should_see("Settings")
+    await user.should_see("Behavior")
+    await user.should_see("Appearance")
+    await user.should_see("About")

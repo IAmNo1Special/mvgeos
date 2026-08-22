@@ -10,20 +10,14 @@ from nicegui import ui
 from mvgeos_gui.autocomplete import (
     AutocompleteService,
     CommandKind,
+    MentionChip,
     MentionItem,
     MentionKind,
 )
+from mvgeos_gui.model_catalog import get_model_options
 
 if TYPE_CHECKING:
     from mvgeos_gui.state import AppState
-
-
-AVAILABLE_MODELS = [
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "google/gemini-2.5-pro",
-    "anthropic/claude-3.5-sonnet",
-    "openai/gpt-4o",
-]
 
 
 def _truncate(text: str, length: int) -> str:
@@ -150,6 +144,58 @@ def _autocomplete_icon_color(kind_str: str) -> str:
     return "text-[#8b949e]"
 
 
+def _chip_icon_for_kind(kind_str: str, chip: MentionChip) -> str:
+    """Return the icon name for a mention chip."""
+    if kind_str == MentionKind.FILE and chip.path:
+        return _get_file_icon(chip.path)
+    if kind_str == MentionKind.SKILL:
+        return "auto_awesome"
+    if kind_str == CommandKind.SLASH:
+        return "slash"
+    if kind_str == CommandKind.RUNE:
+        return "auto_awesome"
+    return "help_outline"
+
+
+def _chip_icon_color_for_kind(kind_str: str) -> str:
+    """Return the CSS color class for a mention chip icon."""
+    if kind_str == MentionKind.FILE:
+        return "text-[#8b949e]"
+    if kind_str in (MentionKind.SKILL, CommandKind.RUNE):
+        return "text-[#3b82f6]"
+    return "text-[#8b949e]"
+
+
+def _render_mention_chips(state: AppState) -> None:
+    """Render selected mention chips above the textarea."""
+    if not state.selected_mentions:
+        return
+
+    with ui.row().classes("items-center gap-1.5 flex-wrap"):
+        for idx, chip in enumerate(state.selected_mentions):
+            with ui.row().classes(
+                "items-center gap-1 px-2 py-0.5 rounded-md "
+                "bg-[#2b2f3d] border border-[#3b82f6]/30 text-[#e6edf3] text-xs"
+            ):
+                ui.icon(_chip_icon_for_kind(chip.kind, chip), size="12px").classes(
+                    _chip_icon_color_for_kind(chip.kind)
+                )
+                ui.label(chip.text).classes("truncate max-w-[160px]")
+                ui.icon("close", size="10px").classes(
+                    "text-[#64748b] cursor-pointer"
+                ).on(
+                    "click",
+                    lambda _, i=idx: _remove_mention_chip(state, i),
+                )
+
+
+def _remove_mention_chip(state: AppState, index: int) -> None:
+    """Remove a mention chip by index."""
+    if 0 <= index < len(state.selected_mentions):
+        state.selected_mentions.pop(index)
+        state.notify()
+
+
 def render_input_dock(state: AppState) -> ui.column:
     """Render floating input dock at bottom of conversation viewport.
 
@@ -158,16 +204,17 @@ def render_input_dock(state: AppState) -> ui.column:
     controls.
     """
     ac_service = state.get_autocomplete_service()
-    wrapper = ui.column().classes("w-full max-w-3xl mx-auto px-6 pb-8 pt-2 shrink-0")
+    wrapper = ui.column().classes("w-full px-6 pb-6 pt-2 shrink-0")
 
     with wrapper:
         card = ui.card().classes(
             "w-full bg-[#1e212b] border border-[#2b2f3d] "
-            "rounded-2xl p-4 gap-3 shadow-2xl relative "
+            "rounded-2xl p-3 gap-3 shadow-2xl relative "
             "focus-within:border-[#3b82f6] transition-colors"
         )
 
         with card:
+            _render_mention_chips(state)
 
             def on_value_change(_e: object) -> None:
                 ac_service.process_input(state.active_prompt)
@@ -187,20 +234,22 @@ def render_input_dock(state: AppState) -> ui.column:
 
             def handle_submit() -> None:
                 text = (prompt_input.value or "").strip()
-                if text:
+                if text or state.selected_mentions:
                     state.active_prompt = ""
                     ac_service.close()
                     state.submit_prompt(text)
 
             def handle_enter() -> None:
-                """Handle Enter key - select autocomplete item if open, else submit."""
                 if ac_service.is_open:
-                    insertion = ac_service.select_current()
-                    if insertion:
+                    item = ac_service.items[ac_service.selected_index]
+                    chip = ac_service.create_chip(item)
+                    if chip:
+                        state.add_mention(chip)
                         text = prompt_input.value or ""
                         start, end = ac_service.get_word_range(text)
                         if start >= 0 and end >= 0:
-                            prompt_input.value = text[:start] + insertion + text[end:]
+                            prompt_input.value = text[:start] + text[end:]
+                    ac_service.close()
                 else:
                     handle_submit()
 
@@ -216,14 +265,18 @@ def render_input_dock(state: AppState) -> ui.column:
             )
             prompt_input.on(
                 "keydown.tab",
-                lambda _: _handle_tab(ac_service, prompt_input),
+                lambda _: _handle_tab(ac_service, prompt_input, state),
+            )
+            prompt_input.on(
+                "keydown.backspace",
+                lambda _: _handle_backspace(state, prompt_input),
             )
 
             # Create a refreshable popup that only re-renders when items change
             # (not on selection change). Selection is handled via JavaScript.
             @ui.refreshable
             def popup_view() -> None:
-                _render_autocomplete_popup(ac_service, prompt_input)
+                _render_autocomplete_popup(ac_service, prompt_input, state)
 
             # Subscribe to items changes only (open/close, query filter).
             # Selection changes are handled via JavaScript for responsiveness.
@@ -240,7 +293,9 @@ def render_input_dock(state: AppState) -> ui.column:
 
 
 def _render_autocomplete_popup(
-    ac_service: AutocompleteService, prompt_input: ui.textarea
+    ac_service: AutocompleteService,
+    prompt_input: ui.textarea,
+    state: AppState,
 ) -> None:
     """Render autocomplete suggestion popup above the textarea."""
     if not ac_service.is_open:
@@ -257,13 +312,15 @@ def _render_autocomplete_popup(
     with (
         ui.element("div")
         .classes(
-            "absolute z-50 w-full max-w-xs bg-[#2b2f3d] border border-[#3b82f6] "
-            "rounded-lg shadow-xl max-h-48 overflow-y-auto bottom-full mb-1 -mx-4"
+            "absolute z-50 w-full bg-[#2b2f3d] border border-[#3b82f6] "
+            "rounded-lg shadow-xl max-h-48 overflow-y-auto bottom-full mb-1"
         )
         .props(f"id={popup_id}")
     ):
         for idx, item in enumerate(items):
-            _render_autocomplete_item(ac_service, prompt_input, item, idx, popup_id)
+            _render_autocomplete_item(
+                ac_service, prompt_input, item, idx, popup_id, state
+            )
 
     # Auto-scroll to selected item
     if items and 0 <= selected_idx < len(items):
@@ -282,6 +339,7 @@ def _render_autocomplete_item(
     item: object,
     idx: int,
     popup_id: str,
+    state: AppState,
 ) -> None:
     """Render a single autocomplete popup item row."""
     is_selected = idx == ac_service.selected_index
@@ -297,7 +355,7 @@ def _render_autocomplete_item(
         )
         .on(
             "click",
-            lambda _, i=idx: _select_item(ac_service, prompt_input, i),
+            lambda _, i=idx: _select_item(ac_service, prompt_input, i, state),
         )
         .props(f'data-index="{idx}"')
     ):
@@ -413,9 +471,10 @@ def _render_left_toolbar(state: AppState) -> None:
             ui.tooltip("Add context files or images")
 
         ui.select(
-            options=AVAILABLE_MODELS,
+            options=get_model_options(),
             value=state.selected_model,
             on_change=lambda e: state.switch_model(e.value),
+            with_input=True,
         ).props(
             "dense options-dense borderless dark options-dark rounded text-xs"
         ).classes("text-xs text-[#8b949e] font-mono max-w-[220px]")
@@ -459,34 +518,53 @@ def _render_right_toolbar(state: AppState, handle_submit: object) -> None:
                 ui.tooltip("Send prompt")
 
 
-def _handle_tab(ac_service: AutocompleteService, prompt_input: ui.textarea) -> None:
-    """Handle Tab key to select current autocomplete item."""
+def _handle_tab(
+    ac_service: AutocompleteService,
+    prompt_input: ui.textarea,
+    state: AppState,
+) -> None:
+    """Handle Tab key to select current autocomplete item as a chip."""
     if not ac_service.is_open or not ac_service.items:
         return
 
-    insertion = ac_service.select_current()
-    if insertion:
+    item = ac_service.items[ac_service.selected_index]
+    chip = ac_service.create_chip(item)
+    if chip:
+        state.add_mention(chip)
         text = prompt_input.value or ""
         start, end = ac_service.get_word_range(text)
         if start >= 0 and end >= 0:
-            prompt_input.value = text[:start] + insertion + text[end:]
+            prompt_input.value = text[:start] + text[end:]
+    ac_service.close()
 
 
 def _select_item(
     ac_service: AutocompleteService,
     prompt_input: ui.textarea,
     idx: int,
+    state: AppState,
 ) -> None:
-    """Select an autocomplete item by index (from click)."""
+    """Select an autocomplete item by index (from click) as a chip."""
     if idx < 0 or idx >= len(ac_service.items):
         return
     ac_service.selected_index = idx
-    insertion = ac_service.select_current()
-    if insertion:
+    item = ac_service.items[idx]
+    chip = ac_service.create_chip(item)
+    if chip:
+        state.add_mention(chip)
         text = prompt_input.value or ""
         start, end = ac_service.get_word_range(text)
         if start >= 0 and end >= 0:
-            prompt_input.value = text[:start] + insertion + text[end:]
+            prompt_input.value = text[:start] + text[end:]
+    ac_service.close()
+    ac_service._notify_listeners()
+
+
+def _handle_backspace(state: AppState, prompt_input: ui.textarea) -> None:
+    """Handle Backspace to remove the last chip when textarea is empty."""
+    if prompt_input.value or not state.selected_mentions:
+        return
+    state.remove_last_mention()
 
 
 def _handle_arrow_navigation(

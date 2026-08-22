@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from mvgeos_provider.types import Model, RealmResponse
 
-from mvgeos_agent.loop import LoopCallbacks, LoopContext, run_loop
+from mvgeos_agent.core_loop import LoopCallbacks, LoopContext, run_loop
 from mvgeos_agent.types import (
     ContemplationLevel,
     MvgeEvent,
@@ -439,14 +439,13 @@ class TestRunLoopCallbacks:
     async def test_core_never_imports_rune_runner(self) -> None:
         import inspect
 
-        from mvgeos_agent import loop as loop_module
+        from mvgeos_agent.core_loop import run_loop
 
         source = inspect.getsource(run_loop)
         assert "RuneRunner" not in source
         assert "SigilHook" not in source
         assert "rune_runner" not in source
-        assert "agent_session" not in source
-        assert hasattr(loop_module, "run_loop")
+        assert "agent_tome" not in source
 
 
 class TestRunLoopSpellExecution:

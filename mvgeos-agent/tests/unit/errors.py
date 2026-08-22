@@ -6,10 +6,10 @@ from mvgeos_agent.errors import (
     MaxTurnsExceededError,
     MvgeError,
     RateLimitError,
-    SessionResumeError,
     SpellExecutionError,
     SpellNotFoundError,
     SpellTimeoutError,
+    TomeResumeError,
     to_error,
 )
 
@@ -103,17 +103,17 @@ def test_max_turns_exceeded_error() -> None:
     assert err.max_turns == 10
 
 
-def test_session_resume_error() -> None:
+def test_tome_resume_error() -> None:
     cause = FileNotFoundError("not found")
-    err = SessionResumeError("/path/to/session", cause)
-    assert err.code == "session_resume_failed"
-    assert "/path/to/session" in str(err)
+    err = TomeResumeError("/path/to/tome", cause)
+    assert err.code == "tome_resume_failed"
+    assert "/path/to/tome" in str(err)
     assert err.__cause__ is cause
 
 
-def test_session_resume_error_no_cause() -> None:
-    err = SessionResumeError("/path/to/session")
-    assert err.code == "session_resume_failed"
+def test_tome_resume_error_no_cause() -> None:
+    err = TomeResumeError("/path/to/tome")
+    assert err.code == "tome_resume_failed"
     assert err.__cause__ is None
 
 

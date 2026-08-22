@@ -2,8 +2,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from mvgeos_agent.core_loop import LoopCallbacks
 from mvgeos_agent.harness import MvgeHarness
-from mvgeos_agent.loop import LoopCallbacks, MvgeLoop
+from mvgeos_agent.mvge_loop import MvgeLoop
 from mvgeos_agent.types import (
     MvgeResponse,
     MvgeState,
@@ -39,8 +40,8 @@ async def test_harness_delegates_to_loop() -> None:
 @pytest.mark.asyncio
 async def test_harness_runs_compaction_callback() -> None:
     mock_loop = MagicMock(spec=MvgeLoop)
-    base_callbacks = LoopCallbacks()
-    mock_loop._build_callbacks.return_value = base_callbacks
+    mock_loop._build_callbacks.return_value = LoopCallbacks()
+    mock_loop.set_after_invocation = MagicMock()
 
     mock_compaction = AsyncMock()
     mock_compaction.maybe_compact.return_value = [
@@ -55,14 +56,12 @@ async def test_harness_runs_compaction_callback() -> None:
         model={"id": "test-model"},
     )
 
-    call_args = mock_loop.run.call_args
-    assert call_args is not None
-    callbacks = call_args.kwargs.get("callbacks")
-    assert callbacks is not None
-    assert callbacks.after_invocation is not None
+    # Verify set_after_invocation was called
+    mock_loop.set_after_invocation.assert_called_once()
+    after_invocation_callback = mock_loop.set_after_invocation.call_args[0][0]
 
     invocations = [SummonerRequest(role="user", content="Test")]
-    res = await callbacks.after_invocation(invocations)
+    res = await after_invocation_callback(invocations)
     assert res == [SummonerRequest(role="user", content="Compact summary")]
     mock_compaction.maybe_compact.assert_awaited_once_with(invocations, None)
 
@@ -71,7 +70,7 @@ async def test_harness_runs_compaction_callback() -> None:
 async def test_harness_state_initialization_and_properties() -> None:
     mock_state = MagicMock(spec=MvgeState)
     mock_tome = MagicMock()
-    mock_state.agent_session = mock_tome
+    mock_state.agent_tome = mock_tome
     mock_state.invocations = []
 
     harness = MvgeHarness(state=mock_state, tome=mock_tome)
@@ -93,7 +92,7 @@ async def test_harness_switch_tome() -> None:
 
     harness.switch_tome(tome2)
     assert harness.tome == tome2
-    assert mock_state.agent_session == tome2
+    assert mock_state.agent_tome == tome2
 
 
 @pytest.mark.asyncio

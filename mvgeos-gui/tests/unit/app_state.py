@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mvgeos_tome.ledger import TomeLedger
 
-from mvgeos_gui.models import ChatMessage
+from mvgeos_gui.autocomplete import MentionChip
+from mvgeos_gui.models import ChangedFile, ChatMessage, DiffView
 from mvgeos_gui.state import AppState
 from mvgeos_gui.tome_service import TomeService
 
@@ -20,7 +23,6 @@ def test_app_state_defaults() -> None:
     assert state.project_path == Path.cwd()
     assert state.active_tome_id is None
     assert state.tome_title == "New Conversation"
-    assert state.sidebar_expanded is True
     assert state.inspector_expanded is True
     assert state.selected_model == "nvidia/nemotron-3-ultra-550b-a55b:free"
     assert state.is_channeling is False
@@ -38,24 +40,22 @@ def test_app_state_custom_init() -> None:
     state = AppState(
         project_path=custom_path,
         selected_model="custom/model",
-        sidebar_expanded=False,
         inspector_expanded=False,
     )
     assert state.project_path == custom_path
     assert state.selected_model == "custom/model"
-    assert state.sidebar_expanded is False
     assert state.inspector_expanded is False
     assert custom_path in state.recent_projects
 
 
 def test_toggle_sidebar() -> None:
-    """Verify toggling sidebar expansion state."""
+    """Verify toggling sidebar visibility state."""
     state = AppState()
-    assert state.sidebar_expanded is True
+    assert state.sidebar_open is True
     state.toggle_sidebar()
-    assert state.sidebar_expanded is False
+    assert state.sidebar_open is False
     state.toggle_sidebar()
-    assert state.sidebar_expanded is True
+    assert state.sidebar_open is True
 
 
 def test_toggle_inspector() -> None:
@@ -351,7 +351,7 @@ class TestSwitchToTome:
 
         state.switch_to_tome(tome_id)
 
-        assert called == [True]
+        assert called == [True, True]
 
 
 class TestForkTome:
@@ -576,3 +576,432 @@ class TestSubmitPromptAttachments:
         state.pending_attachments = ["file1.py"]
         state.clear_history()
         assert state.pending_attachments == []
+
+
+class TestSelectedMentions:
+    def test_add_mention_appends_and_notifies(self) -> None:
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        chip = MentionChip(text="@main.py", kind="file", icon="code")
+        state.add_mention(chip)
+        assert state.selected_mentions == [chip]
+        assert called == [True]
+
+    def test_remove_last_mention_removes_recent(self) -> None:
+        state = AppState()
+        state.selected_mentions = [
+            MentionChip(text="@a.py", kind="file"),
+            MentionChip(text="/help", kind="slash"),
+        ]
+        state.remove_last_mention()
+        assert len(state.selected_mentions) == 1
+        assert state.selected_mentions[0].text == "@a.py"
+
+    def test_remove_last_mention_empty_is_noop(self) -> None:
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.remove_last_mention()
+        assert state.selected_mentions == []
+        assert called == []
+
+    def test_clear_mentions_empties_list(self) -> None:
+        state = AppState()
+        state.selected_mentions = [
+            MentionChip(text="@a.py", kind="file"),
+            MentionChip(text="/help", kind="slash"),
+        ]
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.clear_mentions()
+        assert state.selected_mentions == []
+        assert called == [True]
+
+    def test_clear_mentions_empty_is_noop(self) -> None:
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.clear_mentions()
+        assert state.selected_mentions == []
+        assert called == []
+
+    def test_submit_prompt_prepends_mentions(self) -> None:
+        state = AppState()
+        state.selected_mentions = [
+            MentionChip(text="@main.py", kind="file"),
+            MentionChip(text="/help", kind="slash"),
+        ]
+        mock_service = MagicMock()
+        mock_service.run_prompt = AsyncMock()
+        state.agent_service = mock_service
+
+        state.submit_prompt("Analyze this")
+
+        user_msg = state.messages[0]
+        assert user_msg.content == "@main.py /help Analyze this"
+        assert state.selected_mentions == []
+
+    def test_submit_prompt_mentions_only(self) -> None:
+        state = AppState()
+        state.selected_mentions = [
+            MentionChip(text="@main.py", kind="file"),
+        ]
+        mock_service = MagicMock()
+        mock_service.run_prompt = AsyncMock()
+        state.agent_service = mock_service
+
+        state.submit_prompt("")
+
+        user_msg = state.messages[0]
+        assert user_msg.content == "@main.py"
+        assert state.selected_mentions == []
+
+    def test_submit_prompt_no_mentions(self) -> None:
+        state = AppState()
+        mock_service = MagicMock()
+        mock_service.run_prompt = AsyncMock()
+        state.agent_service = mock_service
+
+        state.submit_prompt("Hello world")
+
+        user_msg = state.messages[0]
+        assert user_msg.content == "Hello world"
+        assert state.selected_mentions == []
+
+    def test_new_conversation_clears_mentions(self) -> None:
+        state = AppState()
+        state.selected_mentions = [MentionChip(text="@a.py", kind="file")]
+        state.new_conversation()
+        assert state.selected_mentions == []
+
+    def test_set_project_clears_mentions(self) -> None:
+        state = AppState(project_path=Path("/proj/a"))
+        state.selected_mentions = [MentionChip(text="@a.py", kind="file")]
+        state.set_project(Path("/proj/b"))
+        assert state.selected_mentions == []
+
+
+# --- Active skills tests ---
+
+
+def _make_manifest(
+    name: str = "review",
+    path: str = "/skills/review/SKILL.md",
+    scope: str = "project",
+    description: str = "Review code",
+) -> Any:
+    """Build a minimal SkillManifest for testing."""
+    from mvgeos_runes.types import SkillManifest, SkillScope
+
+    return SkillManifest(
+        name=name,
+        description=description,
+        scope=SkillScope(scope),
+        path=path,
+    )
+
+
+def test_active_skills_default_empty() -> None:
+    """Verify active_skills defaults to an empty list."""
+    state = AppState()
+    assert state.active_skills == []
+
+
+def test_skill_info_from_manifest() -> None:
+    """Verify SkillInfo is derived from a SkillManifest correctly."""
+    state = AppState()
+    manifest = _make_manifest(
+        name="review",
+        path="/skills/review/SKILL.md",
+        scope="user",
+        description="Review code",
+    )
+    info = state.skill_info_from_manifest(manifest)
+    assert info.name == "review"
+    assert info.description == "Review code"
+    assert info.scope == "user"
+    assert info.path == "/skills/review/SKILL.md"
+    assert info.invoked is False
+
+
+def test_add_skill_appends_and_notifies() -> None:
+    """Verify add_skill appends a new skill and notifies listeners."""
+    state = AppState()
+    called: list[bool] = []
+    state.subscribe(lambda: called.append(True))
+
+    manifest = _make_manifest()
+    added = state.add_skill(manifest)
+    assert added is True
+    assert len(state.active_skills) == 1
+    assert state.active_skills[0].name == "review"
+    assert called == [True]
+
+
+def test_add_skill_deduplicates() -> None:
+    """Verify add_skill does not duplicate an existing skill by name."""
+    state = AppState()
+    manifest = _make_manifest()
+    state.add_skill(manifest)
+    state.add_skill(manifest)
+    assert len(state.active_skills) == 1
+
+
+def test_add_skill_returns_false_when_present() -> None:
+    """Verify add_skill returns False when the skill is already tracked."""
+    state = AppState()
+    manifest = _make_manifest()
+    state.add_skill(manifest)
+    assert state.add_skill(manifest) is False
+
+
+def test_remove_skill_by_name() -> None:
+    """Verify remove_skill removes a skill by name."""
+    state = AppState()
+    state.add_skill(_make_manifest(name="review"))
+    state.add_skill(_make_manifest(name="lint", path="/skills/lint/SKILL.md"))
+    removed = state.remove_skill("review")
+    assert removed is True
+    assert [s.name for s in state.active_skills] == ["lint"]
+
+
+def test_remove_skill_unknown_is_safe() -> None:
+    """Verify remove_skill is a safe no-op for unknown names."""
+    state = AppState()
+    state.add_skill(_make_manifest())
+    assert state.remove_skill("nonexistent") is False
+    assert len(state.active_skills) == 1
+
+
+def test_remove_skill_notifies_listeners() -> None:
+    """Verify remove_skill notifies listeners when a skill is removed."""
+    state = AppState()
+    state.add_skill(_make_manifest())
+    called: list[bool] = []
+    state.subscribe(lambda: called.append(True))
+    state.remove_skill("review")
+    assert called == [True]
+
+
+def test_clear_skills_removes_all() -> None:
+    """Verify clear_skills empties the active_skills list."""
+    state = AppState()
+    state.add_skill(_make_manifest(name="review"))
+    state.add_skill(_make_manifest(name="lint", path="/skills/lint/SKILL.md"))
+    state.clear_skills()
+    assert state.active_skills == []
+
+
+def test_clear_skills_empty_is_noop() -> None:
+    """Verify clear_skills does not notify when there are no skills."""
+    state = AppState()
+    called: list[bool] = []
+    state.subscribe(lambda: called.append(True))
+    state.clear_skills()
+    assert called == []
+
+
+def test_new_conversation_clears_skills() -> None:
+    """Verify new_conversation resets active_skills."""
+    state = AppState()
+    state.add_skill(_make_manifest())
+    state.new_conversation()
+    assert state.active_skills == []
+
+
+class TestChangedFiles:
+    def test_default_changed_files_empty(self) -> None:
+        """Verify changed_files defaults to empty list."""
+        state = AppState()
+        assert state.changed_files == []
+
+    def test_refresh_changed_files_updates_state(self) -> None:
+        """Verify refresh_changed_files updates changed_files from git."""
+        state = AppState()
+        changed = [
+            ChangedFile(
+                path="src/main.py",
+                status="modified",
+                additions=1,
+                deletions=0,
+            ),
+        ]
+        with patch("mvgeos_gui.state.get_changed_files", return_value=changed):
+            state.refresh_changed_files()
+        assert len(state.changed_files) == 1
+        assert state.changed_files[0].path == "src/main.py"
+
+    def test_refresh_changed_files_notifies_listeners(self) -> None:
+        """Verify refresh_changed_files notifies listeners."""
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        with patch("mvgeos_gui.state.get_changed_files", return_value=[]):
+            state.refresh_changed_files()
+        assert called == [True]
+
+    def test_open_diff_review_sets_selected_path(self) -> None:
+        """Verify open_diff_review sets _selected_diff_path."""
+        state = AppState()
+        state.open_diff_review("src/main.py")
+        assert state._selected_diff_path == "src/main.py"
+
+    def test_open_diff_review_notifies_listeners(self) -> None:
+        """Verify open_diff_review notifies listeners."""
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.open_diff_review("src/main.py")
+        assert called == [True]
+
+    def test_get_selected_diff_view_returns_none_when_empty(self) -> None:
+        """Verify get_selected_diff_view returns None when no path selected."""
+        state = AppState()
+        assert state.get_selected_diff_view() is None
+
+    def test_get_selected_diff_view_returns_view(self) -> None:
+        """Verify get_selected_diff_view returns DiffView for selected path."""
+        state = AppState()
+        state._selected_diff_path = "src/main.py"
+        view = DiffView(
+            file_path="src/main.py",
+            status="modified",
+            additions=1,
+            deletions=0,
+        )
+        with patch("mvgeos_gui.state.get_diff_for_file", return_value=view):
+            result = state.get_selected_diff_view()
+        assert result is not None
+        assert result.file_path == "src/main.py"
+
+    def test_clear_diff_selection_clears_path(self) -> None:
+        """Verify clear_diff_selection clears _selected_diff_path."""
+        state = AppState()
+        state._selected_diff_path = "src/main.py"
+        state.clear_diff_selection()
+        assert state._selected_diff_path is None
+
+    def test_clear_diff_selection_notifies_listeners(self) -> None:
+        """Verify clear_diff_selection notifies listeners."""
+        state = AppState()
+        state._selected_diff_path = "src/main.py"
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.clear_diff_selection()
+        assert called == [True]
+
+
+class TestSettingsModals:
+    def test_open_app_settings_sets_flag(self) -> None:
+        state = AppState()
+        assert state._show_app_settings is False
+        state.open_app_settings()
+        assert state._show_app_settings is True
+
+    def test_open_app_settings_closes_workspace(self) -> None:
+        state = AppState()
+        state._show_workspace_settings = True
+        state.open_app_settings()
+        assert state._show_workspace_settings is False
+        assert state._show_app_settings is True
+
+    def test_close_app_settings_clears_flag(self) -> None:
+        state = AppState()
+        state._show_app_settings = True
+        state.close_app_settings()
+        assert state._show_app_settings is False
+
+    def test_open_workspace_settings_sets_flag(self) -> None:
+        state = AppState()
+        assert state._show_workspace_settings is False
+        state.open_workspace_settings()
+        assert state._show_workspace_settings is True
+
+    def test_open_workspace_settings_closes_app(self) -> None:
+        state = AppState()
+        state._show_app_settings = True
+        state.open_workspace_settings()
+        assert state._show_app_settings is False
+        assert state._show_workspace_settings is True
+
+    def test_close_workspace_settings_clears_flag(self) -> None:
+        state = AppState()
+        state._show_workspace_settings = True
+        state.close_workspace_settings()
+        assert state._show_workspace_settings is False
+
+    def test_open_app_settings_notifies_listeners(self) -> None:
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.open_app_settings()
+        assert called == [True]
+
+    def test_open_workspace_settings_notifies_listeners(self) -> None:
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.open_workspace_settings()
+        assert called == [True]
+
+    def test_unsubscribe_listener(self) -> None:
+        state = AppState()
+        called: list[int] = []
+
+        def listener() -> None:
+            called.append(1)
+
+        state.subscribe(listener)
+        state.notify()
+        assert len(called) == 1
+        state.unsubscribe(listener)
+        state.notify()
+        assert len(called) == 1
+
+    def test_command_palette_toggle_and_set(self) -> None:
+        state = AppState()
+        assert state.command_palette_open is False
+        state.set_command_palette_open(True)
+        assert state.command_palette_open is True
+        state.toggle_command_palette()
+        assert state.command_palette_open is False
+
+
+@pytest.mark.asyncio
+async def test_notify_handles_awaitable_response() -> None:
+    """Verify notify schedules AwaitableResponse._fire coroutines."""
+    state = AppState()
+    fired: list[bool] = []
+
+    class FakeAwaitableResponse:
+        async def _fire(self) -> None:
+            fired.append(True)
+
+    fake = FakeAwaitableResponse()
+
+    def listener() -> FakeAwaitableResponse:
+        return fake
+
+    state.subscribe(listener)
+    state.notify()
+    await asyncio.sleep(0)
+    assert fired == [True]
+
+
+class TestLoadMessagesForTome:
+    def test_notifies_listeners_after_loading(self, tmp_path: Path) -> None:
+        """load_messages_for_tome must notify subscribers after loading entries."""
+        state, tome_dir = _make_state_with_tomes(str(tmp_path))
+        tome_id = _create_tome(tome_dir, str(tmp_path))
+        ledger = state.tome_service.ledger
+        ledger.append_message(tome_id, "user", "Hello")
+        ledger.append_message(tome_id, "assistant", "Hi there")
+
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+
+        state.load_messages_for_tome(tome_id)
+
+        assert called == [True]
+        assert len(state.messages) == 2

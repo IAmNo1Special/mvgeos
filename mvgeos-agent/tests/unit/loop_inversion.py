@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from mvgeos_provider.types import Model, RealmResponse
 
-from mvgeos_agent.loop import LoopCallbacks, LoopContext, run_loop
+from mvgeos_agent.core_loop import LoopCallbacks, LoopContext, run_loop
 from mvgeos_agent.types import (
     ContemplationLevel,
     MvgeEvent,
@@ -338,9 +338,9 @@ class TestCoreStaysDecoupled:
     def test_core_does_not_import_realm(self) -> None:
         import inspect
 
-        from mvgeos_agent import loop as loop_module
+        from mvgeos_agent.core_loop import run_loop
 
-        source = inspect.getsource(loop_module.run_loop)
+        source = inspect.getsource(run_loop)
         assert "Realm(" not in source
         assert "realm.stream" not in source
         assert "RuneRunner" not in source

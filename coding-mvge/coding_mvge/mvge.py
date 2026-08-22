@@ -27,9 +27,11 @@ class _BuiltinSpell(MvgeSpell):
         workspace_root: Path | None = None,
         timeout_ms: int | None = None,
     ) -> None:
+        doc = getattr(func, "__doc__", "")
+        desc = doc.split("\n\n")[0].strip() if doc else f"Run the {name} tool."
         super().__init__(
             name=name,
-            description=f"Run the {name} tool.",
+            description=desc,
             parameters=generate_spell_schema(func),
         )
         self._func = func
@@ -74,8 +76,8 @@ class CodingMvge(BaseMvge):
         spells: list[str] | None = None,
         custom_system_prompt: str = "",
         extension_dir: str | None = None,
-        session_dir: Path | None = None,
-        session_resume: str | None = None,
+        tome_dir: Path | None = None,
+        tome_resume: str | None = None,
         provider_name: str | None = None,
         environment: MvgeEnvironment | None = None,
     ) -> None:
@@ -83,8 +85,8 @@ class CodingMvge(BaseMvge):
             api_key=api_key,
             name=name,
             extension_dir=extension_dir,
-            session_dir=session_dir,
-            session_resume=session_resume,
+            tome_dir=tome_dir,
+            tome_resume=tome_resume,
             provider_name=provider_name,
             environment=environment,
         )

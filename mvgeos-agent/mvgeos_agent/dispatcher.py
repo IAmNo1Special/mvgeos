@@ -24,7 +24,7 @@ from mvgeos_agent.types import (
 )
 
 if TYPE_CHECKING:
-    from mvgeos_agent.loop import EmitSink, LoopCallbacks, LoopContext
+    from mvgeos_agent.core_loop import EmitSink, LoopCallbacks, LoopContext
 
 _TRUNCATED_SPELL_CALL = (
     "Spell '{name}' was not cast: the response hit the output Mana limit, so its "
@@ -101,6 +101,7 @@ class SpellDispatcher:
                     data={
                         "spellCastId": tool_call["id"],
                         "spellName": tool_call["name"],
+                        "arguments": tool_call.get("arguments", {}),
                     },
                 )
             )
@@ -205,7 +206,11 @@ class SpellDispatcher:
         await emit(
             MvgeEvent(
                 type=MvgeEventType.SPELL_CASTING_START,
-                data={"spellCastId": spell_cast_id, "spellName": spell_name},
+                data={
+                    "spellCastId": spell_cast_id,
+                    "spellName": spell_name,
+                    "arguments": tool_call.get("arguments", {}),
+                },
             )
         )
 

@@ -380,8 +380,8 @@ class RuneContext:
 
 For each fix:
 1. **Write failing test first** (TDD per AGENTS.md)
-2. **Run existing tests**: `uv run pytest mvgeos-runes/tests_runes/ -v`
-3. **Run full suite**: `uv run pytest --cov` after each change
+2. **Run existing tests**: `uv run python -m pytest mvgeos-runes/tests/ -v`
+3. **Run full suite**: `uv run python -m pytest --cov` after each change
 4. **Add integration test** for RUNE-03 (bad manifest), RUNE-05 (async watcher), RUNE-07 (typed payloads)
 
 ---
@@ -389,8 +389,8 @@ For each fix:
 ## Acceptance Criteria
 
 - [ ] All 8 issues addressed with code changes
-- [ ] All existing tests pass (`uv run pytest mvgeos-runes/tests_runes/`)
-- [ ] Coverage maintained ≥90% (`uv run pytest --cov=mvgeos_runes`)
+- [ ] All existing tests pass (`uv run python -m pytest mvgeos-runes/tests/`)
+- [ ] Coverage maintained ≥90% (`uv run python -m pytest --cov=mvgeos_runes`)
 - [ ] No new `RuntimeWarning` in test runs
 - [ ] Type checking passes (`uv run mypy mvgeos_runes --strict`)
 - [ ] Linting passes (`uv run ruff check mvgeos_runes`)

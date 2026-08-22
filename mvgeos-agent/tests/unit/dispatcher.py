@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
+from mvgeos_agent.core_loop import LoopCallbacks, LoopContext
 from mvgeos_agent.dispatcher import BatchResult, SpellDispatcher
-from mvgeos_agent.loop import LoopCallbacks, LoopContext
 from mvgeos_agent.types import (
     MvgeEvent,
     MvgeResponse,

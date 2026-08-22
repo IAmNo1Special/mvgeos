@@ -127,6 +127,46 @@ def test_openrouter_realm_stream_builds_correct_messages() -> None:
     assert responses[-1].stop_reason == "stop"
 
 
+def test_openrouter_realm_stream_handles_empty_choices_chunk() -> None:
+    from mvgeos_agent.types import SummonerRequest
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = Model(
+        id="openrouter/test-model",
+        name="Test Model",
+        realm="openrouter",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="test-key",
+    )
+    config = ChannelConfig(model=model)
+
+    invocations: list[SummonerRequest] = [
+        SummonerRequest(role="user", content="Hello"),
+    ]
+
+    realm._client.stream = _make_stream_factory(  # type: ignore[method-assign]
+        [
+            b'data: {"choices":[]}\n\n',
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
+            (
+                b'data: {"choices":[],"usage":{"prompt_tokens":5,'
+                b'"completion_tokens":2,"total_tokens":7}}\n\n'
+            ),
+            (
+                b'data: {"choices":[{"delta":{"content":" world"},'
+                b'"finish_reason":"stop"}]}\n\n'
+            ),
+            b"data: [DONE]\n\n",
+        ]
+    )
+
+    responses = asyncio.run(collect_responses(realm.stream(model, invocations, config)))
+
+    assert len(responses) >= 1
+    assert responses[-1].stop_reason == "stop"
+    assert responses[-1].mana_used == 7
+
+
 def test_openrouter_realm_stream_handles_tool_calls() -> None:
     from mvgeos_agent.types import MvgeResponse
 

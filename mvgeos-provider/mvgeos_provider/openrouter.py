@@ -348,6 +348,7 @@ class OpenRouterRealm(Realm):
         text_parts: list[str] = []
         contemplation_parts: list[str] = []
         tool_calls_acc: dict[int, dict[str, Any]] = {}
+        usage_acc: dict[str, Any] = {}
 
         async for line in response.aiter_lines():
             if not line:
@@ -363,10 +364,17 @@ class OpenRouterRealm(Realm):
             except json.JSONDecodeError:
                 continue
 
-            choice = chunk.get("choices", [{}])[0]
+            if chunk.get("usage"):
+                usage_acc = chunk["usage"]
+
+            choices = chunk.get("choices") or []
+            if not choices:
+                continue
+
+            choice = choices[0]
             delta = choice.get("delta", {})
             finish_reason = choice.get("finish_reason")
-            usage = chunk.get("usage", {})
+            usage = chunk.get("usage") or usage_acc
 
             # Contemplation arrives as its own delta field. Surface it as a
             # distinct block so it never lands in the answer text.

@@ -15,6 +15,7 @@ mvgeos/
 ├── mvgeos-tome/              # JSONL session persistence with file locking
 ├── mvgeos-runes/             # Extension system (manifest, loader, sigils)
 ├── mvgeos-cli/               # CLI entry point
+├── mvgeos-gui/               # Desktop GUI application (NiceGUI + PyWebView)
 ├── coding-mvge/              # Coding agent package (BaseMvge subclass)
 └── pyproject.toml            # Root workspace config
 ```
@@ -41,6 +42,11 @@ mvgeos/
 | mvgeos-cli | `commands/config.py` | `mvgeos config` command |
 | mvgeos-cli | `commands/repl.py` | REPL/TUI implementation |
 | mvgeos-cli | `commands/tui.py` | TUI implementation |
+| mvgeos-gui | `main.py` | GUI CLI entry point (`mvgeos-gui`) |
+| mvgeos-gui | `app.py` | Layout builder and event binding |
+| mvgeos-gui | `state.py` | Reactive AppState UI state container |
+| mvgeos-gui | `agent_service.py` | In-process agent execution bridge |
+| mvgeos-gui | `components/` | Antigravity 1:1 UI components |
 | coding-mvge | `mvge.py` | CodingMvge - concrete coding agent (BaseMvge subclass) |
 | coding-mvge | `spells/` | Built-in spell implementations |
 
@@ -84,6 +90,7 @@ class MvgeEventType(StrEnum):
     SPELL_CASTING_START = "spell_casting_start"
     SPELL_CASTING_UPDATE = "spell_casting_update"
     SPELL_CASTING_END = "spell_casting_end"
+    ARTIFACT_CREATED = "artifact_created"
     COMPACTION_START = "compaction_start"
     COMPACTION_END = "compaction_end"
     ENTRY_APPENDED = "entry_appended"
@@ -149,6 +156,18 @@ class SpellResultMessage:
 MvgeInvocation = SummonerRequest | MvgeResponse | SpellResultMessage
 
 
+class AbortError(Exception):
+    """Raised when an operation is cancelled via AbortSignal."""
+
+
+class AbortSignal:
+    """Cancellation signal mirroring the web AbortSignal API."""
+
+
+class AbortController:
+    """Controller that owns an AbortSignal and can abort it."""
+
+
 @dataclass
 class MvgeSpell:
     name: str
@@ -162,7 +181,7 @@ class MvgeSpell:
         self,
         spell_cast_id: str,
         params: dict[str, Any],
-        signal: Any | None = None,
+        signal: AbortSignal | None = None,
         on_update: Any | None = None,
     ) -> dict[str, Any] | str: ...
 
@@ -174,6 +193,9 @@ class MvgeState:
     model: dict[str, Any] | None = None
     contemplation_level: ContemplationLevel = ContemplationLevel.MEDIUM
     spells: list[MvgeSpell] = field(default_factory=list)
+    _spell_index: dict[str, MvgeSpell] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
     invocations: list[MvgeInvocation] = field(default_factory=list)
     is_streaming: bool = False
     streaming_manifestation: MvgeInvocation | None = None
@@ -189,7 +211,7 @@ class MvgeState:
     exclude_contemplation: bool = False
     queue_mode: QueueMode = QueueMode.ONE_AT_A_TIME
     rune_runner: RuneRunner | None = None
-    agent_session: MvgeTome | None = None
+    agent_tome: MvgeTome | None = None
     event_bus: EventBus | None = None
     events: list[MvgeEvent] = field(default_factory=list)
     steer_queue: list[SummonerRequest] = field(default_factory=list)

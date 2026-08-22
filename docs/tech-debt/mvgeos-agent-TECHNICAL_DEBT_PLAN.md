@@ -255,7 +255,7 @@ O(n) lookup per spell cast. With many spells, adds latency.
 
 ## AGENT-10: No Global Spell Timeout
 
-**Files**: `mvgeos_agent/loop.py:387-391`, `mvgeos_spells/casting.py:8`
+**Files**: `mvgeos_agent/loop.py:387-391`, `coding_mvge/spells/bash.py`
 
 ### Root Cause
 Only `cast_bash()` has timeout (30s). Other spells have no timeout. `MvgeSpell.execute()` signature has no timeout parameter.
@@ -473,4 +473,4 @@ Inconsistent naming:
 - Memory test: verify `events` list rotation works
 - Load test: spell lookup performance with 50+ spells
 
-Run: `uv run pytest mvgeos-agent/tests_agent/ --cov=mvgeos_agent`
+Run: `uv run python -m pytest mvgeos-agent/tests/ --cov`

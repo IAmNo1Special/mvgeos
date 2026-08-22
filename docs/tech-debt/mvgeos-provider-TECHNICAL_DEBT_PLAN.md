@@ -341,7 +341,7 @@ Each fix should include:
 - **Memory test** for PROV-03: verify only accessed models loaded
 - **Config test** for PROV-04: user config overrides hardcoded models
 
-Run with: `uv run pytest mvgeos-provider/tests/ --cov=mvgeos_provider`
+Run with: `uv run python -m pytest mvgeos-provider/tests/ --cov`
 
 ---
 

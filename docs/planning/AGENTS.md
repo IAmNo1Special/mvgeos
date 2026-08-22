@@ -1,7 +1,7 @@
 # MvgeOS TODO — Agent Task Tracker
 
-**Last Updated**: 2026-08-13
-**Current Status**: Core engine, provider, tome persistence, rune loader, CLI, and coding agent implemented with 1,008 passing tests (2 skipped) and 94.38% coverage.
+**Last Updated**: 2026-08-20
+**Current Status**: Core engine, provider, tome persistence, rune loader, CLI, desktop GUI, and coding agent implemented with 1,667 passing tests (2 skipped) and 93%+ coverage.
 **Location**: `C:\Users\ivmno\Desktop\mvgeos\`
 
 ---
@@ -13,25 +13,25 @@
 | mvgeos-agent | 334 passed (1 skipped) | 96% | ✅ | ✅ |
 | mvgeos-provider | 98 passed | 93% | ✅ | ✅ |
 | mvgeos-tome | 27 passed | 90% | ✅ | ✅ |
-| mvgeos-runes | 178 passed | 97% | ✅ | ✅ |
-| mvgeos-cli | 306 passed | 95% | ✅ | ✅ |
+| mvgeos-runes | 191 passed | 97% | ✅ | ✅ |
+| mvgeos-cli | 405 passed | 95% | ✅ | ✅ |
+| mvgeos-gui | 633 passed | 93% | ✅ | ✅ |
 | coding-mvge | 65 passed (1 skipped) | 97% | ✅ | ✅ |
-| **TOTAL** | **1,008 passed (2 skipped)** | **94.38%** | ✅ | ✅ |
+| **TOTAL** | **1,667 passed (2 skipped)** | **93%+** | ✅ | ✅ |
 
 ---
 
 ## 🎯 NEXT PRIORITIES (In Order)
 
-### 1. Implement Seeker Protocol as Rune ⭐ HIGH
+### 1. Implement Seeker Protocol as Rune ⭐ HIGH ✅ DONE
 
 **Docs**: `docs/architecture/ARCHITECTURE_TOOL_SEARCH.md`, `docs/architecture/ARCHITECTURE_SKILL_SEARCH.md`, `docs/architecture/ARCHITECTURE_MCP_SEARCH.md`
 
-Package the three Seekers as an `mvgeos-runes-seeker` extension:
-
-- [ ] Create `mvgeos-runes-seeker` package with `__init__.py` exporting `ToolSearchSpell`, `SkillSearchSpell`, `MCPSearchSpell`
-- [ ] Wire up rune manifest entry point
-- [ ] Integration tests: rune load → spell registration → harness execute
-- [ ] Wire into `base_mvge.py` via rune loader (not hardcoded)
+Implemented as external rune at `~/.agents/.mvgeos/runes/00-seeker/`:
+- `mvgeos_runes_seeker` package with `ToolSearchSpell`, `SkillSearchSpell`, `SkillExecuteSpell`, `MCPSearchSpell`
+- Manifest with `before_mvge_start`/`session_shutdown` hooks, `ripgrep` system dep
+- 4 spells registered: `tool_search`, `skill_search`, `skill_execute`, `mcp_search`
+- Auto-loaded via rune loader (project/user/agent scope precedence)
 
 ---
 
@@ -41,10 +41,10 @@ Package the three Seekers as an `mvgeos-runes-seeker` extension:
 cd C:\Users\ivmno\Desktop\mvgeos
 
 # Tests (must pass, 90%+ coverage target)
-uv run pytest --cov
+uv run python -m pytest --cov
 
 # Type checking (must pass)
-uv run mypy -p mvgeos_agent -p mvgeos_provider -p mvgeos_tome -p mvgeos_runes -p mvgeos_cli -p coding_mvge
+uv run mypy
 
 # Linting (must pass)
 uv run ruff check
@@ -68,6 +68,7 @@ mvgeos/
 ├── mvgeos-tome/       # JSONL session persistence
 ├── mvgeos-runes/      # Extension system
 ├── mvgeos-cli/        # CLI entry point
+├── mvgeos-gui/        # Desktop GUI application (NiceGUI)
 ├── coding-mvge/      # Coding agent package
 ├── docs/adr/          # ADRs
 ├── .github/workflows/ci.yml
@@ -142,5 +143,3 @@ mvgeos/
 ---
 
 *Update this file after completing each task. Keep it current for the next agent.*
-
-

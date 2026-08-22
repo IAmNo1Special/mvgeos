@@ -246,7 +246,12 @@ class TestCastBash:
 
         with (
             patch(
-                "asyncio.create_subprocess_shell", new=AsyncMock(return_value=mock_proc)
+                "asyncio.create_subprocess_shell",
+                new=AsyncMock(return_value=mock_proc),
+            ),
+            patch(
+                "asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=mock_proc),
             ),
             patch(
                 "coding_mvge.spells.bash.kill_process_tree", new=AsyncMock()
@@ -270,9 +275,45 @@ class TestCastBash:
         assert result.status == SpellStatus.ERROR
 
     @pytest.mark.asyncio
+    async def test_cast_bash_cancelled(self, tmp_path: Path) -> None:
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(side_effect=asyncio.CancelledError())
+        mock_proc.returncode = None
+        mock_proc.pid = 9999
+        mock_proc.wait = AsyncMock()
+
+        with (
+            patch(
+                "asyncio.create_subprocess_shell",
+                new=AsyncMock(return_value=mock_proc),
+            ),
+            patch(
+                "asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=mock_proc),
+            ),
+            patch(
+                "coding_mvge.spells.bash.kill_process_tree", new=AsyncMock()
+            ) as mock_kill,
+            pytest.raises(asyncio.CancelledError),
+        ):
+            await cast_bash(
+                command="sleep 100",
+                timeout_ms=50,
+                workspace_root=tmp_path,
+            )
+        mock_kill.assert_awaited_once_with(mock_proc)
+
+    @pytest.mark.asyncio
     async def test_cast_bash_generic_exception(self, tmp_path: Path) -> None:
-        with patch(
-            "asyncio.create_subprocess_shell", side_effect=OSError("spawn failed")
+        with (
+            patch(
+                "asyncio.create_subprocess_shell",
+                side_effect=OSError("spawn failed"),
+            ),
+            patch(
+                "asyncio.create_subprocess_exec",
+                side_effect=OSError("spawn failed"),
+            ),
         ):
             result = await cast_bash(
                 command="echo hi",

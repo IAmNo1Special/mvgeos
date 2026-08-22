@@ -16,13 +16,13 @@
 ### Performance & Scale
 - ~~**Linear spell lookup**: `loop.py:362` — `next((s for s in spells if s.name == name), None)` is O(n) per spell cast~~ ✅ **RESOLVED** — Added `_spell_index` dict in `MvgeState.__post_init__`
 - ~~**`MvgeState.events` list grows unbounded** — no cleanup/rotation mechanism (`types.py:123`)~~ ✅ **RESOLVED** — Added `max_events=1000` with rotation in `_emit_event()`
-- **`SpellExecutionMode.PARALLEL` defined but unused** — spells execute sequentially in `_execute_spell()` (`types.py:18-20`)
-- ~~**No spell timeout** — individual spells have no global timeout (only bash spell has 30s hardcoded in `mvgeos_spells/casting.py:8`)~~ ✅ **RESOLVED** — Added `spell_timeout_ms=30000` to `MvgeState`, wrapped `spell.execute()` in `asyncio.wait_for()`
+- ~~**`SpellExecutionMode.PARALLEL` defined but unused**~~ ✅ **RESOLVED** — `SpellDispatcher` executes parallel tool calls concurrently via `asyncio.gather()` with fallback sequential execution
+- ~~**No spell timeout** — individual spells have no global timeout (only bash spell had 30s hardcoded in `coding_mvge/spells/bash.py`)~~ ✅ **RESOLVED** — Added `spell_timeout_ms=30000` to `MvgeState`, wrapped `spell.execute()` in `asyncio.wait_for()`
 
 ### Gaps in Logic
 - ~~**No mana budget enforcement** — `mana_budget` stored in state but never decremented/checked in loop~~ ✅ **RESOLVED** — Tracks `mana_used`, enforces when `mana_budget` set (opt-in, default=None matches Pi)
 - ~~**No max turn limit** — `_process_turns()` loops infinitely on steer/followup queues (`loop.py:264-272`)~~ ✅ **RESOLVED** — Added `max_turns=50` to `MvgeState`, enforced in `CodingAgent._run_impl()`
-- **No spell parameter schema validation** — `parameters={}` empty dict passed to LLM, no validation before execution
+- ~~**No spell parameter schema validation**~~ ✅ **RESOLVED** — Implemented schema generation and validation via `mvgeos_agent.spell_schema`
 - **Incomplete session recovery** — resume doesn't validate model compatibility or spell availability
 
 ### Architecture Quirks
@@ -35,8 +35,8 @@
 
 ### Anti-Patterns & Bugs
 - **No connection pooling** — `OpenRouterRealm` creates new `httpx.AsyncClient` per instance (`openrouter.py:60-67`), no reuse across requests
-- **No rate limiting / backoff** — OpenRouter API calls have no retry logic beyond httpx defaults (`openrouter.py:88-105`)
-- **Model registry loads all models eagerly** — `ModelRegistry._load_baseline()` + cache loads entire catalog into dict (`model_registry.py:40-52`), no lazy loading
+- ~~**No rate limiting / backoff**~~ ✅ **RESOLVED** — Implemented layered retry logic in `retry.py` (`retry_realm_request`, `retry_invocation`) with exponential backoff and jitter
+- ~~**Model registry loads all models eagerly**~~ ✅ **RESOLVED** — `ModelRegistry` implements lazy loading on demand with disk caching
 - **Hardcoded model lists** — `FREE_MODELS` and `PAID_MODELS` in `models.py:3-50` require code changes to update
 - **Streaming tightly coupled to OpenRouter SSE format** — `_invocations_to_messages()` assumes specific delta structure (`openrouter.py:13-51`)
 
@@ -60,8 +60,8 @@
 
 ### Gaps in Logic
 - **No session file integrity check** — no CRC/checksum; `json.loads` on each line can raise mid-stream (`jsonl_store.py:26`)
-- **`build_entries_for_context()` has broken logic** — `first_kept`, `kept_ids`, `started` used before assignment (`session.py:255-277`)
-- **Dead private methods** — `_get_path_to_root`, `_find_latest_compaction`, `_find_leaf_entry`, `_index_entry`, `_flush_header`, `_ensure_header_flushed` appear unused (`session.py:279-321`)
+- ~~**`build_entries_for_context()` has broken logic**~~ ✅ **RESOLVED** — `SessionManager` deleted; `TomeLedger` handles context filtering correctly
+- ~~**Dead private methods**~~ ✅ **RESOLVED** — Removed legacy dead methods during session unification
 
 ### Architecture Quirks
 - **Pi-compatible JSONL format** — header line + entries, but no version migration path
@@ -91,14 +91,24 @@
 
 ### Anti-Patterns & Bugs
 - **Two config systems** — `.agents/.mvgeos/config.json` (CLI) + `~/.agents/.mvgeos/{name}/SYSTEM.md` + `GUIDELINES.md` (agent) — confusing
-- **Duplicate `_default_config_dir()`** in `prompt_config.py:40` and `prompt_config.py:88` — exact duplicate function
-- **Default model mismatch** — REPL default `"openrouter/anthropic/claude-3.5-sonnet"` vs CLI default `"openrouter/free"` (`main.py:21` vs `repl.py:248`)
+- ~~**Duplicate `_default_config_dir()`** in `prompt_config.py:40` and `prompt_config.py:88`~~ ✅ **RESOLVED** — Consolidated into `ConfigManager` / `MvgeEnvironment`
+- ~~**Default model mismatch**~~ ✅ **RESOLVED** — Standardized on `DEFAULT_MODEL` across CLI, REPL, and Agent
 
 ### Performance & Scale
 - **Prompt-toolkit history file grows unbounded** — `FileHistory` at `~/.agents/.mvgeos/history` no rotation (`repl.py:88-91`)
 
 ### Architecture Quirks
 - **`CodingMvge` imported in CLI commands** — circular-ish dependency: `cli → coding-mvge → agent → cli` via imports (`prompt.py:10`, `repl.py:13`)
+
+---
+
+## mvgeos-gui
+
+### Architecture & Design
+- **1:1 Antigravity layout**: Built natively in NiceGUI with PyWebView desktop windowing
+- **In-process execution**: Connects `MvgeHarness` and `CodingMvge` directly through async event bus
+- **Auto-completion**: Fuzzy matching for `@` mentions and `/` slash commands
+- **Git diff inspection**: Multi-file diff viewer with staged/unstaged tracking
 
 ---
 
@@ -111,7 +121,7 @@
 - **Blocking file I/O in built-in spells** — `read`, `write`, `edit`, `find`, `grep` use sync I/O in async paths (`coding_mvge/spells/*.py`)
 
 ### Gaps in Logic
-- **No spell sandboxing** — spells execute with full process permissions and no working directory confinement
+- ~~**No spell sandboxing**~~ ✅ **RESOLVED** — Implemented `MvgeSandbox` in `mvgeos-agent` with process isolation and allowed modules
 - **Only bash has timeout** — `bash.py` has 30s timeout, other spells have none
 - **No validation of rune-provided spells** — `runner.get_all_registered_spells()` added without parameter check (`mvge.py:221-229`)
 
@@ -125,6 +135,6 @@
 | Sync I/O in async code | 6+ locations | `mvgeos-tome/ledger.py`, `coding-mvge/spells/*.py` |
 | No connection pooling | 1 | `mvgeos-provider/openrouter.py` |
 | Unbounded memory growth | 1 | `mvgeos-tome/ledger.py` (event rotation & spell index added) |
-| Missing validation | 2 | Spell params, session resume (mana budget ✅, turn limits ✅) |
-| Dead/duplicate code | 2 | `mvgeos-agent/prompt_config.py`, `mvgeos-tome/session.py` |
+| Missing validation | 1 | Spell resume compatibility (mana budget ✅, turn limits ✅, spell schema ✅) |
+| Dead/duplicate code | 0 | Resolved across all packages |
 | Hardcoded configuration | 1 | Spell map (model lists ✅, timeouts ✅) |

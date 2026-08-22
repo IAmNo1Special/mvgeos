@@ -57,7 +57,21 @@ def resolve_git_branch(cwd: str | Path) -> str | None:
     Returns the branch name, or None if the directory is not a git repo
     or git is unavailable.
     """
+    cwd_path = Path(cwd).resolve()
     try:
+        toplevel_result = subprocess.run(
+            ["git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if toplevel_result.returncode != 0:
+            return None
+        toplevel = Path(toplevel_result.stdout.strip()).resolve()
+        if toplevel != cwd_path:
+            return None
+
         result = subprocess.run(
             ["git", "-C", str(cwd), "branch", "--show-current"],
             capture_output=True,

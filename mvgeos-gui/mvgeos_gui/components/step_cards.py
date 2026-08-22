@@ -6,6 +6,16 @@ from nicegui import ui
 
 from mvgeos_gui.models import ExecutionStep, StepType
 
+_PREVIEW_LINES = 20
+
+
+def _truncate_text(text: str, max_lines: int = _PREVIEW_LINES) -> tuple[str, int]:
+    """Truncate text to max_lines and return (displayed_text, hidden_lines)."""
+    lines = text.splitlines()
+    if len(lines) <= max_lines:
+        return text, 0
+    return "\n".join(lines[:max_lines]), len(lines) - max_lines
+
 
 def render_contemplation_card(
     contemplation: str, is_streaming: bool = False
@@ -35,9 +45,10 @@ def render_contemplation_card(
 
 def render_worked_card(step: ExecutionStep) -> ui.expansion:
     """Render a collapsible 'Worked for Xs' execution card."""
+    title = step.spell_name or step.title or "Worked for 0.0s"
     with (
         ui.expansion(
-            text=step.title or "Worked for 0.0s",
+            text=title,
             icon="schedule" if step.is_complete else "hourglass_top",
         )
         .props("dense dense-toggle header-class=bg-[#1e212b] dark")
@@ -56,6 +67,31 @@ def render_worked_card(step: ExecutionStep) -> ui.expansion:
             ui.label("Execution completed.").classes(
                 "text-[11px] text-[#64748b] italic"
             )
+        if step.params:
+            with (
+                ui.expansion("Parameters", icon="unfold_more")
+                .props("dense dense-toggle dark")
+                .classes("text-[10px] text-[#64748b]")
+            ):
+                ui.code(str(step.params)).classes(
+                    "w-full text-[10px] bg-[#0e1117] p-2 rounded max-h-32 overflow-auto"
+                )
+        if step.result:
+            preview, hidden = _truncate_text(step.result)
+            with ui.column().classes("w-full gap-1"):
+                with (
+                    ui.expansion("Result", icon="unfold_more")
+                    .props("dense dense-toggle dark")
+                    .classes("text-[10px] text-[#64748b]")
+                ):
+                    ui.code(preview).classes(
+                        "w-full text-[10px] bg-[#0e1117] p-2 rounded "
+                        "max-h-32 overflow-auto"
+                    )
+                if hidden > 0:
+                    ui.label(
+                        f"... ({hidden} more lines, expand Result to view)"
+                    ).classes("text-[10px] text-[#64748b] italic")
     return expansion
 
 
@@ -97,15 +133,21 @@ def render_files_card(step: ExecutionStep) -> ui.expansion:
                 ).classes("text-[9px] text-white font-mono px-1.5")
 
             if f.details:
-                with (
-                    ui.expansion("File details", icon="unfold_more")
-                    .props("dense dense-toggle dark")
-                    .classes("text-[10px] text-[#64748b] ml-4")
-                ):
-                    ui.code(f.details).classes(
-                        "w-full text-[10px] bg-[#0e1117] p-2 rounded "
-                        "max-h-32 overflow-auto"
-                    )
+                preview, hidden = _truncate_text(f.details)
+                with ui.column().classes("w-full gap-1 ml-4"):
+                    with (
+                        ui.expansion("File details", icon="unfold_more")
+                        .props("dense dense-toggle dark")
+                        .classes("text-[10px] text-[#64748b]")
+                    ):
+                        ui.code(preview).classes(
+                            "w-full text-[10px] bg-[#0e1117] p-2 rounded "
+                            "max-h-32 overflow-auto"
+                        )
+                    if hidden > 0:
+                        ui.label(f"... ({hidden} more lines, expand to view)").classes(
+                            "text-[10px] text-[#64748b] italic"
+                        )
     return expansion
 
 
@@ -160,13 +202,19 @@ def render_commands_card(step: ExecutionStep) -> ui.expansion:
 
                 # Command Output
                 if cmd.output:
-                    with ui.scroll_area().classes(
-                        "w-full max-h-48 bg-[#08090c] rounded p-2 "
-                        "border border-[#1b1e27]"
-                    ):
-                        ui.markdown(f"```text\n{cmd.output}\n```").classes(
-                            "text-[11px] text-[#a6accd] font-mono m-0"
-                        )
+                    preview, hidden = _truncate_text(cmd.output)
+                    with ui.column().classes("w-full gap-1"):
+                        with ui.scroll_area().classes(
+                            "w-full max-h-48 bg-[#08090c] rounded p-2 "
+                            "border border-[#1b1e27]"
+                        ):
+                            ui.markdown(f"```text\n{preview}\n```").classes(
+                                "text-[11px] text-[#a6accd] font-mono m-0"
+                            )
+                        if hidden > 0:
+                            ui.label(
+                                f"... ({hidden} more lines, scroll to view)"
+                            ).classes("text-[10px] text-[#64748b] italic")
     return expansion
 
 

@@ -328,7 +328,7 @@ This creates extra entries just for leaf tracking. The `Index` at `index.py:21-2
 - Target: 90%+ coverage on modified modules
 
 ### Integration Tests
-- `mvgeos-tome/tests/test_integration.py`
+- `mvgeos-tome/tests/integration/ledger.py`
 - Full session lifecycle: create -> append -> reopen -> branch -> compact
 - Concurrent access with FileLock
 - Crash recovery simulation (kill process, verify lock recovery)
@@ -340,8 +340,8 @@ This creates extra entries just for leaf tracking. The `Index` at `index.py:21-2
 - Index rebuild time
 
 ### Cross-Package Tests
-- `mvgeos-agent/tests/test_tome_integration.py`
-- Verify async TomeLedger/SessionManager works in agent loop
+- `mvgeos-agent/tests/integration/tome_harness.py`
+- Verify async TomeLedger works in agent loop
 - Test session resume with migrated versions
 
 ---

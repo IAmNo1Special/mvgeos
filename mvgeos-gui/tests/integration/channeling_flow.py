@@ -178,7 +178,7 @@ async def test_contemplation_card_in_conversation(user: User) -> None:
     state.messages.append(
         ChatMessage(
             role="assistant",
-            contemplation="User wants greeting. Respond politely.",
+            contemplation=["User wants greeting. Respond politely."],
             content="Hey there! How can I help you today?",
             model="nvidia/nemotron-3-ultra-550b-a55b:free",
         )
@@ -192,3 +192,79 @@ async def test_contemplation_card_in_conversation(user: User) -> None:
     await user.should_see("Thought")
     await user.should_see("User wants greeting. Respond politely.")
     await user.should_see("Hey there! How can I help you today?")
+
+
+@pytest.mark.asyncio
+async def test_multiple_contemplation_segments(user: User) -> None:
+    """Verify each reasoning segment renders in its own Thought card."""
+    state = AppState(project_path=Path("C:/demo/project"))
+    state.messages.append(
+        ChatMessage(
+            role="assistant",
+            contemplation=[
+                "First, I need to understand the request.",
+                "Now I will plan the implementation.",
+            ],
+            content="Here is the implementation plan.",
+            model="nvidia/nemotron-3-ultra-550b-a55b:free",
+        )
+    )
+
+    @ui.page("/test_multi_thought")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_multi_thought")
+    await user.should_see("Thought")
+    await user.should_see("First, I need to understand the request.")
+    await user.should_see("Now I will plan the implementation.")
+    await user.should_see("Here is the implementation plan.")
+
+
+@pytest.mark.asyncio
+async def test_interleaved_thoughts_and_steps_flow(user: User) -> None:
+    """Verify interleaved thoughts and tool steps render in order without merging."""
+    from mvgeos_gui.models import MessagePart, MessagePartType
+
+    state = AppState(project_path=Path("C:/demo/project"))
+    step = ExecutionStep(
+        step_type=StepType.FILES,
+        title="Explored 1 file(s)",
+        files=[
+            FileExploration(path="auth.py", operation="read", details="class Auth: ...")
+        ],
+        is_complete=True,
+    )
+    msg = ChatMessage(
+        role="assistant",
+        parts=[
+            MessagePart(
+                part_type=MessagePartType.CONTEMPLATION,
+                text="Checking auth implementation before editing.",
+            ),
+            MessagePart(
+                part_type=MessagePartType.STEP,
+                step=step,
+            ),
+            MessagePart(
+                part_type=MessagePartType.CONTEMPLATION,
+                text="Now I see how Auth is structured. Proceeding with answer.",
+            ),
+            MessagePart(
+                part_type=MessagePartType.TEXT,
+                text="Auth is configured properly.",
+            ),
+        ],
+        model="nvidia/nemotron-3-ultra-550b-a55b:free",
+    )
+    state.messages.append(msg)
+
+    @ui.page("/test_interleaved_thoughts")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_interleaved_thoughts")
+    await user.should_see("Checking auth implementation before editing.")
+    await user.should_see("Explored 1 file(s)")
+    await user.should_see("Now I see how Auth is structured. Proceeding with answer.")
+    await user.should_see("Auth is configured properly.")

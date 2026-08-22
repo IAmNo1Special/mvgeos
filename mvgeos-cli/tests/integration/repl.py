@@ -82,7 +82,7 @@ class TestSlashCommands:
             "/resume .agents/.mvgeos/tomes/test.jsonl", agent, registry
         )
         assert result == ReplAction.NEW_SESSION
-        assert agent._session_resume == ".agents/.mvgeos/tomes/test.jsonl"
+        assert agent._tome_resume == ".agents/.mvgeos/tomes/test.jsonl"
 
     def test_resume_no_args(self, agent: CodingMvge, registry: ModelRegistry) -> None:
         result = _handle_command("/resume", agent, registry)
@@ -166,11 +166,11 @@ class TestReplHelpers:
         bindings = _make_bindings()
         assert bindings is not None
 
-    def test_format_session_info_shows_cwd_model_and_mana(
+    def test_format_tome_info_shows_cwd_model_and_mana(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from mvgeos_cli.commands import repl as repl_mod
-        from mvgeos_cli.commands.repl import _format_session_info
+        from mvgeos_cli.commands.repl import _format_tome_info
 
         monkeypatch.setattr(repl_mod, "_format_cwd", lambda: "~/proj")
 
@@ -179,32 +179,31 @@ class TestReplHelpers:
 
         agent = CodingMvge(api_key="test-key")
         agent._state = _State()  # type: ignore[attr-defined]
-        info = _format_session_info(agent, branch="main")
+        info = _format_tome_info(agent, branch="main")
         parts = " ".join(text for _, text in info)
         assert "~/proj (main)" in parts
         assert "mana 9500" in parts
-        # Footer truncates to console width; match the model ID prefix.
         assert "nvidia/nemotron" in parts
 
-    def test_format_session_info_reports_mana_used(
+    def test_format_tome_info_reports_mana_used(
         self,
     ) -> None:
-        from mvgeos_cli.commands.repl import _format_session_info
+        from mvgeos_cli.commands.repl import _format_tome_info
 
         class _State:
             mana_used = 7500
 
         agent = CodingMvge(api_key="test-key")
         agent._state = _State()  # type: ignore[attr-defined]
-        info = _format_session_info(agent)
+        info = _format_tome_info(agent)
         parts = " ".join(text for _, text in info)
         assert "mana 7500" in parts
 
-    def test_format_session_info_without_state(self) -> None:
-        from mvgeos_cli.commands.repl import _format_session_info
+    def test_format_tome_info_without_state(self) -> None:
+        from mvgeos_cli.commands.repl import _format_tome_info
 
         agent = CodingMvge(api_key="test-key")
-        info = _format_session_info(agent)
+        info = _format_tome_info(agent)
         parts = " ".join(text for _, text in info)
         assert "mana ?" in parts
 

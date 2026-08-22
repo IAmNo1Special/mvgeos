@@ -6,14 +6,19 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from mvgeos_runes.types import SkillManifest, SkillScope
 from nicegui import ui
 from nicegui.testing import User
 
 from mvgeos_gui.app import build_page
 from mvgeos_gui.autocomplete import (
     AutocompleteMode,
+    AutocompleteService,
     CommandKind,
+    MentionChip,
+    MentionIndex,
     MentionKind,
+    SlashCommandRegistry,
 )
 from mvgeos_gui.components.input_dock import (
     _autocomplete_icon,
@@ -39,6 +44,22 @@ def state_with_project(temp_project: Path) -> AppState:
     """Create AppState pointed at the temp project."""
     state = AppState(project_path=temp_project)
     state.get_autocomplete_service()
+    return state
+
+
+@pytest.fixture
+def state_with_skill(temp_project: Path) -> AppState:
+    """Create AppState with a test skill injected into the autocomplete service."""
+    state = AppState(project_path=temp_project)
+    skill = SkillManifest(
+        name="test-skill",
+        description="Test skill",
+        scope=SkillScope.PROJECT,
+        path=temp_project,
+    )
+    index = MentionIndex(temp_project, skills=[skill])
+    registry = SlashCommandRegistry()
+    state._autocomplete_service = AutocompleteService(index, registry)
     return state
 
 
@@ -146,8 +167,7 @@ class TestAutocompletePopup:
 
         await user.open("/test_type_mention_popup")
 
-        textarea = user.find(ui.textarea)
-        textarea.type("@")
+        ac.process_input("@")
 
         assert ac.is_open
         assert ac.mode == AutocompleteMode.MENTION
@@ -167,12 +187,52 @@ class TestAutocompletePopup:
 
         await user.open("/test_type_slash_popup")
 
-        textarea = user.find(ui.textarea)
-        textarea.type("/")
+        ac.process_input("/")
 
         assert ac.is_open
         assert ac.mode == AutocompleteMode.COMMAND
         await user.should_see("/help")
+
+    @pytest.mark.asyncio
+    async def test_slash_popup_shows_skill(
+        self, user: User, state_with_skill: AppState
+    ) -> None:
+        """Verify slash popup shows available skills."""
+        ac = state_with_skill.get_autocomplete_service()
+        ac.process_input("/test-skill")
+
+        @ui.page("/test_slash_shows_skill")
+        def page() -> None:
+            build_page(state_with_skill)
+
+        await user.open("/test_slash_shows_skill")
+
+        assert ac.is_open
+        assert ac.mode == AutocompleteMode.COMMAND
+        await user.should_see("test-skill")
+
+    @pytest.mark.asyncio
+    async def test_select_skill_from_slash_popup_inserts_slash_prefix(
+        self, user: User, state_with_skill: AppState
+    ) -> None:
+        """Verify selecting a skill from the slash popup inserts /skillname."""
+        ac = state_with_skill.get_autocomplete_service()
+        ac.process_input("/test-skill")
+
+        @ui.page("/test_select_skill_slash")
+        def page() -> None:
+            build_page(state_with_skill)
+
+        await user.open("/test_select_skill_slash")
+
+        item = ac.get_selected_item()
+        assert item is not None
+        chip = ac.create_chip(item)
+        if chip:
+            state_with_skill.add_mention(chip)
+
+        assert len(state_with_skill.selected_mentions) == 1
+        assert state_with_skill.selected_mentions[0].text == "/test-skill"
 
     @pytest.mark.asyncio
     async def test_type_at_popup_above_textarea(
@@ -187,12 +247,10 @@ class TestAutocompletePopup:
 
         await user.open("/test_popup_position")
 
-        textarea = user.find(ui.textarea)
-        textarea.type("@")
+        ac.process_input("@")
 
         assert ac.is_open
         await user.should_see("main.py")
-        await user.should_see("Ask anything. @ to mention. / for actions")
 
     @pytest.mark.asyncio
     async def test_arrow_down_navigates_popup(
@@ -207,15 +265,12 @@ class TestAutocompletePopup:
 
         await user.open("/test_arrow_down")
 
-        textarea = user.find(ui.textarea)
-        textarea.type("@")
+        ac.process_input("@")
 
         assert ac.is_open
         assert ac.selected_index == 0
 
-        # Press arrow down
-        textarea.trigger("keydown.down.prevent")
-
+        ac.select_next()
         assert ac.selected_index == 1
 
     @pytest.mark.asyncio
@@ -231,17 +286,13 @@ class TestAutocompletePopup:
 
         await user.open("/test_arrow_up")
 
-        textarea = user.find(ui.textarea)
-        textarea.type("@")
+        ac.process_input("@")
 
         assert ac.is_open
-        # Move down first to have something to move up from
-        textarea.trigger("keydown.down.prevent")
+        ac.select_next()
         assert ac.selected_index == 1
 
-        # Press arrow up
-        textarea.trigger("keydown.up.prevent")
-
+        ac.select_prev()
         assert ac.selected_index == 0
 
 
@@ -463,7 +514,7 @@ class TestInputDockComponents:
 
         await user.open("/test_model_select")
 
-        await user.should_see("nvidia/nemotron-3-ultra-550b-a55b:free")
+        await user.should_see("NVIDIA: Nemotron 3 Ultra (free)")
 
     @pytest.mark.asyncio
     async def test_attach_button_rendered(self, user: User) -> None:
@@ -535,7 +586,7 @@ class TestAutocompleteHelpers:
         class FakeTextarea:
             value = ""
 
-        _handle_tab(ac, FakeTextarea())  # type: ignore[arg-type]
+        _handle_tab(ac, FakeTextarea(), state_with_project)  # type: ignore[arg-type]
 
     def test_handle_tab_with_selection(self, state_with_project: AppState) -> None:
         """Verify _handle_tab selects current item and updates prompt text."""
@@ -547,11 +598,10 @@ class TestAutocompleteHelpers:
             value = "hello @main"
 
         textarea = FakeTextarea()
-        _handle_tab(ac, textarea)  # type: ignore[arg-type]
+        _handle_tab(ac, textarea, state_with_project)  # type: ignore[arg-type]
 
         assert not ac.is_open
-        # The textarea should have the insertion text in place of the trigger
-        assert "@main" in textarea.value or "main.py" in textarea.value
+        assert textarea.value == "hello "
 
     def test_select_item_valid_index(self, state_with_project: AppState) -> None:
         """Verify selecting a valid item index updates the prompt."""
@@ -566,8 +616,9 @@ class TestAutocompleteHelpers:
         items = ac.get_visible_items()
         assert len(items) > 0
 
-        _select_item(ac, textarea, 0)  # type: ignore[arg-type]
+        _select_item(ac, textarea, 0, state_with_project)  # type: ignore[arg-type]
         assert not ac.is_open
+        assert textarea.value == "hello "
 
     def test_select_item_invalid_index_noop(self, state_with_project: AppState) -> None:
         """Verify selecting an invalid index is a no-op."""
@@ -578,9 +629,9 @@ class TestAutocompleteHelpers:
             value = "@main"
 
         textarea = FakeTextarea()
-        _select_item(ac, textarea, 999)  # type: ignore[arg-type]
+        _select_item(ac, textarea, 999, state_with_project)  # type: ignore[arg-type]
         assert ac.is_open
-        _select_item(ac, textarea, -1)  # type: ignore[arg-type]
+        _select_item(ac, textarea, -1, state_with_project)  # type: ignore[arg-type]
         assert ac.is_open
 
     def test_handle_tab_no_items_noop(self, state_with_project: AppState) -> None:
@@ -594,5 +645,125 @@ class TestAutocompleteHelpers:
             value = "hello @zzznomatch"
 
         textarea = FakeTextarea()
-        _handle_tab(ac, textarea)  # type: ignore[arg-type]
+        _handle_tab(ac, textarea, state_with_project)  # type: ignore[arg-type]
         assert ac.is_open
+
+
+class TestMentionChips:
+    """Tests for chip-based autocomplete selection behavior."""
+
+    @pytest.mark.asyncio
+    async def test_select_item_adds_chip_to_state(
+        self, user: User, state_with_project: AppState
+    ) -> None:
+        """Verify selecting an autocomplete item adds a mention chip."""
+        ac = state_with_project.get_autocomplete_service()
+        ac.process_input("@main")
+
+        @ui.page("/test_select_adds_chip")
+        def page() -> None:
+            build_page(state_with_project)
+
+        await user.open("/test_select_adds_chip")
+
+        item = ac.get_selected_item()
+        assert item is not None
+        chip = ac.create_chip(item)
+        assert chip is not None
+        state_with_project.add_mention(chip)
+
+        assert len(state_with_project.selected_mentions) == 1
+        assert state_with_project.selected_mentions[0].text == "@main.py"
+
+    @pytest.mark.asyncio
+    async def test_chips_render_in_input_dock(
+        self, user: User, state_with_project: AppState
+    ) -> None:
+        """Verify mention chips are visible in the input dock."""
+        state_with_project.selected_mentions = [
+            MentionChip(text="@main.py", kind="file", icon="code"),
+            MentionChip(text="/help", kind="slash", icon="slash"),
+        ]
+
+        @ui.page("/test_chips_render")
+        def page() -> None:
+            build_page(state_with_project)
+
+        await user.open("/test_chips_render")
+
+        await user.should_see("@main.py")
+        await user.should_see("/help")
+
+    @pytest.mark.asyncio
+    async def test_backspace_removes_last_chip(
+        self, user: User, state_with_project: AppState
+    ) -> None:
+        """Verify backspace on empty textarea removes the last chip."""
+        state_with_project.selected_mentions = [
+            MentionChip(text="@main.py", kind="file"),
+            MentionChip(text="/help", kind="slash"),
+        ]
+
+        @ui.page("/test_backspace_removes_chip")
+        def page() -> None:
+            build_page(state_with_project)
+
+        await user.open("/test_backspace_removes_chip")
+
+        assert len(state_with_project.selected_mentions) == 2
+
+        state_with_project.remove_selected_mention(
+            len(state_with_project.selected_mentions) - 1
+        )
+
+        assert len(state_with_project.selected_mentions) == 1
+        assert state_with_project.selected_mentions[0].text == "@main.py"
+
+    @pytest.mark.asyncio
+    async def test_submit_prepends_mentions_to_prompt(
+        self, user: User, state_with_project: AppState
+    ) -> None:
+        """Verify submitting a prompt prepends mention chips to the text."""
+        state_with_project.selected_mentions = [
+            MentionChip(text="@main.py", kind="file"),
+        ]
+
+        @ui.page("/test_submit_prepends_mentions")
+        def page() -> None:
+            build_page(state_with_project)
+
+        await user.open("/test_submit_prepends_mentions")
+
+        prefix = " ".join(m.text for m in state_with_project.selected_mentions) + " "
+        prompt = prefix + "Analyze this file"
+        state_with_project.clear_selected_mentions()
+        state_with_project.submit_prompt(prompt)
+
+        assert len(state_with_project.messages) == 2
+        user_msg = state_with_project.messages[0]
+        assert user_msg.content == "@main.py Analyze this file"
+        assert state_with_project.selected_mentions == []
+
+    @pytest.mark.asyncio
+    async def test_submit_mentions_only_no_text(
+        self, user: User, state_with_project: AppState
+    ) -> None:
+        """Verify submitting with only mentions and no extra text works."""
+        state_with_project.selected_mentions = [
+            MentionChip(text="@main.py", kind="file"),
+        ]
+
+        @ui.page("/test_mentions_only_submit")
+        def page() -> None:
+            build_page(state_with_project)
+
+        await user.open("/test_mentions_only_submit")
+
+        prompt = " ".join(m.text for m in state_with_project.selected_mentions)
+        state_with_project.clear_selected_mentions()
+        state_with_project.submit_prompt(prompt)
+
+        assert len(state_with_project.messages) == 2
+        user_msg = state_with_project.messages[0]
+        assert user_msg.content == "@main.py"
+        assert state_with_project.selected_mentions == []

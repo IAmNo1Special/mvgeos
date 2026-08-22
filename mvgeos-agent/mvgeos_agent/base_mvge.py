@@ -1,41 +1,30 @@
 from __future__ import annotations
 
 import dataclasses
-import logging
 from collections.abc import AsyncIterator, Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
 from mvgeos_provider.base import Realm
-from mvgeos_provider.models import get_model
+from mvgeos_provider.composer import ModelComposer
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
-from mvgeos_runes.loader import (
-    get_default_skill_paths,
-    load_runes_from_paths,
-    load_skills_from_paths,
-)
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     Diagnostic,
-    RuneContext,
-    RuneScope,
     RuneShortcut,
-    SigilHook,
     SkillDiagnostic,
     SpellDefinition,
 )
-from mvgeos_runes.watcher import RuneWatcher
 from mvgeos_tome.ledger import TomeLedger
 
 from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.config_manager import ConfigLayer, ConfigValue
+from mvgeos_agent.config_parsing import ConfigParsing
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
-    DEFAULT_MODEL,
     DEFAULT_TOME_DIR,
-    resolve_rune_paths,
 )
+from mvgeos_agent.core_loop import StreamFn
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.event_bus import EventBus
 from mvgeos_agent.harness import (
@@ -44,8 +33,11 @@ from mvgeos_agent.harness import (
     CompactionSettings,
     MvgeHarness,
 )
-from mvgeos_agent.loop import MvgeLoop, StreamFn
+from mvgeos_agent.mvge_loop import MvgeLoop
+from mvgeos_agent.prompt_assembly import PromptAssembly
+from mvgeos_agent.rune_lifecycle import RuneLifecycle
 from mvgeos_agent.snapshot import RuntimeSnapshot
+from mvgeos_agent.tome_lifecycle import TomeLifecycle
 from mvgeos_agent.types import (
     AbortController,
     AbortSignal,
@@ -56,11 +48,8 @@ from mvgeos_agent.types import (
     MvgeSpell,
     MvgeState,
     QueueMode,
-    SessionResumeError,
     SummonerRequest,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class BaseMvge:
@@ -81,8 +70,8 @@ class BaseMvge:
         *,
         name: str = DEFAULT_AGENT_NAME,
         extension_dir: str | None = None,
-        session_dir: Path | None = None,
-        session_resume: str | None = None,
+        tome_dir: Path | None = None,
+        tome_resume: str | None = None,
         provider_name: str | None = None,
         runes_paths: Sequence[str] | None = None,
         compaction: CompactionSettings = DEFAULT_COMPACTION_SETTINGS,
@@ -91,8 +80,8 @@ class BaseMvge:
         self._api_key = api_key
         self._name = name
         self._extension_dir = extension_dir
-        self._session_dir = session_dir or DEFAULT_TOME_DIR
-        self._session_resume = session_resume
+        self._tome_dir = tome_dir or DEFAULT_TOME_DIR
+        self._tome_resume = tome_resume
         self._provider_name = provider_name
         self._compaction_settings = compaction
 
@@ -106,91 +95,31 @@ class BaseMvge:
         self._environment = environment
         self._config_manager = environment.config_manager
 
-        def _get(
-            key: str, default: Any, layer: ConfigLayer = ConfigLayer.DEFAULTS
-        ) -> Any:
-            return environment.config.get(key, ConfigValue(default, layer)).value
-
-        self._model_id = str(_get("model", DEFAULT_MODEL))
-
-        raw_temp = _get("temperature", 0.7)
-        try:
-            if isinstance(raw_temp, bool):
-                raise TypeError("temperature cannot be boolean")
-            self._temperature = float(raw_temp)
-        except ValueError, TypeError:
-            logger.warning(
-                "Invalid temperature in config (%r); falling back to default %s",
-                raw_temp,
-                0.7,
-            )
-            self._temperature = 0.7
-
-        raw_max_tokens = _get("max_tokens", 4096)
-        try:
-            if isinstance(raw_max_tokens, bool):
-                raise TypeError("max_tokens cannot be boolean")
-            self._max_tokens = int(raw_max_tokens)
-        except ValueError, TypeError:
-            logger.warning(
-                "Invalid max_tokens in config (%r); falling back to default %s",
-                raw_max_tokens,
-                4096,
-            )
-            self._max_tokens = 4096
-
-        raw_level = str(_get("contemplation_level", "medium"))
-        if raw_level in ("none", "low", "medium", "high"):
-            self._contemplation_level = raw_level
-        else:
-            logger.warning(
-                "Invalid contemplation_level in config (%r); "
-                "falling back to default 'medium'",
-                raw_level,
-            )
-            self._contemplation_level = "medium"
-
-        self._contemplation_budget: int | None = None
-        raw_budget = _get("contemplation_budget", None)
-        if raw_budget is not None:
-            try:
-                if isinstance(raw_budget, bool):
-                    raise TypeError("contemplation_budget cannot be boolean")
-                self._contemplation_budget = int(raw_budget)
-            except ValueError, TypeError:
-                logger.warning(
-                    "Invalid contemplation_budget in config (%r); "
-                    "falling back to default None",
-                    raw_budget,
-                )
-                self._contemplation_budget = None
-        else:
-            self._contemplation_budget = None
-
-        self._exclude_contemplation = bool(_get("exclude_contemplation", False))
-        self._queue_mode: QueueMode = QueueMode.ONE_AT_A_TIME
-
-        spells_enabled = _get("spells_enabled", [])
-        self._spell_names = list(spells_enabled) if spells_enabled else None
-
-        if runes_paths is not None:
-            self._runes_paths = [Path(str(p)).expanduser() for p in runes_paths]
-        else:
-            rune_paths_config = _get("rune_paths", None)
-            if rune_paths_config:
-                self._runes_paths = [
-                    Path(str(p)).expanduser() for p in rune_paths_config
-                ]
-            else:
-                self._runes_paths = resolve_rune_paths(name, extension_dir)
+        parsed = ConfigParsing.resolve(
+            environment.config,
+            agent_name=name,
+            extension_dir=extension_dir,
+            runes_paths=runes_paths,
+        )
+        self._model_id = parsed.model_id
+        self._temperature = parsed.temperature
+        self._max_tokens = parsed.max_tokens
+        self._contemplation_level = parsed.contemplation_level
+        self._contemplation_budget = parsed.contemplation_budget
+        self._exclude_contemplation = parsed.exclude_contemplation
+        self._queue_mode: QueueMode = parsed.queue_mode
+        self._spell_names = parsed.spell_names
+        self._runes_paths = parsed.runes_paths
 
         self._provider_registry = RealmRegistry()
+        self._model_composer = ModelComposer(self._provider_registry)
         self._runner: RuneRunner | None = None
-        self._watchers: list[RuneWatcher] = []
+        self._rune_lifecycle: RuneLifecycle | None = None
+        self._tome_lifecycle: TomeLifecycle | None = None
         self._prompt_source = environment.resolved_prompt.source
         self._model: Model | None = None
         self._realm: Realm | None = None
-        self._agent_session: MvgeTome | None = None
+        self._agent_tome: MvgeTome | None = None
         self._tome_ledger: TomeLedger | None = None
         self._loop: MvgeLoop | None = None
         self._harness: MvgeHarness | None = None
@@ -201,9 +130,8 @@ class BaseMvge:
         self._initialized = False
 
     @property
-    def session_id(self) -> str | None:
+    def tome_id(self) -> str | None:
         if self._tome_ledger is not None:
-            # Get the first tome's ID
             tomes = self._tome_ledger.list_tomes()
             if tomes:
                 return tomes[0].id
@@ -232,6 +160,11 @@ class BaseMvge:
     @property
     def environment(self) -> MvgeEnvironment:
         return self._environment
+
+    @property
+    def runner(self) -> RuneRunner | None:
+        """Expose the active RuneRunner for runtime introspection (GUI)."""
+        return self._runner
 
     @property
     def diagnostics(self) -> list[Diagnostic | SkillDiagnostic]:
@@ -267,7 +200,7 @@ class BaseMvge:
 
     @property
     def queue_mode(self) -> QueueMode:
-        return getattr(self, "_queue_mode", QueueMode.ONE_AT_A_TIME)
+        return self._queue_mode
 
     @queue_mode.setter
     def queue_mode(self, mode: QueueMode | str) -> None:
@@ -289,27 +222,10 @@ class BaseMvge:
         self.steer(text)
 
     def _compose_model(self, model_id: str) -> Model:
-        model = self._provider_registry.compose_model(
+        model, _ = self._model_composer.compose(
             model_id, self._api_key, self._provider_name
         )
-        if model is not None:
-            return model
-
-        model_info = get_model(model_id)
-        if model_info is None:
-            raise ValueError(f"Unknown model: {model_id}")
-        return Model(
-            id=model_info.id,
-            name=model_info.name,
-            realm=model_info.realm,
-            base_url=model_info.base_url,
-            api_key=self._api_key,
-            max_completion_mana=model_info.max_completion_mana,
-            context_window=model_info.context_window,
-            max_tokens=model_info.max_tokens,
-            headers=dict(model_info.headers or {}),
-            supported_parameters=list(model_info.supported_parameters),
-        )
+        return model
 
     def _build_spells(self) -> list[MvgeSpell]:
         """Override in subclass to provide agent-specific spells."""
@@ -322,48 +238,25 @@ class BaseMvge:
     def _render_prompt(
         self, body: str, spell_names: list[str], guidelines: list[str]
     ) -> str:
-        """Render a prompt with body, spells, and guidelines."""
-        parts = [body]
-        if spell_names:
-            spell_list = "\n".join(f"  - {s}" for s in spell_names)
-        else:
-            spell_list = "  (none)"
-        parts.append(f"\nActive spells:\n{spell_list}")
-        if guidelines:
-            parts.append("\nGuidelines:")
-            parts.extend(f"- {g}" for g in guidelines)
-        parts.append(f"\nCurrent working directory: {Path.cwd()}")
-        return "\n".join(parts)
+        """Render a prompt with body, spells, guidelines, and environment."""
+        cwd = str(getattr(self._config_manager, "_project_dir", "") or Path.cwd())
+        return PromptAssembly(cwd=cwd, runner=self._runner).render(
+            body, spell_names, guidelines
+        )
 
     async def _build_system_prompt_async(self) -> str:
         """Async version that supports rune prompt injection via sigil hooks.
         Override in subclass for async prompt building with rune injection.
         Default delegates to sync version for backward compatibility.
         """
-        if self._runner is not None:
-            prompt_data: dict[str, Any] = {
-                "base_prompt": self._build_system_prompt(),
-                "spell_names": [],
-                "config_dir": str(self.config_dir) if self.config_dir else "",
-                "custom_prompt": getattr(self, "_custom_system_prompt", ""),
-                "agent_name": self._name,
-                "cwd": str(Path.cwd()),
-            }
-            prompt_data = await self._runner.emit_chain(
-                SigilHook.BEFORE_MVGE_START, prompt_data
-            )
-            base_prompt = str(
-                prompt_data.get("base_prompt", self._build_system_prompt())
-            )
-
-            # Inject skill catalog if not suppressed
-            if not self._runner.is_skill_catalog_suppressed():
-                skill_catalog = self._runner.get_skill_catalog()
-                if skill_catalog:
-                    base_prompt = f"{base_prompt}\n\n{skill_catalog}"
-
-            return base_prompt
-        return self._build_system_prompt()
+        return await PromptAssembly(
+            base_prompt=self._build_system_prompt(),
+            agent_name=self._name,
+            config_dir=self.config_dir,
+            custom_prompt=getattr(self, "_custom_system_prompt", ""),
+            cwd=Path.cwd(),
+            runner=self._runner,
+        ).assemble()
 
     async def _run_impl(self) -> MvgeInvocation:
         """Default implementation using the harness."""
@@ -441,50 +334,33 @@ class BaseMvge:
         return stream_fn
 
     async def initialize(self) -> None:
+        """Wire the lifecycle modules into a running agent.
+
+        Pure orchestration: rune loading (RuneLifecycle), tome creation
+        (TomeLifecycle), prompt assembly (PromptAssembly), and model
+        composition (ModelComposer); config parsing happened in __init__.
+        """
         if self._initialized:
             return
 
         await self._load_runes()
 
-        # Initialize tome ledger (needed for both new and resumed sessions)
-        self._tome_ledger = TomeLedger(self._session_dir)
-
-        # Emit BEFORE_MVGE_START to allow runes to inject prompt additions
-        base_prompt = await self._build_system_prompt_async()
-        prompt_data: dict[str, Any] = {
-            "base_prompt": base_prompt,
-            "spell_names": [],
-            "config_dir": str(self.config_dir) if self.config_dir else "",
-            "custom_prompt": getattr(self, "_custom_system_prompt", ""),
-            "agent_name": self._name,
-            "cwd": str(Path.cwd()),
-        }
-        if self._runner is not None:
-            prompt_data = await self._runner.emit_chain(
-                SigilHook.BEFORE_MVGE_START, prompt_data
-            )
-
-        # Build final system prompt from prompt_data (may have been modified by runes)
-        final_prompt = str(prompt_data.get("base_prompt", base_prompt))
-
-        self._model = self._compose_model(self._model_id)
-
-        self._realm = self._provider_registry.create_realm(
-            self._model, self._api_key, self._provider_name
+        self._tome_lifecycle = TomeLifecycle(TomeLedger(self._tome_dir), self._runner)
+        self._tome_ledger = self._tome_lifecycle.ledger
+        final_prompt = await self._build_system_prompt_async()
+        self._model, self._realm = self._model_composer.compose(
+            self._model_id, self._api_key, self._provider_name
         )
+        self._agent_tome = await self._tome_lifecycle.open_or_create(self._tome_resume)
 
-        if self._session_resume:
-            meta = self._tome_ledger.open_tome(self._session_resume)
-            if meta is None:
-                raise SessionResumeError(self._session_resume)
-            self._agent_session = MvgeTome(self._tome_ledger, meta, self._runner)
-            await self._agent_session.start(reason="resume")
+        self._wire_runtime(final_prompt)
+        self._initialized = True
 
-        if self._agent_session is None:
-            meta = self._tome_ledger.create_tome(str(Path.cwd()))
-            self._agent_session = MvgeTome(self._tome_ledger, meta, self._runner)
-            await self._agent_session.start(reason="startup")
-
+    def _wire_runtime(self, final_prompt: str) -> None:
+        """Construct MvgeState and MvgeHarness from the wired collaborators."""
+        assert self._model is not None
+        assert self._realm is not None
+        assert self._agent_tome is not None
         self._state = MvgeState(
             system_prompt=final_prompt,
             prompt_source=self._prompt_source,
@@ -498,14 +374,13 @@ class BaseMvge:
             exclude_contemplation=self._exclude_contemplation,
             queue_mode=self._queue_mode,
             rune_runner=self._runner,
-            agent_session=self._agent_session,
+            agent_tome=self._agent_tome,
             event_bus=self._event_bus,
         )
 
-        assert self._agent_session is not None
         self._harness = MvgeHarness(
             state=self._state,
-            tome=self._agent_session,
+            tome=self._agent_tome,
             realm=self._realm,
             model=self._model,
             compaction_settings=self._compaction_settings,
@@ -513,75 +388,22 @@ class BaseMvge:
         self._loop = self._harness.loop
         self._compaction = self._harness.compaction
 
-        self._initialized = True
-
     async def _load_runes(self) -> None:
         """Load runes from all three levels (global, agent, project)."""
-        paths_with_scope = self._build_rune_paths_with_scope()
-        loads, diagnostics = load_runes_from_paths(paths_with_scope, self._name)
-
-        if self._runner is None:
-            self._runner = RuneRunner()
-            self._runner.bind_context(
-                RuneContext(
-                    cwd=str(Path.cwd()),
-                    mode="cli",
-                    agent_name=self._name,
-                    api_key=self._api_key,
-                )
+        if self._rune_lifecycle is None:
+            self._rune_lifecycle = RuneLifecycle(
+                agent_name=self._name,
+                api_key=self._api_key,
+                runes_paths=self._runes_paths,
+                environment=self._environment,
+                provider_registry=self._provider_registry,
+                runner=self._runner,
             )
-
-        if loads:
-            await self._runner.load_rune_loads(loads, diagnostics)
-            for pname, pconfig in self._runner.get_registered_providers().items():
-                if isinstance(pconfig, dict):
-                    self._provider_registry.register_provider(pname, pconfig)
-        elif diagnostics:
-            self._runner._diagnostics.extend(diagnostics)
-
-        # Load skills from standard scopes
-        skill_paths = get_default_skill_paths(self._name)
-        skill_loads, skill_diagnostics = load_skills_from_paths(skill_paths, self._name)
-        if skill_loads:
-            self._runner.load_skills(skill_loads, diagnostics=skill_diagnostics)
-        elif skill_diagnostics:
-            self._runner._skill_diagnostics.extend(skill_diagnostics)
-
-        if skill_diagnostics:
-            for diag in skill_diagnostics:
-                logger.warning(
-                    "Skill diagnostic: %s (skill=%s, scope=%s, path=%s)",
-                    diag.message,
-                    diag.skill_name,
-                    diag.scope.value if diag.scope else "unknown",
-                    diag.path,
-                )
-
-        self._environment = dataclasses.replace(
-            self._environment,
-            diagnostics=list(self._runner.diagnostics)
-            + list(self._runner.skill_diagnostics),
-            runner=self._runner,
-        )
-
-        for path, _ in paths_with_scope:
-            if path.exists():
-                watcher = RuneWatcher(path, self._runner)
-                await watcher.start()
-                self._watchers.append(watcher)
-
-    def _build_rune_paths_with_scope(self) -> list[tuple[Path, RuneScope]]:
-        result: list[tuple[Path, RuneScope]] = []
-        for path in self._runes_paths:
-            resolved = Path(str(path).replace("{agent_name}", self._name)).expanduser()
-            if ".mvgeos/runes" in str(path) and "{agent_name}" not in str(path):
-                scope = RuneScope.USER
-            elif "{agent_name}" in str(path):
-                scope = RuneScope.AGENT
-            else:
-                scope = RuneScope.PROJECT
-            result.append((resolved, scope))
-        return result
+        self._runner = await self._rune_lifecycle.load()
+        await self._rune_lifecycle.start()
+        refreshed = self._rune_lifecycle.environment
+        if refreshed is not None:
+            self._environment = refreshed
 
     async def switch_model(self, model_id: str) -> None:
         """Switch the active model, preserving the current session context."""
@@ -592,13 +414,13 @@ class BaseMvge:
             return
 
         assert self._model is not None
-        new_model = self._compose_model(model_id)
+        new_model, new_realm = self._model_composer.compose(
+            model_id, self._api_key, self._provider_name
+        )
         if new_model.provider != self._model.provider:
             if self._realm is not None:
                 await self._realm.close()
-            self._realm = self._provider_registry.create_realm(
-                new_model, self._api_key, self._provider_name
-            )
+            self._realm = new_realm
         self._model = new_model
         assert self._state is not None
         self._state.model = dataclasses.asdict(new_model)
@@ -633,11 +455,12 @@ class BaseMvge:
             self._abort_controller.abort()
 
     async def close(self) -> None:
-        if self._agent_session is not None:
-            await self._agent_session.shutdown(reason="quit")
-        for watcher in self._watchers:
-            await watcher.stop()
-        self._watchers.clear()
+        if self._agent_tome is not None:
+            await self._agent_tome.shutdown(reason="quit")
+        if self._rune_lifecycle is not None:
+            await self._rune_lifecycle.shutdown()
+            self._rune_lifecycle = None
+        self._tome_lifecycle = None
         if self._realm is not None:
             await self._realm.close()
             self._realm = None
@@ -645,8 +468,7 @@ class BaseMvge:
             await self._provider_registry.close()
         self._initialized = False
         self._runner = None
-        self._agent_session = None
-        self._session_manager = None
+        self._agent_tome = None
         self._loop = None
         self._harness = None
         self._state = None

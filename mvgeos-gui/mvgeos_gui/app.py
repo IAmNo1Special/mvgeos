@@ -4,21 +4,27 @@ from nicegui import ui
 
 from mvgeos_gui.components.shell import render_shell
 from mvgeos_gui.state import AppState
-from mvgeos_gui.styles import inject_theme
 
 
 def build_page(state: AppState | None = None) -> None:
-    """Construct the Antigravity GUI layout on the current page."""
+    """Construct the MvgeOS GUI layout on the current page."""
     current_state = state or AppState()
     current_state.load_tomes()
+    from mvgeos_gui.styles import inject_theme
+
     inject_theme()
 
-    @ui.refreshable
-    def shell_view() -> None:
-        render_shell(current_state)
+    ui.add_head_html("""
+        <script>
+            document.addEventListener('keydown', function(e) {
+                if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+                    e.preventDefault();
+                }
+            });
+        </script>
+    """)
 
-    shell_view()
-    current_state.subscribe(lambda: shell_view.refresh())
+    render_shell(current_state)
 
 
 def init_app(state: AppState | None = None) -> AppState:

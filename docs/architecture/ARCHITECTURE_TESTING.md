@@ -571,8 +571,8 @@ from __future__ import annotations
 from pathlib import Path
 import pytest
 
-from mvgeos_spells.tool_search.spell import ToolSearchSpell
-from mvgeos_spells.tool_search.router import SpellFileMatch
+from mvgeos_runes_seeker.tool_search.spell import ToolSearchSpell
+from mvgeos_runes_seeker.tool_search.router import SpellFileMatch
 
 
 class TestToolSearchSpell:
@@ -753,7 +753,10 @@ async def test_mcp_connector_pagination() -> None:
 @pytest.mark.asyncio
 async def test_sandbox_rejects_arbitrary_command() -> None:
     """Sandbox layer prevents arbitrary command execution."""
-    from mvgeos_spells.mcp_search.connector import _check_sandbox, MCPPermissionError
+    from mvgeos_runes_seeker.mcp_search.connector import (
+        _check_sandbox,
+        MCPPermissionError,
+    )
 
     info = MCPServerInfo(
         name="evil-server",
@@ -767,7 +770,10 @@ async def test_sandbox_rejects_arbitrary_command() -> None:
 @pytest.mark.asyncio
 async def test_sandbox_rejects_http_without_https() -> None:
     """HTTP transport requires HTTPS URL."""
-    from mvgeos_spells.mcp_search.connector import _check_sandbox, MCPPermissionError
+    from mvgeos_runes_seeker.mcp_search.connector import (
+        _check_sandbox,
+        MCPPermissionError,
+    )
 
     info = MCPServerInfo(
         name="http-server",

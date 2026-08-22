@@ -54,7 +54,7 @@ class TestNoConsoleBufferFallback:
     ) -> None:
         mock_agent = AsyncMock()
         mock_agent.on = MagicMock(return_value=lambda: None)
-        mock_agent.session_id = "test-session-id"
+        mock_agent.tome_id = "test-tome-id"
         mock_agent._model_id = "nvidia/nemotron"
         mock_create_agent.return_value = mock_agent
 
@@ -86,7 +86,7 @@ class TestNoConsoleBufferFallback:
     ) -> None:
         mock_agent = AsyncMock()
         mock_agent.on = MagicMock(return_value=lambda: None)
-        mock_agent.session_id = "test-session-id"
+        mock_agent.tome_id = "test-tome-id"
         mock_agent._model_id = "nvidia/nemotron"
         mock_create_agent.return_value = mock_agent
 

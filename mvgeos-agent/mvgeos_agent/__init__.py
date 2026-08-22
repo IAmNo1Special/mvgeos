@@ -23,12 +23,12 @@ from mvgeos_agent.types import (
     MvgeState,
     QueueMode,
     SandboxTimeoutError,
-    SessionResumeError,
     SpellExecutionMode,
     SpellSignal,
     SpellUpdateCallback,
     StopReason,
     SummonerRequest,
+    TomeResumeError,
 )
 
 __all__ = [
@@ -53,7 +53,7 @@ __all__ = [
     "SnapshotSkill",
     "SnapshotSpell",
     "SandboxTimeoutError",
-    "SessionResumeError",
+    "TomeResumeError",
     "SpellExecutionMode",
     "SpellSignal",
     "SpellSource",

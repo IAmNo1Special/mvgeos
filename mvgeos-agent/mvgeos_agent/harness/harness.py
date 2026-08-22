@@ -6,12 +6,13 @@ from mvgeos_provider.base import Realm
 from mvgeos_provider.types import Model
 
 from mvgeos_agent.agent_session import MvgeTome
+from mvgeos_agent.core_loop import LoopCallbacks, StreamFn
 from mvgeos_agent.harness.compaction.compaction import (
     DEFAULT_COMPACTION_SETTINGS,
     CompactionSettings,
 )
 from mvgeos_agent.harness.compaction.compaction_runner import CompactionRunner
-from mvgeos_agent.loop import LoopCallbacks, MvgeLoop, StreamFn
+from mvgeos_agent.mvge_loop import MvgeLoop
 from mvgeos_agent.types import AbortSignal, MvgeInvocation, MvgeState, SummonerRequest
 
 
@@ -47,9 +48,7 @@ class MvgeHarness:
         else:
             raise ValueError("MvgeHarness requires either 'loop' or 'state'")
 
-        self._tome: MvgeTome | None = tome or getattr(
-            self._state, "agent_session", None
-        )
+        self._tome: MvgeTome | None = tome or getattr(self._state, "agent_tome", None)
         self._realm = realm
         self._model = model
         self._compaction_settings = compaction_settings
@@ -88,7 +87,7 @@ class MvgeHarness:
     def switch_tome(self, tome: MvgeTome) -> None:
         """Switch active Tome session reference and update CompactionRunner."""
         self._tome = tome
-        self._state.agent_session = tome
+        self._state.agent_tome = tome
         if self._compaction is not None:
             self._compaction._tome = tome
 
@@ -114,7 +113,6 @@ class MvgeHarness:
         stream_fn: StreamFn,
         model: dict[str, Any],
         contemplation_level: str = "medium",
-        callbacks: LoopCallbacks | None = None,
         signal: AbortSignal | None = None,
         prompt: str | None = None,
     ) -> MvgeInvocation:
@@ -122,9 +120,8 @@ class MvgeHarness:
         if prompt is not None:
             self._state.invocations.append(SummonerRequest(role="user", content=prompt))
 
-        effective_callbacks = (
-            callbacks or self._callbacks or self._loop._build_callbacks()
-        )
+        # Build effective callbacks and set after_invocation on the loop
+        effective_callbacks = self._callbacks or self._loop._build_callbacks()
         original_after_invocation = effective_callbacks.after_invocation
 
         async def after_invocation_with_compaction(
@@ -144,13 +141,12 @@ class MvgeHarness:
                     self._state.invocations = list(replacement)
             return invocations
 
-        effective_callbacks.after_invocation = after_invocation_with_compaction
+        self._loop.set_after_invocation(after_invocation_with_compaction)
 
         return await self._loop.run(
             stream_fn=stream_fn,
             model=model,
             contemplation_level=contemplation_level,
-            callbacks=effective_callbacks,
             signal=signal,
         )
 

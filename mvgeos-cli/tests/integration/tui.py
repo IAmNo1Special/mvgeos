@@ -214,8 +214,8 @@ class TestHandleCommandOut:
 
 
 class FakeAgent:
-    def __init__(self, session_id: str = "abcd1234efgh") -> None:
-        self.session_id = session_id
+    def __init__(self, tome_id: str = "abcd1234efgh") -> None:
+        self.tome_id = tome_id
         self._model_id = "nvidia/nemotron-3-ultra-550b-a55b:free"
         self._contemplation_level = "medium"
         self.queue_mode = "one-at-a-time"
@@ -392,7 +392,7 @@ class TestTuiApp:
         assert agent.closed is True
         assert agent.initialize_calls == 1
         plain = "\n".join((e.text or "").plain for e in app.sink._entries)
-        assert "New session" in plain
+        assert "New tome" in plain
 
     @pytest.mark.asyncio
     async def test_slash_model_switch(self) -> None:
@@ -577,7 +577,7 @@ class TestTuiApp:
         from prompt_toolkit.output import DummyOutput
 
         agent = FakeAgent()
-        agent.session_id = "1234567890"
+        agent.tome_id = "1234567890"
         agent._model_id = "very-long-model-provider-name/model-name-extra-long:latest"
         sink = TuiSink()
 
@@ -595,7 +595,7 @@ class TestTuiApp:
         from prompt_toolkit.output import DummyOutput
 
         agent = FakeAgent()
-        agent.session_id = "1234567890"
+        agent.tome_id = "1234567890"
         agent._model_id = "very-long-model-provider-name/model-name-extra-long:latest"
         sink = TuiSink()
 

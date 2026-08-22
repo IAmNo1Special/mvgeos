@@ -171,14 +171,14 @@ def _get_history_path() -> Path:
 
 ---
 
-## CLI-05: Circular-ish Import: CLI → CodingAgent
+## CLI-05: Circular-ish Import: CLI → CodingMvge
 
 **Files**: 
-- `mvgeos_cli/commands/prompt.py:10` — `from coding_agent import CodingAgent`
-- `mvgeos_cli/commands/repl.py:13` — `from coding_agent import CodingAgent`
+- `mvgeos_cli/commands/prompt.py:10` — `from coding_mvge import CodingMvge`
+- `mvgeos_cli/commands/repl.py:13` — `from coding_mvge import CodingMvge`
 
 ### Root Cause
-CLI commands import `CodingAgent` from `coding-mvge` package. `coding-mvge` imports from `mvgeos-agent`, `mvgeos-provider`, `mvgeos-spells`, `mvgeos-runes`, `mvgeos-tome`. No direct import back to CLI, but creates tight coupling:
+CLI commands import `CodingMvge` from `coding-mvge` package. `coding-mvge` imports from `mvgeos-agent`, `mvgeos-provider`, `mvgeos-runes`, `mvgeos-tome`. No direct import back to CLI, but creates tight coupling:
 - CLI cannot be used without `coding-mvge` package
 - `coding-mvge` is a specific agent implementation, not the framework
 
@@ -192,13 +192,13 @@ CLI commands import `CodingAgent` from `coding-mvge` package. `coding-mvge` impo
        async def close(self) -> None: ...
        @property def session_id(self) -> str | None: ...
    ```
-2. **Make `CodingAgent` implement `MvgeAgent`** (already does implicitly)
-3. **Update CLI commands** to accept `MvgeAgent` factory instead of hardcoded `CodingAgent`:
+2. **Make `CodingMvge` implement `MvgeAgent`** (already does implicitly)
+3. **Update CLI commands** to accept `MvgeAgent` factory instead of hardcoded `CodingMvge`:
    - `prompt.py:_run_agent()` → accept `agent_factory: Callable[[], MvgeAgent]`
    - `repl.py:run_repl()` → accept `agent_factory`
-4. **Provide default factory** in `coding_agent/__init__.py`:
+4. **Provide default factory** in `coding_mvge/__init__.py`:
    ```python
-   def create_coding_agent(...) -> CodingAgent: ...
+   def create_coding_mvge(...) -> CodingMvge: ...
    ```
 5. **CLI entry points** import and use factory
 
@@ -237,4 +237,4 @@ CLI commands import `CodingAgent` from `coding-mvge` package. `coding-mvge` impo
 - **CLI-04**: History rotation test (append 15000 entries, verify only 10000 kept)
 - **CLI-05**: Verify CLI works with mock agent implementing `MvgeAgent` protocol
 
-Run: `uv run pytest mvgeos-cli/tests_cli/ --cov=mvgeos`
+Run: `uv run python -m pytest mvgeos-cli/tests/ --cov`

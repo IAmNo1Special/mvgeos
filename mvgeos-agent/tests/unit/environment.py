@@ -93,11 +93,11 @@ async def test_base_mvge_diagnostics_property_and_zero_load_retention() -> None:
 
     with (
         patch(
-            "mvgeos_agent.base_mvge.load_runes_from_paths",
+            "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
             return_value=([], [diag]),
         ),
         patch(
-            "mvgeos_agent.base_mvge.load_skills_from_paths",
+            "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
             return_value=([], []),
         ),
     ):

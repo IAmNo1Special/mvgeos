@@ -7,6 +7,8 @@ import pytest
 
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
+    Diagnostic,
+    DiagnosticKind,
     RegisteredCommand,
     RuneLoad,
     RuneManifest,
@@ -675,6 +677,26 @@ class TestRuneRunnerSkills:
         runner.load_skills([], diagnostics=[diag1])
         runner.load_skills([], diagnostics=[diag2])
         assert runner.skill_diagnostics == [diag1, diag2]
+
+    def test_extend_diagnostics_appends(self) -> None:
+        runner = RuneRunner()
+        diag = Diagnostic(
+            kind=DiagnosticKind.PARSE_WARNING,
+            rune_name="r1",
+            message="warned",
+        )
+        runner.extend_diagnostics([diag])
+        assert runner.diagnostics == [diag]
+
+    def test_extend_skill_diagnostics_appends(self) -> None:
+        runner = RuneRunner()
+        sdiag = SkillDiagnostic(
+            kind=SkillDiagnosticKind.PARSE_WARNING,
+            skill_name="s1",
+            message="warned",
+        )
+        runner.extend_skill_diagnostics([sdiag])
+        assert runner.skill_diagnostics == [sdiag]
 
     def test_get_skill_catalog_empty(self) -> None:
         runner = RuneRunner()

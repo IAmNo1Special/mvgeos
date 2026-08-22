@@ -73,10 +73,4 @@ def render_header(state: AppState) -> ui.row:
                     on_click=state.clear_history,
                 ).mark("clear_conversation_btn")
 
-            # Inspector Panel Toggle Button
-            ui.button(
-                icon="dock" if state.inspector_expanded else "view_sidebar",
-                on_click=state.toggle_inspector,
-            ).props("flat dense round text-color=grey-5").mark("toggle_inspector_btn")
-
     return header

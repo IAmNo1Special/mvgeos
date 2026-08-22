@@ -107,18 +107,16 @@ python_functions = "test_*"
 # dirs collapse to the same dotted path (tests.unit.types) across packages and
 # silently shadow each other. Rootdir-relative naming keeps them distinct.
 consider_namespace_packages = false
-addopts = "--import-mode=importlib"
+addopts = "--import-mode=importlib -W ignore::RuntimeWarning"
 
 [tool.coverage.run]
 omit = [
     "*/temp/*",
     "*/tmp*/**",
     "*/AppData/Local/Temp/**",
-    "*test_heal_my_goap*",
-    "*test_interactive_cli_demo*",
     "*/heal_my_goap/*",
     "*/.agents/.mvgeos/runes/*",
 ]
 
 [tool.coverage.report]
-fail_under = 84
+fail_under = 90

@@ -1,7 +1,7 @@
 import pytest
 
 from mvgeos_agent.harness import MvgeHarness
-from mvgeos_agent.loop import MvgeLoop
+from mvgeos_agent.mvge_loop import MvgeLoop
 from mvgeos_agent.types import (
     ContemplationLevel,
     MvgeResponse,

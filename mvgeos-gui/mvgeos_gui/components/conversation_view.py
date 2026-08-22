@@ -4,27 +4,29 @@ from __future__ import annotations
 
 from nicegui import ui
 
+from mvgeos_gui.components.artifact_drawer import (
+    render_artifact_card,
+    render_artifact_drawer,
+)
+from mvgeos_gui.components.diff_review import render_diff_modal
 from mvgeos_gui.components.step_cards import (
     render_contemplation_card,
     render_step_card,
 )
-from mvgeos_gui.models import ChatMessage
+from mvgeos_gui.models import ChatMessage, MessagePartType
 from mvgeos_gui.state import AppState
+from mvgeos_gui.utils import copy_to_clipboard
 
 
 def _copy_to_clipboard(text: str) -> None:
     """Copy content to the system clipboard and display feedback toast."""
-    escaped = text.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
-    ui.run_javascript(f"navigator.clipboard.writeText(`{escaped}`)")
-    ui.notify("Copied to clipboard", type="positive", position="bottom")
+    copy_to_clipboard(text)
 
 
 def render_user_message(msg: ChatMessage) -> ui.column:
     """Render a styled user prompt container bubble."""
     with (
-        ui.column().classes(
-            "w-full max-w-3xl mx-auto px-6 py-3 items-end"
-        ) as container,
+        ui.column().classes("w-full px-6 py-3 items-end") as container,
         ui.card().classes(
             "w-auto max-w-[85%] bg-[#1e212b] border border-[#2b2f3d] "
             "rounded-2xl p-4 gap-2 shadow-md"
@@ -50,9 +52,7 @@ def render_assistant_message(
 ) -> ui.column:
     """Render an Mvge response bubble with live markdown, Mana, and step cards."""
     with (
-        ui.column().classes(
-            "w-full max-w-3xl mx-auto px-6 py-3 items-start"
-        ) as container,
+        ui.column().classes("w-full px-6 py-3 items-start") as container,
         ui.card().classes(
             "w-full bg-[#181a20] border border-[#2b2f3d] rounded-2xl "
             "p-4 gap-3 shadow-lg"
@@ -87,22 +87,19 @@ def render_assistant_message(
                         )
                 ui.label(msg.timestamp).classes("text-[10px] text-[#64748b] font-mono")
 
-        # Contemplation / Reasoning Card
-        if msg.contemplation:
-            render_contemplation_card(msg.contemplation, msg.is_streaming)
-
-        # Intermediate Execution Steps
-        if msg.steps:
-            with ui.column().classes("w-full gap-1 my-1"):
-                for step in msg.steps:
-                    render_step_card(step)
-
-        # Live Markdown Response Content
-        if msg.content:
-            ui.markdown(msg.content).classes(
-                "text-xs text-[#e6edf3] leading-relaxed markdown-content "
-                "max-w-none w-full"
-            )
+        # Sequential Message Parts (Contemplation, Steps, Text, Artifacts)
+        for part in msg.get_parts():
+            if part.part_type == MessagePartType.CONTEMPLATION and part.text:
+                render_contemplation_card(part.text, msg.is_streaming)
+            elif part.part_type == MessagePartType.STEP and part.step:
+                render_step_card(part.step)
+            elif part.part_type == MessagePartType.TEXT and part.text:
+                ui.markdown(part.text).classes(
+                    "text-xs text-[#e6edf3] leading-relaxed markdown-content "
+                    "max-w-none w-full"
+                )
+            elif part.part_type == MessagePartType.ARTIFACT and part.artifact:
+                render_artifact_card(part.artifact, state)
 
         # Streaming Cursor Indicator
         if msg.is_streaming:
@@ -124,7 +121,7 @@ def render_assistant_message(
                 "border-t border-[#252836]/60"
             ):
                 # Copy Button
-                copy_text = msg.content or msg.contemplation
+                copy_text = msg.content or "\n\n".join(msg.contemplation)
                 with ui.button(
                     icon="content_copy",
                     on_click=lambda c=copy_text: _copy_to_clipboard(c),
@@ -182,5 +179,13 @@ def render_conversation_view(state: AppState) -> ui.column:
                     render_user_message(msg)
                 else:
                     render_assistant_message(msg, idx, state)
+
+    selected_view = state.get_selected_diff_view()
+    if selected_view is not None:
+        render_diff_modal(state, selected_view)
+
+    selected_artifact = state.get_selected_artifact()
+    if selected_artifact is not None:
+        render_artifact_drawer(state)
 
     return container

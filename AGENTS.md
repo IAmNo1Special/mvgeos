@@ -82,7 +82,7 @@ MVGEOS IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https:/
 - **E2E tests must use `nvidia/nemotron-3-ultra-550b-a55b:free`** — this is also the default model everywhere it applies (`mvgeos_cli.DEFAULT_MODEL`, `BaseMvge`, `CodingMvge`, CLI config default).
 - **Footer/status-line assertions must match a model-ID prefix**, not the full slug — `_fit_footer` truncates to console width.
 - **`_build_spells()` interface**: must use `self._runner` (not `self._state.rune_runner`) and return all spell types (rune spells from enabled runes only + builtin spells). Seeker is a rune — it only works through the rune/extension system, not as a built-in category.
-- **Test cleanup**: use `_watchers` (plural), not `_watcher` (singular).
+- **Watcher cleanup**: watchers are owned by `RuneLifecycle` — stop them via `lifecycle.shutdown()` (BaseMvge.close() does this; never reference a singular `_watcher`).
 
 ## Debugging
 
@@ -101,6 +101,7 @@ MvgeOS is a monorepo with uv workspaces:
 | mvgeos-tome | JSONL session persistence with file locking |
 | mvgeos-runes | Rune/Extension manifest, loader, sigil hooks |
 | mvgeos-cli | CLI entry point (`mvgeos` command) |
+| mvgeos-gui | Desktop GUI application powered by NiceGUI with 1:1 Antigravity UI |
 | coding-mvge | Coding agent package |
 
 Config follows dotagents protocol at `~/.agents/.mvgeos/`.
