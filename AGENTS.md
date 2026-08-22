@@ -47,9 +47,9 @@ MVGEOS IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https:/
 
 ## Commands
 
-- After code changes: `uv run pytest --cov` (full output, no tail)
+- Canonical test invocations live in the [Testing Standards Charter](TESTING.md); always use the module form (`uv run python -m pytest ...`)
+- After code changes, run the full suite with coverage (full output, no tail)
 - Never run `uv run build` or `uv run test` unless requested
-- For non-e2e tests, run specific package: `uv run pytest mvgeos-agent/tests/`
 - If you create or modify a test file, run it and iterate until it passes
 - **Use `;` (semicolon) to chain commands in PowerShell, not `&&`** — PowerShell does not support `&&`
 
@@ -70,25 +70,19 @@ MVGEOS IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https:/
 
 ## Testing
 
-- pytest framework with pytest-asyncio
-- 90%+ coverage target enforced by CI
-- Tests mirror source structure: `<package>/tests/unit/<module>.py` and `<package>/tests/integration/<module>.py` (e.g., `mvgeos-agent/tests/unit/types.py`)
-- Unit, harness, and integration test types supported
-- **Mock sync methods with `MagicMock()`, async methods with `AsyncMock()`** — mixing causes "coroutine never awaited" warnings
-- **Add coverage omit patterns for temp directories** in pyproject.toml to avoid "couldn't parse" warnings
-- **90% is practical ceiling** — 100% requires brittle mocks of external dependencies
-- **Test file naming**: use flat `*.py` naming (no `test_` prefix) in `tests/unit/` and `tests/integration/`. Configure pytest with `python_files = "*.py"`.
-- **Never add `__init__.py` to test directories** — with `--import-mode=importlib` every package's `tests/unit/types.py` collapses to the same dotted path and they silently shadow each other (one file's tests get collected three times, the others never run).
-- **E2E tests must use `nvidia/nemotron-3-ultra-550b-a55b:free`** — this is also the default model everywhere it applies (`mvgeos_cli.DEFAULT_MODEL`, `BaseMvge`, `CodingMvge`, CLI config default).
-- **Footer/status-line assertions must match a model-ID prefix**, not the full slug — `_fit_footer` truncates to console width.
-- **`_build_spells()` interface**: must use `self._runner` (not `self._state.rune_runner`) and return all spell types (rune spells from enabled runes only + builtin spells). Seeker is a rune — it only works through the rune/extension system, not as a built-in category.
-- **Watcher cleanup**: watchers are owned by `RuneLifecycle` — stop them via `lifecycle.shutdown()` (BaseMvge.close() does this; never reference a singular `_watcher`).
+Testing standards are defined in the [Testing Standards Charter](TESTING.md) — the single authority for how MvgeOS is tested. Its hard requirements:
+
+- **Two tiers only**: unit (`<package>/tests/unit/`) and integration (`<package>/tests/integration/`), mirroring source structure, flat file naming, never `__init__.py` in test dirs
+- **Hermetic suites**: no network, no real secrets, no wall-clock dependence; external seams mocked at dependency boundaries (HTTP clients, sleep, environment)
+- **Coverage floor**: 90% combined across unit + integration, enforced on bare full-suite runs via pyproject; pre-commit applies no coverage gate
+- **Skip policy**: env-guarded skips require a justified skip reason and are expected to be rare
 
 ## Debugging
 
-- **RuntimeWarning "coroutine never awaited"** = async mock used on sync method
+- **RuntimeWarning "coroutine never awaited"** = async mock used on sync method. Mock sync methods with `MagicMock()`, async methods with `AsyncMock()`
 - **CoverageWarning "couldn't parse"** = test creates temp files outside project; add to `[tool.coverage.run] omit`
 - **TUI tests fail silently** = check indentation of early returns in rendering loops
+- **Footer/status-line assertions must match a model-ID prefix**, not the full slug — `_fit_footer` truncates to console width
 
 ## Architecture
 
@@ -107,7 +101,8 @@ MvgeOS is a monorepo with uv workspaces:
 Config follows dotagents protocol at `~/.agents/.mvgeos/`.
 Rune/Extension manifest at `~/.agents/.mvgeos/runes/manifest.json`.
 
-Test paths follow pattern: `<package>/tests/unit/<module>.py` and `<package>/tests/integration/<module>.py` (e.g., `mvgeos-agent/tests/unit/types.py`).
+**`_build_spells()` interface**: must use `self._runner` (not `self._state.rune_runner`) and return all spell types (rune spells from enabled runes only + builtin spells). Seeker is a rune — it only works through the rune/extension system, not as a built-in category.
+**Watcher cleanup**: watchers are owned by `RuneLifecycle` — stop them via `lifecycle.shutdown()` (BaseMvge.close() does this; never reference a singular `_watcher`).
 
 **Terminology updates**: `ProviderRegistry` → `RealmRegistry` (Realm = provider abstraction). `Model.provider` field removed — provider derived from model ID prefix (e.g., `nvidia/nemotron` → provider = "nvidia").
 

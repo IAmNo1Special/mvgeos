@@ -40,7 +40,7 @@ Implemented as external rune at `~/.agents/.mvgeos/runes/00-seeker/`:
 ```bash
 cd C:\Users\ivmno\Desktop\mvgeos
 
-# Tests (must pass, 90%+ coverage target)
+# Tests (must pass, 90%+ coverage floor) — canonical invocations: root TESTING.md
 uv run python -m pytest --cov
 
 # Type checking (must pass)

@@ -18,18 +18,17 @@ pre-commit install
 
 ## Testing
 
+Testing standards are defined in [TESTING.md](TESTING.md). Canonical invocations use the module form (`uv run python -m pytest ...`) — on Windows, direct executable spawn is blocked by Application Control policy.
+
 ```bash
-# Run all tests
-uv run pytest
+# Full suite with the 90% combined coverage floor
+uv run python -m pytest --cov
 
-# Run with coverage
-uv run pytest --cov
-
-# Run tests for a specific package
-uv run pytest mvgeos-agent/tests/
+# One package, both tiers
+uv run python -m pytest mvgeos-agent/tests
 ```
 
-Target: 90%+ test coverage, all tests passing.
+Requirement: all tests passing, 90% combined coverage floor enforced via pyproject.
 
 ## Architecture Decision Records
 
