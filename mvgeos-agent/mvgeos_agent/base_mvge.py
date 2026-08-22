@@ -37,6 +37,7 @@ from mvgeos_agent.mvge_loop import MvgeLoop
 from mvgeos_agent.prompt_assembly import PromptAssembly
 from mvgeos_agent.rune_lifecycle import RuneLifecycle
 from mvgeos_agent.snapshot import RuntimeSnapshot
+from mvgeos_agent.tome_lifecycle import TomeLifecycle
 from mvgeos_agent.types import (
     AbortController,
     AbortSignal,
@@ -48,7 +49,6 @@ from mvgeos_agent.types import (
     MvgeState,
     QueueMode,
     SummonerRequest,
-    TomeResumeError,
 )
 
 
@@ -115,6 +115,7 @@ class BaseMvge:
         self._model_composer = ModelComposer(self._provider_registry)
         self._runner: RuneRunner | None = None
         self._rune_lifecycle: RuneLifecycle | None = None
+        self._tome_lifecycle: TomeLifecycle | None = None
         self._prompt_source = environment.resolved_prompt.source
         self._model: Model | None = None
         self._realm: Realm | None = None
@@ -333,34 +334,33 @@ class BaseMvge:
         return stream_fn
 
     async def initialize(self) -> None:
+        """Wire the lifecycle modules into a running agent.
+
+        Pure orchestration: rune loading (RuneLifecycle), tome creation
+        (TomeLifecycle), prompt assembly (PromptAssembly), and model
+        composition (ModelComposer); config parsing happened in __init__.
+        """
         if self._initialized:
             return
 
         await self._load_runes()
 
-        # Initialize tome ledger (needed for both new and resumed sessions)
-        self._tome_ledger = TomeLedger(self._tome_dir)
-
-        # Build the final system prompt through PromptAssembly, which fires
-        # BEFORE_MVGE_START exactly once and attaches the rune skill catalog.
+        self._tome_lifecycle = TomeLifecycle(TomeLedger(self._tome_dir), self._runner)
+        self._tome_ledger = self._tome_lifecycle.ledger
         final_prompt = await self._build_system_prompt_async()
-
         self._model, self._realm = self._model_composer.compose(
             self._model_id, self._api_key, self._provider_name
         )
+        self._agent_tome = await self._tome_lifecycle.open_or_create(self._tome_resume)
 
-        if self._tome_resume:
-            meta = self._tome_ledger.open_tome(self._tome_resume)
-            if meta is None:
-                raise TomeResumeError(self._tome_resume)
-            self._agent_tome = MvgeTome(self._tome_ledger, meta, self._runner)
-            await self._agent_tome.start(reason="resume")
+        self._wire_runtime(final_prompt)
+        self._initialized = True
 
-        if self._agent_tome is None:
-            meta = self._tome_ledger.create_tome(str(Path.cwd()))
-            self._agent_tome = MvgeTome(self._tome_ledger, meta, self._runner)
-            await self._agent_tome.start(reason="startup")
-
+    def _wire_runtime(self, final_prompt: str) -> None:
+        """Construct MvgeState and MvgeHarness from the wired collaborators."""
+        assert self._model is not None
+        assert self._realm is not None
+        assert self._agent_tome is not None
         self._state = MvgeState(
             system_prompt=final_prompt,
             prompt_source=self._prompt_source,
@@ -378,7 +378,6 @@ class BaseMvge:
             event_bus=self._event_bus,
         )
 
-        assert self._agent_tome is not None
         self._harness = MvgeHarness(
             state=self._state,
             tome=self._agent_tome,
@@ -388,8 +387,6 @@ class BaseMvge:
         )
         self._loop = self._harness.loop
         self._compaction = self._harness.compaction
-
-        self._initialized = True
 
     async def _load_runes(self) -> None:
         """Load runes from all three levels (global, agent, project)."""
@@ -463,6 +460,7 @@ class BaseMvge:
         if self._rune_lifecycle is not None:
             await self._rune_lifecycle.shutdown()
             self._rune_lifecycle = None
+        self._tome_lifecycle = None
         if self._realm is not None:
             await self._realm.close()
             self._realm = None
