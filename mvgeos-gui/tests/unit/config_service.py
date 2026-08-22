@@ -73,7 +73,10 @@ class TestConfigService:
 
     def test_save_and_load_app_settings(self, tmp_path: Path) -> None:
         service = ConfigService(config_dir=tmp_path)
-        with patch("mvgeos_gui.config_service._save_api_key_to_keyring") as mock_save:
+        with patch(
+            "mvgeos_gui.config_service._save_api_key_to_keyring",
+            return_value=True,
+        ) as mock_save:
             service.save_app_settings(AppSettings(api_key="sk-123", mana_limit=2048))
 
         with patch(
@@ -120,7 +123,10 @@ class TestConfigService:
 
     def test_partial_update_preserves_other_keys(self, tmp_path: Path) -> None:
         service = ConfigService(config_dir=tmp_path)
-        with patch("mvgeos_gui.config_service._save_api_key_to_keyring"):
+        with patch(
+            "mvgeos_gui.config_service._save_api_key_to_keyring",
+            return_value=True,
+        ):
             service.save_app_settings(AppSettings(api_key="sk-123", mana_limit=2048))
 
         with patch(
@@ -137,18 +143,42 @@ class TestConfigService:
     def test_api_key_not_written_to_file(self, tmp_path: Path) -> None:
         """Verify the API key is never persisted to the JSON file."""
         service = ConfigService(config_dir=tmp_path)
-        with patch("mvgeos_gui.config_service._save_api_key_to_keyring"):
+        with patch(
+            "mvgeos_gui.config_service._save_api_key_to_keyring",
+            return_value=True,
+        ):
             service.save_app_settings(AppSettings(api_key="secret-key"))
 
         data = json.loads((tmp_path / "gui.json").read_text(encoding="utf-8"))
         assert "api_key" not in data
+
+    def test_api_key_falls_back_to_file_when_keyring_unavailable(
+        self, tmp_path: Path
+    ) -> None:
+        """Without a usable keyring backend the key must persist to the
+        owner-only config file instead of being silently lost."""
+        service = ConfigService(config_dir=tmp_path)
+        with patch(
+            "mvgeos_gui.config_service._save_api_key_to_keyring",
+            return_value=False,
+        ):
+            service.save_app_settings(AppSettings(api_key="sk-fallback"))
+
+        data = json.loads((tmp_path / "gui.json").read_text(encoding="utf-8"))
+        assert data["api_key"] == "sk-fallback"
+
+        loaded = service.load_app_settings()
+        assert loaded.api_key == "sk-fallback"
 
     def test_backfill_api_key_from_keyring(self, tmp_path: Path) -> None:
         """Verify API key is loaded from keyring when missing from file."""
         service = ConfigService(config_dir=tmp_path)
 
         # Save settings without keyring having the key
-        with patch("mvgeos_gui.config_service._save_api_key_to_keyring"):
+        with patch(
+            "mvgeos_gui.config_service._save_api_key_to_keyring",
+            return_value=True,
+        ):
             service.save_app_settings(AppSettings(mana_limit=2048))
 
         # Now simulate keyring having the key

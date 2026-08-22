@@ -62,17 +62,20 @@ def _load_api_key_from_keyring() -> str | None:
     return None
 
 
-def _save_api_key_to_keyring(api_key: str) -> None:
+def _save_api_key_to_keyring(api_key: str) -> bool:
     """Persist the OpenRouter API key to the OS keyring.
 
-    Silently ignored if the keyring backend is unavailable.
+    Returns True on success, False if no usable keyring backend exists.
     """
     if not api_key:
-        return
-    with contextlib.suppress(Exception):
+        return True
+    try:
         import keyring
 
         keyring.set_password(_KEYRING_SERVICE, _KEYRING_API_KEY_USERNAME, api_key)
+    except Exception:
+        return False
+    return True
 
 
 def _delete_api_key_from_keyring() -> None:
@@ -167,15 +170,20 @@ class ConfigService:
 
         merged = {**existing, **self._settings_to_dict(settings)}
 
-        # The API key is stored in the OS keyring, not in the JSON file.
-        # Remove it from the file payload if present.
+        # The API key lives in the OS keyring when one is available; it
+        # never touches disk unless the backend is missing.
         merged.pop(_API_KEY_FIELD, None)
 
-        # Persist the API key to the OS keyring.
         if settings.api_key:
-            _save_api_key_to_keyring(settings.api_key)
+            stored_in_keyring = _save_api_key_to_keyring(settings.api_key)
         else:
             _delete_api_key_from_keyring()
+            stored_in_keyring = True
+
+        if not stored_in_keyring:
+            # No usable keyring backend: fall back to the owner-only
+            # config file rather than silently losing the key.
+            merged[_API_KEY_FIELD] = settings.api_key
 
         self.app_settings_path.write_text(
             json.dumps(merged, indent=2), encoding="utf-8"
