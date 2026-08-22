@@ -77,6 +77,8 @@ jobs:
 
   changelog:
     needs: verify
+    # Dry runs must not mutate the repo; mirrors the Create Release guard
+    if: github.event.inputs.dry_run != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
