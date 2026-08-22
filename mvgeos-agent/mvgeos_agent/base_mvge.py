@@ -21,7 +21,6 @@ from mvgeos_runes.types import (
     RuneContext,
     RuneScope,
     RuneShortcut,
-    SigilHook,
     SkillDiagnostic,
     SpellDefinition,
 )
@@ -44,6 +43,7 @@ from mvgeos_agent.harness import (
     MvgeHarness,
 )
 from mvgeos_agent.mvge_loop import MvgeLoop
+from mvgeos_agent.prompt_assembly import PromptAssembly
 from mvgeos_agent.snapshot import RuntimeSnapshot
 from mvgeos_agent.types import (
     AbortController,
@@ -248,40 +248,24 @@ class BaseMvge:
         self, body: str, spell_names: list[str], guidelines: list[str]
     ) -> str:
         """Render a prompt with body, spells, guidelines, and environment."""
-        from mvgeos_agent.prompt_config import _render_prompt as render_p
-
         cwd = str(getattr(self._config_manager, "_project_dir", "") or Path.cwd())
-        return render_p(body=body, spells=spell_names, guidelines=guidelines, cwd=cwd)
+        return PromptAssembly(cwd=cwd, runner=self._runner).render(
+            body, spell_names, guidelines
+        )
 
     async def _build_system_prompt_async(self) -> str:
         """Async version that supports rune prompt injection via sigil hooks.
         Override in subclass for async prompt building with rune injection.
         Default delegates to sync version for backward compatibility.
         """
-        if self._runner is not None:
-            prompt_data: dict[str, Any] = {
-                "base_prompt": self._build_system_prompt(),
-                "spell_names": [],
-                "config_dir": str(self.config_dir) if self.config_dir else "",
-                "custom_prompt": getattr(self, "_custom_system_prompt", ""),
-                "agent_name": self._name,
-                "cwd": str(Path.cwd()),
-            }
-            prompt_data = await self._runner.emit_chain(
-                SigilHook.BEFORE_MVGE_START, prompt_data
-            )
-            base_prompt = str(
-                prompt_data.get("base_prompt", self._build_system_prompt())
-            )
-
-            # Inject skill catalog if not suppressed
-            if not self._runner.is_skill_catalog_suppressed():
-                skill_catalog = self._runner.get_skill_catalog()
-                if skill_catalog:
-                    base_prompt = f"{base_prompt}\n\n{skill_catalog}"
-
-            return base_prompt
-        return self._build_system_prompt()
+        return await PromptAssembly(
+            base_prompt=self._build_system_prompt(),
+            agent_name=self._name,
+            config_dir=self.config_dir,
+            custom_prompt=getattr(self, "_custom_system_prompt", ""),
+            cwd=Path.cwd(),
+            runner=self._runner,
+        ).assemble()
 
     async def _run_impl(self) -> MvgeInvocation:
         """Default implementation using the harness."""
@@ -367,23 +351,9 @@ class BaseMvge:
         # Initialize tome ledger (needed for both new and resumed sessions)
         self._tome_ledger = TomeLedger(self._tome_dir)
 
-        # Emit BEFORE_MVGE_START to allow runes to inject prompt additions
-        base_prompt = await self._build_system_prompt_async()
-        prompt_data: dict[str, Any] = {
-            "base_prompt": base_prompt,
-            "spell_names": [],
-            "config_dir": str(self.config_dir) if self.config_dir else "",
-            "custom_prompt": getattr(self, "_custom_system_prompt", ""),
-            "agent_name": self._name,
-            "cwd": str(Path.cwd()),
-        }
-        if self._runner is not None:
-            prompt_data = await self._runner.emit_chain(
-                SigilHook.BEFORE_MVGE_START, prompt_data
-            )
-
-        # Build final system prompt from prompt_data (may have been modified by runes)
-        final_prompt = str(prompt_data.get("base_prompt", base_prompt))
+        # Build the final system prompt through PromptAssembly, which fires
+        # BEFORE_MVGE_START exactly once and attaches the rune skill catalog.
+        final_prompt = await self._build_system_prompt_async()
 
         self._model, self._realm = self._model_composer.compose(
             self._model_id, self._api_key, self._provider_name
