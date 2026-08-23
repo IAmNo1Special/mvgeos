@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-08-23
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (18c4f74)
+
+- **release:** v1.1.0 (a4edd7c)
+
+
+### Documentation
+
+- **architecture:** amend ADR-0008 to the shipped GUI pipeline (f9ea325)
+
+
+### Features
+
+- **gui:** wire settings modals into shell and live Mvge status light (421d766)
+
+
+### Refactoring
+
+- **gui:** remove dead UI pipeline and port composer tests (6717f66)
+
+
+### Tests
+
+- add model_registry/sandbox coverage, ratchet floor to 84 (aea8444)
+
+- cover conversation_view/home_screen/sessions_panel/input_dock helpers, ratchet floor to 85 (232692f)
+
+- cover message_parts/diff_review/config_manager, ratchet floor to 86 (cf8fdd2)
+
+- add input_dock full render and state extra coverage (97ef41b)
+
+- cover input_dock icon helpers and chat_panel side panels (f8d617f)
+
+
 ## [1.0.1] - 2026-08-23
 
 
