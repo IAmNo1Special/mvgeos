@@ -53,7 +53,7 @@ jobs:
 
   # Aggregates the per-leg data files and enforces the combined floor.
   # The floor lives only in pyproject [tool.coverage.report]
-  # fail_under = 90; `coverage report` reads it from there.
+  # fail_under; `coverage report` reads it from there.
   coverage:
     needs: test
     runs-on: ubuntu-latest
@@ -71,7 +71,7 @@ jobs:
           merge-multiple: true
       - name: Combine coverage across packages
         run: uv run python -m coverage combine coverage-data
-      - name: Enforce combined coverage floor (>= 90%)
+      - name: Enforce the combined coverage floor
         run: uv run python -m coverage report
 
   lint:

@@ -103,15 +103,19 @@ addopts = "--import-mode=importlib -W ignore::RuntimeWarning"
 
 [tool.coverage.run]
 branch = true
-# Omit patterns are evidence-based: each entry corresponds to out-of-tree
-# code observed in the bare-run report (charter section 2). The user-scope
-# rune dir catches real runes imported during tests; the Temp patterns
-# cover pytest tmp_path artifacts on Windows and Linux respectively.
-omit = [
-    "*/AppData/Local/Temp/**",
-    "*/tmp*/**",
-    "*/.agents/.mvgeos/runes/*",
+# Measure first-party source only. Test files are verification artifacts,
+# not shipped code; counting their near-100% lines inflated the denominator
+# and hid gaps in src/. Out-of-tree code (user runes, tmp_path artifacts)
+# is excluded by construction because it lives outside these packages.
+source = [
+    "coding_mvge",
+    "mvgeos_agent",
+    "mvgeos_provider",
+    "mvgeos_tome",
+    "mvgeos_runes",
+    "mvgeos_cli",
+    "mvgeos_gui",
 ]
 
 [tool.coverage.report]
-fail_under = 90
+fail_under = 82

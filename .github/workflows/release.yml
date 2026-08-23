@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   # Verification gate: red code cannot ship. Bare full-suite run so the
-  # pyproject [tool.coverage.report] fail_under = 90 floor applies
+  # pyproject [tool.coverage.report] pyproject coverage floor applies
   # (TESTING.md sections 3 and 6). Both publish jobs below depend on this.
   verify:
     runs-on: ubuntu-latest
@@ -33,7 +33,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --all-packages
-      - name: Full suite with combined coverage floor (>= 90%)
+      - name: Full suite with the combined coverage floor
         run: uv run python -m pytest --cov
 
   release:

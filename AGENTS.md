@@ -74,7 +74,7 @@ Testing standards are defined in the [Testing Standards Charter](TESTING.md) —
 
 - **Two tiers only**: unit (`<package>/tests/unit/`) and integration (`<package>/tests/integration/`), mirroring source structure, flat file naming, never `__init__.py` in test dirs
 - **Hermetic suites**: no network, no real secrets, no wall-clock dependence; external seams mocked at dependency boundaries (HTTP clients, sleep, environment)
-- **Coverage floor**: 90% combined across unit + integration, enforced on bare full-suite runs via pyproject; pre-commit applies no coverage gate
+- **Coverage floor**: enforced on bare full-suite runs via pyproject, measured over first-party source only (branch coverage); pre-commit applies no coverage gate
 - **Skip policy**: env-guarded skips require a justified skip reason and are expected to be rare
 
 ## Debugging

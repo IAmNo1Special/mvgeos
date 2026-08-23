@@ -58,12 +58,14 @@ pyproject to avoid "couldn't parse" coverage warnings.
 
 ## 3. Coverage floors
 
-- The hermetic whole — unit + integration combined — must clear **90%**
+- The hermetic whole — unit + integration combined — must clear **82%**
   coverage measured with branch analysis enabled
-  (`[tool.coverage.run] branch = true` in pyproject). Branch coverage is the
-  floor's unit of account: untested `else` arms and error paths count, which
-  statement coverage hides.
-- The floor is enforced through `[tool.coverage.report] fail_under = 90` in
+  (`[tool.coverage.run] branch = true`) over first-party source only
+  (`[tool.coverage.run] source` lists the seven workspace packages). Test
+  files are verification artifacts, not shipped code; counting their
+  near-100% lines inflated the denominator and hid gaps in `src/`. The
+  floor is a ratchet: it rises as measured gaps close and never falls.
+- The floor is enforced through `[tool.coverage.report] fail_under = 82` in
   pyproject — exactly one number and one enforcement point; do not add
   per-tier floors. Locally, a bare full-suite run (`pytest --cov`) applies
   it. In CI, per-package matrix legs measure coverage with the gate disabled
@@ -74,8 +76,9 @@ pyproject to avoid "couldn't parse" coverage warnings.
   no `--cov-fail-under`. Staged-work feedback measures correctness, not
   coverage.
 - Rationale: the floor exists to keep pressure on untested code without
-  demanding brittle mocks of external dependencies. 90% is the practical
-  ceiling; chasing 100% costs more than it catches.
+  demanding brittle mocks of external dependencies. The number is the
+  honest measured baseline of first-party source, not an aspiration; it
+  ratchets up as gaps close.
 
 ## 4. Skip policy
 
@@ -103,7 +106,7 @@ exists to prevent. (Ruff is exempt: subpackages inherit via
 `extend = "../pyproject.toml"`.)
 
 ```powershell
-# Full suite with the 90% combined coverage floor (bare run)
+# Full suite with the coverage floor (bare run)
 uv run python -m pytest --cov
 
 # One package, both tiers
@@ -124,12 +127,12 @@ Run the full output — no tail truncation. Chain commands in PowerShell with
 
 | Requirement | Enforced by | When |
 | --- | --- | --- |
-| Hermetic unit + integration run with 90% combined floor | CI per-package matrix (`pytest --cov` per leg) plus an aggregate job (`coverage combine`, then `coverage report` against pyproject `fail_under = 90`) | every push to `main` and PR |
+| Hermetic unit + integration run with the combined coverage floor | CI per-package matrix (`pytest --cov` per leg) plus an aggregate job (`coverage combine`, then `coverage report` against pyproject `fail_under`) | every push to `main` and PR |
 | Lint, format, types | CI lint job (`ruff check`, `ruff format --check`, `mypy .`) | every push to `main` and PR |
 | Fast staged-work checks (lint, format, types, unit tests) | pre-commit hooks | every local commit |
 | Release-time full verification (full suite + coverage floor) | release workflow | every `v*` tag |
 
-The CI contract: CI runs the hermetic unit+integration suite with a 90%
-combined coverage floor on every push and pull request; the release workflow
-performs full verification at tag time; pre-commit provides fast feedback on
+The CI contract: CI runs the hermetic unit+integration suite with the
+first-party-source coverage floor on every push and pull request; the release
+workflow performs full verification at tag time; pre-commit provides fast feedback on
 staged work without any coverage gating.
