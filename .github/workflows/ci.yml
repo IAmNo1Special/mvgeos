@@ -86,3 +86,95 @@ jobs:
       - run: uv run ruff check
       - run: uv run ruff format --check
       - run: uv run mypy .
+
+  # Release automation: needs IS the wait-for-green. This job only starts
+  # once test + coverage + lint all succeeded, so every tag sits on verified
+  # code by construction. Pushes a chore(release) commit + v* tag that hands
+  # off to release.yml for suite re-verification and publication. PR runs
+  # and the bot's own release commits skip via the if guard below.
+  bump:
+    needs: [test, coverage, lint]
+    if: >-
+      github.event_name == 'push' &&
+      !contains(github.event.head_commit.message, 'chore(release):')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Determine bump type from commits since last tag
+        id: bump_type
+        run: |
+          if LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null); then
+            RANGE="${LAST_TAG}..HEAD"
+            SUBJECTS=$(git log --format=%s "$RANGE")
+            BODIES=$(git log --format=%b "$RANGE")
+          else
+            # No tags yet: scan the entire history
+            SUBJECTS=$(git log --format=%s)
+            BODIES=$(git log --format=%b)
+          fi
+
+          # Conventional Commits -> SemVer (mirrors cliff.toml parsers):
+          #   feat!:/fix!: or BREAKING CHANGE footer -> major
+          #   feat:                                  -> minor
+          #   fix:/perf:                             -> patch
+          #   docs/test/ci/chore/refactor/build only -> no release
+          if echo "$SUBJECTS" | grep -Eq '^[a-z]+(\([^)]*\))?!:' ||
+             echo "$BODIES" | grep -Eq '^BREAKING[ -]CHANGE:'; then
+            TYPE=major
+          elif echo "$SUBJECTS" | grep -Eq '^feat(\(|:)'; then
+            TYPE=minor
+          elif echo "$SUBJECTS" | grep -Eq '^(fix|perf)(\(|:)'; then
+            TYPE=patch
+          else
+            TYPE=none
+          fi
+
+          echo "type=$TYPE" >> "$GITHUB_OUTPUT"
+          echo "Bump type since last tag: $TYPE"
+
+      - name: Bump workspace versions
+        if: steps.bump_type.outputs.type != 'none'
+        id: bump
+        env:
+          BUMP_TYPE: ${{ steps.bump_type.outputs.type }}
+        run: |
+          for pkg in mvgeos mvgeos-agent mvgeos-provider mvgeos-tome \
+                     mvgeos-runes mvgeos-cli mvgeos-gui coding-mvge; do
+            uv version --bump "$BUMP_TYPE" --package "$pkg" --no-sync
+          done
+
+          NEW_VERSION="$(uv version --short)"
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "New version: $NEW_VERSION"
+
+      - name: Commit, tag, and push
+        if: steps.bump_type.outputs.type != 'none'
+        env:
+          NEW_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add pyproject.toml uv.lock \
+            mvgeos-agent/pyproject.toml mvgeos-provider/pyproject.toml \
+            mvgeos-tome/pyproject.toml mvgeos-runes/pyproject.toml \
+            mvgeos-cli/pyproject.toml mvgeos-gui/pyproject.toml \
+            coding-mvge/pyproject.toml
+
+          git commit -m "chore(release): v$NEW_VERSION"
+          git tag "v$NEW_VERSION"
+
+          # Deliberately no [skip ci]: the pushed tag must still fire
+          # release.yml. Loop safety comes from the job-level guard above --
+          # the re-triggered run's bump job skips on its own head_commit.
+          git push origin main
+          git push origin "v$NEW_VERSION"

@@ -125,6 +125,7 @@ Rune/Extension manifest at `~/.agents/.mvgeos/runes/manifest.json`.
 ## Changelog & Releases
 
 - **git-cliff** configured at `cliff.toml` — generates CHANGELOG.md from conventional commits
+- **Automated version bumps**: `bump` job in `.github/workflows/ci.yml` — runs after `test`/`coverage`/`lint` pass on pushes to `main`, scans commits since last tag (`feat`→minor, `fix`/`perf`→patch, `!`/`BREAKING CHANGE`→major; `docs`/`test`/`ci`/etc. produce no bump), bumps all workspace packages in lockstep via `uv version --bump --package` + `uv.lock`, and pushes `chore(release): vX.Y.Z` + `v*` tag that triggers `release.yml`
 - **Release workflow**: `.github/workflows/release.yml` — triggers on `v*` tags or manual dispatch
 - **Conventional commits required**: `feat(scope):`, `fix(scope):`, `perf(scope):`, `refactor(scope):`, `docs(scope):`, `test(scope):`, `build(scope):`, `ci(scope):`, `chore(scope):`, `revert(scope):`
 - **Breaking changes**: include `BREAKING CHANGE:` in commit body
