@@ -1,21 +1,44 @@
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from mvgeos_agent import MvgeSandbox
 
 from mvgeos_runes.rune_api import RuneAPI
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
+    Sandbox,
     SigilHook,
     SpellDefinition,
 )
 
 
+class StubSandbox:
+    """Sandbox test double satisfying the runes Sandbox protocol."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, set[str] | None]] = []
+
+    def execute_code(
+        self,
+        code_str: str,
+        context_globals: dict[str, Any] | None = None,
+        timeout_seconds: float = 5.0,
+        allowed_modules: set[str] | None = None,
+    ) -> dict[str, Any]:
+        self.calls.append((code_str, allowed_modules))
+        return {"x": 3}
+
+
 @pytest.fixture
-def runner() -> RuneRunner:
-    return RuneRunner()
+def sandbox() -> StubSandbox:
+    return StubSandbox()
+
+
+@pytest.fixture
+def runner(sandbox: StubSandbox) -> RuneRunner:
+    return RuneRunner(sandbox_factory=lambda: sandbox)
 
 
 @pytest.fixture
@@ -141,16 +164,21 @@ class TestRuneAPIEventBus:
 
 
 class TestRuneAPISandbox:
-    def test_sandbox_property_returns_mvge_sandbox(
-        self, api: RuneAPI, runner: RuneRunner
+    def test_sandbox_property_returns_injected_sandbox(
+        self, api: RuneAPI, runner: RuneRunner, sandbox: StubSandbox
     ) -> None:
-        sandbox = api.sandbox
-        assert isinstance(sandbox, MvgeSandbox)
-        assert sandbox is runner.sandbox
+        assert isinstance(api.sandbox, Sandbox)
+        assert api.sandbox is sandbox
+        assert api.sandbox is runner.sandbox
 
-    def test_sandbox_execute_code_works(self, api: RuneAPI) -> None:
+    def test_sandbox_execute_code_delegates(self, api: RuneAPI) -> None:
         result = api.sandbox.execute_code(
             "x = 1 + 2",
             allowed_modules=set(),
         )
         assert result == {"x": 3}
+
+    def test_sandbox_without_factory_raises(self) -> None:
+        runner = RuneRunner()
+        with pytest.raises(RuntimeError, match="No sandbox configured"):
+            _ = runner.sandbox

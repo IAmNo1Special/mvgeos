@@ -2,13 +2,28 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, get_type_hints
+from typing import TYPE_CHECKING, Any, Protocol, get_type_hints, runtime_checkable
 
 if TYPE_CHECKING:
-    from mvgeos_agent.types import (
-        AbortSignal,
-        MvgeInvocation,
-    )
+    from mvgeos_agent.types import MvgeInvocation
+    from mvgeos_provider.types import AbortSignal
+
+
+@runtime_checkable
+class Sandbox(Protocol):
+    """Structural type for the code-execution sandbox handed to runes.
+
+    The agent layer supplies the concrete implementation (MvgeSandbox);
+    runes and the runner depend only on this shape.
+    """
+
+    def execute_code(
+        self,
+        code_str: str,
+        context_globals: dict[str, Any] | None = None,
+        timeout_seconds: float = 5.0,
+        allowed_modules: set[str] | None = None,
+    ) -> dict[str, Any]: ...
 
 
 class SigilHook(StrEnum):

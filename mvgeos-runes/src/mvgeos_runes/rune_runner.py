@@ -4,16 +4,10 @@ import asyncio
 import contextlib
 import logging
 import traceback
-from collections.abc import Awaitable
-from typing import TYPE_CHECKING, Any
+from collections.abc import Awaitable, Callable
+from typing import Any
 
-if TYPE_CHECKING:
-    from mvgeos_agent.sandbox import MvgeSandbox
-
-    from mvgeos_runes.rune_api import RuneAPI, RuneFactory
-else:
-    from mvgeos_runes.rune_api import RuneAPI, RuneFactory
-
+from mvgeos_runes.rune_api import RuneAPI, RuneFactory
 from mvgeos_runes.sigils import SigilRegistry
 from mvgeos_runes.types import (
     Diagnostic,
@@ -23,6 +17,7 @@ from mvgeos_runes.types import (
     RuneLoad,
     RuneManifest,
     RuneShortcut,
+    Sandbox,
     SigilHook,
     SkillDiagnostic,
     SkillLoad,
@@ -80,7 +75,7 @@ async def _safe_call_handler_async(
 
 
 class RuneRunner:
-    def __init__(self) -> None:
+    def __init__(self, sandbox_factory: Callable[[], Sandbox] | None = None) -> None:
         self._sigils = SigilRegistry()
         self._spells: dict[str, SpellDefinition] = {}
         self._commands: dict[str, RegisteredCommand] = {}
@@ -90,7 +85,10 @@ class RuneRunner:
         self._message_queue: list[str] = []
         self._session_name: str | None = None
         self._event_handlers: dict[str, list[Any]] = {}
-        self._sandbox: Any | None = None
+        # The sandbox is supplied by the embedding layer (the agent package
+        # injects MvgeSandbox); runes depends only on the Sandbox protocol.
+        self._sandbox_factory = sandbox_factory
+        self._sandbox: Sandbox | None = None
         self._loaded_manifests: list[RuneManifest] = []
         self._diagnostics: list[Diagnostic] = []
         self._loaded_rune_names: set[str] = set()
@@ -111,11 +109,13 @@ class RuneRunner:
         return self._context
 
     @property
-    def sandbox(self) -> MvgeSandbox:
+    def sandbox(self) -> Sandbox:
         if self._sandbox is None:
-            from mvgeos_agent.sandbox import MvgeSandbox
-
-            self._sandbox = MvgeSandbox()
+            if self._sandbox_factory is None:
+                raise RuntimeError(
+                    "No sandbox configured; pass sandbox_factory to RuneRunner"
+                )
+            self._sandbox = self._sandbox_factory()
         return self._sandbox
 
     @property

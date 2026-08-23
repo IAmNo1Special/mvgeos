@@ -4,13 +4,12 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from mvgeos_agent.sandbox import MvgeSandbox
-
     from mvgeos_runes.rune_runner import RuneRunner
 
 from mvgeos_runes.types import (
     RegisteredCommand,
     RuneShortcut,
+    Sandbox,
     SigilHook,
     SkillManifest,
     SpellDefinition,
@@ -25,7 +24,7 @@ class RuneAPI:
         self._rune_name = rune_name
 
     @property
-    def sandbox(self) -> MvgeSandbox:
+    def sandbox(self) -> Sandbox:
         return self._runner.sandbox
 
     def on(self, hook: SigilHook, handler: Any) -> None:

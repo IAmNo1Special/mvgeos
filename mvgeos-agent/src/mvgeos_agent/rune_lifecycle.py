@@ -27,6 +27,7 @@ from mvgeos_runes.types import (
 from mvgeos_runes.watcher import RuneWatcher
 
 from mvgeos_agent.environment import MvgeEnvironment
+from mvgeos_agent.sandbox import MvgeSandbox
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +177,7 @@ class RuneLifecycle:
 
     def _ensure_runner(self) -> RuneRunner:
         if self._runner is None:
-            self._runner = RuneRunner()
+            self._runner = RuneRunner(sandbox_factory=MvgeSandbox)
             self._runner.bind_context(
                 RuneContext(
                     cwd=self._cwd,
