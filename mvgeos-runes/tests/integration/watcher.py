@@ -257,6 +257,57 @@ class TestRuneReloadHandler:
 
 class TestRuneWatcherStartStop:
     @pytest.mark.asyncio
+    async def test_event_on_foreign_thread_schedules_reload(self) -> None:
+        """Watchdog dispatches events on its own thread; scheduling must work there."""
+        import threading
+
+        from mvgeos_runes.watcher import RuneWatcher
+
+        callback_hit = threading.Event()
+
+        async def callback(name: str) -> None:
+            callback_hit.set()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            rune_dir = ext_dir / "test_rune"
+            rune_dir.mkdir()
+            (rune_dir / "main.py").write_text("x", encoding="utf-8")
+
+            runner = MagicMock()
+            watcher = RuneWatcher(ext_dir, runner)
+            watcher._reload_rune = callback  # type: ignore[method-assign]
+            await watcher.start()
+            assert watcher._handler is not None
+
+            thread_error: list[BaseException] = []
+
+            def observer_side() -> None:
+                """Replicate watchdog: fire the handler off-loop."""
+                try:
+                    event = MagicMock()
+                    event.is_directory = False
+                    event.src_path = str(rune_dir / "main.py")
+                    watcher._handler.on_modified(event)
+                except BaseException as exc:  # noqa: BLE001
+                    thread_error.append(exc)
+
+            thread = threading.Thread(target=observer_side)
+            thread.start()
+            thread.join(timeout=5)
+
+            assert thread_error == [], (
+                f"handler raised on observer thread: {thread_error!r}"
+            )
+            # The scheduled coroutine runs on OUR loop; yield so it can.
+            for _ in range(100):
+                if callback_hit.is_set():
+                    break
+                await asyncio.sleep(0.01)
+            assert callback_hit.is_set(), "callback never ran"
+            await watcher.stop()
+
+    @pytest.mark.asyncio
     async def test_start_creates_observer(self) -> None:
         runner = RuneRunner()
         with tempfile.TemporaryDirectory() as tmpdir:

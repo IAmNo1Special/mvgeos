@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable
+from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
 
@@ -22,13 +23,18 @@ class _RuneReloadHandler(FileSystemEventHandler):
         extensions_dir: Path,
         reload_callback: Any,
         debounce_seconds: float = 0.5,
+        loop: asyncio.AbstractEventLoop | None = None,
     ) -> None:
         super().__init__()
         self._extensions_dir = extensions_dir
         self._callback = reload_callback
         self._debounce_seconds = debounce_seconds
         self._pending: set[str] = set()
-        self._debounce_task: asyncio.Task[Any] | None = None
+        self._debounce_future: Future[Any] | None = None
+        # Watchdog dispatches events on its own thread; scheduling must go
+        # through run_coroutine_threadsafe onto the loop the watcher was
+        # started from. Without a loop there is nothing to schedule on.
+        self._loop = loop
 
     def _schedule_reload(self, rune_name: str) -> None:
         self._pending.add(rune_name)
@@ -43,9 +49,18 @@ class _RuneReloadHandler(FileSystemEventHandler):
                 except Exception:
                     logger.exception("Failed to reload rune %s", name)
 
-        if self._debounce_task is not None and not self._debounce_task.done():
-            self._debounce_task.cancel()
-        self._debounce_task = asyncio.create_task(_debounced())
+        loop = self._loop
+        if loop is None:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                logger.debug(
+                    "No event loop available; dropping reload of %s", rune_name
+                )
+                return
+        if self._debounce_future is not None and not self._debounce_future.done():
+            self._debounce_future.cancel()
+        self._debounce_future = asyncio.run_coroutine_threadsafe(_debounced(), loop)
 
     def _find_rune_dir(self, path: str) -> str | None:
         src_path = Path(path)
@@ -86,6 +101,7 @@ class RuneWatcher:
         self._runner = runner
         self._observer: Any = None
         self._handler: _RuneReloadHandler | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     async def _reload_rune(self, rune_name: str) -> None:
         rune_dir = self._extensions_dir / rune_name
@@ -116,7 +132,10 @@ class RuneWatcher:
         if self._observer is not None:
             return
 
-        self._handler = _RuneReloadHandler(self._extensions_dir, self._reload_rune)
+        self._loop = asyncio.get_running_loop()
+        self._handler = _RuneReloadHandler(
+            self._extensions_dir, self._reload_rune, loop=self._loop
+        )
         self._observer = Observer()
         self._observer.schedule(
             self._handler, str(self._extensions_dir), recursive=True
