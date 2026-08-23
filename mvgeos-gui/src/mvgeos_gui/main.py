@@ -7,6 +7,7 @@ import ctypes
 import platform
 from pathlib import Path
 
+import webview
 from nicegui import app, ui
 
 from mvgeos_gui.app import init_app
@@ -33,8 +34,6 @@ def calculate_initial_window_geometry(
         tuple[int, int, int | None, int | None]: (width, height, x, y)
     """
     try:
-        import webview
-
         screens = getattr(webview, "screens", None)
         if screens:
             primary = screens[0]

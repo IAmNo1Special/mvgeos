@@ -5,9 +5,12 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+import keyring
 
 _KEYRING_SERVICE = "mvgeos"
 _KEYRING_API_KEY_USERNAME = "openrouter_api_key"
@@ -54,8 +57,6 @@ def _load_api_key_from_keyring() -> str | None:
     Returns None if the keyring is unavailable or the key is not stored.
     """
     with contextlib.suppress(Exception):
-        import keyring
-
         key = keyring.get_password(_KEYRING_SERVICE, _KEYRING_API_KEY_USERNAME)
         if key:
             return key
@@ -70,8 +71,6 @@ def _save_api_key_to_keyring(api_key: str) -> bool:
     if not api_key:
         return True
     try:
-        import keyring
-
         keyring.set_password(_KEYRING_SERVICE, _KEYRING_API_KEY_USERNAME, api_key)
     except Exception:
         return False
@@ -85,8 +84,6 @@ def _delete_api_key_from_keyring() -> None:
     is not present.
     """
     with contextlib.suppress(Exception):
-        import keyring
-
         keyring.delete_password(_KEYRING_SERVICE, _KEYRING_API_KEY_USERNAME)
 
 
@@ -102,8 +99,6 @@ def _set_config_file_permissions(path: Path) -> None:
         if os.name == "posix":
             os.chmod(path, 0o600)
         elif os.name == "nt":
-            import subprocess
-
             with contextlib.suppress(Exception):
                 subprocess.run(
                     [
