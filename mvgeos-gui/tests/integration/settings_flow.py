@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 from nicegui import ui
+from nicegui.testing import User
 
+from mvgeos_gui.app import build_page
 from mvgeos_gui.components.settings_modal import render_app_settings_modal
 from mvgeos_gui.components.workspace_settings_modal import (
     render_workspace_settings_modal,
@@ -103,3 +105,35 @@ async def test_open_workspace_settings_closes_app_settings(tmp_path: Path) -> No
     state.open_workspace_settings()
     assert state._show_workspace_settings is True
     assert state._show_app_settings is False
+
+
+@pytest.mark.asyncio
+async def test_shell_renders_app_settings_modal(user: User, tmp_path: Path) -> None:
+    """Verify build_page wires the app settings modal into the shell overlays."""
+    state = _make_app_state(tmp_path)
+
+    @ui.page("/test_shell_app_settings")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_shell_app_settings")
+
+    state.open_app_settings()
+    await user.should_see("Application Settings")
+
+
+@pytest.mark.asyncio
+async def test_shell_renders_workspace_settings_modal(
+    user: User, tmp_path: Path
+) -> None:
+    """Verify build_page wires the workspace settings modal into the overlays."""
+    state = _make_app_state(tmp_path)
+
+    @ui.page("/test_shell_workspace_settings")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_shell_workspace_settings")
+
+    state.open_workspace_settings()
+    await user.should_see("Project Workspace Settings")

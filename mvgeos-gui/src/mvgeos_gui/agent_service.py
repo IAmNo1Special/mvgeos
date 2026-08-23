@@ -153,6 +153,7 @@ class AgentService:
             target_message.is_streaming = True
             if target_state is not None:
                 target_state.is_channeling = True
+                target_state.set_mvge_status("channeling")
                 # Seed active_skills from the agent's loaded skill manifests.
                 if self._agent is not None:
                     self.populate_skills(self._agent, target_state)
@@ -274,6 +275,7 @@ class AgentService:
                 step.title = f"Worked for {self._format_duration(elapsed)}"
 
             if target_state is not None:
+                target_state.set_mvge_status("working")
                 target_state.notify()
 
             # Track long-running spells as background tasks in the inspector.
@@ -332,6 +334,8 @@ class AgentService:
             target_message.is_streaming = False
             if target_state is not None:
                 target_state.is_channeling = False
+                if event.type == MvgeEventType.AGENT_END:
+                    target_state.set_mvge_status("idle")
                 target_state.notify()
             self._is_running = False
 
@@ -464,6 +468,7 @@ class AgentService:
         self.reset_skill_tracking()
         state.is_channeling = True
         message.is_streaming = True
+        state.set_mvge_status("channeling")
         state.notify()
 
         if not self._api_key:
@@ -476,6 +481,7 @@ class AgentService:
             )
             message.is_streaming = False
             state.is_channeling = False
+            state.set_mvge_status("idle")
             self._is_running = False
             self._active_message = None
             self._active_state = None
@@ -546,6 +552,7 @@ class AgentService:
         finally:
             message.is_streaming = False
             state.is_channeling = False
+            state.set_mvge_status("idle")
             self._is_running = False
             self._active_message = None
             self._active_state = None

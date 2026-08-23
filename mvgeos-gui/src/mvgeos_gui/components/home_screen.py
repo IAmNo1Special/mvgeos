@@ -80,7 +80,7 @@ def render_home_screen(state: AppState) -> None:
             _stat_card("Sessions", str(len(state.loaded_tomes)))
             _stat_card("Mana Used", f"{state.total_mana_used:,}")
             _stat_card("Model", state.selected_model.split("/")[-1].split(":")[0])
-            _stat_card("Status", state.pi_status.title())
+            _stat_card("Status", state.mvge_status.title())
 
         # Recent sessions
         if state.loaded_tomes:

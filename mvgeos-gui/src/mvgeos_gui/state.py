@@ -205,7 +205,7 @@ class AppState:
     streaming_thinking: str = ""
     streaming_tool_calls: list[dict[str, Any]] = field(default_factory=list)
     session_loading: bool = False
-    pi_status: str = "idle"
+    mvge_status: str = "idle"
     terminal_open: bool = False
     chat_side_panel: str | None = None
     _sidebar_width: int = 260
@@ -748,9 +748,9 @@ class AppState:
         self.terminal_open = not self.terminal_open
         self.notify()
 
-    def set_pi_status(self, status: str) -> None:
-        """Update the Mvge process status."""
-        self.pi_status = status
+    def set_mvge_status(self, status: str) -> None:
+        """Update the Mvge activity status (idle, channeling, working)."""
+        self.mvge_status = status
         self.notify()
 
     def set_chat_side_panel(self, panel: str | None) -> None:

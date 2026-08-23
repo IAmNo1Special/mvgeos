@@ -15,11 +15,10 @@ def render_status_bar(state: AppState) -> ui.row:
         # Mvge status indicator
         status_colors = {
             "idle": "bg-[#64748b]",
-            "running": "bg-[#22c55e]",
-            "starting": "bg-[#f59e0b]",
-            "error": "bg-[#ef4444]",
+            "channeling": "bg-[#3b82f6]",
+            "working": "bg-[#22c55e]",
         }
-        status_color = status_colors.get(state.pi_status, "bg-[#64748b]")
+        status_color = status_colors.get(state.mvge_status, "bg-[#64748b]")
         ui.element("div").classes(f"h-2 w-2 rounded-full {status_color} shrink-0")
 
         # Mvge label

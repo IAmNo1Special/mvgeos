@@ -968,6 +968,26 @@ class TestSettingsModals:
         assert state.command_palette_open is False
 
 
+class TestMvgeStatus:
+    def test_default_status_is_idle(self) -> None:
+        state = AppState()
+        assert state.mvge_status == "idle"
+
+    def test_set_mvge_status_updates_field(self) -> None:
+        state = AppState()
+        state.set_mvge_status("channeling")
+        assert state.mvge_status == "channeling"
+        state.set_mvge_status("working")
+        assert state.mvge_status == "working"
+
+    def test_set_mvge_status_notifies_listeners(self) -> None:
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.set_mvge_status("channeling")
+        assert called == [True]
+
+
 @pytest.mark.asyncio
 async def test_notify_handles_awaitable_response() -> None:
     """Verify notify schedules AwaitableResponse._fire coroutines."""

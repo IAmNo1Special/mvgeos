@@ -11,11 +11,15 @@ from mvgeos_gui.components.notes_panel import render_notes_panel
 from mvgeos_gui.components.packages_panel import render_packages_panel
 from mvgeos_gui.components.review_rail import render_review_rail
 from mvgeos_gui.components.sessions_panel import render_sessions_panel
+from mvgeos_gui.components.settings_modal import render_app_settings_modal
 from mvgeos_gui.components.settings_panel import render_settings_panel
 from mvgeos_gui.components.sidebar import render_sidebar
 from mvgeos_gui.components.skills_panel import render_skills_panel
 from mvgeos_gui.components.status_bar import render_status_bar
 from mvgeos_gui.components.timeline_panel import render_timeline_panel
+from mvgeos_gui.components.workspace_settings_modal import (
+    render_workspace_settings_modal,
+)
 from mvgeos_gui.state import AppState
 
 
@@ -140,7 +144,7 @@ def render_shell(state: AppState) -> None:
         with ui.row().classes("w-full h-7 shrink-0 overflow-hidden"):
             last_status_state = [
                 (
-                    state.pi_status,
+                    state.mvge_status,
                     state.selected_model,
                     state.total_mana_used,
                     state.is_channeling,
@@ -154,7 +158,7 @@ def render_shell(state: AppState) -> None:
             def status_bar_container() -> None:
                 render_status_bar(state)
                 last_status_state[0] = (
-                    state.pi_status,
+                    state.mvge_status,
                     state.selected_model,
                     state.total_mana_used,
                     state.is_channeling,
@@ -167,7 +171,7 @@ def render_shell(state: AppState) -> None:
 
             def _on_status_check() -> None:
                 cur = (
-                    state.pi_status,
+                    state.mvge_status,
                     state.selected_model,
                     state.total_mana_used,
                     state.is_channeling,
@@ -184,6 +188,8 @@ def render_shell(state: AppState) -> None:
         (
             getattr(state, "_command_palette_open", False),
             getattr(state, "_selected_artifact_id", None),
+            getattr(state, "_show_app_settings", False),
+            getattr(state, "_show_workspace_settings", False),
             len(state.artifacts),
         )
     ]
@@ -192,9 +198,13 @@ def render_shell(state: AppState) -> None:
     def overlay_dialogs() -> None:
         render_command_palette(state)
         render_artifact_drawer(state)
+        render_app_settings_modal(state)
+        render_workspace_settings_modal(state)
         last_overlay_state[0] = (
             getattr(state, "_command_palette_open", False),
             getattr(state, "_selected_artifact_id", None),
+            getattr(state, "_show_app_settings", False),
+            getattr(state, "_show_workspace_settings", False),
             len(state.artifacts),
         )
 
@@ -204,6 +214,8 @@ def render_shell(state: AppState) -> None:
         cur = (
             getattr(state, "_command_palette_open", False),
             getattr(state, "_selected_artifact_id", None),
+            getattr(state, "_show_app_settings", False),
+            getattr(state, "_show_workspace_settings", False),
             len(state.artifacts),
         )
         if cur != last_overlay_state[0]:

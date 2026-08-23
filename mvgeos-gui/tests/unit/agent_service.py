@@ -116,6 +116,45 @@ def test_handle_agent_start_event(
     assert app_state.is_channeling is True
 
 
+def test_agent_start_sets_mvge_status_channeling(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify AGENT_START flips the Mvge status light to channeling."""
+    msg = ChatMessage(role="assistant")
+    app_state.messages.append(msg)
+
+    event = MvgeEvent(type=MvgeEventType.AGENT_START, data={})
+    agent_service.handle_event(event, msg, app_state)
+    assert app_state.mvge_status == "channeling"
+
+
+def test_spell_casting_start_sets_mvge_status_working(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify SPELL_CASTING_START flips the Mvge status light to working."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    event = MvgeEvent(
+        type=MvgeEventType.SPELL_CASTING_START,
+        data={"spellCastId": "s1", "spellName": "bash", "command": "ls"},
+    )
+    agent_service.handle_event(event, msg, app_state)
+    assert app_state.mvge_status == "working"
+
+
+def test_agent_end_sets_mvge_status_idle(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify AGENT_END returns the Mvge status light to idle."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    event = MvgeEvent(type=MvgeEventType.AGENT_END, data={})
+    agent_service.handle_event(event, msg, app_state)
+    assert app_state.mvge_status == "idle"
+
+
 def test_handle_message_update_event(
     agent_service: AgentService, app_state: AppState
 ) -> None:

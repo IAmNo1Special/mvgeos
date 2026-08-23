@@ -17,7 +17,7 @@ def render_diagnostics_panel(state: AppState) -> None:
             _diag_row("App", "MvgeOS v0.1.0")
             _diag_row("Project", str(state.project_path))
             _diag_row("Model", state.selected_model)
-            _diag_row("Mvge Status", state.pi_status)
+            _diag_row("Mvge Status", state.mvge_status)
             _diag_row("API Key", "Configured" if state.api_key else "Not set")
 
         with ui.card().classes(

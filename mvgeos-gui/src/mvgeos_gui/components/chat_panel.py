@@ -226,11 +226,10 @@ def _render_empty_chat(state: AppState) -> None:
             "text-2xl font-semibold text-[#e6edf3] tracking-tight"
         )
         status_text = {
-            "running": "Pick a project and describe what you want done.",
-            "starting": "Starting Mvge agent…",
-            "error": "Failed to start Mvge. Check settings.",
+            "channeling": "Mvge is channeling a response…",
+            "working": "Mvge is working…",
             "idle": "Choose a project — Mvge starts when you send.",
-        }.get(state.pi_status, "Choose a project — Mvge starts when you send.")
+        }.get(state.mvge_status, "Choose a project — Mvge starts when you send.")
         ui.label(status_text).classes("text-sm text-[#8b949e] mt-1 mb-8")
 
         with ui.row().classes("gap-2 flex-wrap justify-center mb-6"):
