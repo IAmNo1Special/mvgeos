@@ -34,23 +34,27 @@ Test paths follow pattern: `mvgeos-gui/tests/unit/<module>.py` and `mvgeos-gui/t
 | `init_app` | NiceGUI layout builder assembling shell, themes, and reactive watchers |
 | `main` | CLI entry point (`mvgeos-gui`) supporting native PyWebView window and `--web` mode |
 
-## UI Architecture (1:1 Antigravity Design System)
+## UI Architecture
 
 1. **Left Navigation (`sidebar.py`, `home_screen.py`)**:
    - Project selector and workspace switching
    - Conversation history grouped by relative time badges
-   - Scheduled tasks and settings access
+   - Settings access (app + workspace modals) and scheduled tasks
 
-2. **Center Viewport (`shell.py`, `chat_panel.py`, `conversation_view.py`)**:
-   - **Empty State (`empty_state.py`)**: Centered project dropdown, search bar, Quick Start cards, rich input dock
-   - **Active State (`chat_panel.py`)**: Message bubbles, channeling responses, collapsible step cards (`step_cards.py`), terminal execution output
-   - **Floating Input Dock (`input_dock.py`)**: `@` / `/` autocomplete popup, attachment handling, model switcher, and cancel/stop button
+2. **Center Viewport (`shell.py`, `chat_panel.py`)**:
+   - **Active State (`chat_panel.py`)**: Message bubbles, channeling responses, collapsible step cards (`step_cards.py`, `message_parts.py`), inline composer with `@`/`/` autocomplete popup, attachment chips, model switcher, and cancel/stop button
+   - **Side panels**: file tree (`file_tree.py`) and diff viewer (`diff_viewer.py`)
+   - **Terminal overlay** (`terminal_panel.py`)
 
-3. **Right Inspector Panel (`inspector.py`)**:
-   - Subagents list with status & execution times
-   - Files Changed with diff counts and interactive diff modal (`diff_viewer.py`, `diff_review.py`)
-   - Artifacts list with slide-over markdown review drawer (`artifact_drawer.py`)
-   - Active skills and background task monitors
+3. **Overlays (mounted in `shell.py`)**:
+   - Command palette (`command_palette.py`)
+   - Artifact drawer (`artifact_drawer.py`)
+   - Application settings modal (`settings_modal.py`) and Project Workspace settings modal (`workspace_settings_modal.py`), backed by `config_service.py`
+   - Diff review modal (`diff_review.py`)
+
+4. **Right Rail & Status**:
+   - Review rail (`review_rail.py`) with changed files
+   - Status bar (`status_bar.py`) reflecting `AppState.mvge_status` (idle / channeling / working), model, and Mana usage
 
 ## Dependencies
 

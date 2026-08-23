@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (amended 2026-08: component inventory descoped to the shipped pipeline)
 
 ## Context
 
@@ -49,3 +49,26 @@ We will implement `mvgeos-gui` as a dedicated workspace package within the MvgeO
 - Summoners gain a native desktop experience without requiring Node.js/Electron.
 - The GUI shares the unified Tome JSONL storage and MvgeOS agent abstractions without duplication.
 - Live Git state, artifacts, and subagent lifecycles are visualized in real time.
+
+## Amendment (2026-08): shipped pipeline
+
+The core decisions above stand (NiceGUI + PyWebView, native window, dedicated
+workspace package). The component inventory in this ADR's Decision section
+drifted from what shipped; the divergence is now deliberate:
+
+- **Single composer**: chat_panel's inline composer is the only prompt input.
+  The standalone bottom floating input dock (`input_dock.py`) and the
+  standalone conversation view (`conversation_view.py`) were deleted rather
+  than re-wired; autocomplete behavior lives behind `chat_panel.handle_tab`
+  and `AutocompleteService`.
+- **No dedicated inspector module**: the Right Inspector Panel's concerns are
+  distributed across `review_rail.py`, `artifact_drawer.py`, side panels, and
+  the status bar instead of a single `inspector.py`.
+- **Settings ships twice over**: a settings view plus two wired modals
+  (application and workspace) rendered in the shell overlay layer, backed by
+  `ConfigService` keyring persistence.
+- **Mvge status light**: `AppState.mvge_status` (idle / channeling / working)
+  is driven by `AgentService` from run events.
+
+"1:1 Antigravity" remains the visual aspiration for styling only, not a
+specification of module inventory.
