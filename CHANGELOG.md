@@ -5,10 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.1] - 2026-08-23
 
 
 ### Bug Fixes
+
+- **release:** install git-cliff via taiki-e and fix changelog output (3656042)
+
+
+### Chores
+
+- **release:** v1.0.1 (3532b80)
+
+
+### Continuous Integration
+
+- **release:** dispatch Release workflow explicitly after bump (ccd059e)
+
+
+## [1.0.0] - 2026-08-23
+
+
+### Bug Fixes
+
+- **provider:** handle openrouter rate limits (bde8219)
 
 - **root:** fix MD022/MD036/MD047 lint violations in handoff generator (3debd6f)
 
@@ -102,8 +122,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **tome:** use tmp_path in locking tests to avoid creating stray dir/ (529e8f5)
 
+- **provider:** handle empty choices chunks in OpenRouter stream (5c5e68d)
+
+- **gui:** P1 bug fixes for input_dock, state, and agent_service (75bbe03)
+
+- **gui:** correct window geometry fallback to target dimensions (1400x900) (c720d8e)
+
+- **gui:** show milliseconds for sub-second durations in _format_duration (67fe5c6)
+
+- **gui:** wire _active_task in AgentService for proper cancellation (065e226)
+
+- **gui:** address P3 reliability issues from technical audit (da81c37)
+
+- **gui:** resolve pre-existing mypy strict-mode errors (83a86da)
+
+- **agent:** validate switch/fork targets before shutting down source (a2cae53)
+
+- **gui:** persist api key to file when keyring unavailable (28dc47d)
+
+- **release:** skip changelog commit on dry-run dispatches (4da24fa)
+
+
+### Build System
+
+- raise full-suite coverage floor to the documented 90 percent (59a4f1a)
+
+- adopt src layout with uv_build and overhaul workspace packaging (ca1dd30)
+
+- **root:** measure coverage over first-party source only (558195d)
+
 
 ### Chores
+
+- add pre-commit hooks (bfa2c30)
 
 - generate CHANGELOG.md for v0.1.0-dev (593e1f0)
 
@@ -145,8 +196,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - remove one-shot rebuild plan documentation (d8a1487)
 
+- **deps:** bump typer from 0.27.0 to 0.27.1 (04d878c)
+
+- **deps:** bump filelock from 3.32.0 to 3.32.2 (52c6414)
+
+- **deps-dev:** bump ruff from 0.16.0 to 0.16.2 (f2772f6)
+
+- **deps-dev:** bump pre-commit from 4.6.1 to 4.6.2 (d43c3e4)
+
+- **deps-dev:** bump mypy from 2.3.0 to 2.3.1 (80c7d26)
+
+- **deps-dev:** bump types-pyyaml (0062b29)
+
+- **deps-dev:** bump ruff from 0.16.2 to 0.16.3 (2fe989c)
+
+- **root:** update project docs and pytest config (0abad34)
+
+- **root:** update project status and format step_cards (ee6018a)
+
+- **root:** fix pre-commit hooks to use python -m for Windows compatibility (75bd8a1)
+
+- **release:** v1.0.0 (2998a44)
+
 
 ### Continuous Integration
+
+- add release workflow with git-cliff (3ecf9c4)
 
 - make heal-my-goap optional dependency for CI (66b4845)
 
@@ -158,8 +233,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - bump checkout and setup-uv actions to node24 releases (7921c54)
 
+- run only unit tests in CI and pre-commit (6b6228c)
+
+- gate main pushes with the full test suite (c119bef)
+
+- run hermetic suites per-package with aggregated 90% floor (47a68b3)
+
+- **release:** gate publish jobs on full-suite verification (0cc5a9d)
+
+- **precommit:** drop coverage gate, adopt charter command forms (90d80c9)
+
+- **precommit:** stop uv run from auto-syncing during hooks (90bbaa7)
+
+- **release:** automate version bumps via bump job in ci.yml (7476a38)
+
 
 ### Documentation
+
+- add architecture decision records (ab077de)
 
 - **root:** update documentation and configuration (a891aae)
 
@@ -199,8 +290,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **adr:** record ADR 0009 for NiceGUI desktop application architecture (e7a2819)
 
+- update architecture, spec, and tech-debt plans (f89580b)
+
+- add testing standards charter as single test authority (82745d8)
+
+- **testing:** drop resolved workflow-lag note from charter (e54d6c9)
+
+- **testing:** retire e2e tier from project vocabulary (ee833b4)
+
+- **architecture:** remove seeker protocol architecture docs (2f73ca3)
+
+- **architecture:** retire seeker concept and renumber ADRs (c92805b)
+
 
 ### Features
+
+- initial mvgeos monorepo setup (3a9e5a1)
+
+- **agent:** add Mvge core loop with event bus (6417554)
 
 - **coding-mvge:** add coding agent package with spells and tests (e5a8cc7)
 
@@ -298,8 +405,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **gui:** enrich step cards with Spell params and result rendering (e9cd29e)
 
+- **coding-mvge:** improve bash spell Windows support and cleanup (0f8e709)
+
+- **agent:** add environment-aware prompt rendering (e14aa56)
+
+- **gui:** refactor layout and add Antigravity-matching components (ab870a0)
+
+- **gui:** consolidate clipboard/download utilities with improved security (bce4368)
+
+- **gui:** add keyring dependency for secure API key storage (1780014)
+
+- **gui:** store API key in OS keyring instead of plaintext JSON (a0abe1c)
+
 
 ### Performance
+
+- **agent:** optimize mana pool allocation (d3dbbe6)
 
 - **tome:** optimize ledger index updates and use atomic line appends (5988ae3)
 
@@ -309,8 +430,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **tome:** migrate synchronous file I/O in Tome ledger and spells to non-blocking async (closes #56) (5be0b53)
 
+- **gui:** cache ModelRegistry instance in model_catalog (39eb05b)
+
 
 ### Refactoring
+
+- **tome:** improve JSONL locking (5a010ba)
 
 - **cli:** restructure to flat layout (d3484b0)
 
@@ -366,8 +491,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **agent:** rename session* to tome* **BREAKING CHANGE** (a9d5cbc)
 
+- **gui:** simplify _track_spell_end status logic to ternary (91f8fb5)
+
+- **agent:** deepen loop core into core_loop + mvge_loop adapter (dae0ba3)
+
+- **agent:** extract ConfigParsing module (25f996b)
+
+- **provider:** extract ModelComposer module (27295aa)
+
+- **agent:** extract TomeLifecycle module (dca56f4)
+
+- **agent:** extract PromptAssembly module (85ed4e0)
+
+- **agent:** extract RuneLifecycle module (79b7f46)
+
+- **agent:** wire BaseMvge.initialize() to the five extracted modules (5c2dfd3)
+
+- **runes:** expose diagnostics retention on RuneRunner (b5ba063)
+
+- **agent:** drop dead fallback in queue_mode getter (38a615c)
+
+- **provider:** own the response and abort vocabulary (978f6bb)
+
+- **runes:** invert sandbox dependency behind a protocol (06a5f2a)
+
+- **gui:** hoist keyring, webview, and subprocess imports to module top (5882b32)
+
+- **coding-mvge:** import AbortError from provider at module top (3632a0a)
+
+- hoist remaining inline imports to top-level (6a34dd8)
+
 
 ### Tests
+
+- **spells:** add unit tests for bash spell (ee2501c)
 
 - **cli:** commit changes (01e8129)
 
@@ -378,6 +535,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **agent:** enforce no __init__.py in test directories (fddfe3e)
 
 - **gui:** add mode-aware autocomplete tests for skill insertion (4940336)
+
+- **gui:** update config_service tests for keyring-backed storage (3374abd)
+
+- **agent:** strengthen ConfigParsing coverage (3b69fcf)
+
+- **coding-mvge:** remove permanently skipped heal-my-goap demo test (84e2217)
+
+- **coding-mvge:** rename rune integration file to charter naming (d7e9a13)
+
+- **runes:** schedule watcher reloads onto the captured event loop (9bc739a)
+
+- cover previously 0% modules and spell_schema (9cddc0e)
 
 
 ### Fmt
@@ -400,51 +569,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - fix ruff formatting in base_mvge.py and main.py (b3fd848)
 
 - **gui:** collapse line continuations and remove redundant lambdas (9508116)
-
-
-## [0.1.0-dev] - 2026-07-28
-
-
-### Bug Fixes
-
-- **provider:** handle openrouter rate limits (bde8219)
-
-
-### Chores
-
-- add pre-commit hooks (bfa2c30)
-
-
-### Continuous Integration
-
-- add release workflow with git-cliff (3ecf9c4)
-
-
-### Documentation
-
-- add architecture decision records (ab077de)
-
-
-### Features
-
-- initial mvgeos monorepo setup (3a9e5a1)
-
-- **agent:** add Mvge core loop with event bus (6417554)
-
-
-### Performance
-
-- **agent:** optimize mana pool allocation (d3dbbe6)
-
-
-### Refactoring
-
-- **tome:** improve JSONL locking (5a010ba)
-
-
-### Tests
-
-- **spells:** add unit tests for bash spell (ee2501c)
 
 ---
 *Generated by [git-cliff](https://github.com/orhun/git-cliff)*
