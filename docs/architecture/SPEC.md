@@ -401,19 +401,6 @@ Concrete `BaseMvge` subclass with:
 - Turn loop with steer/follow-up queue handling
 - Template method pattern via `BaseMvge`
 
-## Remaining Work (Priority Order)
-
-### 1. Implement Seeker Protocol as Rune ⭐ HIGH
-
-**Docs**: `docs/ARCHITECTURE_TOOL_SEARCH.md`, `docs/ARCHITECTURE_SKILL_SEARCH.md`, `docs/ARCHITECTURE_MCP_SEARCH.md`
-
-Package the three Seekers as an `mvgeos-runes-seeker` extension:
-
-- Create `mvgeos-runes-seeker` package exporting `ToolSearchSpell`, `SkillSearchSpell`, `MCPSearchSpell`
-- Wire up rune manifest entry point
-- Integration tests: rune load → spell registration → harness execute
-- Wire into `base_mvge.py` via rune loader (not hardcoded)
-
 ## Configuration
 
 ### dotagents Protocol

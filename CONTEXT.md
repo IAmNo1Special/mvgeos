@@ -58,10 +58,6 @@ _Avoid_: User (as a spoken term), human, operator
 An extension: a packaged unit that hooks into a Mvge's lifecycle and can register Spells, commands, shortcuts, and Realms. Runes are user-installed (not built-in) and live in `~/.agents/.mvgeos/runes/`.
 _Avoid_: Extension (as a spoken term), plugin, addon
 
-**Seeker**:
-A Rune (not built-in) that routes tool/skill/MCP discovery through meta-tools (`tool_search`, `skill_search`, `mcp_search`, `skill_execute`) instead of loading them directly into context. By default (like Pi), capabilities are loaded directly into the Mvge's context window at session start; the Seeker Rune is a user-installed download that changes this behavior to on-demand discovery.
-_Avoid_: Discovery (as a spoken term)
-
 **Skill**:
 A capability pack discovered and loaded per the agentskills.io specification: a directory containing `SKILL.md` with YAML frontmatter (name, description) and markdown instructions. Skills are distinct from Spells — a Skill may yield Spell-like executions via `skill_execute` but is never loaded wholesale; it is disclosed progressively (catalog → full instructions → resources).
 _Avoid_: Tool, Spell, plugin

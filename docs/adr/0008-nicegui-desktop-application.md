@@ -1,4 +1,4 @@
-# ADR 0009: NiceGUI Desktop Application Architecture (1:1 Antigravity UI)
+# ADR 0008: NiceGUI Desktop Application Architecture (1:1 Antigravity UI)
 
 ## Status
 

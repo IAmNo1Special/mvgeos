@@ -1,4 +1,4 @@
-# ADR 0008: Unified Tome Session System on Pi-Compatible JSONL Format
+# ADR 0007: Unified Tome Session System on Pi-Compatible JSONL Format
 
 ## Status
 

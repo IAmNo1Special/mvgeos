@@ -42,7 +42,7 @@ MVGEOS IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https:/
 - Read files in full before wide-ranging changes
 - No inline imports (`await import()`, `import("pkg").Type`). Top-level imports only
 - Use `pathlib.Path` for all file path operations — never raw string concatenation
-- Follow MvgeOS terminology (Mvge, Spell, Realm, Mana, Mana Pool, Tome, Invocation, Summoner, Rune, Seeker, Skill, Channeling, Sigil, Contemplation, Leaf, Fork)
+- Follow MvgeOS terminology (Mvge, Spell, Realm, Mana, Mana Pool, Tome, Invocation, Summoner, Rune, Skill, Channeling, Sigil, Contemplation, Leaf, Fork)
 - All code follows the red-green-refactor TDD cycle: write failing test first, then implement
 
 ## Commands
@@ -101,8 +101,7 @@ MvgeOS is a monorepo with uv workspaces:
 Config follows dotagents protocol at `~/.agents/.mvgeos/`.
 Rune/Extension manifest at `~/.agents/.mvgeos/runes/manifest.json`.
 
-**`_build_spells()` interface**: must use `self._runner` (not `self._state.rune_runner`) and return all spell types (rune spells from enabled runes only + builtin spells). Seeker is a rune — it only works through the rune/extension system, not as a built-in category.
-**Watcher cleanup**: watchers are owned by `RuneLifecycle` — stop them via `lifecycle.shutdown()` (BaseMvge.close() does this; never reference a singular `_watcher`).
+**`_build_spells()` interface**: must use `self._runner` (not `self._state.rune_runner`) and return all spell types (rune spells from enabled runes only + builtin spells). **Watcher cleanup**: watchers are owned by `RuneLifecycle` — stop them via `lifecycle.shutdown()` (BaseMvge.close() does this; never reference a singular `_watcher`).
 
 **Terminology updates**: `ProviderRegistry` → `RealmRegistry` (Realm = provider abstraction). `Model.provider` field removed — provider derived from model ID prefix (e.g., `nvidia/nemotron` → provider = "nvidia").
 
