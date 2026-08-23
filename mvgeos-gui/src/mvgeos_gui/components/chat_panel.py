@@ -9,6 +9,8 @@ from typing import Any
 from nicegui import ui
 
 from mvgeos_gui.autocomplete import AutocompleteService
+from mvgeos_gui.components.diff_viewer import render_diff_viewer
+from mvgeos_gui.components.file_tree import render_file_tree
 from mvgeos_gui.components.message_parts import (
     render_assistant_message,
     render_streaming_bubble,
@@ -196,16 +198,8 @@ def render_chat_panel(state: AppState) -> ui.column:
                                 on_click=lambda: state.set_chat_side_panel(None),
                             ).props("flat dense round text-color=grey-5 size=xs")
                         if state.chat_side_panel == "files":
-                            from mvgeos_gui.components.file_tree import (
-                                render_file_tree,
-                            )
-
                             render_file_tree(state)
                         else:
-                            from mvgeos_gui.components.diff_viewer import (
-                                render_diff_viewer,
-                            )
-
                             render_diff_viewer(state)
 
             side_panel_view()

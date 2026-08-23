@@ -52,7 +52,7 @@ def test_resolve_api_key_variants() -> None:
     with (
         patch.dict("os.environ", {"OPENROUTER_API_KEY": "", "MVGEOS_API_KEY": ""}),
         patch(
-            "mvgeos_cli.auth.load_api_key_from_auth",
+            "mvgeos_gui.agent_service.load_api_key_from_auth",
             return_value="sk-auth-file",
         ),
     ):
@@ -61,7 +61,7 @@ def test_resolve_api_key_variants() -> None:
     # 5. None when no source is available
     with (
         patch.dict("os.environ", {"OPENROUTER_API_KEY": "", "MVGEOS_API_KEY": ""}),
-        patch("mvgeos_cli.auth.load_api_key_from_auth", return_value=None),
+        patch("mvgeos_gui.agent_service.load_api_key_from_auth", return_value=None),
     ):
         assert resolve_api_key() is None
 
@@ -88,7 +88,7 @@ def test_get_or_create_agent_with_factory(app_state: AppState) -> None:
     assert factory.call_count == 1
 
 
-@patch("coding_mvge.mvge.CodingMvge")
+@patch("mvgeos_gui.agent_service.CodingMvge")
 def test_get_or_create_agent_default(
     mock_coding_mvge: MagicMock, app_state: AppState
 ) -> None:

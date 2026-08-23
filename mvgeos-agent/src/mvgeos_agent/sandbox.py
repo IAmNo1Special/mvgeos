@@ -1,6 +1,7 @@
 """MvgeOS host sandbox executor for process isolation and AST safety."""
 
 import ast
+import builtins
 import multiprocessing
 import types
 from typing import Any, cast
@@ -154,8 +155,6 @@ class MvgeSandbox:
                 and base_mod in FORBIDDEN_NAMES
             ):
                 raise ValueError(f"Import of module '{name}' is forbidden.")
-            import builtins
-
             return builtins.__import__(name, *args, **kwargs)
 
         safe_builtins = {

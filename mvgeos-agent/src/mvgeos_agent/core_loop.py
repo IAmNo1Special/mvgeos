@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Any
 
 from mvgeos_provider.types import RealmResponse
 
+from mvgeos_agent.dispatcher import SpellDispatcher
+from mvgeos_agent.errors import AuthenticationError, RateLimitError
 from mvgeos_agent.prompt_loader import PromptSource
 
 if TYPE_CHECKING:
@@ -142,12 +144,8 @@ async def _run_turn(
         if response.error_message:
             error_code = getattr(response, "error_code", None)
             if error_code == "rate_limited":
-                from mvgeos_agent.errors import RateLimitError
-
                 raise RateLimitError(response.error_message)
             if error_code == "auth_failed":
-                from mvgeos_agent.errors import AuthenticationError
-
                 raise AuthenticationError(response.error_message)
             raise RuntimeError(response.error_message)
 
@@ -211,8 +209,6 @@ async def _run_turn(
         await emit(
             MvgeEvent(type=MvgeEventType.BEFORE_INVOCATION, data={"invocation": inv})
         )
-
-        from mvgeos_agent.dispatcher import SpellDispatcher
 
         _dispatcher = SpellDispatcher()
         batch_result = await _dispatcher.dispatch_batch(

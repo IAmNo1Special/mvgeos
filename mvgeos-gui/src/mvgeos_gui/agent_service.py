@@ -11,8 +11,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from coding_mvge.mvge import CodingMvge
 from mvgeos_agent.errors import AuthenticationError, RateLimitError
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
+from mvgeos_cli.auth import load_api_key_from_auth
 
 from mvgeos_gui.models import (
     Artifact,
@@ -45,8 +47,6 @@ def resolve_api_key(explicit_key: str | None = None) -> str | None:
     if env_key and env_key.strip():
         return env_key.strip()
     with contextlib.suppress(Exception):
-        from mvgeos_cli.auth import load_api_key_from_auth
-
         auth_key = load_api_key_from_auth()
         if auth_key and auth_key.strip():
             return auth_key.strip()
@@ -110,8 +110,6 @@ class AgentService:
                     "Set OPENROUTER_API_KEY, pass --api-key, or configure "
                     "an agent_factory."
                 )
-            from coding_mvge.mvge import CodingMvge
-
             self._agent = CodingMvge(
                 api_key=self._api_key,
                 tome_dir=state.tome_service.tome_dir,

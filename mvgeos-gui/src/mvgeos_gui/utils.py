@@ -3,6 +3,8 @@
 import re
 import urllib.parse
 
+from nicegui import ui
+
 _WINDOWS_RESERVED = {
     "CON",
     "PRN",
@@ -59,8 +61,6 @@ def data_uri_escape(text: str) -> str:
 
 def copy_to_clipboard(text: str) -> None:
     """Copy text to clipboard with feedback notification."""
-    from nicegui import ui
-
     escaped = js_escape(text)
     ui.run_javascript(f"navigator.clipboard.writeText(`{escaped}`)")
     ui.notify("Copied to clipboard", type="positive", position="bottom")
@@ -68,8 +68,6 @@ def copy_to_clipboard(text: str) -> None:
 
 def download_artifact(title: str, content: str) -> None:
     """Download artifact content as a text file."""
-    from nicegui import ui
-
     filename = f"{_sanitize_filename(title)}.md"
     blob = f"data:text/plain;charset=utf-8,{data_uri_escape(content)}"
     ui.run_javascript(

@@ -23,7 +23,7 @@ from mvgeos_provider.types import (
 from mvgeos_provider.types import (
     StopReason as StopReason,
 )
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, create_model
 
 from mvgeos_agent.prompt_loader import PromptSource
 
@@ -146,8 +146,6 @@ class MvgeSpell:
 
     def __post_init__(self) -> None:
         if self.parameters:
-            from pydantic import create_model
-
             self._schema_model = create_model(
                 f"{self.name}_Schema",
                 **self._convert_to_model_fields(self.parameters),
