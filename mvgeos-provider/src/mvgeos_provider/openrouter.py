@@ -3,10 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import httpx
-from mvgeos_agent.types import AbortError, MvgeResponse, StopReason
 
 from mvgeos_provider.base import Realm
 from mvgeos_provider.retry import (
@@ -15,10 +14,15 @@ from mvgeos_provider.retry import (
     realm_request_delay_ms,
     retry_realm_request,
 )
-from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
-
-if TYPE_CHECKING:
-    from mvgeos_agent.types import AbortSignal
+from mvgeos_provider.types import (
+    AbortError,
+    AbortSignal,
+    ChannelConfig,
+    Model,
+    MvgeResponse,
+    RealmResponse,
+    StopReason,
+)
 
 _REASONING_MODELS = ("openai/o1", "openai/o3")
 

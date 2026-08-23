@@ -22,9 +22,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from mvgeos_agent.types import AbortError
-
-from mvgeos_provider.types import RealmResponse
+from mvgeos_provider.types import AbortError, RealmResponse
 
 DEFAULT_MAX_RETRY_DELAY_MS = 60_000
 _MAX_BACKOFF_MS = 8_000

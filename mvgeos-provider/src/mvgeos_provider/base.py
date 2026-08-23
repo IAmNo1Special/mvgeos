@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from mvgeos_agent.types import AbortSignal
-
-from mvgeos_provider.types import ChannelConfig, Model
+from mvgeos_provider.types import AbortSignal, ChannelConfig, Model
 
 
 class Realm:
