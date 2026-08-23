@@ -1,0 +1,41 @@
+import pytest
+from nicegui import ui
+from nicegui.testing import User
+
+from mvgeos_gui.components.sessions_panel import render_sessions_panel
+from mvgeos_gui.state import AppState
+
+
+@pytest.mark.asyncio
+async def test_render_sessions_empty(user: User, tmp_path) -> None:
+    state = AppState(project_path=tmp_path)
+
+    @ui.page("/test_sessions_empty")
+    def page() -> None:
+        render_sessions_panel(state)
+
+    await user.open("/test_sessions_empty")
+    await user.should_see("Sessions")
+
+
+@pytest.mark.asyncio
+async def test_render_sessions_with_tome(user: User, tmp_path) -> None:
+    from types import SimpleNamespace
+
+    state = AppState(project_path=tmp_path)
+    state.loaded_tomes = [
+        SimpleNamespace(
+            tome_id="t1",
+            title="My Tome",
+            relative_time="1h ago",
+            git_branch="main",
+            is_active=True,
+        )
+    ]
+
+    @ui.page("/test_sessions_tome")
+    def page() -> None:
+        render_sessions_panel(state)
+
+    await user.open("/test_sessions_tome")
+    await user.should_see("My Tome")

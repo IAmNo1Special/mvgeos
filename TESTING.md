@@ -58,14 +58,14 @@ pyproject to avoid "couldn't parse" coverage warnings.
 
 ## 3. Coverage floors
 
-- The hermetic whole — unit + integration combined — must clear **84%**
+- The hermetic whole — unit + integration combined — must clear **85%**
   coverage measured with branch analysis enabled
   (`[tool.coverage.run] branch = true`) over first-party source only
   (`[tool.coverage.run] source` lists the seven workspace packages). Test
   files are verification artifacts, not shipped code; counting their
   near-100% lines inflated the denominator and hid gaps in `src/`. The
   floor is a ratchet: it rises as measured gaps close and never falls.
-- The floor is enforced through `[tool.coverage.report] fail_under = 84` in
+- The floor is enforced through `[tool.coverage.report] fail_under = 85` in
   pyproject — exactly one number and one enforcement point; do not add
   per-tier floors. Locally, a bare full-suite run (`pytest --cov`) applies
   it. In CI, per-package matrix legs measure coverage with the gate disabled
