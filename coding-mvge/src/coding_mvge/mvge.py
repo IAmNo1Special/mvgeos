@@ -11,6 +11,7 @@ from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.prompt_loader import PromptSource
 from mvgeos_agent.spell_schema import generate_spell_schema
 from mvgeos_agent.types import MvgeSpell, SpellResult
+from mvgeos_provider.types import AbortError
 
 from coding_mvge.spells import (
     BUILTIN_SPELL_MAP as DEFAULT_SPELL_MAP,
@@ -46,8 +47,6 @@ class _BuiltinSpell(MvgeSpell):
         on_update: Any | None = None,
     ) -> str:
         if signal is not None and getattr(signal, "aborted", False):
-            from mvgeos_agent.types import AbortError
-
             raise AbortError("Operation aborted")
         validated = self.prepare_arguments(params)
         args = {k: v for k, v in validated.items() if v is not None}
