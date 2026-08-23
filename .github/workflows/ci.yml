@@ -89,9 +89,10 @@ jobs:
 
   # Release automation: needs IS the wait-for-green. This job only starts
   # once test + coverage + lint all succeeded, so every tag sits on verified
-  # code by construction. Pushes a chore(release) commit + v* tag that hands
-  # off to release.yml for suite re-verification and publication. PR runs
-  # and the bot's own release commits skip via the if guard below.
+  # code by construction. Pushes a chore(release) commit + v* tag and
+  # dispatches release.yml (tag pushes via GITHUB_TOKEN don't trigger
+  # workflows due to GitHub's loop guard). PR runs and the bot's own
+  # release commits skip via the if guard below.
   bump:
     needs: [test, coverage, lint]
     if: >-
@@ -101,6 +102,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -173,8 +175,20 @@ jobs:
           git commit -m "chore(release): v$NEW_VERSION"
           git tag "v$NEW_VERSION"
 
-          # Deliberately no [skip ci]: the pushed tag must still fire
-          # release.yml. Loop safety comes from the job-level guard above --
-          # the re-triggered run's bump job skips on its own head_commit.
+          # Deliberately no [skip ci]: loop safety comes from the
+          # job-level guard above -- the re-triggered run's bump job
+          # skips on its own head_commit.
           git push origin main
           git push origin "v$NEW_VERSION"
+
+      - name: Dispatch Release workflow
+        if: steps.bump.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          # GITHUB_TOKEN pushes don't trigger workflows (GitHub loop guard),
+          # so the tag push above won't fire release.yml. Dispatch explicitly.
+          # Release's verify job re-checks the suite before publishing.
+          gh workflow run Release --ref main -f version=v$NEW_VERSION -f dry_run=false
+          echo "Dispatched Release for v$NEW_VERSION"
