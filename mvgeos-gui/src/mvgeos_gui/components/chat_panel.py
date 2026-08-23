@@ -11,10 +11,7 @@ from nicegui import ui
 from mvgeos_gui.autocomplete import AutocompleteService
 from mvgeos_gui.components.diff_viewer import render_diff_viewer
 from mvgeos_gui.components.file_tree import render_file_tree
-from mvgeos_gui.components.message_parts import (
-    render_assistant_message,
-    render_streaming_bubble,
-)
+from mvgeos_gui.components.message_parts import render_assistant_message
 from mvgeos_gui.components.terminal_panel import render_terminal_panel
 from mvgeos_gui.model_catalog import get_model_options
 from mvgeos_gui.state import AppState
@@ -142,7 +139,7 @@ def render_chat_panel(state: AppState) -> ui.column:
 
                     @ui.refreshable
                     def messages_view() -> None:
-                        if not state.messages and not state.is_streaming:
+                        if not state.messages:
                             _render_empty_chat(state)
                         else:
                             _render_messages(state)
@@ -255,9 +252,6 @@ def _render_messages(state: AppState) -> None:
             _render_user_message(msg)
         else:
             render_assistant_message(msg, idx, state)
-
-    if state.is_streaming:
-        render_streaming_bubble(state)
 
 
 def _render_user_message(msg: object) -> None:
@@ -404,14 +398,6 @@ def _render_composer(state: AppState) -> None:
                 # Shift+Enter inserts newline, normal Enter submits
                 handle_submit()
 
-            def handle_tab(e: object) -> None:
-                if ac_service.is_open:
-                    item = ac_service.get_selected_item()
-                    if item:
-                        _apply_autocomplete_selection(
-                            ac_service, prompt_input, item, state
-                        )
-
             def handle_arrow_down(e: object) -> None:
                 if ac_service.is_open:
                     ac_service.select_next()
@@ -420,7 +406,10 @@ def _render_composer(state: AppState) -> None:
                 if ac_service.is_open:
                     ac_service.select_prev()
 
-            prompt_input.on("keydown.tab.prevent", handle_tab)
+            prompt_input.on(
+                "keydown.tab.prevent",
+                lambda e: handle_tab(ac_service, prompt_input, state),
+            )
             prompt_input.on("keydown.down.prevent", handle_arrow_down)
             prompt_input.on("keydown.up.prevent", handle_arrow_up)
 
@@ -649,6 +638,18 @@ def _handle_backspace(prompt_input: ui.textarea, state: AppState) -> None:
     text = prompt_input.value or ""
     if not text and state.selected_mentions:
         state.remove_selected_mention(len(state.selected_mentions) - 1)
+
+
+def handle_tab(
+    ac_service: AutocompleteService,
+    prompt_input: ui.textarea,
+    state: AppState,
+) -> None:
+    """Apply the highlighted autocomplete item when the popup is open."""
+    if ac_service.is_open:
+        item = ac_service.get_selected_item()
+        if item:
+            _apply_autocomplete_selection(ac_service, prompt_input, item, state)
 
 
 def _apply_autocomplete_selection(

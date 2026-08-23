@@ -191,33 +191,3 @@ def render_assistant_message(
         render_message_footer(msg, msg_idx, state)
 
     return container
-
-
-def render_streaming_bubble(state: AppState) -> ui.column:
-    """Render the live streaming bubble."""
-    with (
-        ui.column().classes(
-            "w-full max-w-3xl mx-auto px-6 py-3 items-start"
-        ) as container,
-        ui.card().classes(
-            "w-full bg-[#181a20] border border-[#3b82f6]/30 rounded-2xl p-4 shadow-lg"
-        ),
-    ):
-        header_row = ui.row().classes("items-center gap-2 mb-2")
-        with header_row:
-            ui.icon("auto_awesome", size="14px").classes("text-[#3b82f6]")
-            ui.label("Mvge").classes("text-xs font-semibold text-[#e6edf3]")
-            ui.spinner("dots", size="xs", color="primary").classes("ml-auto")
-
-        if state.streaming_content:
-            ui.markdown(state.streaming_content).classes(
-                "text-xs text-[#e6edf3] leading-relaxed max-w-none w-full"
-            )
-        elif state.streaming_thinking:
-            with ui.row().classes("items-start gap-2"):
-                ui.icon("psychology", size="14px").classes("text-[#7c3aed] mt-0.5")
-                ui.label(state.streaming_thinking).classes(
-                    "text-xs text-[#a78bfa] italic"
-                )
-
-    return container

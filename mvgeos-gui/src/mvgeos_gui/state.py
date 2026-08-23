@@ -217,11 +217,6 @@ class AppState:
         if not self.recent_projects and self.project_path:
             self.recent_projects.append(self.project_path)
 
-    @property
-    def uploaded_files(self) -> list[str]:
-        """Files attached as context for the current session."""
-        return self.pending_attachments
-
     def subscribe(self, listener: Callable[[], Any]) -> None:
         """Subscribe a listener callback to state changes."""
         if listener not in self._change_listeners:
@@ -756,27 +751,6 @@ class AppState:
     def set_pi_status(self, status: str) -> None:
         """Update the Mvge process status."""
         self.pi_status = status
-        self.notify()
-
-    def set_streaming(
-        self,
-        content: str,
-        thinking: str = "",
-        tool_calls: list[dict[str, Any]] | None = None,
-    ) -> None:
-        """Update streaming state for the active assistant message."""
-        self.is_streaming = True
-        self.streaming_content = content
-        self.streaming_thinking = thinking
-        self.streaming_tool_calls = tool_calls or []
-        self.notify()
-
-    def clear_streaming(self) -> None:
-        """Clear streaming state."""
-        self.is_streaming = False
-        self.streaming_content = ""
-        self.streaming_thinking = ""
-        self.streaming_tool_calls = []
         self.notify()
 
     def set_chat_side_panel(self, panel: str | None) -> None:
