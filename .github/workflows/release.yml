@@ -45,9 +45,9 @@ jobs:
           fetch-depth: 0
 
       - name: Install git-cliff
-        uses: orhun/git-cliff-action@v4
+        uses: taiki-e/install-action@v2
         with:
-          version: "latest"
+          tool: git-cliff@2.13.1
 
       - name: Generate changelog
         id: changelog
@@ -57,7 +57,7 @@ jobs:
           else
             VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           fi
-          
+          echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             git-cliff --unreleased --tag "$VERSION" --config cliff.toml
           else
@@ -86,7 +86,9 @@ jobs:
           fetch-depth: 0
 
       - name: Install git-cliff
-        uses: orhun/git-cliff-action@v4
+        uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff@2.13.1
 
       - name: Generate changelog
         run: |
