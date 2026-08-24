@@ -42,6 +42,10 @@ _Avoid_: Session (except inside the Pi-compatible JSONL wire format), conversati
 Any single message in a Tome's transcript — a SummonerRequest, an MvgeResponse, or a SpellResultMessage.
 _Avoid_: Message (as a spoken term), turn, event
 
+**Invocation Transcript**:
+The rendered structure of one Mvge Invocation — its ordered parts (contemplation, execution steps, text, artifacts) as shown to the Summoner. Parts are authoritative; plain-text content and contemplation lists are projections of the parts.
+_Avoid_: Bubble builder, parts assembler
+
 **Leaf**:
 The active position marker in a Tome — an explicit entry pointing to the current tip of a conversation branch. The "current position" is the entry the Leaf points to.
 _Avoid_: Head, cursor, pointer
