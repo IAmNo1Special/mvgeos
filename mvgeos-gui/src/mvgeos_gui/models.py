@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -176,108 +175,44 @@ class MessagePart:
 
 @dataclass
 class ChatMessage:
-    """A single chat message in the conversation thread."""
+    """A single chat message in the conversation thread.
+
+    ``parts`` is authoritative; ``content``, ``contemplation``, and ``steps``
+    are projections assembled by InvocationTranscript.
+    """
 
     role: str
-    content: str = ""
-    contemplation: list[str] = field(default_factory=list)
     timestamp: str = field(default_factory=lambda: datetime.now(UTC).strftime("%H:%M"))
     model: str | None = None
     mana_used: int = 0
     is_streaming: bool = False
-    steps: list[ExecutionStep] = field(default_factory=list)
-    parts: list[MessagePart] = field(default_factory=list)
     timeline: list[dict[str, Any]] = field(default_factory=list)
     feedback: str | None = None
     is_error: bool = False
     error_message: str | None = None
     attachments: list[str] = field(default_factory=list)
     artifacts: list[Artifact] = field(default_factory=list)
+    parts: list[MessagePart] = field(default_factory=list)
 
-    def get_parts(self) -> list[MessagePart]:
-        """Return sequential parts, synthesizing from fields if parts is empty."""
-        if self.parts:
-            return self.parts
-        synthetic: list[MessagePart] = []
-        for c in self.contemplation:
-            synthetic.append(
-                MessagePart(part_type=MessagePartType.CONTEMPLATION, text=c)
-            )
-        for s in self.steps:
-            synthetic.append(MessagePart(part_type=MessagePartType.STEP, step=s))
-        if self.content:
-            synthetic.append(
-                MessagePart(part_type=MessagePartType.TEXT, text=self.content)
-            )
-        for a in self.artifacts:
-            synthetic.append(
-                MessagePart(part_type=MessagePartType.ARTIFACT, artifact=a)
-            )
-        return synthetic
+    @property
+    def content(self) -> str:
+        """Plain-text projection of the TEXT parts."""
+        return "".join(
+            p.text for p in self.parts if p.part_type is MessagePartType.TEXT
+        )
 
+    @property
+    def contemplation(self) -> list[str]:
+        """Contemplation projection: texts of the CONTEMPLATION parts."""
+        return [
+            p.text for p in self.parts if p.part_type is MessagePartType.CONTEMPLATION
+        ]
 
-def extract_contemplation_tags(text: str) -> tuple[str, list[str]]:
-    """Extract <think>...</think> or <thought>...</thought> tags from text.
-
-    Returns (cleaned_content, extracted_contemplation_list).
-    """
-    if not text:
-        return "", []
-
-    pattern = re.compile(
-        r"<(?:think|thought)>(.*?)</(?:think|thought)>",
-        re.DOTALL | re.IGNORECASE,
-    )
-    thoughts: list[str] = []
-
-    def _replace(m: re.Match[str]) -> str:
-        thoughts.append(m.group(1).strip())
-        return ""
-
-    cleaned = pattern.sub(_replace, text)
-
-    # Check for unclosed <think> or <thought> tag at end of streaming buffer
-    unclosed = re.compile(
-        r"<(?:think|thought)>(.*)$",
-        re.DOTALL | re.IGNORECASE,
-    )
-    unclosed_match = unclosed.search(cleaned)
-    if unclosed_match:
-        thoughts.append(unclosed_match.group(1).strip())
-        cleaned = unclosed.sub("", cleaned)
-
-    extracted_thoughts = [t for t in thoughts if t]
-    return cleaned.strip(), extracted_thoughts
-
-
-def extract_ordered_content(text: str) -> list[dict[str, str]]:
-    """Extract text and contemplation segments in original chronological order.
-
-    Returns list of {"type": "text"|"thought", "text": str} entries.
-    """
-    if not text:
-        return []
-
-    pattern = re.compile(
-        r"<(?:think|thought)>(.*?)</(?:think|thought)>",
-        re.DOTALL | re.IGNORECASE,
-    )
-    parts: list[dict[str, str]] = []
-    last_end = 0
-
-    for match in pattern.finditer(text):
-        if match.start() > last_end:
-            text_segment = text[last_end : match.start()].strip()
-            if text_segment:
-                parts.append({"type": "text", "text": text_segment})
-        thought_text = match.group(1).strip()
-        if thought_text:
-            parts.append({"type": "thought", "text": thought_text})
-        last_end = match.end()
-
-    if last_end < len(text):
-        text_segment = text[last_end:].strip()
-        if text_segment:
-            parts.append({"type": "text", "text": text_segment})
-
-    return parts
+    @property
+    def steps(self) -> list[ExecutionStep]:
+        """Execution-step projection: steps carried by STEP parts."""
+        return [
+            p.step
+            for p in self.parts
+            if p.part_type is MessagePartType.STEP and p.step is not None
+        ]

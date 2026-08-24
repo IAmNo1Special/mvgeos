@@ -1,6 +1,7 @@
 """Integration tests for live agent channeling, Mana tracking, and step cards."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from nicegui import ui
@@ -12,9 +13,22 @@ from mvgeos_gui.models import (
     CommandExecution,
     ExecutionStep,
     FileExploration,
+    MessagePart,
+    MessagePartType,
     StepType,
 )
 from mvgeos_gui.state import AppState
+from mvgeos_gui.transcript import InvocationTranscript
+
+
+def _part(kind: MessagePartType, text: str) -> MessagePart:
+    return MessagePart(part_type=kind, text=text)
+
+
+def _assistant_msg(*parts: MessagePart, **kwargs: Any) -> ChatMessage:
+    msg = ChatMessage(role="assistant", **kwargs)
+    msg.parts.extend(parts)
+    return msg
 
 
 @pytest.mark.asyncio
@@ -22,12 +36,13 @@ async def test_user_and_assistant_message_rendering(user: User) -> None:
     """Verify user message bubble and assistant response bubble rendering."""
     state = AppState(project_path=Path("C:/demo/project"))
     state.messages.append(
-        ChatMessage(role="user", content="Refactor the database module")
+        InvocationTranscript.for_summoner("Refactor the database module")
     )
     state.messages.append(
-        ChatMessage(
-            role="assistant",
-            content="I have refactored the database connection pool.",
+        _assistant_msg(
+            _part(
+                MessagePartType.TEXT, "I have refactored the database connection pool."
+            ),
             model="nvidia/nemotron-3-ultra-550b-a55b:free",
             mana_used=1250,
         )
@@ -54,17 +69,19 @@ async def test_user_and_assistant_message_rendering(user: User) -> None:
 async def test_collapsible_step_cards_in_conversation(user: User) -> None:
     """Verify intermediate step cards render in assistant response bubble."""
     state = AppState(project_path=Path("C:/demo/project"))
-    assistant_msg = ChatMessage(
-        role="assistant",
-        content="Here are the search results.",
-        steps=[
-            ExecutionStep(
+    assistant_msg = _assistant_msg(
+        MessagePart(
+            part_type=MessagePartType.STEP,
+            step=ExecutionStep(
                 step_type=StepType.WORKED,
                 title="Worked for 3.1s",
                 details=["Analyzed directory structure", "Parsed abstract syntax tree"],
                 is_complete=True,
             ),
-            ExecutionStep(
+        ),
+        MessagePart(
+            part_type=MessagePartType.STEP,
+            step=ExecutionStep(
                 step_type=StepType.FILES,
                 title="Explored 2 files",
                 files=[
@@ -76,7 +93,10 @@ async def test_collapsible_step_cards_in_conversation(user: User) -> None:
                     ),
                 ],
             ),
-            ExecutionStep(
+        ),
+        MessagePart(
+            part_type=MessagePartType.STEP,
+            step=ExecutionStep(
                 step_type=StepType.COMMANDS,
                 title="Ran 1 command",
                 commands=[
@@ -87,7 +107,8 @@ async def test_collapsible_step_cards_in_conversation(user: User) -> None:
                     )
                 ],
             ),
-        ],
+        ),
+        _part(MessagePartType.TEXT, "Here are the search results."),
     )
     state.messages.append(assistant_msg)
 
@@ -109,9 +130,8 @@ async def test_streaming_indicator_and_stop_button(user: User) -> None:
     """Verify channeling indicator and Stop button during active generation."""
     state = AppState(project_path=Path("C:/demo/project"), is_channeling=True)
     state.messages.append(
-        ChatMessage(
-            role="assistant",
-            content="Drafting response...",
+        _assistant_msg(
+            _part(MessagePartType.TEXT, "Drafting response..."),
             is_streaming=True,
         )
     )
@@ -134,9 +154,8 @@ async def test_feedback_buttons_interaction(user: User) -> None:
     """Verify thumbs up and thumbs down feedback toggle on assistant message."""
     state = AppState(project_path=Path("C:/demo/project"))
     state.messages.append(
-        ChatMessage(
-            role="assistant",
-            content="All unit tests passed successfully.",
+        _assistant_msg(
+            _part(MessagePartType.TEXT, "All unit tests passed successfully."),
             model="google/gemini-2.5-pro",
         )
     )
@@ -176,10 +195,12 @@ async def test_contemplation_card_in_conversation(user: User) -> None:
     """Verify contemplation/thought block renders separately from response content."""
     state = AppState(project_path=Path("C:/demo/project"))
     state.messages.append(
-        ChatMessage(
-            role="assistant",
-            contemplation=["User wants greeting. Respond politely."],
-            content="Hey there! How can I help you today?",
+        _assistant_msg(
+            _part(
+                MessagePartType.CONTEMPLATION,
+                "User wants greeting. Respond politely.",
+            ),
+            _part(MessagePartType.TEXT, "Hey there! How can I help you today?"),
             model="nvidia/nemotron-3-ultra-550b-a55b:free",
         )
     )
@@ -199,13 +220,16 @@ async def test_multiple_contemplation_segments(user: User) -> None:
     """Verify each reasoning segment renders in its own Thought card."""
     state = AppState(project_path=Path("C:/demo/project"))
     state.messages.append(
-        ChatMessage(
-            role="assistant",
-            contemplation=[
+        _assistant_msg(
+            _part(
+                MessagePartType.CONTEMPLATION,
                 "First, I need to understand the request.",
+            ),
+            _part(
+                MessagePartType.CONTEMPLATION,
                 "Now I will plan the implementation.",
-            ],
-            content="Here is the implementation plan.",
+            ),
+            _part(MessagePartType.TEXT, "Here is the implementation plan."),
             model="nvidia/nemotron-3-ultra-550b-a55b:free",
         )
     )
@@ -224,8 +248,6 @@ async def test_multiple_contemplation_segments(user: User) -> None:
 @pytest.mark.asyncio
 async def test_interleaved_thoughts_and_steps_flow(user: User) -> None:
     """Verify interleaved thoughts and tool steps render in order without merging."""
-    from mvgeos_gui.models import MessagePart, MessagePartType
-
     state = AppState(project_path=Path("C:/demo/project"))
     step = ExecutionStep(
         step_type=StepType.FILES,

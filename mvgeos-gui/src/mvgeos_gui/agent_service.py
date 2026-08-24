@@ -21,15 +21,9 @@ from mvgeos_gui.models import (
     ArtifactType,
     BackgroundTask,
     ChatMessage,
-    CommandExecution,
-    ExecutionStep,
-    FileExploration,
-    MessagePart,
-    MessagePartType,
-    StepType,
     TaskStatus,
-    extract_contemplation_tags,
 )
+from mvgeos_gui.transcript import InvocationTranscript
 
 if TYPE_CHECKING:
     from coding_mvge.mvge import CodingMvge
@@ -67,6 +61,7 @@ class AgentService:
         self._agent_factory = agent_factory
         self._agent: CodingMvge | None = None
         self._active_message: ChatMessage | None = None
+        self._active_transcript: InvocationTranscript | None = None
         self._active_state: AppState | None = None
         self._is_running = False
         self._active_task: asyncio.Task[Any] | None = None
@@ -145,6 +140,7 @@ class AgentService:
         target_state = state or self._active_state
         if target_message is None:
             return
+        transcript = self._transcript_for(target_message)
 
         data = event.data
 
@@ -160,69 +156,10 @@ class AgentService:
                 target_state.notify()
 
         elif event.type == MvgeEventType.MESSAGE_UPDATE:
-            text = data.get("text", "")
-            kind = data.get("kind", "text")
-            if text:
-                if kind == "contemplation":
-                    target_message.contemplation.append(text)
-                    if (
-                        target_message.parts
-                        and target_message.parts[-1].part_type
-                        == MessagePartType.CONTEMPLATION
-                    ):
-                        target_message.parts[-1].text += text
-                    else:
-                        target_message.parts.append(
-                            MessagePart(
-                                part_type=MessagePartType.CONTEMPLATION,
-                                text=text,
-                            )
-                        )
-                else:
-                    if "<think>" in text or "<thought>" in text:
-                        cleaned, thoughts = extract_contemplation_tags(text)
-                        if thoughts:
-                            target_message.contemplation.extend(thoughts)
-                            for t in thoughts:
-                                target_message.parts.append(
-                                    MessagePart(
-                                        part_type=MessagePartType.CONTEMPLATION,
-                                        text=t,
-                                    )
-                                )
-                        if cleaned:
-                            target_message.content += cleaned
-                            if (
-                                target_message.parts
-                                and target_message.parts[-1].part_type
-                                == MessagePartType.TEXT
-                            ):
-                                target_message.parts[-1].text += cleaned
-                            else:
-                                target_message.parts.append(
-                                    MessagePart(
-                                        part_type=MessagePartType.TEXT,
-                                        text=cleaned,
-                                    )
-                                )
-                    else:
-                        target_message.content += text
-                        if (
-                            target_message.parts
-                            and target_message.parts[-1].part_type
-                            == MessagePartType.TEXT
-                        ):
-                            target_message.parts[-1].text += text
-                        else:
-                            target_message.parts.append(
-                                MessagePart(
-                                    part_type=MessagePartType.TEXT,
-                                    text=text,
-                                )
-                            )
-                target_message.is_streaming = True
-                if target_state is not None:
-                    self._notify_throttled(target_state)
+            transcript.apply_message_update(data)
+            target_message.is_streaming = True
+            if target_state is not None:
+                self._notify_throttled(target_state)
 
         elif event.type == MvgeEventType.AFTER_PROVIDER_RESPONSE:
             mana = data.get("mana_used", 0)
@@ -236,43 +173,18 @@ class AgentService:
             spell_id = data.get("spellCastId", "")
             spell_name = data.get("spellName", "tool")
             self._pending_spell_starts[spell_id] = time.monotonic()
+            elapsed = (
+                time.monotonic() - self._start_time if self._start_time > 0 else None
+            )
+            transcript.begin_spell(data, elapsed_seconds=elapsed)
 
-            if spell_name == "bash":
-                cmd = data.get("command") or data.get("params", {}).get("command", "")
-                step = self._get_or_create_step(target_message, StepType.COMMANDS)
-                step.commands.append(
-                    CommandExecution(
-                        command=str(cmd) if cmd else "$ (running command...)",
-                    )
-                )
-                step.title = f"Ran {len(step.commands)} command(s)"
-            elif spell_name in ("read", "grep", "find", "list"):
-                path = (
-                    data.get("path")
-                    or data.get("file_path")
-                    or data.get("params", {}).get("path", "")
-                )
-                if path:
-                    lines = data.get("lines") or data.get("params", {}).get("lines")
-                    step = self._get_or_create_step(target_message, StepType.FILES)
-                    step.files.append(
-                        FileExploration(
-                            path=str(path),
-                            operation=spell_name,
-                            lines=str(lines) if lines else None,
-                        )
-                    )
-                    step.title = f"Explored {len(step.files)} file(s)"
+            arguments = data.get("arguments") or {}
+            path = arguments.get("path") if isinstance(arguments, dict) else None
+            if spell_name in ("read", "grep", "find", "list") and str(path).endswith(
+                "SKILL.md"
+            ):
                 # Reading a SKILL.md file marks that skill as invoked.
-                if str(path).endswith("SKILL.md"):
-                    self.mark_skill_invoked(str(path), state=target_state)
-            else:
-                step = self._get_or_create_step(target_message, StepType.WORKED)
-                step.spell_name = spell_name
-                step.params = data.get("arguments", {})
-                step.details.append(f"Executing {spell_name}...")
-                elapsed = time.monotonic() - self._start_time
-                step.title = f"Worked for {self._format_duration(elapsed)}"
+                self.mark_skill_invoked(str(path), state=target_state)
 
             if target_state is not None:
                 target_state.set_mvge_status("working")
@@ -280,58 +192,41 @@ class AgentService:
 
             # Track long-running spells as background tasks in the inspector.
             if target_state is not None:
-                self._track_spell_start(target_state, spell_id, spell_name, data)
+                self._track_spell_start(target_state, spell_id, str(spell_name), data)
 
         elif event.type == MvgeEventType.SPELL_CASTING_END:
             spell_id = data.get("spellCastId", "")
             start_ts = self._pending_spell_starts.pop(spell_id, time.monotonic())
             duration = max(0.0, time.monotonic() - start_ts)
-            result = data.get("result", "")
-            error = data.get("error")
-
-            for step in reversed(target_message.steps):
-                if step.step_type == StepType.COMMANDS and step.commands:
-                    last_cmd = step.commands[-1]
-                    if not last_cmd.output and not last_cmd.is_error:
-                        last_cmd.output = str(result or error or "")
-                        last_cmd.is_error = error is not None
-                        last_cmd.duration_seconds = duration
-                        break
-                elif step.step_type == StepType.FILES and step.files:
-                    last_file = step.files[-1]
-                    if not last_file.details and not last_file.is_error:
-                        last_file.details = str(result or error or "")
-                        last_file.is_error = error is not None
-                        break
-                elif step.step_type == StepType.WORKED:
-                    step.duration_seconds = time.monotonic() - self._start_time
-                    step.title = (
-                        f"Worked for {self._format_duration(step.duration_seconds)}"
-                    )
-                    step.result = str(result or error or "")
-                    break
+            elapsed = (
+                max(0.0, time.monotonic() - self._start_time)
+                if self._start_time > 0
+                else None
+            )
+            transcript.end_spell(
+                data, duration_seconds=duration, elapsed_seconds=elapsed
+            )
             if target_state is not None:
                 target_state.notify()
 
             # Finalise the background task entry created on SPELL_CASTING_START.
             if target_state is not None:
-                self._track_spell_end(target_state, spell_id, result, error, duration)
+                self._track_spell_end(
+                    target_state,
+                    spell_id,
+                    data.get("result"),
+                    data.get("error"),
+                    duration,
+                )
 
         elif event.type in (MvgeEventType.TURN_END, MvgeEventType.AGENT_END):
             self._pending_spell_starts.clear()
-            if self._start_time > 0:
-                elapsed = max(0.0, time.monotonic() - self._start_time)
-                for step in target_message.steps:
-                    if step.step_type == StepType.WORKED:
-                        step.duration_seconds = elapsed
-                        step.title = f"Worked for {self._format_duration(elapsed)}"
-                        step.is_complete = True
-            if target_message.content:
-                cleaned, thoughts = extract_contemplation_tags(target_message.content)
-                if thoughts:
-                    target_message.contemplation.extend(thoughts)
-                    target_message.content = cleaned
-            target_message.is_streaming = False
+            elapsed = (
+                max(0.0, time.monotonic() - self._start_time)
+                if self._start_time > 0
+                else None
+            )
+            transcript.finish(elapsed_seconds=elapsed)
             if target_state is not None:
                 target_state.is_channeling = False
                 if event.type == MvgeEventType.AGENT_END:
@@ -351,31 +246,20 @@ class AgentService:
                 ),
                 file_paths=[str(p) for p in artifact_data.get("file_paths", [])],
             )
-            target_message.artifacts.append(artifact)
-            target_message.parts.append(
-                MessagePart(part_type=MessagePartType.ARTIFACT, artifact=artifact)
-            )
+            transcript.add_artifact(artifact)
             if target_state is not None:
                 target_state.add_artifact(artifact)
             if target_state is not None:
                 target_state.notify()
 
-    def _get_or_create_step(
-        self, message: ChatMessage, step_type: StepType
-    ) -> ExecutionStep:
-        """Get the active contiguous step or create a new sequential step card."""
+    def _transcript_for(self, message: ChatMessage) -> InvocationTranscript:
+        """Bind (or reuse) the InvocationTranscript assembling this message."""
         if (
-            message.parts
-            and message.parts[-1].part_type == MessagePartType.STEP
-            and message.parts[-1].step is not None
-            and message.parts[-1].step.step_type == step_type
+            self._active_transcript is None
+            or self._active_transcript.message is not message
         ):
-            return message.parts[-1].step
-
-        step = ExecutionStep(step_type=step_type)
-        message.steps.append(step)
-        message.parts.append(MessagePart(part_type=MessagePartType.STEP, step=step))
-        return step
+            self._active_transcript = InvocationTranscript.bind(message)
+        return self._active_transcript
 
     def _track_spell_start(
         self,
@@ -446,22 +330,13 @@ class AgentService:
         """Update a subagent background task's status/progress."""
         return state.update_background_task(task_id, status=status, progress=progress)
 
-    @staticmethod
-    def _format_duration(seconds: float) -> str:
-        if seconds < 1.0:
-            return f"{seconds * 1000:.0f}ms"
-        if seconds < 60.0:
-            return f"{seconds:.1f}s"
-        mins = int(seconds // 60)
-        rem_secs = seconds % 60
-        return f"{mins}m {rem_secs:.0f}s"
-
     async def run_prompt(
         self, prompt: str, state: AppState, message: ChatMessage
     ) -> None:
         """Run agent with prompt asynchronously while capturing all events."""
         self._is_running = True
         self._active_message = message
+        self._active_transcript = InvocationTranscript.bind(message)
         self._active_state = state
         self._start_time = time.monotonic()
         self._pending_spell_starts.clear()
@@ -474,7 +349,7 @@ class AgentService:
         if not self._api_key:
             message.is_error = True
             message.error_message = "API key required"
-            message.content = (
+            self._active_transcript.set_text(
                 "**Authentication Required**: No OpenRouter API key was found.\n\n"
                 "Please set the `OPENROUTER_API_KEY` environment variable, "
                 "run `mvgeos setup`, or pass `--api-key` when starting `mvgeos-gui`."
@@ -485,6 +360,7 @@ class AgentService:
             self._is_running = False
             self._active_message = None
             self._active_state = None
+            self._active_transcript = None
             state.notify()
             return
 
@@ -514,12 +390,12 @@ class AgentService:
                     keepalive_task.cancel()
         except asyncio.CancelledError:
             logger.info("Agent run cancelled by summoner")
-            message.content += "\n\n*(Cancelled by summoner)*"
+            self._active_transcript.append_text("\n\n*(Cancelled by summoner)*")
         except AuthenticationError as exc:
             logger.exception("Authentication failed: %s", exc)
             message.is_error = True
             message.error_message = str(exc)
-            message.content = (
+            self._active_transcript.set_text(
                 "**Authentication Failed (HTTP 401)**: The OpenRouter API key "
                 "is invalid or unauthorized.\n\n"
                 "Please check your `OPENROUTER_API_KEY` environment variable "
@@ -534,7 +410,7 @@ class AgentService:
                 if exc.retry_after
                 else ""
             )
-            message.content = (
+            self._active_transcript.set_text(
                 "**Rate Limit Exceeded (HTTP 429)**: The model provider is "
                 "temporarily rate-limiting requests.\n\n"
                 "- **Free tier models** (`:free`) frequently experience upstream "
@@ -548,7 +424,7 @@ class AgentService:
             message.is_error = True
             message.error_message = str(exc)
             if not message.content:
-                message.content = f"Execution error: {exc}"
+                self._active_transcript.set_text(f"Execution error: {exc}")
         finally:
             message.is_streaming = False
             state.is_channeling = False
@@ -556,6 +432,7 @@ class AgentService:
             self._is_running = False
             self._active_message = None
             self._active_state = None
+            self._active_transcript = None
             self._active_task = None
             state.notify()
 

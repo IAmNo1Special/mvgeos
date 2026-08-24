@@ -54,8 +54,7 @@ def render_message_header(msg: ChatMessage) -> ui.row:
 
 def render_message_parts(msg: ChatMessage, state: AppState) -> None:
     """Render sequential message parts in chronological order."""
-    parts = msg.get_parts()
-    for part in parts:
+    for part in msg.parts:
         if part.part_type == MessagePartType.CONTEMPLATION:
             if part.text:
                 render_contemplation_card(part.text, msg.is_streaming)

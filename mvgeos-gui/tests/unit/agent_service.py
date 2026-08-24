@@ -137,7 +137,11 @@ def test_spell_casting_start_sets_mvge_status_working(
 
     event = MvgeEvent(
         type=MvgeEventType.SPELL_CASTING_START,
-        data={"spellCastId": "s1", "spellName": "bash", "command": "ls"},
+        data={
+            "spellCastId": "s1",
+            "spellName": "bash",
+            "arguments": {"command": "ls"},
+        },
     )
     agent_service.handle_event(event, msg, app_state)
     assert app_state.mvge_status == "working"
@@ -223,30 +227,6 @@ def test_handle_message_update_inline_think_tags(
     assert msg.content == "Hello!"
 
 
-def test_extract_contemplation_tags_helper() -> None:
-    """Verify extract_contemplation_tags splits closed and unclosed think tags."""
-    from mvgeos_gui.models import extract_contemplation_tags
-
-    # Closed tag
-    cleaned, thought = extract_contemplation_tags(
-        "<thought>Initial plan</thought>Actual output"
-    )
-    assert cleaned == "Actual output"
-    assert thought == ["Initial plan"]
-
-    # Multiple closed tags
-    cleaned, thought = extract_contemplation_tags(
-        "<think>Thought 1</think>Output<think>Thought 2</think>"
-    )
-    assert cleaned == "Output"
-    assert thought == ["Thought 1", "Thought 2"]
-
-    # Plain text without tags
-    cleaned, thought = extract_contemplation_tags("Just plain text")
-    assert cleaned == "Just plain text"
-    assert thought == []
-
-
 def test_handle_provider_response_mana_tracking(
     agent_service: AgentService, app_state: AppState
 ) -> None:
@@ -276,7 +256,7 @@ def test_handle_command_spell_dispatch(
         data={
             "spellCastId": "cast-1",
             "spellName": "bash",
-            "command": "pytest -v",
+            "arguments": {"command": "pytest -v"},
         },
     )
     agent_service.handle_event(start_event, msg, app_state)
@@ -312,8 +292,7 @@ def test_handle_file_exploration_spell_dispatch(
         data={
             "spellCastId": "cast-file-1",
             "spellName": "read",
-            "path": "src/main.py",
-            "lines": "1-50",
+            "arguments": {"path": "src/main.py", "lines": "1-50"},
         },
     )
     agent_service.handle_event(start_event, msg, app_state)
@@ -419,7 +398,7 @@ def test_spell_casting_start_tracks_background_task(
         data={
             "spellCastId": "cast-bg-1",
             "spellName": "bash",
-            "command": "pytest -v",
+            "arguments": {"command": "pytest -v"},
         },
     )
     agent_service.handle_event(start_event, msg, app_state)
@@ -612,13 +591,6 @@ def test_background_tasks_cleared_on_new_conversation(
     agent_service.register_subagent_task(app_state, "sub-x", "Worker")
     app_state.new_conversation()
     assert app_state.background_tasks == []
-
-
-def test_format_duration_variants() -> None:
-    """Verify _format_duration correctly renders seconds and minutes."""
-    assert AgentService._format_duration(0.4) == "400ms"
-    assert AgentService._format_duration(25.3) == "25.3s"
-    assert AgentService._format_duration(125.0) == "2m 5s"
 
 
 @pytest.mark.asyncio
@@ -990,7 +962,7 @@ def test_handle_read_skill_md_marks_invoked(
         data={
             "spellCastId": "cast-skill-1",
             "spellName": "read",
-            "path": "/skills/review/SKILL.md",
+            "arguments": {"path": "/skills/review/SKILL.md"},
         },
     )
     agent_service.handle_event(start_event, msg, app_state)
@@ -1018,7 +990,7 @@ def test_handle_read_non_skill_path_does_not_invoke(
         data={
             "spellCastId": "cast-file-1",
             "spellName": "read",
-            "path": "src/main.py",
+            "arguments": {"path": "src/main.py"},
         },
     )
     agent_service.handle_event(start_event, msg, app_state)
@@ -1129,7 +1101,7 @@ def test_handle_interleaved_thoughts_and_events(
             data={
                 "spellCastId": "cast-1",
                 "spellName": "read",
-                "path": "config.json",
+                "arguments": {"path": "config.json"},
             },
         ),
         msg,

@@ -21,7 +21,16 @@ from mvgeos_gui.state import AppState
 
 
 def _msg(**kwargs) -> ChatMessage:
-    return ChatMessage(role="assistant", **kwargs)
+    content = kwargs.pop("content", None)
+    contemplation = kwargs.pop("contemplation", None)
+    msg = ChatMessage(role="assistant", **kwargs)
+    for thought in contemplation or []:
+        msg.parts.append(
+            MessagePart(part_type=MessagePartType.CONTEMPLATION, text=thought)
+        )
+    if content:
+        msg.parts.append(MessagePart(part_type=MessagePartType.TEXT, text=content))
+    return msg
 
 
 @pytest.mark.asyncio

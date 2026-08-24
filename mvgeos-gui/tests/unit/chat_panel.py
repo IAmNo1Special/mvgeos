@@ -10,8 +10,8 @@ from mvgeos_gui.components.chat_panel import (
     _scroll_to_bottom,
     render_chat_panel,
 )
-from mvgeos_gui.models import ChatMessage
 from mvgeos_gui.state import AppState
+from mvgeos_gui.transcript import InvocationTranscript
 
 
 @pytest.mark.asyncio
@@ -46,8 +46,10 @@ async def test_render_chat_panel_empty(user: User) -> None:
 async def test_render_chat_panel_with_messages(user: User) -> None:
     """Verify chat panel renders message list and container ID."""
     state = AppState()
-    state.messages.append(ChatMessage(role="user", content="Hello Mvge!"))
-    state.messages.append(ChatMessage(role="assistant", content="Greetings Summoner!"))
+    state.messages.append(InvocationTranscript.for_summoner("Hello Mvge!"))
+    state.messages.append(
+        InvocationTranscript.from_tome_content("Greetings Summoner!").message
+    )
 
     @ui.page("/test_chat_panel_messages")
     def page() -> None:
@@ -62,14 +64,13 @@ async def test_render_chat_panel_with_messages(user: User) -> None:
 async def test_render_chat_panel_streaming_state(user: User) -> None:
     """Verify chat panel renders streaming indicator and messages when streaming."""
     state = AppState()
-    state.messages.append(ChatMessage(role="user", content="Explain quantum computing"))
     state.messages.append(
-        ChatMessage(
-            role="assistant",
-            content="Quantum mechanics is",
-            is_streaming=True,
-        )
+        InvocationTranscript.for_summoner("Explain quantum computing")
     )
+    assistant = InvocationTranscript()
+    assistant.apply_message_update({"text": "Quantum mechanics is"})
+    assistant.message.is_streaming = True
+    state.messages.append(assistant.message)
     state.is_channeling = True
 
     @ui.page("/test_chat_panel_streaming")
@@ -145,8 +146,10 @@ async def test_chat_panel_no_duplicate_messages_on_multiple_notifies(
 ) -> None:
     """Verify chat panel does not duplicate messages on multiple state notifies."""
     state = AppState()
-    state.messages.append(ChatMessage(role="user", content="Unique prompt text"))
-    state.messages.append(ChatMessage(role="assistant", content="Unique response text"))
+    state.messages.append(InvocationTranscript.for_summoner("Unique prompt text"))
+    state.messages.append(
+        InvocationTranscript.from_tome_content("Unique response text").message
+    )
 
     @ui.page("/test_chat_panel_no_dups")
     def page() -> None:

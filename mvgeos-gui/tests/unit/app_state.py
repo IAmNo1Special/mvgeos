@@ -15,6 +15,7 @@ from mvgeos_gui.autocomplete import MentionChip
 from mvgeos_gui.models import ChangedFile, ChatMessage, DiffView
 from mvgeos_gui.state import AppState
 from mvgeos_gui.tome_service import TomeService
+from mvgeos_gui.transcript import InvocationTranscript
 
 
 def test_app_state_defaults() -> None:
@@ -109,7 +110,7 @@ def test_new_conversation() -> None:
     state.active_tome_id = "tome-123"
     state.tome_title = "Refactoring loop"
     state.is_channeling = True
-    state.messages.append(ChatMessage(role="user", content="hello"))
+    state.messages.append(InvocationTranscript.for_summoner("hello"))
     state.total_mana_used = 500
 
     state.new_conversation()
@@ -153,7 +154,7 @@ def test_switch_model() -> None:
 def test_set_message_feedback() -> None:
     """Verify setting and toggling message feedback status."""
     state = AppState()
-    msg = ChatMessage(role="assistant", content="Response")
+    msg = InvocationTranscript.from_tome_content("Response").message
     state.messages.append(msg)
 
     # Set up

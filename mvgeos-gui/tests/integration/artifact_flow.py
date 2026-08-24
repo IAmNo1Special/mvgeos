@@ -3,12 +3,23 @@
 from pathlib import Path
 
 import pytest
+from mvgeos_agent.types import MvgeEvent, MvgeEventType
 from nicegui import ui
 from nicegui.testing import User
 
+from mvgeos_gui.agent_service import AgentService
 from mvgeos_gui.app import build_page
 from mvgeos_gui.models import Artifact, ArtifactType, ChatMessage
 from mvgeos_gui.state import AppState
+from mvgeos_gui.transcript import InvocationTranscript
+
+
+def _assistant_with_artifact(text: str, artifact: Artifact) -> ChatMessage:
+    transcript = InvocationTranscript()
+    if text:
+        transcript.apply_message_update({"text": text})
+    transcript.add_artifact(artifact)
+    return transcript.message
 
 
 @pytest.mark.asyncio
@@ -23,11 +34,7 @@ async def test_artifact_card_renders_in_assistant_message(user: User) -> None:
         artifact_type=ArtifactType.WALKTHROUGH,
     )
     state.messages.append(
-        ChatMessage(
-            role="assistant",
-            content="Here is the walkthrough:",
-            artifacts=[artifact],
-        )
+        _assistant_with_artifact("Here is the walkthrough:", artifact)
     )
 
     @ui.page("/test_artifact_in_message")
@@ -52,13 +59,7 @@ async def test_artifact_drawer_opens_on_card_click(user: User) -> None:
         content="# Plan\n\nDetails here",
         artifact_type=ArtifactType.IMPLEMENTATION_PLAN,
     )
-    state.messages.append(
-        ChatMessage(
-            role="assistant",
-            content="Generated plan:",
-            artifacts=[artifact],
-        )
-    )
+    state.messages.append(_assistant_with_artifact("Generated plan:", artifact))
     state.add_artifact(artifact)
 
     @ui.page("/test_artifact_drawer_open")
@@ -83,12 +84,7 @@ async def test_artifact_drawer_renders_markdown_content(user: User) -> None:
         content="# Title\n\nSome **bold** text.",
         artifact_type=ArtifactType.DOCUMENT,
     )
-    state.messages.append(
-        ChatMessage(
-            role="assistant",
-            artifacts=[artifact],
-        )
-    )
+    state.messages.append(_assistant_with_artifact("", artifact))
     state.add_artifact(artifact)
     state.open_artifact("art-1")
 
@@ -110,7 +106,7 @@ async def test_artifact_drawer_close_button(user: User) -> None:
         content="Hello",
         artifact_type=ArtifactType.DOCUMENT,
     )
-    state.messages.append(ChatMessage(role="assistant", artifacts=[artifact]))
+    state.messages.append(_assistant_with_artifact("", artifact))
     state.open_artifact("art-1")
 
     @ui.page("/test_artifact_drawer_close")
@@ -133,13 +129,7 @@ async def test_artifacts_in_chat_session(user: User) -> None:
         artifact_type=ArtifactType.WALKTHROUGH,
     )
     state.artifacts.append(artifact)
-    state.messages.append(
-        ChatMessage(
-            role="assistant",
-            content="Summary of changes",
-            artifacts=[artifact],
-        )
-    )
+    state.messages.append(_assistant_with_artifact("Summary of changes", artifact))
 
     @ui.page("/test_inspector_artifacts")
     def page() -> None:
@@ -154,12 +144,8 @@ async def test_artifacts_in_chat_session(user: User) -> None:
 async def test_artifact_event_populates_state_and_message(user: User) -> None:
     """Verify ARTIFACT_CREATED event populates both message and state."""
     state = AppState(project_path=Path("C:/demo/project"))
-    msg = ChatMessage(role="assistant", content="Done")
+    msg = InvocationTranscript.from_tome_content("Done").message
     state.messages.append(msg)
-
-    from mvgeos_agent.types import MvgeEvent, MvgeEventType
-
-    from mvgeos_gui.agent_service import AgentService
 
     service = AgentService(project_path=Path("C:/demo/project"))
     service._active_message = msg

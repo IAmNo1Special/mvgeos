@@ -33,126 +33,13 @@ from mvgeos_gui.models import (
     Artifact,
     BackgroundTask,
     ChatMessage,
-    ExecutionStep,
-    MessagePart,
-    MessagePartType,
     SkillInfo,
-    StepType,
     TaskStatus,
-    extract_contemplation_tags,
-    extract_ordered_content,
 )
 from mvgeos_gui.tome_service import TomeListEntry, TomeService
+from mvgeos_gui.transcript import InvocationTranscript
 
 logger = logging.getLogger(__name__)
-
-
-def _extract_parts_and_content(
-    content: Any,
-) -> tuple[str, list[str], list[MessagePart]]:
-    """Extract text, contemplation list, and sequential MessageParts.
-
-    Returns (plain_text, contemplation_list, sequential_parts).
-    """
-    parts: list[MessagePart] = []
-    text_parts: list[str] = []
-    thought_parts: list[str] = []
-
-    if isinstance(content, str):
-        cleaned, thoughts = extract_contemplation_tags(content)
-        ordered = extract_ordered_content(content)
-        if ordered:
-            for item in ordered:
-                itype = item.get("type")
-                itext = item.get("text", "")
-                if not itext:
-                    continue
-                if itype == "thought":
-                    parts.append(
-                        MessagePart(part_type=MessagePartType.CONTEMPLATION, text=itext)
-                    )
-                else:
-                    parts.append(
-                        MessagePart(part_type=MessagePartType.TEXT, text=itext)
-                    )
-        elif cleaned or thoughts:
-            for t in thoughts:
-                parts.append(
-                    MessagePart(part_type=MessagePartType.CONTEMPLATION, text=t)
-                )
-            if cleaned:
-                parts.append(MessagePart(part_type=MessagePartType.TEXT, text=cleaned))
-        return cleaned, thoughts, parts
-
-    if isinstance(content, list):
-        for item in content:
-            if isinstance(item, dict):
-                item_type = item.get("type")
-                if item_type in ("contemplation", "thinking"):
-                    t_text = str(item.get("text", "") or item.get("thinking", ""))
-                    if t_text:
-                        thought_parts.append(t_text)
-                        parts.append(
-                            MessagePart(
-                                part_type=MessagePartType.CONTEMPLATION,
-                                text=t_text,
-                            )
-                        )
-                elif item_type == "text":
-                    txt = str(item.get("text", ""))
-                    if txt:
-                        cleaned, tag_thoughts = extract_contemplation_tags(txt)
-                        if tag_thoughts:
-                            thought_parts.extend(tag_thoughts)
-                            for t in tag_thoughts:
-                                parts.append(
-                                    MessagePart(
-                                        part_type=MessagePartType.CONTEMPLATION,
-                                        text=t,
-                                    )
-                                )
-                        if cleaned:
-                            text_parts.append(cleaned)
-                            parts.append(
-                                MessagePart(
-                                    part_type=MessagePartType.TEXT,
-                                    text=cleaned,
-                                )
-                            )
-                elif item_type in ("tool_call", "tool_use"):
-                    step_type = (
-                        StepType.COMMANDS
-                        if item.get("name") == "bash"
-                        else (
-                            StepType.FILES
-                            if item.get("name") in ("read", "grep", "find", "list")
-                            else StepType.WORKED
-                        )
-                    )
-                    raw_params: object = item.get("arguments", {})
-                    step = ExecutionStep(
-                        step_type=step_type,
-                        spell_name=str(item.get("name", "")),
-                        params=raw_params if isinstance(raw_params, dict) else {},
-                        is_complete=True,
-                    )
-                    parts.append(MessagePart(part_type=MessagePartType.STEP, step=step))
-                elif "text" in item:
-                    txt = str(item["text"])
-                    text_parts.append(txt)
-                    parts.append(MessagePart(part_type=MessagePartType.TEXT, text=txt))
-            elif isinstance(item, str):
-                text_parts.append(item)
-                parts.append(MessagePart(part_type=MessagePartType.TEXT, text=item))
-        return "\n".join(text_parts), [t for t in thought_parts if t], parts
-
-    return str(content or ""), [], parts
-
-
-def _extract_text_and_contemplation(content: Any) -> tuple[str, list[str]]:
-    """Extract plain text and contemplation from message content."""
-    text, thoughts, _ = _extract_parts_and_content(content)
-    return text, thoughts
 
 
 @dataclass
@@ -524,18 +411,12 @@ class AppState:
                 payload = entry.payload
                 role = str(payload.get("role", "assistant"))
                 if role in ("user", "assistant"):
-                    text, contemplation, parts = _extract_parts_and_content(
-                        payload.get("content", "")
+                    transcript = InvocationTranscript.from_tome_content(
+                        payload.get("content", ""),
+                        role=role,
+                        model=payload.get("model"),
                     )
-                    reconstructed.append(
-                        ChatMessage(
-                            role=role,
-                            content=text,
-                            contemplation=contemplation,
-                            parts=parts,
-                            model=payload.get("model"),
-                        )
-                    )
+                    reconstructed.append(transcript.message)
         self.messages = reconstructed
         self.notify()
 
@@ -582,7 +463,7 @@ class AppState:
 
         attachments = list(self.pending_attachments)
         self.pending_attachments.clear()
-        user_msg = ChatMessage(role="user", content=text, attachments=attachments)
+        user_msg = InvocationTranscript.for_summoner(text, attachments)
         self.messages.append(user_msg)
 
         # Append assistant response bubble
