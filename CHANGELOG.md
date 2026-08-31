@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-08-31
+
+
+### Bug Fixes
+
+- **agent:** update fork target_session_file and refine session terminology (6e3ecd7)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (462b1d6)
+
+- **release:** v1.3.0 (158606c)
+
+
+### Features
+
+- **agent:** fold TomeLifecycle session transitions into deep MvgeTome (#107) (46283bd)
+
+- **agent:** consolidate prompt discovery and config coercion into deep MvgeEnvironment (8fd312a)
+
+
 ## [1.2.0] - 2026-08-31
 
 
