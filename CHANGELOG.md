@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-08-31
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (3ae757b)
+
+- **deps-dev:** update uv-build requirement (10ecb3b)
+
+- **deps-dev:** bump ruff from 0.16.3 to 0.16.4 (d3deb76)
+
+- **release:** v1.2.0 (02e9c9b)
+
+
+### Documentation
+
+- **architecture:** define Invocation Transcript in the domain glossary (7d12edb)
+
+
+### Features
+
+- **provider:** unify model catalog and realm resolution in deep RealmRegistry (#106) (dd232f6)
+
+
+### Refactoring
+
+- **gui:** assemble Invocation bubbles via InvocationTranscript (3c2e0e9)
+
+- eliminate verified redundancies and dead code across monorepo (7f74a84)
+
+
 ## [1.1.0] - 2026-08-23
 
 
