@@ -46,7 +46,6 @@ def test_provider_package_importable_without_agent_side_effects() -> None:
             (
                 "import sys\n"
                 "import mvgeos_provider.base\n"
-                "import mvgeos_provider.composer\n"
                 "import mvgeos_provider.model_registry\n"
                 "import mvgeos_provider.models\n"
                 "import mvgeos_provider.openrouter\n"

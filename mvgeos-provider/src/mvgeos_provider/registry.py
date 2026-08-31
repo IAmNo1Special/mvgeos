@@ -6,20 +6,30 @@ from typing import Any
 import httpx
 
 from mvgeos_provider.base import Realm
-from mvgeos_provider.models import get_model
+from mvgeos_provider.model_registry import ModelRegistry
 from mvgeos_provider.openrouter import OpenRouterRealm
 from mvgeos_provider.types import Model
 
 
 class RealmRegistry:
-    def __init__(self, shared_client: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self,
+        shared_client: httpx.AsyncClient | None = None,
+        model_registry: ModelRegistry | None = None,
+    ) -> None:
         self._shared_client = shared_client
+        self._model_registry = model_registry or ModelRegistry()
+        self._model_registry.load_cache()
         self._extension_providers: dict[str, dict[str, Any]] = {}
         self._builtin_providers: dict[str, Callable[..., Realm]] = {
             "openrouter": lambda api_key="", base_url="": OpenRouterRealm(
                 api_key=api_key, base_url=base_url, client=self.get_shared_client()
             ),
         }
+
+    @property
+    def model_registry(self) -> ModelRegistry:
+        return self._model_registry
 
     def get_shared_client(self) -> httpx.AsyncClient:
         if self._shared_client is None or self._shared_client.is_closed:
@@ -131,7 +141,7 @@ class RealmRegistry:
         api_key: str,
         provider_name: str | None = None,
     ) -> Model | None:
-        model_info = get_model(model_id)
+        model_info = self._model_registry.get(model_id)
         if model_info is not None:
             model = Model(
                 id=model_info.id,
@@ -144,6 +154,7 @@ class RealmRegistry:
                 max_tokens=model_info.max_tokens,
                 headers=dict(model_info.headers or {}),
                 supported_parameters=list(model_info.supported_parameters),
+                is_free=model_info.is_free,
             )
         else:
             target_provider = provider_name
@@ -172,3 +183,22 @@ class RealmRegistry:
                 model.headers.update(ext_headers)
 
         return model
+
+    def resolve(
+        self,
+        model_id: str,
+        api_key: str,
+        provider_name: str | None = None,
+    ) -> tuple[Model, Realm]:
+        """Look up model metadata across static baseline and cached catalog,
+        and construct the paired (Model, Realm) in one call.
+
+        Raises:
+            ValueError: If the model cannot be resolved from baseline, cache,
+                or registered providers.
+        """
+        model = self.compose_model(model_id, api_key, provider_name)
+        if model is None:
+            raise ValueError(f"Unknown model: {model_id}")
+        realm = self.create_realm(model, api_key, provider_name)
+        return model, realm

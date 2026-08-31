@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, cast
 
 from mvgeos_provider.base import Realm
-from mvgeos_provider.composer import ModelComposer
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 from mvgeos_runes.rune_runner import RuneRunner
@@ -112,7 +111,6 @@ class BaseMvge:
         self._runes_paths = parsed.runes_paths
 
         self._provider_registry = RealmRegistry()
-        self._model_composer = ModelComposer(self._provider_registry)
         self._runner: RuneRunner | None = None
         self._rune_lifecycle: RuneLifecycle | None = None
         self._tome_lifecycle: TomeLifecycle | None = None
@@ -222,7 +220,7 @@ class BaseMvge:
         self.steer(text)
 
     def _compose_model(self, model_id: str) -> Model:
-        model, _ = self._model_composer.compose(
+        model, _ = self._provider_registry.resolve(
             model_id, self._api_key, self._provider_name
         )
         return model
@@ -338,7 +336,7 @@ class BaseMvge:
 
         Pure orchestration: rune loading (RuneLifecycle), tome creation
         (TomeLifecycle), prompt assembly (PromptAssembly), and model
-        composition (ModelComposer); config parsing happened in __init__.
+        resolution (RealmRegistry); config parsing happened in __init__.
         """
         if self._initialized:
             return
@@ -348,7 +346,7 @@ class BaseMvge:
         self._tome_lifecycle = TomeLifecycle(TomeLedger(self._tome_dir), self._runner)
         self._tome_ledger = self._tome_lifecycle.ledger
         final_prompt = await self._build_system_prompt_async()
-        self._model, self._realm = self._model_composer.compose(
+        self._model, self._realm = self._provider_registry.resolve(
             self._model_id, self._api_key, self._provider_name
         )
         self._agent_tome = await self._tome_lifecycle.open_or_create(self._tome_resume)
@@ -414,7 +412,7 @@ class BaseMvge:
             return
 
         assert self._model is not None
-        new_model, new_realm = self._model_composer.compose(
+        new_model, new_realm = self._provider_registry.resolve(
             model_id, self._api_key, self._provider_name
         )
         if new_model.provider != self._model.provider:
