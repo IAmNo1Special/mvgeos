@@ -8,7 +8,6 @@ from typing import Any
 import pytest
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_runner import RuneRunner
-from mvgeos_runes.sigils import SigilRegistry
 from mvgeos_runes.types import (
     RuneContext,
     RuneManifest,
@@ -70,16 +69,17 @@ def test_rune_runner_basic():
     assert len(runner.get_all_registered_spells()) == 1
 
 
-def test_sigil_registry():
-    """Test sigil hook registry."""
-    registry = SigilRegistry()
+def test_sigil_handling():
+    """Test sigil hook registration and handling on RuneRunner."""
+    runner = RuneRunner()
 
     def handler(data):
         return "handled"
 
-    registry.register("before_test", lambda d: "result")
-    handlers = registry.get_handlers("before_test")
+    runner.register_handler(SigilHook.BEFORE_INVOCATION, handler)
+    handlers = runner.get_sigil_handlers(SigilHook.BEFORE_INVOCATION)
     assert len(handlers) == 1
+    assert handlers[0] is handler
 
 
 def test_spell_definition():

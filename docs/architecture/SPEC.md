@@ -35,7 +35,7 @@ mvgeos/
 | mvgeos-tome | `types.py` | TomeEntry, TomeMetadata, TomeEntryType |
 | mvgeos-runes | `loader.py` | RuneLoader |
 | mvgeos-runes | `manifest.py` | load_manifest |
-| mvgeos-runes | `sigils.py` | SigilRegistry |
+| mvgeos-runes | `rune_runner.py` | RuneRunner |
 | mvgeos-runes | `types.py` | RuneManifest, SigilHook |
 | mvgeos-cli | `main.py` | CLI entry point |
 | mvgeos-cli | `commands/tome.py` | `mvgeos tome` command |

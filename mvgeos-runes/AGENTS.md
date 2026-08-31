@@ -31,7 +31,6 @@ Test paths follow pattern: `mvgeos-runes/tests/unit/<module>.py` and `mvgeos-run
 | `RuneAPI` | Facade handed to rune factories |
 | `RuneFactory` | `Callable[[RuneAPI], None \| Awaitable[None]]` |
 | `SigilHook` | Enum of 23 lifecycle hook names |
-| `SigilRegistry` | Hook → handlers map |
 | `RuneWatcher` | watchdog-based hot reload |
 | `SpellDefinition` | Definition of a spell provided by a rune |
 | `SkillManifest` | Parsed metadata for an agentskills.io skill |

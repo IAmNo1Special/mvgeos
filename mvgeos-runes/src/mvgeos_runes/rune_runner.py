@@ -8,7 +8,6 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from mvgeos_runes.rune_api import RuneAPI, RuneFactory
-from mvgeos_runes.sigils import SigilRegistry
 from mvgeos_runes.types import (
     Diagnostic,
     DiagnosticKind,
@@ -74,9 +73,12 @@ async def _safe_call_handler_async(
         raise
 
 
+Handler = Callable[..., Any | None | Awaitable[Any | None]]
+
+
 class RuneRunner:
     def __init__(self, sandbox_factory: Callable[[], Sandbox] | None = None) -> None:
-        self._sigils = SigilRegistry()
+        self._sigil_handlers: dict[SigilHook, list[Handler]] = {}
         self._spells: dict[str, SpellDefinition] = {}
         self._commands: dict[str, RegisteredCommand] = {}
         self._shortcuts: dict[str, RuneShortcut] = {}
@@ -138,7 +140,16 @@ class RuneRunner:
         self._context = context
 
     def register_handler(self, hook: SigilHook, handler: Any) -> None:
-        self._sigils.register(hook, handler)
+        if hook not in self._sigil_handlers:
+            self._sigil_handlers[hook] = []
+        self._sigil_handlers[hook].append(handler)
+
+    def get_sigil_handlers(self, hook: SigilHook) -> list[Handler]:
+        return list(self._sigil_handlers.get(hook, []))
+
+    @property
+    def sigil_handlers(self) -> dict[SigilHook, list[Handler]]:
+        return {k: list(v) for k, v in self._sigil_handlers.items()}
 
     def register_spell(
         self, spell: SpellDefinition, rune_name: str | None = None
@@ -337,12 +348,12 @@ class RuneRunner:
 
     async def emit_async(self, hook: SigilHook, data: Any) -> None:
         typed_data = create_sigil_data(hook, data)
-        for handler in self._sigils.get_handlers(hook):
+        for handler in self.get_sigil_handlers(hook):
             await _safe_call_handler_async(handler, hook, typed_data)
 
     async def emit_chain(self, hook: SigilHook, initial: Any) -> Any:
         current = create_sigil_data(hook, initial)
-        for handler in self._sigils.get_handlers(hook):
+        for handler in self.get_sigil_handlers(hook):
             result = await _safe_call_handler_async(handler, hook, current)
             if result is not None:
                 current = result
@@ -350,7 +361,7 @@ class RuneRunner:
 
     async def emit_first(self, hook: SigilHook, data: Any) -> Any | None:
         typed_data = create_sigil_data(hook, data)
-        for handler in self._sigils.get_handlers(hook):
+        for handler in self.get_sigil_handlers(hook):
             result = await _safe_call_handler_async(handler, hook, typed_data)
             if result is not None:
                 return result
@@ -358,7 +369,7 @@ class RuneRunner:
 
     async def emit_block(self, hook: SigilHook, data: Any) -> dict[str, Any] | None:
         typed_data = create_sigil_data(hook, data)
-        for handler in self._sigils.get_handlers(hook):
+        for handler in self.get_sigil_handlers(hook):
             result = await _safe_call_handler_async(handler, hook, typed_data)
             if isinstance(result, dict) and result.get("block"):
                 return result

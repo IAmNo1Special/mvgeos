@@ -65,7 +65,7 @@ class TestRuneAPIRegistration:
             return None
 
         api.on(SigilHook.TURN_START, handler)
-        assert handler in runner._sigils.get_handlers(SigilHook.TURN_START)
+        assert handler in runner.get_sigil_handlers(SigilHook.TURN_START)
 
     def test_get_all_spells(self, api: RuneAPI, runner: RuneRunner) -> None:
         spell = SpellDefinition(name="s1", description="")

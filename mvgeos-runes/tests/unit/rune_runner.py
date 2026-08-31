@@ -406,7 +406,7 @@ class TestRuneRunnerLifecycle:
             api.on(SigilHook.TURN_START, lambda d: None)
 
         await runner.load_runes([factory])
-        assert len(runner._sigils.get_handlers(SigilHook.TURN_START)) == 1
+        assert len(runner.get_sigil_handlers(SigilHook.TURN_START)) == 1
 
     @pytest.mark.asyncio
     async def test_load_runes_registers_manifest_shortcuts(self) -> None:
@@ -571,7 +571,7 @@ class TestRuneRunnerDedup:
             RuneLoad(manifest=manifest2, factory=factory),
         ]
         await runner.load_rune_loads(loads)
-        assert len(runner._sigils.get_handlers(SigilHook.TURN_START)) == 1
+        assert len(runner.get_sigil_handlers(SigilHook.TURN_START)) == 1
 
 
 class TestRuneRunnerSkills:
@@ -725,3 +725,39 @@ class TestRuneRunnerSkills:
         runner.suppress_skill_catalog(False)
         assert not runner.is_skill_catalog_suppressed()
         assert runner.get_skill_catalog() != ""
+
+
+class TestRuneRunnerSigils:
+    def test_register_and_get_handlers(self) -> None:
+        runner = RuneRunner()
+
+        def sync_handler() -> None:
+            pass
+
+        async def async_handler() -> None:
+            pass
+
+        runner.register_handler(SigilHook.BEFORE_INVOCATION, sync_handler)
+        runner.register_handler(SigilHook.BEFORE_INVOCATION, async_handler)
+
+        handlers = runner.get_sigil_handlers(SigilHook.BEFORE_INVOCATION)
+        assert len(handlers) == 2
+        assert sync_handler in handlers
+        assert async_handler in handlers
+
+    def test_get_handlers_empty(self) -> None:
+        runner = RuneRunner()
+        handlers = runner.get_sigil_handlers(SigilHook.BEFORE_INVOCATION)
+        assert handlers == []
+
+    def test_sigil_handlers_property(self) -> None:
+        runner = RuneRunner()
+        runner.register_handler(SigilHook.BEFORE_INVOCATION, lambda: None)
+        runner.register_handler(SigilHook.AFTER_INVOCATION, lambda: None)
+
+        handlers = runner.sigil_handlers
+        assert isinstance(handlers, dict)
+        assert SigilHook.BEFORE_INVOCATION in handlers
+        assert SigilHook.AFTER_INVOCATION in handlers
+        assert len(handlers[SigilHook.BEFORE_INVOCATION]) == 1
+        assert len(handlers[SigilHook.AFTER_INVOCATION]) == 1

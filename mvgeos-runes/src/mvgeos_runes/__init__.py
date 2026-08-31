@@ -8,7 +8,6 @@ from mvgeos_runes.loader import (
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_api import RuneAPI, RuneFactory
 from mvgeos_runes.rune_runner import RuneRunner
-from mvgeos_runes.sigils import SigilRegistry
 from mvgeos_runes.types import (
     Diagnostic,
     DiagnosticKind,
@@ -40,7 +39,6 @@ __all__ = [
     "RuneShortcut",
     "RuneWatcher",
     "SigilHook",
-    "SigilRegistry",
     "SpellDefinition",
     "load_factories",
     "load_factory_from_manifest",
