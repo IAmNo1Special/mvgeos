@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Any
 from mvgeos_provider.types import RealmResponse
 
 from mvgeos_agent.dispatcher import SpellDispatcher
+from mvgeos_agent.environment import PromptSource
 from mvgeos_agent.errors import AuthenticationError, RateLimitError
-from mvgeos_agent.prompt_loader import PromptSource
 
 if TYPE_CHECKING:
     pass

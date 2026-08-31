@@ -26,8 +26,6 @@ from mvgeos_provider.types import (
 from mvgeos_runes.types import ExecutionMode
 from pydantic import BaseModel, ValidationError, create_model
 
-from mvgeos_agent.prompt_loader import PromptSource
-
 SpellExecutionMode = ExecutionMode
 
 if TYPE_CHECKING:
@@ -35,6 +33,16 @@ if TYPE_CHECKING:
 
     from mvgeos_agent.agent_session import MvgeTome
     from mvgeos_agent.event_bus import EventBus
+
+
+class PromptSource(StrEnum):
+    """Where a resolved prompt resource came from."""
+
+    CUSTOM_LITERAL = "custom_literal"
+    CUSTOM_PATH = "custom_path"
+    PROJECT_MD = "project_md"
+    AGENT_MD = "agent_md"
+    BUILTIN = "builtin"
 
 
 class ContentType(StrEnum):

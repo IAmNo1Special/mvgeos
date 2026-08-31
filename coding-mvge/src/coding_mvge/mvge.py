@@ -7,8 +7,7 @@ from typing import Any, cast
 
 from mvgeos_agent.base_mvge import BaseMvge
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
-from mvgeos_agent.environment import MvgeEnvironment
-from mvgeos_agent.prompt_loader import PromptSource
+from mvgeos_agent.environment import MvgeEnvironment, PromptSource
 from mvgeos_agent.spell_schema import generate_spell_schema
 from mvgeos_agent.types import MvgeSpell, SpellResult
 from mvgeos_provider.types import AbortError

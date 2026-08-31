@@ -91,7 +91,11 @@ async def _run_agent(
 
     agent: CodingMvge | None = None
     try:
-        env = MvgeEnvironment.resolve(agent_name=agent_name, overrides=overrides)
+        env = MvgeEnvironment.resolve(
+            agent_name=agent_name,
+            extension_dir=extension_dir,
+            overrides=overrides,
+        )
         resolved = env.config
         model_id = model_id or str(resolved["model"].value)
         temperature = (

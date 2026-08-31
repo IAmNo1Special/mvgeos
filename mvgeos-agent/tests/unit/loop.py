@@ -12,7 +12,7 @@ from mvgeos_provider.types import Model, RealmResponse
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import SigilHook
 
-from mvgeos_agent.prompt_loader import PromptSource
+from mvgeos_agent.environment import PromptSource
 from mvgeos_agent.types import (
     ContemplationLevel,
     MvgeResponse,

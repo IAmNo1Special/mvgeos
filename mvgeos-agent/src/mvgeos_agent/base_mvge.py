@@ -18,7 +18,6 @@ from mvgeos_runes.types import (
 from mvgeos_tome.ledger import TomeLedger
 
 from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.config_parsing import ConfigParsing
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
     DEFAULT_TOME_DIR,
@@ -33,7 +32,6 @@ from mvgeos_agent.harness import (
     MvgeHarness,
 )
 from mvgeos_agent.mvge_loop import MvgeLoop
-from mvgeos_agent.prompt_assembly import PromptAssembly
 from mvgeos_agent.rune_lifecycle import RuneLifecycle
 from mvgeos_agent.snapshot import RuntimeSnapshot
 from mvgeos_agent.types import (
@@ -88,26 +86,22 @@ class BaseMvge:
                 name,
                 config_dir=Path(f"~/.agents/.mvgeos/{name}").expanduser(),
                 allow_unknown_agent=True,
+                extension_dir=extension_dir,
+                runes_paths=runes_paths,
             )
 
         self._environment = environment
         self._config_manager = environment.config_manager
 
-        parsed = ConfigParsing.resolve(
-            environment.config,
-            agent_name=name,
-            extension_dir=extension_dir,
-            runes_paths=runes_paths,
-        )
-        self._model_id = parsed.model_id
-        self._temperature = parsed.temperature
-        self._max_tokens = parsed.max_tokens
-        self._contemplation_level = parsed.contemplation_level
-        self._contemplation_budget = parsed.contemplation_budget
-        self._exclude_contemplation = parsed.exclude_contemplation
-        self._queue_mode: QueueMode = parsed.queue_mode
-        self._spell_names = parsed.spell_names
-        self._runes_paths = parsed.runes_paths
+        self._model_id = environment.model_id
+        self._temperature = environment.temperature
+        self._max_tokens = environment.max_tokens
+        self._contemplation_level = environment.contemplation_level
+        self._contemplation_budget = environment.contemplation_budget
+        self._exclude_contemplation = environment.exclude_contemplation
+        self._queue_mode: QueueMode = environment.queue_mode
+        self._spell_names = environment.spell_names
+        self._runes_paths = environment.runes_paths
 
         self._provider_registry = RealmRegistry()
         self._runner: RuneRunner | None = None
@@ -236,23 +230,21 @@ class BaseMvge:
     ) -> str:
         """Render a prompt with body, spells, guidelines, and environment."""
         cwd = str(getattr(self._config_manager, "_project_dir", "") or Path.cwd())
-        return PromptAssembly(cwd=cwd, runner=self._runner).render(
-            body, spell_names, guidelines
-        )
+        return self._environment.render_prompt(body, spell_names, guidelines, cwd=cwd)
 
     async def _build_system_prompt_async(self) -> str:
         """Async version that supports rune prompt injection via sigil hooks.
         Override in subclass for async prompt building with rune injection.
         Default delegates to sync version for backward compatibility.
         """
-        return await PromptAssembly(
+        return await self._environment.assemble_system_prompt(
+            runner=self._runner,
             base_prompt=self._build_system_prompt(),
-            agent_name=self._name,
-            config_dir=self.config_dir,
             custom_prompt=getattr(self, "_custom_system_prompt", ""),
             cwd=Path.cwd(),
-            runner=self._runner,
-        ).assemble()
+            spell_names=self._spell_names,
+            config_dir=self.config_dir,
+        )
 
     async def _run_impl(self) -> MvgeInvocation:
         """Default implementation using the harness."""

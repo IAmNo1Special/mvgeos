@@ -17,8 +17,9 @@ from mvgeos_runes.types import (
 
 from mvgeos_agent.config_manager import ConfigLayer, ConfigValue
 from mvgeos_agent.constants import DEFAULT_MODEL
-from mvgeos_agent.prompt_config import DEFAULT_GUIDELINES, DEFAULT_SYSTEM_PROMPT
-from mvgeos_agent.prompt_loader import (
+from mvgeos_agent.environment import (
+    DEFAULT_GUIDELINES,
+    DEFAULT_SYSTEM_PROMPT,
     PromptSource,
     ResolvedGuidelines,
     ResolvedPrompt,

@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mvgeos_runes.types import (
     Diagnostic,
@@ -16,11 +16,13 @@ from mvgeos_runes.types import (
 )
 
 from mvgeos_agent.config_manager import ConfigLayer, ConfigValue
-from mvgeos_agent.prompt_loader import (
-    ResolvedGuidelines,
-    ResolvedPrompt,
-)
 from mvgeos_agent.types import MvgeSpell
+
+if TYPE_CHECKING:
+    from mvgeos_agent.environment import (
+        ResolvedGuidelines,
+        ResolvedPrompt,
+    )
 
 
 class SpellSource(StrEnum):

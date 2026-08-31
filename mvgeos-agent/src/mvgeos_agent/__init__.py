@@ -1,5 +1,11 @@
 from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.environment import MvgeEnvironment
+from mvgeos_agent.environment import (
+    AgentConfig,
+    MvgeEnvironment,
+    PromptSource,
+    ResolvedGuidelines,
+    ResolvedPrompt,
+)
 from mvgeos_agent.harness import MvgeHarness
 from mvgeos_agent.sandbox import MvgeSandbox
 from mvgeos_agent.snapshot import (
@@ -36,6 +42,7 @@ __all__ = [
     "AbortController",
     "AbortError",
     "AbortSignal",
+    "AgentConfig",
     "ContemplationLevel",
     "MvgeEnvironment",
     "MvgeEvent",
@@ -46,7 +53,10 @@ __all__ = [
     "MvgeSpell",
     "MvgeState",
     "MvgeTome",
+    "PromptSource",
     "QueueMode",
+    "ResolvedGuidelines",
+    "ResolvedPrompt",
     "RuntimeSnapshot",
     "SandboxTimeoutError",
     "SnapshotConfigEntry",

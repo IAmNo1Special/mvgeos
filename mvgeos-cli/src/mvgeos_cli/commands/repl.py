@@ -894,7 +894,9 @@ async def _create_agent(
         overrides["contemplation_level"] = contemplation
 
     env = MvgeEnvironment.resolve(
-        agent_name, overrides=overrides if overrides else None
+        agent_name,
+        extension_dir=extension_dir,
+        overrides=overrides if overrides else None,
     )
     agent = CodingMvge(
         api_key=api_key,

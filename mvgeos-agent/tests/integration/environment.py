@@ -11,7 +11,6 @@ from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import SigilHook
 
 from mvgeos_agent.base_mvge import BaseMvge
-from mvgeos_agent.prompt_assembly import PromptAssembly
 
 
 def _mock_model() -> Model:
@@ -34,35 +33,35 @@ def _agent(tome_dir: Path) -> BaseMvge:
 
 
 @pytest.mark.asyncio
-async def test_system_prompt_matches_prompt_assembly() -> None:
-    """Issue #93: BaseMvge's async prompt path and PromptAssembly must produce
-    identical prompts for the same inputs."""
+async def test_system_prompt_matches_environment_assemble() -> None:
+    """BaseMvge's async prompt path and MvgeEnvironment.assemble_system_prompt
+    must produce identical prompts for the same inputs."""
     with tempfile.TemporaryDirectory() as tmp:
         agent = _agent(Path(tmp))
         await agent.initialize()
 
         assert agent._state is not None
-        expected = await PromptAssembly(
+        expected = await agent._environment.assemble_system_prompt(
+            runner=agent._runner,
             base_prompt=agent._build_system_prompt(),
-            agent_name=agent._name,
-            config_dir=agent.config_dir,
             custom_prompt=getattr(agent, "_custom_system_prompt", ""),
             cwd=Path.cwd(),
-            runner=agent._runner,
-        ).assemble()
+            spell_names=agent._spell_names,
+            config_dir=agent.config_dir,
+        )
 
         assert agent._state.system_prompt == expected
         assert await agent._build_system_prompt_async() == expected
 
 
 @pytest.mark.asyncio
-async def test_render_prompt_matches_prompt_assembly() -> None:
+async def test_render_prompt_matches_environment_render() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         agent = _agent(Path(tmp))
 
         cwd = str(getattr(agent._config_manager, "_project_dir", "") or Path.cwd())
-        expected = PromptAssembly(cwd=cwd, runner=agent._runner).render(
-            "You are Mvge", ["bash"], ["Be concise."]
+        expected = agent._environment.render_prompt(
+            "You are Mvge", ["bash"], ["Be concise."], cwd=cwd
         )
 
         assert agent._render_prompt("You are Mvge", ["bash"], ["Be concise."]) == (
@@ -72,7 +71,7 @@ async def test_render_prompt_matches_prompt_assembly() -> None:
 
 @pytest.mark.asyncio
 async def test_initialize_fires_before_mvge_start_once() -> None:
-    """BEFORE_MVGE_START flows through PromptAssembly exactly once per init."""
+    """BEFORE_MVGE_START flows through MvgeEnvironment exactly once per init."""
     with tempfile.TemporaryDirectory() as tmp:
         agent = _agent(Path(tmp))
         agent._load_runes = AsyncMock()  # type: ignore[method-assign]
