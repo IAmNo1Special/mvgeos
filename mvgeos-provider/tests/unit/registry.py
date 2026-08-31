@@ -236,3 +236,22 @@ def test_resolve_cached_model(tmp_path: Path) -> None:
     assert model.supported_parameters == ["tools", "temperature"]
     assert model.api_key == "test-key"
     assert isinstance(realm, OpenRouterRealm)
+
+
+def test_realm_registry_get_model_options_and_flat_ids() -> None:
+    from mvgeos_provider.registry import get_flat_model_ids, get_model_options
+
+    reg = RealmRegistry()
+    options = reg.get_model_options()
+    assert isinstance(options, dict)
+    assert len(options) > 0
+
+    flat_ids = reg.get_flat_model_ids()
+    assert isinstance(flat_ids, list)
+    assert len(flat_ids) > 0
+
+    # Top-level helper functions
+    top_options = get_model_options()
+    top_flat_ids = get_flat_model_ids()
+    assert top_options == options
+    assert top_flat_ids == flat_ids

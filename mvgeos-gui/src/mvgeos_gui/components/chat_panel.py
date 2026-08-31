@@ -6,6 +6,7 @@ import contextlib
 from collections.abc import Callable
 from typing import Any
 
+from mvgeos_provider import get_model_options
 from nicegui import ui
 
 from mvgeos_gui.autocomplete import AutocompleteService
@@ -13,7 +14,6 @@ from mvgeos_gui.components.diff_viewer import render_diff_viewer
 from mvgeos_gui.components.file_tree import render_file_tree
 from mvgeos_gui.components.message_parts import render_assistant_message
 from mvgeos_gui.components.terminal_panel import render_terminal_panel
-from mvgeos_gui.model_catalog import get_model_options
 from mvgeos_gui.state import AppState
 from mvgeos_gui.utils import copy_to_clipboard
 

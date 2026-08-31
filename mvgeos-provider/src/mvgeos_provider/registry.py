@@ -31,6 +31,14 @@ class RealmRegistry:
     def model_registry(self) -> ModelRegistry:
         return self._model_registry
 
+    def get_model_options(self) -> dict[str, str]:
+        """Return model display options with free models first, sorted by id."""
+        return self._model_registry.get_model_options()
+
+    def get_flat_model_ids(self) -> list[str]:
+        """Return all model IDs, filtering out internal ~ prefixes."""
+        return self._model_registry.get_flat_model_ids()
+
     def get_shared_client(self) -> httpx.AsyncClient:
         if self._shared_client is None or self._shared_client.is_closed:
             self._shared_client = httpx.AsyncClient(
@@ -202,3 +210,23 @@ class RealmRegistry:
             raise ValueError(f"Unknown model: {model_id}")
         realm = self.create_realm(model, api_key, provider_name)
         return model, realm
+
+
+_DEFAULT_REGISTRY: RealmRegistry | None = None
+
+
+def get_default_realm_registry() -> RealmRegistry:
+    global _DEFAULT_REGISTRY
+    if _DEFAULT_REGISTRY is None:
+        _DEFAULT_REGISTRY = RealmRegistry()
+    return _DEFAULT_REGISTRY
+
+
+def get_model_options() -> dict[str, str]:
+    """Return model display options with free models first, sorted by id."""
+    return get_default_realm_registry().get_model_options()
+
+
+def get_flat_model_ids() -> list[str]:
+    """Return all valid model IDs (ignoring internal ~ prefixes)."""
+    return get_default_realm_registry().get_flat_model_ids()

@@ -10,6 +10,7 @@ from mvgeos_provider.model_registry import (
     ModelRegistry,
     _is_free_entry,
 )
+from mvgeos_provider.types import Model
 
 
 def test_is_free_entry_free_suffix() -> None:
@@ -129,3 +130,77 @@ def test_save_cache_creates_file(tmp_path: Path) -> None:
     reg = ModelRegistry(cache_path=tmp_path / "sub" / "c.json")
     reg._save_cache([{"id": "x/y", "name": "X Y"}])
     assert (tmp_path / "sub" / "c.json").exists()
+
+
+def test_get_model_options_sorting_and_filtering(tmp_path: Path) -> None:
+    reg = ModelRegistry(cache_path=tmp_path / "c.json")
+    reg._models.clear()
+    reg._models["beta/paid"] = Model(
+        id="beta/paid",
+        name="Beta Paid",
+        realm="openrouter",
+        base_url="",
+        api_key="",
+        is_free=False,
+    )
+    reg._models["alpha/free"] = Model(
+        id="alpha/free",
+        name="Alpha Free",
+        realm="openrouter",
+        base_url="",
+        api_key="",
+        is_free=True,
+    )
+    reg._models["zeta/free"] = Model(
+        id="zeta/free",
+        name="Zeta Free",
+        realm="openrouter",
+        base_url="",
+        api_key="",
+        is_free=True,
+    )
+    reg._models["alpha/paid"] = Model(
+        id="alpha/paid",
+        name="Alpha Paid",
+        realm="openrouter",
+        base_url="",
+        api_key="",
+        is_free=False,
+    )
+    reg._models["~internal/hidden"] = Model(
+        id="~internal/hidden",
+        name="Hidden",
+        realm="openrouter",
+        base_url="",
+        api_key="",
+        is_free=True,
+    )
+
+    options = reg.get_model_options()
+    keys = list(options.keys())
+
+    # Free models come first, sorted by id
+    assert keys[:2] == ["alpha/free", "zeta/free"]
+    # Paid models come next, sorted by id
+    assert keys[2:] == ["alpha/paid", "beta/paid"]
+    # Internal ~ models are excluded
+    assert "~internal/hidden" not in options
+
+
+def test_get_flat_model_ids(tmp_path: Path) -> None:
+    reg = ModelRegistry(cache_path=tmp_path / "c.json")
+    reg._models.clear()
+    reg._models["a/model"] = Model(
+        id="a/model", name="A Model", realm="openrouter", base_url="", api_key=""
+    )
+    reg._models["b/model"] = Model(
+        id="b/model", name="B Model", realm="openrouter", base_url="", api_key=""
+    )
+    reg._models["~hidden"] = Model(
+        id="~hidden", name="Hidden", realm="openrouter", base_url="", api_key=""
+    )
+
+    ids = reg.get_flat_model_ids()
+    assert "a/model" in ids
+    assert "b/model" in ids
+    assert "~hidden" not in ids

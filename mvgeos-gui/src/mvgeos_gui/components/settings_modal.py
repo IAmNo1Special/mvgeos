@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from mvgeos_provider import get_model_options
 from nicegui import ui
 
 from mvgeos_gui.config_service import AppSettings, ConfigService
-from mvgeos_gui.model_catalog import get_model_options
 from mvgeos_gui.state import AppState
 
 AVAILABLE_THEMES = ["dark", "light"]

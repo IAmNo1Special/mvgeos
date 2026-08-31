@@ -38,6 +38,32 @@ class ModelRegistry:
     def list_all(self) -> list[Model]:
         return list(self._models.values())
 
+    def get_model_options(self) -> dict[str, str]:
+        """Return model display options with free models first, sorted by id."""
+        models = self.list_all()
+        free: dict[str, str] = {}
+        paid: dict[str, str] = {}
+
+        for model in models:
+            if not model.id or model.id.startswith("~"):
+                continue
+            display = model.name or model.id
+            if model.free:
+                free[model.id] = display
+            else:
+                paid[model.id] = display
+
+        result: dict[str, str] = {}
+        for mid in sorted(free.keys()):
+            result[mid] = free[mid]
+        for mid in sorted(paid.keys()):
+            result[mid] = paid[mid]
+        return result
+
+    def get_flat_model_ids(self) -> list[str]:
+        """Return all model IDs, filtering out internal ~ prefixes."""
+        return [m.id for m in self.list_all() if m.id and not m.id.startswith("~")]
+
     def _load_baseline(self) -> None:
         self._models.update(MODELS)
 

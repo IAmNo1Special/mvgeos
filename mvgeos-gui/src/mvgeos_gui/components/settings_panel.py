@@ -1,8 +1,8 @@
 """Application settings panel."""
 
+from mvgeos_provider import get_model_options
 from nicegui import ui
 
-from mvgeos_gui.model_catalog import get_model_options
 from mvgeos_gui.state import AppState
 
 
