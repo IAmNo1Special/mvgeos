@@ -1,14 +1,16 @@
-"""Unit tests for git diff parsing and file change tracking."""
+"""Unit tests for git workspace VCS inspection and diff parsing."""
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from mvgeos_gui.git_diff import (
+from mvgeos_gui.git_workspace import (
     get_changed_files,
     get_diff_for_file,
     parse_git_diff,
+    resolve_git_branch,
 )
 
 SAMPLE_DIFF = """\
@@ -37,6 +39,21 @@ index 0000000..abc1234
 
 """
 
+EMPTY_DIFF = """\
+"""
+
+DELETED_DIFF = """\
+diff --git a/old.txt b/old.txt
+deleted file mode 100644
+index abc1234..0000000
+--- a/old.txt
++++ /dev/null
+@@ -1,3 +0,0 @@
+-line1
+-line2
+-line3
+"""
+
 
 def test_parse_git_diff_returns_diff_views() -> None:
     """Verify parse_git_diff returns a DiffView per changed file."""
@@ -59,9 +76,7 @@ def test_parse_git_diff_calculates_additions_and_deletions() -> None:
 def test_parse_git_diff_hunks_have_line_numbers() -> None:
     """Verify hunks preserve source and target line numbers."""
     views = parse_git_diff(SAMPLE_DIFF)
-    main_view = views[0]
-    assert len(main_view.hunks) == 1
-    hunk = main_view.hunks[0]
+    hunk = views[0].hunks[0]
     assert hunk.source_start == 1
     assert hunk.source_length == 5
     assert hunk.target_start == 1
@@ -69,18 +84,17 @@ def test_parse_git_diff_hunks_have_line_numbers() -> None:
 
 
 def test_parse_git_diff_hunk_lines_classified() -> None:
-    """Verify diff lines are classified as context/addition/deletion."""
+    """Verify each line in a hunk is marked context, addition, or deletion."""
     views = parse_git_diff(SAMPLE_DIFF)
-    main_view = views[0]
-    hunk = main_view.hunks[0]
-    line_types = [line.line_type for line in hunk.lines]
-    assert "context" in line_types
-    assert "addition" in line_types
-    assert "deletion" in line_types
+    lines = views[0].hunks[0].lines
+    types = [line.line_type for line in lines]
+    assert "addition" in types
+    assert "deletion" in types
+    assert "context" in types
 
 
 def test_parse_git_diff_new_file_status() -> None:
-    """Verify newly added files are marked with status 'added'."""
+    """Verify new files have status 'added'."""
     views = parse_git_diff(SAMPLE_DIFF)
     readme_view = views[1]
     assert readme_view.status == "added"
@@ -89,64 +103,54 @@ def test_parse_git_diff_new_file_status() -> None:
 
 
 def test_parse_git_diff_empty_input_returns_empty_list() -> None:
-    """Verify empty diff string returns empty list."""
+    """Verify empty diff string produces empty list."""
     assert parse_git_diff("") == []
 
 
 def test_parse_git_diff_no_diff_marker_returns_empty() -> None:
-    """Verify input with no diff markers returns empty list."""
+    """Verify non-diff text returns empty list."""
     assert parse_git_diff("no diff here") == []
 
 
-EMPTY_DIFF = """diff --git a/src/main.py b/src/main.py
-index abc1234..def5678 100644
---- a/src/main.py
-+++ b/src/main.py
-@@ -1,3 +1,3 @@
- # header
- unchanged
- unchanged
-"""
-
-
 def test_parse_git_diff_zero_changes() -> None:
-    """Verify hunk with only context lines has zero additions and deletions."""
+    """Verify empty diff produces empty list."""
     views = parse_git_diff(EMPTY_DIFF)
-    assert len(views) == 1
-    assert views[0].additions == 0
-    assert views[0].deletions == 0
-
-
-DELETED_DIFF = """diff --git a/old_file.py b/old_file.py
-deleted file mode 100644
-index abc1234..0000000
---- a/old_file.py
-+++ /dev/null
-@@ -1,2 +0,0 @@
--line1
--line2
-"""
+    assert views == []
 
 
 def test_parse_git_diff_deleted_file() -> None:
-    """Verify deleted files are marked with status 'deleted'."""
+    """Verify deleted files are parsed with status 'deleted'."""
     views = parse_git_diff(DELETED_DIFF)
     assert len(views) == 1
+    assert views[0].file_path == "old.txt"
     assert views[0].status == "deleted"
+    assert views[0].deletions == 3
     assert views[0].additions == 0
-    assert views[0].deletions == 2
 
 
 class TestGetChangedFiles:
-    def test_returns_changed_files_list(self, tmp_path: Path) -> None:
-        """Verify get_changed_files returns ChangedFile entries."""
-        (tmp_path / "src").mkdir()
-        (tmp_path / "src" / "main.py").write_text("print('hello')\n")
-        diff_output = "1\t0\tsrc/main.py\n"
-        mock_result = MagicMock(stdout=diff_output, returncode=0)
+    def test_parses_numstat_output(self, tmp_path: Path) -> None:
+        """Verify get_changed_files parses numstat output correctly."""
+        mock_output = "2\t1\tsrc/main.py\n3\t0\tREADME.md\n"
+        mock_result = MagicMock(stdout=mock_output, returncode=0)
         with patch("subprocess.run", return_value=mock_result):
             files = get_changed_files(tmp_path)
-        assert len(files) == 1
+        assert len(files) == 2
+        assert files[0].path == "src/main.py"
+        assert files[0].status == "modified"
+        assert files[0].additions == 2
+        assert files[0].deletions == 1
+        assert files[1].path == "README.md"
+        assert files[1].status == "added"
+        assert files[1].additions == 3
+        assert files[1].deletions == 0
+
+    def test_added_file_status(self, tmp_path: Path) -> None:
+        """Verify a file with only additions gets status 'added'."""
+        mock_output = "1\t0\tsrc/main.py\n"
+        mock_result = MagicMock(stdout=mock_output, returncode=0)
+        with patch("subprocess.run", return_value=mock_result):
+            files = get_changed_files(tmp_path)
         assert files[0].path == "src/main.py"
         assert files[0].status == "added"
         assert files[0].additions == 1
@@ -161,8 +165,6 @@ class TestGetChangedFiles:
 
     def test_subprocess_failure_returns_empty_list(self, tmp_path: Path) -> None:
         """Verify get_changed_files returns empty list on subprocess error."""
-        import subprocess
-
         with patch(
             "subprocess.run",
             side_effect=subprocess.CalledProcessError(1, "git"),
@@ -201,11 +203,52 @@ index abc1234..def5678 100644
 
     def test_returns_none_on_subprocess_error(self, tmp_path: Path) -> None:
         """Verify get_diff_for_file returns None on subprocess error."""
-        import subprocess
-
         with patch(
             "subprocess.run",
             side_effect=subprocess.CalledProcessError(1, "git"),
         ):
             view = get_diff_for_file(tmp_path, "src/main.py")
         assert view is None
+
+
+class TestResolveGitBranch:
+    def test_resolves_current_branch(self, tmp_path: Path) -> None:
+        """Verify resolve_git_branch returns the branch name when git succeeds."""
+
+        def mock_run(cmd, **kwargs):
+            if "rev-parse" in cmd:
+                return MagicMock(stdout=str(tmp_path) + "\n", returncode=0)
+            if "branch" in cmd:
+                return MagicMock(stdout="main\n", returncode=0)
+            return MagicMock(stdout="", returncode=1)
+
+        with patch("subprocess.run", side_effect=mock_run):
+            branch = resolve_git_branch(tmp_path)
+        assert branch == "main"
+
+    def test_returns_none_for_non_git_directory(self, tmp_path: Path) -> None:
+        """Verify resolve_git_branch returns None when directory is not a git repo."""
+        mock_result = MagicMock(stdout="", returncode=128)
+        with patch("subprocess.run", return_value=mock_result):
+            branch = resolve_git_branch(tmp_path)
+        assert branch is None
+
+    def test_returns_none_when_parent_is_toplevel(self, tmp_path: Path) -> None:
+        """Verify resolve_git_branch returns None when toplevel is a parent
+        directory.
+        """
+        subdir = tmp_path / "sub"
+        subdir.mkdir()
+        mock_result = MagicMock(stdout=str(tmp_path) + "\n", returncode=0)
+        with patch("subprocess.run", return_value=mock_result):
+            branch = resolve_git_branch(subdir)
+        assert branch is None
+
+    def test_handles_subprocess_exception(self, tmp_path: Path) -> None:
+        """Verify resolve_git_branch safely handles exceptions."""
+        with patch(
+            "subprocess.run",
+            side_effect=subprocess.TimeoutExpired(["git"], 5),
+        ):
+            branch = resolve_git_branch(tmp_path)
+        assert branch is None

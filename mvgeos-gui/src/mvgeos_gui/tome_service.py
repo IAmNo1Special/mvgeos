@@ -6,7 +6,6 @@ Handles session indexing, timestamps, and git branch resolution.
 from __future__ import annotations
 
 import os
-import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,6 +13,8 @@ from pathlib import Path
 from mvgeos_agent.constants import DEFAULT_TOME_DIR
 from mvgeos_tome.ledger import TomeLedger
 from mvgeos_tome.types import TomeEntryType
+
+from mvgeos_gui.git_workspace import resolve_git_branch
 
 
 @dataclass
@@ -49,42 +50,6 @@ def format_relative_time(timestamp_str: str) -> str:
         return f"{hours}h"
     days = int(delta_seconds // 86400)
     return f"{days}d"
-
-
-def resolve_git_branch(cwd: str | Path) -> str | None:
-    """Resolve the current git branch for a working directory.
-
-    Returns the branch name, or None if the directory is not a git repo
-    or git is unavailable.
-    """
-    cwd_path = Path(cwd).resolve()
-    try:
-        toplevel_result = subprocess.run(
-            ["git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-        if toplevel_result.returncode != 0:
-            return None
-        toplevel = Path(toplevel_result.stdout.strip()).resolve()
-        if toplevel != cwd_path:
-            return None
-
-        result = subprocess.run(
-            ["git", "-C", str(cwd), "branch", "--show-current"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-    except FileNotFoundError, subprocess.TimeoutExpired, OSError:
-        return None
-    if result.returncode != 0:
-        return None
-    branch = result.stdout.strip()
-    return branch or None
 
 
 class TomeService:

@@ -28,7 +28,7 @@ from mvgeos_gui.autocomplete import (
     SlashCommandRegistry,
 )
 from mvgeos_gui.config_service import ConfigService
-from mvgeos_gui.git_diff import ChangedFile, get_changed_files, get_diff_for_file
+from mvgeos_gui.git_workspace import ChangedFile, get_changed_files, get_diff_for_file
 from mvgeos_gui.models import (
     Artifact,
     BackgroundTask,

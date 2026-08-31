@@ -1,4 +1,4 @@
-"""Git diff parsing and workspace change tracking for the Inspector panel."""
+"""Git diff parsing and workspace VCS inspection for MvgeOS GUI."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ __all__ = [
     "get_changed_files",
     "get_diff_for_file",
     "parse_git_diff",
+    "resolve_git_branch",
 ]
 
 _DIFF_HEADER_RE = re.compile(r"^diff --git a/(.+) b/(.+)$")
@@ -127,12 +128,18 @@ def _run_git(project_path: Path, *args: str) -> str:
             cwd=str(project_path),
             capture_output=True,
             text=True,
+            timeout=5,
             check=False,
         )
         if result.returncode != 0:
             return ""
         return result.stdout
-    except subprocess.CalledProcessError, FileNotFoundError:
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+        OSError,
+    ):
         return ""
 
 
@@ -143,7 +150,7 @@ def get_changed_files(project_path: Path) -> list[ChangedFile]:
         return []
     files: list[ChangedFile] = []
     for line in output.splitlines():
-        parts = line.split("\t", 2)
+        parts = line.split("	", 2)
         if len(parts) < 3:
             continue
         add_str, del_str, path = parts
@@ -176,3 +183,24 @@ def get_diff_for_file(project_path: Path, file_path: str) -> DiffView | None:
         return None
     views = parse_git_diff(output)
     return views[0] if views else None
+
+
+def resolve_git_branch(cwd: str | Path) -> str | None:
+    """Resolve the current git branch for a working directory.
+
+    Returns the branch name, or None if the directory is not a git repo
+    or git is unavailable.
+    """
+    cwd_path = Path(cwd).resolve()
+    toplevel_output = _run_git(cwd_path, "rev-parse", "--show-toplevel").strip()
+    if not toplevel_output:
+        return None
+    try:
+        toplevel = Path(toplevel_output).resolve()
+    except Exception:
+        return None
+    if toplevel != cwd_path:
+        return None
+
+    branch = _run_git(cwd_path, "branch", "--show-current").strip()
+    return branch or None
