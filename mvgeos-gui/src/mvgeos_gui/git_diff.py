@@ -19,9 +19,6 @@ __all__ = [
 ]
 
 _DIFF_HEADER_RE = re.compile(r"^diff --git a/(.+) b/(.+)$")
-_INDEX_RE = re.compile(r"^index \S+\.\.\S+ \d+$")
-_NEW_FILE_RE = re.compile(r"^new file mode \d+$")
-_DELETED_FILE_RE = re.compile(r"^deleted file mode \d+$")
 _HUNK_HEADER_RE = re.compile(
     r"^@@ -(?P<src_start>\d+)(?:,(?P<src_len>\d+))? "
     r"\+(?P<tgt_start>\d+)(?:,(?P<tgt_len>\d+))? @@"

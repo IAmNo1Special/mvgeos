@@ -47,10 +47,6 @@ class WorkspaceSettings:
     contemplation_level: str = "medium"
 
 
-DEFAULT_APP_SETTINGS = AppSettings()
-DEFAULT_WORKSPACE_SETTINGS = WorkspaceSettings()
-
-
 def _load_api_key_from_keyring() -> str | None:
     """Load the OpenRouter API key from the OS keyring.
 

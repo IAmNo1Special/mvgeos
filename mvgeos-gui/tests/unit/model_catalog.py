@@ -5,7 +5,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from mvgeos_gui.model_catalog import (
-    _provider_label,
     get_flat_model_ids,
     get_model_options,
 )
@@ -16,17 +15,6 @@ def _mock_registry(models: list[MagicMock]) -> MagicMock:
     mock_registry = MagicMock()
     mock_registry.list_all.return_value = models
     return mock_registry
-
-
-class TestProviderLabel:
-    def test_known_providers(self) -> None:
-        assert _provider_label("nvidia") == "NVIDIA"
-        assert _provider_label("google") == "Google"
-        assert _provider_label("anthropic") == "Anthropic"
-        assert _provider_label("openai") == "OpenAI"
-
-    def test_unknown_provider_title_cased(self) -> None:
-        assert _provider_label("someprovider") == "Someprovider"
 
 
 class TestGetModelOptions:

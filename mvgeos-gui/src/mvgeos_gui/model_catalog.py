@@ -14,41 +14,6 @@ def _get_registry() -> ModelRegistry:
     return _MODEL_REGISTRY
 
 
-_PROVIDER_LABELS = {
-    "nvidia": "NVIDIA",
-    "google": "Google",
-    "anthropic": "Anthropic",
-    "openai": "OpenAI",
-    "deepseek": "DeepSeek",
-    "x-ai": "xAI",
-    "qwen": "Qwen",
-    "meta": "Meta",
-    "moonshotai": "MoonshotAI",
-    "poolside": "Poolside",
-    "cohere": "Cohere",
-    "inclusionai": "inclusionAI",
-    "bytedance-seed": "ByteDance Seed",
-    "sakana": "Sakana",
-    "upstage": "Upstage",
-    "thinkingmachines": "Thinking Machines",
-    "openrouter": "OpenRouter",
-    "aion-labs": "AionLabs",
-    "kwaipilot": "Kwaipilot",
-    "minimax": "MiniMax",
-    "stepfun": "StepFun",
-    "nex-agi": "Nex AGI",
-    "z-ai": "Z.ai",
-    "tencent": "Tencent",
-    "perceptron": "Perceptron",
-    "liquid": "LiquidAI",
-    "meituan": "Meituan",
-}
-
-
-def _provider_label(provider: str) -> str:
-    return _PROVIDER_LABELS.get(provider, provider.title())
-
-
 def get_model_options() -> dict[str, str]:
     registry = _get_registry()
     models = registry.list_all()
@@ -78,11 +43,3 @@ def get_flat_model_ids() -> list[str]:
     return [
         m.id for m in _get_registry().list_all() if m.id and not m.id.startswith("~")
     ]
-
-
-FALLBACK_MODELS = [
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "google/gemini-2.5-pro",
-    "anthropic/claude-3.5-sonnet",
-    "openai/gpt-4o",
-]

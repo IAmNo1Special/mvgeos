@@ -304,16 +304,12 @@ source = { editable = "coding-mvge" }
 dependencies = [
     { name = "mvgeos-agent" },
     { name = "mvgeos-provider" },
-    { name = "mvgeos-runes" },
-    { name = "mvgeos-tome" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "mvgeos-agent", editable = "mvgeos-agent" },
     { name = "mvgeos-provider", editable = "mvgeos-provider" },
-    { name = "mvgeos-runes", editable = "mvgeos-runes" },
-    { name = "mvgeos-tome", editable = "mvgeos-tome" },
 ]
 
 [[package]]

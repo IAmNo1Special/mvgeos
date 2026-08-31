@@ -20,15 +20,15 @@ from mvgeos_gui.components.workspace_settings_modal import (
 )
 
 __all__ = [
+    "render_app_settings_modal",
     "render_artifact_card",
     "render_artifact_drawer",
-    "render_app_settings_modal",
     "render_commands_card",
     "render_contemplation_card",
     "render_diff_modal",
     "render_files_card",
-    "render_sidebar",
     "render_shell",
+    "render_sidebar",
     "render_step_card",
     "render_worked_card",
     "render_workspace_settings_modal",

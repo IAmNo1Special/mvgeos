@@ -7,18 +7,12 @@ from typing import Any
 
 class TomeEntryType(StrEnum):
     INVOCATION = "invocation"
-    SPELL_RESULT = "spellResult"
-    MODEL_CHANGE = "modelChange"
-    CONTEMPLATION_LEVEL_CHANGE = "contemplationLevelChange"
-    SPELL_CALLS_CHANGE = "spellCallsChange"
+    MESSAGE = "message"
     LABEL = "label"
-    BRANCH_SUMMARY = "branchSummary"
     COMPACTION = "compaction"
     CUSTOM = "custom"
-    CUSTOM_MESSAGE = "customMessage"
     LEAF = "leaf"
     TOME_INFO = "tome_info"
-    MESSAGE = "message"
 
 
 @dataclass

@@ -467,32 +467,10 @@ def test_openrouter_realm_close() -> None:
     # Should not raise
 
 
-def test_reasoning_sent_when_contemplation_level_set() -> None:
-    from mvgeos_agent.types import MvgeResponse
-
-    realm = OpenRouterRealm(api_key="test-key")
-    model = Model(
-        id="openrouter/openai/o1",
-        name="Test Model",
-        realm="openrouter",
-        base_url="https://openrouter.ai/api/v1",
-        api_key="test-key",
-        supported_parameters=["reasoning", "temperature", "max_tokens"],
-    )
-    config = ChannelConfig(model=model, contemplation_level="high")
-
-    invocations: list[MvgeResponse] = [
-        MvgeResponse(
-            role="assistant",
-            content=[{"type": "text", "text": "Hello"}],
-        )
-    ]
-
-    captured_payload: dict[str, Any] = {}
-
+def _make_capture_stream(captured_payload: dict[str, Any]) -> type:
     class MockStreamResponse:
         status_code = 200
-        headers = {}
+        headers: dict[str, str] = {}
 
         def __init__(self) -> None:
             self._lines = AsyncIterator(
@@ -517,7 +495,32 @@ def test_reasoning_sent_when_contemplation_level_set() -> None:
         async def __aexit__(self, *args: Any) -> None:
             pass
 
-    realm._client.stream = MockStreamCM  # type: ignore[method-assign]
+    return MockStreamCM
+
+
+def test_reasoning_sent_when_contemplation_level_set() -> None:
+    from mvgeos_agent.types import MvgeResponse
+
+    realm = OpenRouterRealm(api_key="test-key")
+    model = Model(
+        id="openrouter/openai/o1",
+        name="Test Model",
+        realm="openrouter",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="test-key",
+        supported_parameters=["reasoning", "temperature", "max_tokens"],
+    )
+    config = ChannelConfig(model=model, contemplation_level="high")
+
+    invocations: list[MvgeResponse] = [
+        MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": "Hello"}],
+        )
+    ]
+
+    captured_payload: dict[str, Any] = {}
+    realm._client.stream = _make_capture_stream(captured_payload)  # type: ignore[method-assign]
 
     asyncio.run(collect_responses(realm.stream(model, invocations, config)))
 
@@ -549,35 +552,7 @@ def test_reasoning_not_sent_when_exclude_contemplation() -> None:
     ]
 
     captured_payload: dict[str, Any] = {}
-
-    class MockStreamResponse:
-        status_code = 200
-        headers = {}
-
-        def __init__(self) -> None:
-            self._lines = AsyncIterator(
-                [
-                    b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
-                    b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
-                    b"data: [DONE]\n\n",
-                ]
-            )
-
-        async def aiter_lines(self):
-            async for line in self._lines:
-                yield line
-
-    class MockStreamCM:
-        def __init__(self, method: str, url: str, **kwargs: Any) -> None:
-            captured_payload.update(kwargs.get("json", {}))
-
-        async def __aenter__(self) -> MockStreamResponse:
-            return MockStreamResponse()
-
-        async def __aexit__(self, *args: Any) -> None:
-            pass
-
-    realm._client.stream = MockStreamCM  # type: ignore[method-assign]
+    realm._client.stream = _make_capture_stream(captured_payload)  # type: ignore[method-assign]
 
     asyncio.run(collect_responses(realm.stream(model, invocations, config)))
 
@@ -606,35 +581,7 @@ def test_reasoning_not_sent_for_non_reasoning_model() -> None:
     ]
 
     captured_payload: dict[str, Any] = {}
-
-    class MockStreamResponse:
-        status_code = 200
-        headers = {}
-
-        def __init__(self) -> None:
-            self._lines = AsyncIterator(
-                [
-                    b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
-                    b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
-                    b"data: [DONE]\n\n",
-                ]
-            )
-
-        async def aiter_lines(self):
-            async for line in self._lines:
-                yield line
-
-    class MockStreamCM:
-        def __init__(self, method: str, url: str, **kwargs: Any) -> None:
-            captured_payload.update(kwargs.get("json", {}))
-
-        async def __aenter__(self) -> MockStreamResponse:
-            return MockStreamResponse()
-
-        async def __aexit__(self, *args: Any) -> None:
-            pass
-
-    realm._client.stream = MockStreamCM  # type: ignore[method-assign]
+    realm._client.stream = _make_capture_stream(captured_payload)  # type: ignore[method-assign]
 
     asyncio.run(collect_responses(realm.stream(model, invocations, config)))
 
@@ -663,35 +610,7 @@ def test_reasoning_sent_for_model_with_supported_parameters() -> None:
     ]
 
     captured_payload: dict[str, Any] = {}
-
-    class MockStreamResponse:
-        status_code = 200
-        headers = {}
-
-        def __init__(self) -> None:
-            self._lines = AsyncIterator(
-                [
-                    b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
-                    b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
-                    b"data: [DONE]\n\n",
-                ]
-            )
-
-        async def aiter_lines(self):
-            async for line in self._lines:
-                yield line
-
-    class MockStreamCM:
-        def __init__(self, method: str, url: str, **kwargs: Any) -> None:
-            captured_payload.update(kwargs.get("json", {}))
-
-        async def __aenter__(self) -> MockStreamResponse:
-            return MockStreamResponse()
-
-        async def __aexit__(self, *args: Any) -> None:
-            pass
-
-    realm._client.stream = MockStreamCM  # type: ignore[method-assign]
+    realm._client.stream = _make_capture_stream(captured_payload)  # type: ignore[method-assign]
 
     asyncio.run(collect_responses(realm.stream(model, invocations, config)))
 

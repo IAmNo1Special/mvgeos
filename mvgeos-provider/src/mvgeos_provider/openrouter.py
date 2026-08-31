@@ -96,16 +96,6 @@ def _error_from_response(response: Any) -> tuple[str, str | None]:
     return message, error_code
 
 
-def _retry_after_seconds(response: Any) -> float | None:
-    value = response.headers.get("retry-after")
-    if value is None:
-        return None
-    try:
-        return max(0.0, float(value.strip()))
-    except ValueError:
-        return None
-
-
 def _invocations_to_messages(invocations: list[Any]) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
     for inv in invocations:

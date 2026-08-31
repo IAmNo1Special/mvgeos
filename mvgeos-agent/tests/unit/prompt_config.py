@@ -41,13 +41,6 @@ def test_build_system_prompt_with_custom_prompt() -> None:
     assert "Custom prompt here" in prompt
 
 
-def test_build_system_prompt_with_context_files() -> None:
-    prompt = build_system_prompt(
-        spells=[], context_files=[{"path": "test.py", "content": "print('hi')"}]
-    )
-    assert "You are Mvge" in prompt
-
-
 def test_build_system_prompt_with_name() -> None:
     prompt = build_system_prompt(spells=[], name="test-agent")
     assert "You are Mvge" in prompt

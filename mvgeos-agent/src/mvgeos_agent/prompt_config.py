@@ -116,10 +116,9 @@ def build_system_prompt(
     custom_prompt: str = "",
     custom: str = "",
     append_text: str = "",
-    context_files: list[dict[str, str]] | None = None,
     name: str = DEFAULT_AGENT_NAME,
 ) -> str:
-    """Build a system prompt with spells, guidelines, and optional context files.
+    """Build a system prompt with spells and guidelines.
 
     An explicitly supplied prompt always wins over the Summoner's SYSTEM.md,
     which in turn wins over the built-in default.

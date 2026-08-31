@@ -3,10 +3,14 @@
 import os
 import warnings
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
+import pytest
 import pytest_asyncio
 from nicegui.testing import User
 from nicegui.testing.user_simulation import user_simulation
+
+import mvgeos_gui.tome_service as _tome_svc
 
 # Suppress RuntimeWarning from unawaited mock coroutines created by
 # asyncio.create_task in sync methods under test. This is a test-only
@@ -35,6 +39,14 @@ if not os.path.exists("/dev/shm"):
             _run._pool_context = None
 
     _run.setup = _safe_setup
+
+
+@pytest.fixture(autouse=True)
+def isolate_tome_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate tome storage directory to ensure hermetic test execution."""
+    tome_dir = tmp_path / "tomes"
+    tome_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(_tome_svc, "DEFAULT_TOME_DIR", tome_dir)
 
 
 @pytest_asyncio.fixture(loop_scope="function")

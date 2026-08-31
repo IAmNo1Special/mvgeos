@@ -166,3 +166,40 @@ async def test_chat_panel_no_duplicate_messages_on_multiple_notifies(
 
     await user.should_see("Unique prompt text")
     await user.should_see("Unique response text")
+
+
+@pytest.mark.asyncio
+async def test_chat_panel_preserves_card_expansion_during_streaming(
+    user: User,
+) -> None:
+    """Verify expanded thought cards remain expanded during streaming refreshes."""
+    state = AppState()
+    old_msg = InvocationTranscript.from_tome_content(
+        "<think>Deep reasoning about code</think>Final answer"
+    ).message
+    state.messages.append(old_msg)
+
+    # User expands the thought card of message 0
+    state.set_card_expansion("thought_0_0", True)
+
+    @ui.page("/test_chat_panel_expand_persist")
+    def page() -> None:
+        render_chat_panel(state)
+
+    await user.open("/test_chat_panel_expand_persist")
+    await user.should_see("Deep reasoning about code")
+
+    # Simulate streaming a new assistant message and firing notifications
+    new_stream = InvocationTranscript()
+    new_stream.apply_message_update({"text": "Streaming new token"})
+    new_stream.message.is_streaming = True
+    state.messages.append(new_stream.message)
+
+    for i in range(3):
+        new_stream.apply_message_update({"text": f" token {i}"})
+        state.notify()
+        await asyncio.sleep(0.01)
+
+    # The old thought card must still be expanded and visible
+    await user.should_see("Deep reasoning about code")
+    assert state.is_card_expanded("thought_0_0") is True

@@ -375,6 +375,11 @@ class TestComposerComponents:
         assert end == -1
 
 
+class _FakeTextarea:
+    def __init__(self, value: str = "") -> None:
+        self.value = value
+
+
 class TestTabCompletion:
     """Tests for tab completion against the live composer's handlers."""
 
@@ -383,10 +388,7 @@ class TestTabCompletion:
         ac = state_with_project.get_autocomplete_service()
         assert not ac.is_open
 
-        class FakeTextarea:
-            value = ""
-
-        handle_tab(ac, FakeTextarea(), state_with_project)  # type: ignore[arg-type]
+        handle_tab(ac, _FakeTextarea(), state_with_project)  # type: ignore[arg-type]
 
     def test_handle_tab_with_selection(self, state_with_project: AppState) -> None:
         """Verify handle_tab selects current item and updates prompt text."""
@@ -394,10 +396,7 @@ class TestTabCompletion:
         ac.process_input("@main")
         assert ac.is_open
 
-        class FakeTextarea:
-            value = "hello @main"
-
-        textarea = FakeTextarea()
+        textarea = _FakeTextarea(value="hello @main")
         handle_tab(ac, textarea, state_with_project)  # type: ignore[arg-type]
 
         assert not ac.is_open
@@ -410,10 +409,7 @@ class TestTabCompletion:
         assert ac.is_open
         assert len(ac.items) == 0
 
-        class FakeTextarea:
-            value = "hello @zzznomatch"
-
-        textarea = FakeTextarea()
+        textarea = _FakeTextarea(value="hello @zzznomatch")
         handle_tab(ac, textarea, state_with_project)  # type: ignore[arg-type]
         assert ac.is_open
 
@@ -423,10 +419,7 @@ class TestTabCompletion:
         ac.process_input("@main")
         assert ac.is_open
 
-        class FakeTextarea:
-            value = "hello @main"
-
-        textarea = FakeTextarea()
+        textarea = _FakeTextarea(value="hello @main")
         items = ac.get_visible_items()
         assert len(items) > 0
 
@@ -439,10 +432,7 @@ class TestTabCompletion:
         ac = state_with_project.get_autocomplete_service()
         ac.process_input("@main")
 
-        class FakeTextarea:
-            value = "@main"
-
-        textarea = FakeTextarea()
+        textarea = _FakeTextarea(value="@main")
         _select_autocomplete_item(ac, textarea, 999, state_with_project)  # type: ignore[arg-type]
         assert ac.is_open
         _select_autocomplete_item(ac, textarea, -1, state_with_project)  # type: ignore[arg-type]

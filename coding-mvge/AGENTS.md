@@ -13,10 +13,10 @@ This package implements the concrete coding agent: `CodingMvge` extends `BaseMvg
 
 ```bash
 # Run this package's tests
-uv run pytest coding-mvge/tests/
+uv run python -m pytest coding-mvge/tests/
 
 # Run with coverage
-uv run pytest coding-mvge/tests/ --cov
+uv run python -m pytest coding-mvge/tests/ --cov
 ```
 
 Test paths follow pattern: `coding-mvge/tests/unit/<module>.py` and `coding-mvge/tests/integration/<module>.py`

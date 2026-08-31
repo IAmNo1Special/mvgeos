@@ -23,9 +23,12 @@ from mvgeos_provider.types import (
 from mvgeos_provider.types import (
     StopReason as StopReason,
 )
+from mvgeos_runes.types import ExecutionMode
 from pydantic import BaseModel, ValidationError, create_model
 
 from mvgeos_agent.prompt_loader import PromptSource
+
+SpellExecutionMode = ExecutionMode
 
 if TYPE_CHECKING:
     from mvgeos_runes.rune_runner import RuneRunner
@@ -50,11 +53,6 @@ class ContemplationLevel(StrEnum):
     MAX = "max"
 
 
-class SpellExecutionMode(StrEnum):
-    SEQUENTIAL = "sequential"
-    PARALLEL = "parallel"
-
-
 class QueueMode(StrEnum):
     ALL = "all"
     ONE_AT_A_TIME = "one-at-a-time"
@@ -63,7 +61,6 @@ class QueueMode(StrEnum):
 class MvgeEventType(StrEnum):
     AGENT_START = "agent_start"
     AGENT_END = "agent_end"
-    AGENT_SETTLED = "agent_settled"
     TURN_START = "turn_start"
     TURN_END = "turn_end"
     INPUT = "input"
@@ -74,17 +71,11 @@ class MvgeEventType(StrEnum):
     MESSAGE_START = "message_start"
     MESSAGE_UPDATE = "message_update"
     MESSAGE_END = "message_end"
-    TOOL_EXECUTION_START = "tool_execution_start"
-    TOOL_EXECUTION_UPDATE = "tool_execution_update"
-    TOOL_EXECUTION_END = "tool_execution_end"
     SPELL_CASTING_START = "spell_casting_start"
-    SPELL_CASTING_UPDATE = "spell_casting_update"
     SPELL_CASTING_END = "spell_casting_end"
     ARTIFACT_CREATED = "artifact_created"
     COMPACTION_START = "compaction_start"
     COMPACTION_END = "compaction_end"
-    ENTRY_APPENDED = "entry_appended"
-    QUEUE_UPDATE = "queue_update"
 
 
 @dataclass

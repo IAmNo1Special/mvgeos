@@ -60,9 +60,3 @@ def render_command_palette(state: AppState) -> None:
                     ui.label(label).classes("flex-1")
 
         search_input.on("keydown.escape", close_palette)
-
-
-def open_command_palette(state: AppState) -> None:
-    """Open the command palette."""
-    state._command_palette_open = True
-    state.notify()

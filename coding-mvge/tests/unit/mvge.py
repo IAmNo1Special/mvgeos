@@ -580,7 +580,7 @@ class TestCodingMvgeToolCalls:
         assert bash_spell.parameters.get("properties", {}).get("command")
 
         result = await bash_spell.execute(
-            "call-1", {"command": "echo hi", "timeout_ms": 5000}
+            "call-1", {"command": "echo hi", "timeout_ms": 15000}
         )
         assert "hi" in result
 

@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from mvgeos_provider.models import _load_models_json
+from mvgeos_provider.models import MODELS
 from mvgeos_provider.types import Model
 
 logger = logging.getLogger(__name__)
@@ -39,19 +39,7 @@ class ModelRegistry:
         return list(self._models.values())
 
     def _load_baseline(self) -> None:
-        for mid, name, ctx, params, is_free in _load_models_json():
-            self._models[mid] = Model(
-                id=mid,
-                name=name,
-                realm="openrouter",
-                base_url="https://openrouter.ai/api/v1",
-                api_key="",
-                max_completion_mana=0,
-                context_window=ctx,
-                max_tokens=4096,
-                supported_parameters=params,
-                is_free=is_free,
-            )
+        self._models.update(MODELS)
 
     def load_cache(self) -> bool:
         if not self._cache_path.exists():

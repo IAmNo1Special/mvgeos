@@ -162,3 +162,49 @@ async def test_render_contemplation_card(user: User) -> None:
     await user.open("/test_thought_card")
     await user.should_see("Thought")
     await user.should_see("The user said 'hey' - I should respond politely.")
+
+
+@pytest.mark.asyncio
+async def test_render_contemplation_card_with_state_persistence(
+    user: User,
+) -> None:
+    """Verify thought card uses state expansion and updates state when toggled."""
+    from mvgeos_gui.state import AppState
+
+    state = AppState()
+    state.set_card_expansion("thought_test_1", True)
+
+    @ui.page("/test_thought_state_card")
+    def page() -> None:
+        render_contemplation_card(
+            "Analyzing issue...",
+            is_streaming=False,
+            card_id="thought_test_1",
+            state=state,
+        )
+
+    await user.open("/test_thought_state_card")
+    await user.should_see("Analyzing issue...")
+    assert state.is_card_expanded("thought_test_1") is True
+
+
+@pytest.mark.asyncio
+async def test_render_step_card_with_state_persistence(user: User) -> None:
+    """Verify step card dispatcher passes card_id and state."""
+    from mvgeos_gui.state import AppState
+
+    state = AppState()
+    state.set_card_expansion("step_test_1", True)
+    step = ExecutionStep(
+        step_type=StepType.WORKED,
+        title="Worked for 1.5s",
+        details=["Processed task"],
+    )
+
+    @ui.page("/test_step_state_card")
+    def page() -> None:
+        render_step_card(step, card_id="step_test_1", state=state)
+
+    await user.open("/test_step_state_card")
+    await user.should_see("Worked for 1.5s")
+    assert state.is_card_expanded("step_test_1") is True

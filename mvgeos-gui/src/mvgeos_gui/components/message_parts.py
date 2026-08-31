@@ -14,11 +14,6 @@ from mvgeos_gui.state import AppState
 from mvgeos_gui.utils import copy_to_clipboard
 
 
-def _copy_to_clipboard(text: str) -> None:
-    """Copy content to the system clipboard and display feedback toast."""
-    copy_to_clipboard(text)
-
-
 def render_message_header(msg: ChatMessage) -> ui.row:
     """Render the header row: avatar, model badge, mana usage, timestamp."""
     with ui.row().classes(
@@ -52,40 +47,59 @@ def render_message_header(msg: ChatMessage) -> ui.row:
     return row
 
 
-def render_message_parts(msg: ChatMessage, state: AppState) -> None:
+def render_message_parts(msg: ChatMessage, state: AppState, msg_idx: int = 0) -> None:
     """Render sequential message parts in chronological order."""
-    for part in msg.parts:
+    for part_idx, part in enumerate(msg.parts):
         if part.part_type == MessagePartType.CONTEMPLATION:
             if part.text:
-                render_contemplation_card(part.text, msg.is_streaming)
+                render_contemplation_card(
+                    part.text,
+                    msg.is_streaming,
+                    card_id=f"thought_{msg_idx}_{part_idx}",
+                    state=state,
+                )
         elif part.part_type == MessagePartType.STEP:
             if part.step:
-                render_step_card(part.step)
+                render_step_card(
+                    part.step,
+                    card_id=f"step_{msg_idx}_{part_idx}",
+                    state=state,
+                )
         elif part.part_type == MessagePartType.TEXT:
             if part.text:
-                ui.markdown(part.text).classes(
-                    "text-xs text-[#e6edf3] leading-relaxed markdown-content "
-                    "max-w-none w-full"
-                )
+                ui.markdown(part.text).classes("markdown-content max-w-none w-full")
         elif part.part_type == MessagePartType.ARTIFACT and part.artifact:
             render_artifact_card(part.artifact, state)
 
 
-def render_contemplation_section(msg: ChatMessage) -> ui.column:
+def render_contemplation_section(
+    msg: ChatMessage, state: AppState | None = None, msg_idx: int = 0
+) -> ui.column:
     """Render contemplation/reasoning cards for each thought segment."""
     with ui.column().classes("w-full gap-1 my-1") as col:
-        for thought in msg.contemplation:
-            render_contemplation_card(thought, msg.is_streaming)
+        for idx, thought in enumerate(msg.contemplation):
+            render_contemplation_card(
+                thought,
+                msg.is_streaming,
+                card_id=f"thought_{msg_idx}_{idx}",
+                state=state,
+            )
     return col
 
 
-def render_steps_section(msg: ChatMessage) -> ui.column:
+def render_steps_section(
+    msg: ChatMessage, state: AppState | None = None, msg_idx: int = 0
+) -> ui.column:
     """Render intermediate execution steps (tool calls)."""
     if not msg.steps:
         return ui.column()
     with ui.column().classes("w-full gap-1 my-1") as col:
-        for step in msg.steps:
-            render_step_card(step)
+        for idx, step in enumerate(msg.steps):
+            render_step_card(
+                step,
+                card_id=f"step_{msg_idx}_{idx}",
+                state=state,
+            )
     return col
 
 
@@ -93,9 +107,7 @@ def render_message_content(msg: ChatMessage) -> ui.markdown | None:
     """Render the main markdown response content."""
     if not msg.content:
         return None
-    return ui.markdown(msg.content).classes(
-        "text-xs text-[#e6edf3] leading-relaxed markdown-content max-w-none w-full"
-    )
+    return ui.markdown(msg.content).classes("markdown-content max-w-none w-full")
 
 
 def render_artifacts_section(msg: ChatMessage, state: AppState) -> ui.column | None:
@@ -149,7 +161,7 @@ def render_message_footer(
     ) as row:
         copy_text = msg.content or "\n\n".join(msg.contemplation)
         with ui.button(
-            icon="content_copy", on_click=lambda c=copy_text: _copy_to_clipboard(c)
+            icon="content_copy", on_click=lambda c=copy_text: copy_to_clipboard(c)
         ).props("flat dense round size=xs text-color=grey-5"):
             ui.tooltip("Copy response")
 
@@ -184,7 +196,7 @@ def render_assistant_message(
         ),
     ):
         render_message_header(msg)
-        render_message_parts(msg, state)
+        render_message_parts(msg, state, msg_idx=msg_idx)
         render_streaming_indicator(msg)
         render_error_display(msg)
         render_message_footer(msg, msg_idx, state)

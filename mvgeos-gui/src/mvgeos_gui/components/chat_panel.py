@@ -597,28 +597,74 @@ def _scroll_to_bottom(element_id: int | None = None, force: bool = False) -> Non
         if (el) {{
             if (!el._scrollListenerAttached) {{
                 el._scrollListenerAttached = true;
-                el._autoScrollPinned = true;
-                el.addEventListener('scroll', () => {{
-                    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-                    el._autoScrollPinned = dist < 100;
-                    if (!el._autoScrollPinned) {{
+                el._userScrolledUp = false;
+                el._savedScrollTop = el.scrollTop;
+
+                el.addEventListener('wheel', (e) => {{
+                    if (e.deltaY < 0) {{
+                        el._userScrolledUp = true;
                         el._savedScrollTop = el.scrollTop;
+                        updateScrollBtn(false);
+                    }} else if (e.deltaY > 0) {{
+                        const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+                        if (dist < 80) {{
+                            el._userScrolledUp = false;
+                            updateScrollBtn(true);
+                        }} else {{
+                            el._savedScrollTop = el.scrollTop;
+                        }}
                     }}
-                    updateScrollBtn(el._autoScrollPinned);
-                }});
+                }}, {{ passive: true }});
+
+                el.addEventListener('touchmove', () => {{
+                    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+                    if (dist >= 80) {{
+                        el._userScrolledUp = true;
+                        el._savedScrollTop = el.scrollTop;
+                        updateScrollBtn(false);
+                    }} else {{
+                        el._userScrolledUp = false;
+                        updateScrollBtn(true);
+                    }}
+                }}, {{ passive: true }});
+
+                el.addEventListener('scroll', () => {{
+                    if (el._isProgrammaticScroll) {{
+                        el._isProgrammaticScroll = false;
+                        return;
+                    }}
+                    if (el.scrollHeight > el.clientHeight + 50) {{
+                        const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+                        if (dist >= 80) {{
+                            el._userScrolledUp = true;
+                            el._savedScrollTop = el.scrollTop;
+                            updateScrollBtn(false);
+                        }} else {{
+                            el._userScrolledUp = false;
+                            updateScrollBtn(true);
+                        }}
+                    }}
+                }}, {{ passive: true }});
             }}
+
             const forceScroll = {force_js};
             if (forceScroll) {{
-                el._autoScrollPinned = true;
+                el._userScrolledUp = false;
             }}
-            updateScrollBtn(el._autoScrollPinned !== false);
-            if (forceScroll || el._autoScrollPinned !== false) {{
+
+            if (forceScroll || !el._userScrolledUp) {{
+                updateScrollBtn(true);
+                el._isProgrammaticScroll = true;
                 el.scrollTop = el.scrollHeight;
                 requestAnimationFrame(() => {{
                     el.scrollTop = el.scrollHeight;
                 }});
-            }} else if (el._savedScrollTop !== undefined) {{
-                el.scrollTop = el._savedScrollTop;
+            }} else {{
+                updateScrollBtn(false);
+                if (el._savedScrollTop !== undefined) {{
+                    el._isProgrammaticScroll = true;
+                    el.scrollTop = el._savedScrollTop;
+                }}
             }}
         }}
     """

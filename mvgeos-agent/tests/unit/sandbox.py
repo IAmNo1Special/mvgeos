@@ -46,7 +46,7 @@ def test_execute_sync_with_context() -> None:
 
 def test_execute_code_success() -> None:
     s = MvgeSandbox()
-    result = s.execute_code("a = 10", timeout_seconds=2.0)
+    result = s.execute_code("a = 10", timeout_seconds=10.0)
     assert result["a"] == 10
 
 

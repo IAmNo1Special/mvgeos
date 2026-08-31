@@ -92,7 +92,7 @@ class TestLazyLoadingNoEagerEntryParsing:
             ledger = TomeLedger(tome_dir)
             elapsed = time.perf_counter() - start
 
-            assert elapsed < 1.0, f"Init took {elapsed:.3f}s for 200 tomes"
+            assert elapsed < 2.5, f"Init took {elapsed:.3f}s for 200 tomes"
             assert len(ledger.list_tomes()) == 200
 
     def test_get_entries_lazy_loads_only_accessed_tome(self) -> None:

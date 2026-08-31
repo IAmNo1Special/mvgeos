@@ -1021,8 +1021,35 @@ class TestLoadMessagesForTome:
 
         called: list[bool] = []
         state.subscribe(lambda: called.append(True))
-
         state.load_messages_for_tome(tome_id)
 
         assert called == [True]
         assert len(state.messages) == 2
+
+
+class TestCardExpansion:
+    """Verify card expansion state tracking in AppState."""
+
+    def test_default_expansion(self) -> None:
+        state = AppState()
+        assert state.is_card_expanded("card_1", default=False) is False
+        assert state.is_card_expanded("card_1", default=True) is True
+
+    def test_set_card_expanded(self) -> None:
+        state = AppState()
+        state.set_card_expansion("thought_0_0", True)
+        assert state.is_card_expanded("thought_0_0", default=False) is True
+        assert state.is_card_expanded("thought_0_0", default=True) is True
+
+    def test_set_card_collapsed(self) -> None:
+        state = AppState()
+        state.set_card_expansion("thought_0_0", True)
+        state.set_card_expansion("thought_0_0", False)
+        assert state.is_card_expanded("thought_0_0", default=True) is False
+
+    def test_set_card_expansion_does_not_notify(self) -> None:
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.set_card_expansion("step_1_0", True)
+        assert called == []

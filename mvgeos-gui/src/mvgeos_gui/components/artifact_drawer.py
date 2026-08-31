@@ -45,10 +45,7 @@ def _render_markdown_with_mermaid(content: str) -> None:
     for i, part in enumerate(parts):
         if i % 2 == 0:
             if part.strip():
-                ui.markdown(part).classes(
-                    "text-xs text-[#e6edf3] leading-relaxed markdown-content "
-                    "max-w-none w-full"
-                )
+                ui.markdown(part).classes("markdown-content max-w-none w-full")
         else:
             with ui.column().classes(
                 "w-full my-3 p-3 rounded-lg bg-[#0f1118] border border-[#252836]"

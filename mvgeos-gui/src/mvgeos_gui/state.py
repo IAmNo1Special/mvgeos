@@ -98,6 +98,8 @@ class AppState:
     _sidebar_width: int = 260
     _review_width: int = 320
     _command_palette_open: bool = False
+    _expanded_cards: set[str] = field(default_factory=set, repr=False, compare=False)
+    _collapsed_cards: set[str] = field(default_factory=set, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         """Initialize state invariants."""
@@ -292,27 +294,12 @@ class AppState:
         self.notify()
         return task
 
-    def remove_background_task(self, task_id: str) -> bool:
-        """Remove a background task by id. Returns True if removed."""
-        for i, task in enumerate(self.background_tasks):
-            if task.id == task_id:
-                del self.background_tasks[i]
-                self.notify()
-                return True
-        return False
-
     def get_background_task(self, task_id: str) -> BackgroundTask | None:
         """Look up a background task by id."""
         for task in self.background_tasks:
             if task.id == task_id:
                 return task
         return None
-
-    def clear_background_tasks(self) -> None:
-        """Remove all tracked background tasks."""
-        if self.background_tasks:
-            self.background_tasks.clear()
-            self.notify()
 
     def toggle_inspector(self) -> None:
         """Toggle right context inspector visibility."""
@@ -638,3 +625,20 @@ class AppState:
         """Set the active side panel in chat (files, diff, or None)."""
         self.chat_side_panel = panel
         self.notify()
+
+    def is_card_expanded(self, card_id: str, default: bool = False) -> bool:
+        """Check whether a card/expansion is currently expanded."""
+        if card_id in self._expanded_cards:
+            return True
+        if card_id in self._collapsed_cards:
+            return False
+        return default
+
+    def set_card_expansion(self, card_id: str, expanded: bool) -> None:
+        """Record expansion state without triggering notification re-renders."""
+        if expanded:
+            self._expanded_cards.add(card_id)
+            self._collapsed_cards.discard(card_id)
+        else:
+            self._collapsed_cards.add(card_id)
+            self._expanded_cards.discard(card_id)

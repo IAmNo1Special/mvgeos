@@ -21,10 +21,10 @@ BUILTIN_SPELL_MAP: dict[str, Any] = {
 __all__ = [
     "BUILTIN_SPELL_MAP",
     "cast_bash",
-    "cast_read",
-    "cast_write",
     "cast_edit",
     "cast_find",
-    "cast_list",
     "cast_grep",
+    "cast_list",
+    "cast_read",
+    "cast_write",
 ]

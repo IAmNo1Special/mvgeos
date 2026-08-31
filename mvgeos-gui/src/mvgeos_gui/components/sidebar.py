@@ -2,6 +2,7 @@
 
 from nicegui import ui
 
+from mvgeos_gui import __version__
 from mvgeos_gui.state import AppState
 
 
@@ -141,7 +142,7 @@ def render_sidebar(state: AppState) -> ui.column:
             ):
                 ui.icon("settings", size="14px").classes("text-[#8b949e]")
                 ui.label("Settings").classes("text-xs text-[#8b949e]")
-            ui.label("v0.1.0").classes("text-[10px] text-[#64748b] ml-auto")
+            ui.label(f"v{__version__}").classes("text-[10px] text-[#64748b] ml-auto")
 
     return container
 
