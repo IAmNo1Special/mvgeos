@@ -25,6 +25,8 @@ def render_workspace_settings_modal(state: AppState) -> None:
         "project_name": current.project_name or project_dir.name,
         "spells_enabled": list(current.spells_enabled),
         "contemplation_level": current.contemplation_level,
+        "temperature": current.temperature,
+        "max_tokens": current.max_tokens,
     }
 
     def _on_close() -> None:
@@ -32,14 +34,24 @@ def render_workspace_settings_modal(state: AppState) -> None:
         state.notify()
 
     def _save() -> None:
+        try:
+            temp = float(edited["temperature"])
+            tokens = int(edited["max_tokens"])
+        except ValueError, TypeError:
+            temp = 0.7
+            tokens = 4096
+
         config_service.save_workspace_settings(
             project_dir,
             WorkspaceSettings(
                 project_name=str(edited["project_name"]),
                 spells_enabled=list(edited["spells_enabled"]),
                 contemplation_level=str(edited["contemplation_level"]),
+                temperature=temp,
+                max_tokens=tokens,
             ),
         )
+        state.reset_agent()
         state._show_workspace_settings = False
         state.notify()
         ui.notify("Workspace settings saved", type="positive")

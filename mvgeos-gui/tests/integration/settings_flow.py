@@ -13,7 +13,7 @@ from mvgeos_gui.components.settings_modal import render_app_settings_modal
 from mvgeos_gui.components.workspace_settings_modal import (
     render_workspace_settings_modal,
 )
-from mvgeos_gui.config_service import AppSettings, ConfigService
+from mvgeos_gui.config_service import AppSettings, ConfigService, WorkspaceSettings
 from mvgeos_gui.state import AppState
 
 
@@ -58,20 +58,24 @@ async def test_workspace_settings_persists_to_file(tmp_path: Path) -> None:
     service = ConfigService(config_dir=tmp_path)
     service.save_workspace_settings(
         project_dir,
-        type(
-            "WorkspaceSettings",
-            (),
-            {
-                "project_name": "test-proj",
-                "spells_enabled": ["bash", "read"],
-                "contemplation_level": "high",
-            },
-        )(),
+        WorkspaceSettings(
+            project_name="test-proj",
+            spells_enabled=["bash", "read"],
+            contemplation_level="high",
+            temperature=0.3,
+            max_tokens=1024,
+        ),
     )
+
+    config_path = project_dir / ".agents" / ".mvgeos" / "config.json"
+    assert config_path.exists()
 
     loaded = service.load_workspace_settings(project_dir)
     assert loaded.project_name == "test-proj"
     assert loaded.contemplation_level == "high"
+    assert loaded.temperature == 0.3
+    assert loaded.max_tokens == 1024
+    assert loaded.spells_enabled == ["bash", "read"]
 
 
 @pytest.mark.asyncio

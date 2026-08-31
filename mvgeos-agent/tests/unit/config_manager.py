@@ -197,6 +197,55 @@ class TestConfigManagerConfigFileLocations:
             tmp_path / ".agents" / ".mvgeos" / "config.json"
         )
 
+    def test_project_config_path_alias(self, tmp_path: Path) -> None:
+        mgr = _make_mgr(tmp_path)
+        assert mgr.project_config_path == mgr.legacy_config_path
+
+
+class TestConfigManagerProjectScope:
+    def test_set_project_writes_to_project_file(self, tmp_path: Path) -> None:
+        mgr = _make_mgr(tmp_path)
+        mgr.set_project("temperature", 0.9)
+        assert mgr.legacy_config_path.exists()
+        data = json.loads(mgr.legacy_config_path.read_text(encoding="utf-8"))
+        assert data["temperature"] == 0.9
+
+    def test_save_project_config_saves_multiple_keys(self, tmp_path: Path) -> None:
+        mgr = _make_mgr(tmp_path)
+        mgr.save_project_config(
+            {
+                "temperature": 0.5,
+                "max_tokens": 2048,
+                "contemplation_level": "high",
+                "spells_enabled": ["bash", "read"],
+                "project_name": "test-project",
+            }
+        )
+        data = mgr.load_project_config()
+        assert data["temperature"] == 0.5
+        assert data["max_tokens"] == 2048
+        assert data["contemplation_level"] == "high"
+        assert data["spells_enabled"] == ["bash", "read"]
+        assert data["project_name"] == "test-project"
+
+    def test_save_project_config_preserves_existing_keys(self, tmp_path: Path) -> None:
+        mgr = _make_mgr(tmp_path)
+        mgr.set_project("model", "custom-model")
+        mgr.save_project_config({"temperature": 0.3})
+        data = mgr.load_project_config()
+        assert data["model"] == "custom-model"
+        assert data["temperature"] == 0.3
+
+    def test_project_name_validation(self, tmp_path: Path) -> None:
+        mgr = _make_mgr(tmp_path)
+        import pytest
+
+        with pytest.raises(
+            ValueError, match="Invalid project_name value: expected string"
+        ):
+            mgr.validate_value("project_name", 123)
+        assert mgr.validate_value("project_name", "my-project") == "my-project"
+
 
 class TestConfigManagerValidation:
     def test_set_invalid_temperature_type(self, tmp_path: Path) -> None:

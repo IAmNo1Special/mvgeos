@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import keyring
+from mvgeos_agent.config_manager import ConfigManager
 
 _KEYRING_SERVICE = "mvgeos"
 _KEYRING_API_KEY_USERNAME = "openrouter_api_key"
@@ -45,6 +46,9 @@ class WorkspaceSettings:
         ]
     )
     contemplation_level: str = "medium"
+    temperature: float = 0.7
+    max_tokens: int = 4096
+    model: str = ""
 
 
 def _load_api_key_from_keyring() -> str | None:
@@ -124,7 +128,7 @@ class ConfigService:
         return self._config_dir / "gui.json"
 
     def workspace_settings_path(self, project_dir: Path) -> Path:
-        return (project_dir / ".agents" / ".mvgeos" / "workspace.json").resolve()
+        return (project_dir / ".agents" / ".mvgeos" / "config.json").resolve()
 
     def load_app_settings(self) -> AppSettings:
         if not self.app_settings_path.exists():
@@ -194,44 +198,65 @@ class ConfigService:
             result["theme"] = settings.theme
         return result
 
-    def _workspace_settings_to_dict(
-        self, settings: WorkspaceSettings
-    ) -> dict[str, Any]:
-        default = WorkspaceSettings()
-        result: dict[str, Any] = {}
-        if settings.project_name != default.project_name:
-            result["project_name"] = settings.project_name
-        if settings.spells_enabled != default.spells_enabled:
-            result["spells_enabled"] = settings.spells_enabled
-        if settings.contemplation_level != default.contemplation_level:
-            result["contemplation_level"] = settings.contemplation_level
-        return result
-
     def load_workspace_settings(self, project_dir: Path) -> WorkspaceSettings:
-        path = self.workspace_settings_path(project_dir)
-        if not path.exists():
-            return WorkspaceSettings()
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            valid_keys = {
-                k: v
-                for k, v in data.items()
-                if k in WorkspaceSettings.__dataclass_fields__
-            }
-            return WorkspaceSettings(**valid_keys)
-        except json.JSONDecodeError, TypeError:
-            return WorkspaceSettings()
+        cm = ConfigManager(project_dir=project_dir)
+        config_values = cm.load()
+
+        spells_val = config_values.get("spells_enabled")
+        spells_enabled = (
+            list(spells_val.value)
+            if spells_val is not None and isinstance(spells_val.value, list)
+            else [
+                "bash",
+                "read",
+                "write",
+                "edit",
+                "find",
+                "list",
+                "grep",
+            ]
+        )
+
+        contemplation_val = config_values.get("contemplation_level")
+        contemplation_level = (
+            str(contemplation_val.value) if contemplation_val is not None else "medium"
+        )
+
+        temp_val = config_values.get("temperature")
+        temperature = float(temp_val.value) if temp_val is not None else 0.7
+
+        tokens_val = config_values.get("max_tokens")
+        max_tokens = int(tokens_val.value) if tokens_val is not None else 4096
+
+        project_name_val = config_values.get("project_name")
+        project_name = (
+            str(project_name_val.value) if project_name_val is not None else ""
+        )
+
+        model_val = config_values.get("model")
+        model = str(model_val.value) if model_val is not None else ""
+
+        return WorkspaceSettings(
+            project_name=project_name,
+            spells_enabled=spells_enabled,
+            contemplation_level=contemplation_level,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            model=model,
+        )
 
     def save_workspace_settings(
         self, project_dir: Path, settings: WorkspaceSettings
     ) -> None:
-        path = self.workspace_settings_path(project_dir)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        existing: dict[str, Any] = {}
-        if path.exists():
-            try:
-                existing = json.loads(path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError, OSError:
-                existing = {}
-        merged = {**existing, **self._workspace_settings_to_dict(settings)}
-        path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
+        cm = ConfigManager(project_dir=project_dir)
+        to_save: dict[str, Any] = {
+            "spells_enabled": list(settings.spells_enabled),
+            "contemplation_level": settings.contemplation_level,
+            "temperature": settings.temperature,
+            "max_tokens": settings.max_tokens,
+        }
+        if settings.project_name:
+            to_save["project_name"] = settings.project_name
+        if settings.model:
+            to_save["model"] = settings.model
+        cm.save_project_config(to_save)

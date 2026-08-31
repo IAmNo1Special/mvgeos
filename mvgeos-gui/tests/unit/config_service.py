@@ -51,16 +51,25 @@ class TestWorkspaceSettings:
             "grep",
         ]
         assert settings.contemplation_level == "medium"
+        assert settings.temperature == 0.7
+        assert settings.max_tokens == 4096
+        assert settings.model == ""
 
     def test_custom_init(self) -> None:
         settings = WorkspaceSettings(
             project_name="my-project",
             spells_enabled=["bash", "read"],
             contemplation_level="high",
+            temperature=0.5,
+            max_tokens=2048,
+            model="custom-realm/model",
         )
         assert settings.project_name == "my-project"
         assert settings.spells_enabled == ["bash", "read"]
         assert settings.contemplation_level == "high"
+        assert settings.temperature == 0.5
+        assert settings.max_tokens == 2048
+        assert settings.model == "custom-realm/model"
 
 
 class TestConfigService:
@@ -94,11 +103,33 @@ class TestConfigService:
         project_dir = tmp_path / "project"
         project_dir.mkdir()
         service.save_workspace_settings(
-            project_dir, WorkspaceSettings(project_name="test-proj")
+            project_dir,
+            WorkspaceSettings(
+                project_name="test-proj",
+                spells_enabled=["bash", "read", "write"],
+                contemplation_level="high",
+                temperature=0.4,
+                max_tokens=8192,
+            ),
         )
+
+        config_file = project_dir / ".agents" / ".mvgeos" / "config.json"
+        assert config_file.exists()
+        assert not (project_dir / ".agents" / ".mvgeos" / "workspace.json").exists()
+
+        data = json.loads(config_file.read_text(encoding="utf-8"))
+        assert data["project_name"] == "test-proj"
+        assert data["spells_enabled"] == ["bash", "read", "write"]
+        assert data["contemplation_level"] == "high"
+        assert data["temperature"] == 0.4
+        assert data["max_tokens"] == 8192
 
         loaded = service.load_workspace_settings(project_dir)
         assert loaded.project_name == "test-proj"
+        assert loaded.spells_enabled == ["bash", "read", "write"]
+        assert loaded.contemplation_level == "high"
+        assert loaded.temperature == 0.4
+        assert loaded.max_tokens == 8192
 
     def test_workspace_settings_defaults_when_no_file(self, tmp_path: Path) -> None:
         service = ConfigService(config_dir=tmp_path)
@@ -108,6 +139,17 @@ class TestConfigService:
         loaded = service.load_workspace_settings(project_dir)
         assert loaded.project_name == ""
         assert loaded.contemplation_level == "medium"
+        assert loaded.temperature == 0.7
+        assert loaded.max_tokens == 4096
+        assert loaded.spells_enabled == [
+            "bash",
+            "read",
+            "write",
+            "edit",
+            "find",
+            "list",
+            "grep",
+        ]
 
     def test_global_settings_path(self, tmp_path: Path) -> None:
         service = ConfigService(config_dir=tmp_path)
@@ -118,7 +160,7 @@ class TestConfigService:
         service = ConfigService(config_dir=tmp_path)
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        expected = project_dir / ".agents" / ".mvgeos" / "workspace.json"
+        expected = project_dir / ".agents" / ".mvgeos" / "config.json"
         assert service.workspace_settings_path(project_dir) == expected
 
     def test_partial_update_preserves_other_keys(self, tmp_path: Path) -> None:

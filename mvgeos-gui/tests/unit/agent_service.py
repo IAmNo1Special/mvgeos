@@ -102,6 +102,24 @@ def test_get_or_create_agent_default(
     mock_coding_mvge.assert_called_once()
 
 
+@patch("mvgeos_gui.agent_service.CodingMvge")
+def test_reset_agent_clears_cached_instance(
+    mock_coding_mvge: MagicMock, app_state: AppState
+) -> None:
+    """Verify reset_agent clears the cached agent instance."""
+    mock_coding_mvge.side_effect = [MagicMock(), MagicMock()]
+    service = AgentService(project_path=app_state.project_path, api_key="test-key")
+
+    agent1 = service.get_or_create_agent(app_state)
+    assert service.get_or_create_agent(app_state) == agent1
+    assert mock_coding_mvge.call_count == 1
+
+    service.reset_agent()
+    agent2 = service.get_or_create_agent(app_state)
+    assert agent2 != agent1
+    assert mock_coding_mvge.call_count == 2
+
+
 def test_handle_agent_start_event(
     agent_service: AgentService, app_state: AppState
 ) -> None:

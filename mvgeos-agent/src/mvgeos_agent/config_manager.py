@@ -151,6 +151,11 @@ class ConfigManager:
         """Path to the legacy project config file."""
         return self._project_dir / ".agents" / ".mvgeos" / "config.json"
 
+    @property
+    def project_config_path(self) -> Path:
+        """Path to the project-scope config file."""
+        return self.legacy_config_path
+
     def with_overrides(self, **kwargs: Any) -> ConfigManager:
         """Return a new manager with constructor-level overrides applied.
 
@@ -217,6 +222,7 @@ class ConfigManager:
         "exclude_contemplation",
         "spells_enabled",
         "rune_paths",
+        "project_name",
     }
 
     @classmethod
@@ -227,6 +233,11 @@ class ConfigManager:
         """
         if key not in cls.KNOWN_KEYS:
             raise ValueError(f"Unknown configuration key: '{key}'")
+
+        if key == "project_name":
+            if not isinstance(value, str):
+                raise ValueError("Invalid project_name value: expected string")
+            return value
 
         if key == "temperature":
             if isinstance(value, bool) or not isinstance(value, (int, float, str)):
@@ -332,6 +343,26 @@ class ConfigManager:
         data = self._load_json(self.agent_config_path)
         data[key] = validated_value
         self.agent_config_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def set_project(self, key: str, value: Any) -> None:
+        """Set a value in the project-scope config file."""
+        validated_value = self.validate_value(key, value)
+        self.legacy_config_path.parent.mkdir(parents=True, exist_ok=True)
+        data = self._load_json(self.legacy_config_path)
+        data[key] = validated_value
+        self.legacy_config_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def save_project_config(self, values: dict[str, Any]) -> None:
+        """Save multiple validated values to the project-scope config file."""
+        self.legacy_config_path.parent.mkdir(parents=True, exist_ok=True)
+        data = self._load_json(self.legacy_config_path)
+        for key, value in values.items():
+            data[key] = self.validate_value(key, value)
+        self.legacy_config_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def load_project_config(self) -> dict[str, Any]:
+        """Load the raw project-scope config dictionary."""
+        return self._load_json(self.legacy_config_path)
 
     def reset(self) -> None:
         """Reset agent-scope config to defaults."""

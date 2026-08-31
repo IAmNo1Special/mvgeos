@@ -143,6 +143,11 @@ class AppState:
             )
         return self.agent_service
 
+    def reset_agent(self) -> None:
+        """Reset the cached agent in AgentService if one exists."""
+        if self.agent_service is not None:
+            self.agent_service.reset_agent()
+
     def get_autocomplete_service(self) -> AutocompleteService:
         """Retrieve or initialize the AutocompleteService for this session."""
         if self._autocomplete_service is None:

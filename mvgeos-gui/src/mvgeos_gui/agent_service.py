@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from coding_mvge.mvge import CodingMvge
+from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.errors import AuthenticationError, RateLimitError
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 from mvgeos_cli.auth import load_api_key_from_auth
@@ -105,16 +106,25 @@ class AgentService:
                     "Set OPENROUTER_API_KEY, pass --api-key, or configure "
                     "an agent_factory."
                 )
+            env = MvgeEnvironment.resolve(
+                agent_name="coding-mvge",
+                project_dir=self._project_path,
+            )
             self._agent = CodingMvge(
                 api_key=self._api_key,
                 tome_dir=state.tome_service.tome_dir,
                 tome_resume=state.active_tome_id,
+                environment=env,
             )
 
         # When the agent is created, seed active_skills from the runner's
         # loaded skill manifests so the inspector reflects available skills.
         self.populate_skills(self._agent, state)
         return self._agent
+
+    def reset_agent(self) -> None:
+        """Reset the cached agent instance so it will be recreated on next run."""
+        self._agent = None
 
     def _ensure_listeners(self, agent: Any) -> None:
         """Attach event listeners to the agent instance only once."""
