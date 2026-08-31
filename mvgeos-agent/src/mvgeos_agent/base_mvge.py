@@ -36,7 +36,6 @@ from mvgeos_agent.mvge_loop import MvgeLoop
 from mvgeos_agent.prompt_assembly import PromptAssembly
 from mvgeos_agent.rune_lifecycle import RuneLifecycle
 from mvgeos_agent.snapshot import RuntimeSnapshot
-from mvgeos_agent.tome_lifecycle import TomeLifecycle
 from mvgeos_agent.types import (
     AbortController,
     AbortSignal,
@@ -113,7 +112,6 @@ class BaseMvge:
         self._provider_registry = RealmRegistry()
         self._runner: RuneRunner | None = None
         self._rune_lifecycle: RuneLifecycle | None = None
-        self._tome_lifecycle: TomeLifecycle | None = None
         self._prompt_source = environment.resolved_prompt.source
         self._model: Model | None = None
         self._realm: Realm | None = None
@@ -334,22 +332,23 @@ class BaseMvge:
     async def initialize(self) -> None:
         """Wire the lifecycle modules into a running agent.
 
-        Pure orchestration: rune loading (RuneLifecycle), tome creation
-        (TomeLifecycle), prompt assembly (PromptAssembly), and model
-        resolution (RealmRegistry); config parsing happened in __init__.
+        Pure orchestration: rune loading (RuneLifecycle), tome session
+        (MvgeTome), prompt assembly (PromptAssembly), and model resolution
+        (RealmRegistry); config parsing happened in __init__.
         """
         if self._initialized:
             return
 
         await self._load_runes()
 
-        self._tome_lifecycle = TomeLifecycle(TomeLedger(self._tome_dir), self._runner)
-        self._tome_ledger = self._tome_lifecycle.ledger
+        self._tome_ledger = TomeLedger(self._tome_dir)
         final_prompt = await self._build_system_prompt_async()
         self._model, self._realm = self._provider_registry.resolve(
             self._model_id, self._api_key, self._provider_name
         )
-        self._agent_tome = await self._tome_lifecycle.open_or_create(self._tome_resume)
+        self._agent_tome = await MvgeTome.open_or_create(
+            self._tome_ledger, self._tome_resume, runner=self._runner
+        )
 
         self._wire_runtime(final_prompt)
         self._initialized = True
@@ -458,7 +457,6 @@ class BaseMvge:
         if self._rune_lifecycle is not None:
             await self._rune_lifecycle.shutdown()
             self._rune_lifecycle = None
-        self._tome_lifecycle = None
         if self._realm is not None:
             await self._realm.close()
             self._realm = None
@@ -467,6 +465,7 @@ class BaseMvge:
         self._initialized = False
         self._runner = None
         self._agent_tome = None
+        self._tome_ledger = None
         self._loop = None
         self._harness = None
         self._state = None

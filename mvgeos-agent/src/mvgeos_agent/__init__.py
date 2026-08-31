@@ -1,3 +1,4 @@
+from mvgeos_agent.agent_session import MvgeTome
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.harness import MvgeHarness
 from mvgeos_agent.sandbox import MvgeSandbox
@@ -44,6 +45,7 @@ __all__ = [
     "MvgeSandbox",
     "MvgeSpell",
     "MvgeState",
+    "MvgeTome",
     "QueueMode",
     "RuntimeSnapshot",
     "SandboxTimeoutError",

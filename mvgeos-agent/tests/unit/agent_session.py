@@ -9,7 +9,6 @@ from mvgeos_runes.types import SigilHook
 from mvgeos_tome.types import TomeMetadata
 
 from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.tome_lifecycle import TomeLifecycle
 from mvgeos_agent.types import TomeResumeError
 
 
@@ -50,15 +49,14 @@ async def _assert_source_still_running(runner: MagicMock, source: MvgeTome) -> N
     assert source.record_message("user", "hi") is not None
 
 
-class TestOpenOrCreate:
+class TestFactories:
     @pytest.mark.asyncio
-    async def test_without_resume_creates_new_tome(self) -> None:
+    async def test_create_creates_new_tome(self) -> None:
         ledger = MagicMock()
         ledger.create_tome.return_value = _metadata()
         runner = _mock_runner()
 
-        lifecycle = TomeLifecycle(ledger, runner, cwd="/proj")
-        tome = await lifecycle.open_or_create(None)
+        tome = await MvgeTome.create(ledger, cwd="/proj", runner=runner)
 
         ledger.create_tome.assert_called_once_with("/proj")
         ledger.open_tome.assert_not_called()
@@ -74,24 +72,22 @@ class TestOpenOrCreate:
         ]
 
     @pytest.mark.asyncio
-    async def test_default_cwd_is_process_cwd(self) -> None:
+    async def test_create_default_cwd_is_process_cwd(self) -> None:
         ledger = MagicMock()
         ledger.create_tome.return_value = _metadata()
 
-        lifecycle = TomeLifecycle(ledger, None)
-        await lifecycle.open_or_create(None)
+        await MvgeTome.create(ledger)
 
         ledger.create_tome.assert_called_once_with(str(Path.cwd()))
 
     @pytest.mark.asyncio
-    async def test_resume_opens_existing_tome(self) -> None:
+    async def test_open_resumes_existing_tome(self) -> None:
         resumed = _metadata("b" * 32)
         ledger = MagicMock()
         ledger.open_tome.return_value = resumed
         runner = _mock_runner()
 
-        lifecycle = TomeLifecycle(ledger, runner, cwd="/proj")
-        tome = await lifecycle.open_or_create("b" * 32)
+        tome = await MvgeTome.open(ledger, "b" * 32, runner=runner)
 
         ledger.open_tome.assert_called_once_with("b" * 32)
         ledger.create_tome.assert_not_called()
@@ -102,18 +98,41 @@ class TestOpenOrCreate:
         assert starts[0]["tomeId"] == resumed.id
 
     @pytest.mark.asyncio
-    async def test_missing_resume_target_raises(self) -> None:
+    async def test_open_missing_target_raises(self) -> None:
         ledger = MagicMock()
         ledger.open_tome.return_value = None
 
-        lifecycle = TomeLifecycle(ledger, None)
-
         with pytest.raises(TomeResumeError, match="missing-tome"):
-            await lifecycle.open_or_create("missing-tome")
+            await MvgeTome.open(ledger, "missing-tome")
         ledger.create_tome.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_open_or_create_without_resume(self) -> None:
+        ledger = MagicMock()
+        ledger.create_tome.return_value = _metadata()
+        runner = _mock_runner()
 
-class TestForkAt:
+        tome = await MvgeTome.open_or_create(ledger, cwd="/proj", runner=runner)
+
+        ledger.create_tome.assert_called_once_with("/proj")
+        assert tome.tome_id == _metadata().id
+
+    @pytest.mark.asyncio
+    async def test_open_or_create_with_resume(self) -> None:
+        resumed = _metadata("b" * 32)
+        ledger = MagicMock()
+        ledger.open_tome.return_value = resumed
+        runner = _mock_runner()
+
+        tome = await MvgeTome.open_or_create(
+            ledger, tome_resume="b" * 32, runner=runner
+        )
+
+        ledger.open_tome.assert_called_once_with("b" * 32)
+        assert tome.metadata is resumed
+
+
+class TestFork:
     @pytest.mark.asyncio
     async def test_success_starts_branched_tome(self) -> None:
         ledger = MagicMock()
@@ -124,8 +143,7 @@ class TestForkAt:
         source = _started_source(ledger, runner)
         await source.start(reason="startup")
 
-        lifecycle = TomeLifecycle(ledger, runner)
-        result = await lifecycle.fork_at(source, "entry-1")
+        result = await source.fork("entry-1")
 
         ledger.create_branched_tome.assert_called_once_with(
             parent_tome_id=source_meta.id,
@@ -150,8 +168,7 @@ class TestForkAt:
         await source.start(reason="startup")
         order = _track(runner)
 
-        lifecycle = TomeLifecycle(ledger, runner)
-        result = await lifecycle.fork_at(source, "entry-1")
+        result = await source.fork("entry-1")
 
         assert result is not None
         assert order == [
@@ -168,8 +185,7 @@ class TestForkAt:
         source = _started_source(ledger, runner)
         await source.start(reason="startup")
 
-        lifecycle = TomeLifecycle(ledger, runner)
-        result = await lifecycle.fork_at(source, "entry-1")
+        result = await source.fork("entry-1")
 
         assert result is None
         ledger.create_branched_tome.assert_not_called()
@@ -182,14 +198,13 @@ class TestForkAt:
         source = _started_source(ledger, runner)
         await source.start(reason="startup")
 
-        lifecycle = TomeLifecycle(ledger, runner)
-        result = await lifecycle.fork_at(source, "entry-1")
+        result = await source.fork("entry-1")
 
         assert result is None
         await _assert_source_still_running(runner, source)
 
 
-class TestSwitchTo:
+class TestSwitch:
     @pytest.mark.asyncio
     async def test_success_resumes_target_tome(self) -> None:
         target_meta = _metadata("d" * 32)
@@ -200,8 +215,7 @@ class TestSwitchTo:
         await source.start(reason="startup")
         target_file = Path("/tomes") / f"{'d' * 32}.jsonl"
 
-        lifecycle = TomeLifecycle(ledger, runner)
-        result = await lifecycle.switch_to(source, target_file)
+        result = await source.switch(target_file)
 
         ledger.open_tome.assert_called_once_with("d" * 32)
         assert result is not None
@@ -223,8 +237,7 @@ class TestSwitchTo:
         order = _track(runner)
         target_file = Path("/tomes") / f"{'d' * 32}.jsonl"
 
-        lifecycle = TomeLifecycle(ledger, runner)
-        result = await lifecycle.switch_to(source, target_file)
+        result = await source.switch(target_file)
 
         assert result is not None
         assert order == [
@@ -241,8 +254,7 @@ class TestSwitchTo:
         source = _started_source(ledger, runner)
         await source.start(reason="startup")
 
-        lifecycle = TomeLifecycle(ledger, runner)
-        result = await lifecycle.switch_to(source, Path("/t/x.jsonl"))
+        result = await source.switch(Path("/t/x.jsonl"))
 
         assert result is None
         ledger.open_tome.assert_not_called()
@@ -254,8 +266,7 @@ class TestSwitchTo:
         source = _started_source(ledger, runner)
         await source.start(reason="startup")
 
-        lifecycle = TomeLifecycle(ledger, runner)
-        result = await lifecycle.switch_to(source, Path("/t/not-a-tome.jsonl"))
+        result = await source.switch(Path("/t/not-a-tome.jsonl"))
 
         assert result is None
         ledger.open_tome.assert_not_called()
@@ -269,8 +280,7 @@ class TestSwitchTo:
         source = _started_source(ledger, runner)
         await source.start(reason="startup")
 
-        lifecycle = TomeLifecycle(ledger, runner)
-        result = await lifecycle.switch_to(source, Path("/t") / f"{'e' * 32}.jsonl")
+        result = await source.switch(Path("/t") / f"{'e' * 32}.jsonl")
 
         assert result is None
         await _assert_source_still_running(runner, source)
@@ -283,8 +293,7 @@ class TestSwitchTo:
         source = _started_source(ledger, runner)
         await source.start(reason="startup")
 
-        lifecycle = TomeLifecycle(ledger, runner)
-        result = await lifecycle.switch_to(source, Path("/t") / f"{'e' * 32}.jsonl")
+        result = await source.switch(Path("/t") / f"{'e' * 32}.jsonl")
 
         assert result is None
         await _assert_source_still_running(runner, source)
