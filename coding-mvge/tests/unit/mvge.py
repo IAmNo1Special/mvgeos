@@ -446,8 +446,7 @@ class TestCodingMvgeToolCalls:
         from mvgeos_agent.types import SpellResultMessage, StopReason
         from mvgeos_provider.types import RealmResponse
 
-        from coding_mvge.mvge import _BuiltinSpell
-        from coding_mvge.spells import cast_bash
+        from coding_mvge.spells import create_builtin_spells
 
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
@@ -458,7 +457,7 @@ class TestCodingMvgeToolCalls:
             _install_mock(agent)
             assert agent._state is not None
             # Manually add the bash spell to the state
-            agent._state.spells = [_BuiltinSpell("bash", cast_bash)]
+            agent._state.spells = create_builtin_spells(["bash"])
 
             class FakeRealm:
                 def __init__(self) -> None:
@@ -517,9 +516,7 @@ class TestCodingMvgeToolCalls:
 
     @pytest.mark.asyncio
     async def test_make_stream_sends_tools_schema(self) -> None:
-
-        from coding_mvge.mvge import _BuiltinSpell
-        from coding_mvge.spells import cast_bash, cast_read
+        from coding_mvge.spells import create_builtin_spells
 
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = CodingMvge(
@@ -530,10 +527,7 @@ class TestCodingMvgeToolCalls:
             _install_mock(agent)
             assert agent._state is not None
             # Manually add spell
-            agent._state.spells = [
-                _BuiltinSpell("bash", cast_bash),
-                _BuiltinSpell("read", cast_read),
-            ]
+            agent._state.spells = create_builtin_spells(["bash", "read"])
 
             captured: dict[str, Any] = {}
 
@@ -572,10 +566,9 @@ class TestCodingMvgeToolCalls:
 
     @pytest.mark.asyncio
     async def test_builtin_spell_executes_real_function(self) -> None:
-        from coding_mvge.mvge import _BuiltinSpell
-        from coding_mvge.spells import cast_bash
+        from coding_mvge.spells import create_builtin_spells
 
-        bash_spell = _BuiltinSpell("bash", cast_bash)
+        bash_spell = create_builtin_spells(["bash"])[0]
         assert bash_spell.parameters.get("properties", {}).get("command")
 
         result = await bash_spell.execute(

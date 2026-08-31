@@ -48,7 +48,7 @@ mvgeos/
 | mvgeos-gui | `agent_service.py` | In-process agent execution bridge |
 | mvgeos-gui | `components/` | Antigravity 1:1 UI components |
 | coding-mvge | `mvge.py` | CodingMvge - concrete coding agent (BaseMvge subclass) |
-| coding-mvge | `spells/` | Built-in spell implementations |
+| coding-mvge | `spells.py` | Built-in spell implementations and factory |
 
 ## Core Types
 

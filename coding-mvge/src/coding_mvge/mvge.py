@@ -1,68 +1,23 @@
 from __future__ import annotations
 
-import inspect
 import logging
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 from mvgeos_agent.base_mvge import BaseMvge
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_agent.environment import MvgeEnvironment, PromptSource
-from mvgeos_agent.spell_schema import generate_spell_schema
-from mvgeos_agent.types import MvgeSpell, SpellResult
-from mvgeos_provider.types import AbortError
+from mvgeos_agent.types import MvgeSpell
 
 from coding_mvge.spells import (
-    BUILTIN_SPELL_MAP as DEFAULT_SPELL_MAP,
+    DEFAULT_SPELL_MAP,
+    _BuiltinSpell,
+    create_builtin_spells,
 )
 
 logger = logging.getLogger(__name__)
 
-
-class _BuiltinSpell(MvgeSpell):
-    def __init__(
-        self,
-        name: str,
-        func: Any,
-        workspace_root: Path | None = None,
-        timeout_ms: int | None = None,
-    ) -> None:
-        doc = getattr(func, "__doc__", "")
-        desc = doc.split("\n\n")[0].strip() if doc else f"Run the {name} tool."
-        super().__init__(
-            name=name,
-            description=desc,
-            parameters=generate_spell_schema(func),
-        )
-        self._func = func
-        self._workspace_root = workspace_root
-        self._timeout_ms = timeout_ms
-
-    async def execute(
-        self,
-        spell_cast_id: str,
-        params: dict[str, Any],
-        signal: Any | None = None,
-        on_update: Any | None = None,
-    ) -> str:
-        if signal is not None and getattr(signal, "aborted", False):
-            raise AbortError("Operation aborted")
-        validated = self.prepare_arguments(params)
-        args = {k: v for k, v in validated.items() if v is not None}
-        sig = inspect.signature(self._func)
-        if self._workspace_root is not None and "workspace_root" in sig.parameters:
-            args["workspace_root"] = self._workspace_root
-        if (
-            self._timeout_ms is not None
-            and "timeout_ms" in sig.parameters
-            and "timeout_ms" not in args
-        ):
-            args["timeout_ms"] = self._timeout_ms
-
-        result: SpellResult = await self._func(**args)
-        if result.error_message:
-            return f"[error] {result.error_message}"
-        return result.content or f"{self.name} completed"
+__all__ = ["CodingMvge", "DEFAULT_SPELL_MAP", "_BuiltinSpell"]
 
 
 class CodingMvge(BaseMvge):
@@ -113,20 +68,17 @@ class CodingMvge(BaseMvge):
                     rune_spells.append(cast(MvgeSpell, rs))
 
         # Builtin spells - only if explicitly enabled via self._spell_names
-        builtin_spells: list[MvgeSpell] = []
         workspace_root = getattr(self._config_manager, "_project_dir", None)
         timeout_ms = self._state.spell_timeout_ms if self._state is not None else None
-        if self._spell_names:
-            for name in self._spell_names:
-                if name in DEFAULT_SPELL_MAP:
-                    builtin_spells.append(
-                        _BuiltinSpell(
-                            name,
-                            DEFAULT_SPELL_MAP[name],
-                            workspace_root=workspace_root,
-                            timeout_ms=timeout_ms,
-                        )
-                    )
+        builtin_spells: list[MvgeSpell] = (
+            create_builtin_spells(
+                self._spell_names,
+                workspace_root=workspace_root,
+                timeout_ms=timeout_ms,
+            )
+            if self._spell_names
+            else []
+        )
 
         return rune_spells + builtin_spells
 

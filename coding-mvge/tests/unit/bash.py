@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from mvgeos_agent.types import SpellStatus
 
-from coding_mvge.spells.bash import (
+from coding_mvge.spells import (
     DEFAULT_BASH_TIMEOUT_MS,
     cast_bash,
     kill_process_tree,
@@ -131,7 +131,7 @@ class TestKillProcessTree:
         kill_subproc.wait = AsyncMock()
 
         with (
-            patch("coding_mvge.spells.bash.sys.platform", "win32"),
+            patch("coding_mvge.spells.sys.platform", "win32"),
             patch(
                 "asyncio.create_subprocess_exec",
                 new=AsyncMock(return_value=kill_subproc),
@@ -158,11 +158,11 @@ class TestKillProcessTree:
         proc.wait = AsyncMock()
 
         with (
-            patch("coding_mvge.spells.bash.sys.platform", "linux"),
+            patch("coding_mvge.spells.sys.platform", "linux"),
             patch(
-                "coding_mvge.spells.bash.os.getpgid", create=True, return_value=1234
+                "coding_mvge.spells.os.getpgid", create=True, return_value=1234
             ) as mock_getpgid,
-            patch("coding_mvge.spells.bash.os.killpg", create=True) as mock_killpg,
+            patch("coding_mvge.spells.os.killpg", create=True) as mock_killpg,
         ):
             await kill_process_tree(proc)
             mock_getpgid.assert_called_once_with(1234)
@@ -178,7 +178,7 @@ class TestKillProcessTree:
         proc.wait = AsyncMock()
 
         with (
-            patch("coding_mvge.spells.bash.sys.platform", "win32"),
+            patch("coding_mvge.spells.sys.platform", "win32"),
             patch(
                 "asyncio.create_subprocess_exec",
                 side_effect=RuntimeError("taskkill error"),
@@ -253,9 +253,7 @@ class TestCastBash:
                 "asyncio.create_subprocess_exec",
                 new=AsyncMock(return_value=mock_proc),
             ),
-            patch(
-                "coding_mvge.spells.bash.kill_process_tree", new=AsyncMock()
-            ) as mock_kill,
+            patch("coding_mvge.spells.kill_process_tree", new=AsyncMock()) as mock_kill,
         ):
             result = await cast_bash(
                 command="sleep 100",
@@ -291,9 +289,7 @@ class TestCastBash:
                 "asyncio.create_subprocess_exec",
                 new=AsyncMock(return_value=mock_proc),
             ),
-            patch(
-                "coding_mvge.spells.bash.kill_process_tree", new=AsyncMock()
-            ) as mock_kill,
+            patch("coding_mvge.spells.kill_process_tree", new=AsyncMock()) as mock_kill,
             pytest.raises(asyncio.CancelledError),
         ):
             await cast_bash(
@@ -326,14 +322,15 @@ class TestCastBash:
 class TestBuiltinSpellBash:
     @pytest.mark.asyncio
     async def test_builtin_spell_enforces_workspace_root(self, tmp_path: Path) -> None:
-        from coding_mvge.mvge import _BuiltinSpell
+        from coding_mvge.spells import create_builtin_spells
 
         workspace = tmp_path / "workspace"
         workspace.mkdir()
         outside = tmp_path / "outside"
         outside.mkdir()
 
-        spell = _BuiltinSpell("bash", cast_bash, workspace_root=workspace)
+        spells = create_builtin_spells(["bash"], workspace_root=workspace)
+        spell = spells[0]
         result = await spell.execute(
             "call-1",
             {"command": "echo hi", "cwd": "../outside"},
@@ -343,16 +340,17 @@ class TestBuiltinSpellBash:
 
     @pytest.mark.asyncio
     async def test_builtin_spell_default_timeout(self, tmp_path: Path) -> None:
-        from coding_mvge.mvge import _BuiltinSpell
+        from coding_mvge.spells import create_builtin_spells
 
-        mock_func = AsyncMock(
-            return_value=MagicMock(error_message=None, content="done")
-        )
-
-        # Add timeout_ms parameter to mock function signature
-        async def dummy_spell(command: str, timeout_ms: int = 30000) -> MagicMock:
-            return await mock_func(command=command, timeout_ms=timeout_ms)
-
-        spell = _BuiltinSpell("bash", dummy_spell, timeout_ms=12345)
-        await spell.execute("call-1", {"command": "echo hi"})
-        mock_func.assert_awaited_once_with(command="echo hi", timeout_ms=12345)
+        spells = create_builtin_spells(["bash"], timeout_ms=12345)
+        spell = spells[0]
+        assert spell.name == "bash"
+        with patch("coding_mvge.spells.cast_bash") as mock_cast:
+            mock_cast.return_value = MagicMock(error_message=None, content="done")
+            await spell.execute("call-1", {"command": "echo hi"})
+            mock_cast.assert_awaited_once_with(
+                command="echo hi",
+                cwd=None,
+                timeout_ms=12345,
+                workspace_root=None,
+            )

@@ -7,12 +7,14 @@ from unittest.mock import patch
 import pytest
 from mvgeos_agent.types import SpellResult, SpellStatus
 
-from coding_mvge.spells.edit import cast_edit
-from coding_mvge.spells.find import cast_find
-from coding_mvge.spells.grep import cast_grep
-from coding_mvge.spells.list import cast_list
-from coding_mvge.spells.read import cast_read
-from coding_mvge.spells.write import cast_write
+from coding_mvge.spells import (
+    cast_edit,
+    cast_find,
+    cast_grep,
+    cast_list,
+    cast_read,
+    cast_write,
+)
 
 
 class TestReadSpell:
