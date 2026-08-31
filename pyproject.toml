@@ -118,4 +118,4 @@ source = [
 ]
 
 [tool.coverage.report]
-fail_under = 86
+fail_under = 88

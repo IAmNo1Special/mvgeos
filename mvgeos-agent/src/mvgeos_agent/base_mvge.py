@@ -325,7 +325,7 @@ class BaseMvge:
         """Wire the lifecycle modules into a running agent.
 
         Pure orchestration: rune loading (RuneLifecycle), tome session
-        (MvgeTome), prompt assembly (PromptAssembly), and model resolution
+        (MvgeTome), prompt assembly (MvgeEnvironment), and model resolution
         (RealmRegistry); config parsing happened in __init__.
         """
         if self._initialized:

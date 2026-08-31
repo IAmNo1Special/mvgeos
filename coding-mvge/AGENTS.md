@@ -50,7 +50,7 @@ Test paths follow pattern: `coding-mvge/tests/unit/<module>.py` and `coding-mvge
 ## Architecture
 
 - `CodingMvge._build_spells()` returns the list of active rune spells and enabled built-in spells
-- System prompt and guidelines resolution is handled via `MvgeEnvironment` (`PromptLoader` / `PromptSource`)
+- System prompt and guidelines resolution is handled via `MvgeEnvironment`
 - `BaseMvge._run_impl()` delegates to `MvgeLoop.run()` (turn cycle with steering/follow-up handling)
 - `MvgeHarness` owns session lifecycle, compaction, `should_stop_after_turn`, and `prepare_next_turn`
 - Spell schemas are generated from type hints via `generate_spell_schema()` (from `mvgeos_agent.spell_schema`)

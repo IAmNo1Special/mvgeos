@@ -9,18 +9,21 @@ Based on `TECHNICAL_DEBT_BY_PACKAGE.md` and source code analysis.
 | ID | Title | Category | Priority | Effort |
 |----|-------|----------|----------|--------|
 | CODING-03 | Hardcoded `DEFAULT_SPELL_MAP` couples to spell implementations | Architecture Quirk | Medium | M |
-| CODING-04 | No spell sandboxing | Gap | Medium | L |
 | CODING-05 | No validation of rune-provided spells | Gap | Medium | S-M |
+
+---
+
+## Detailed Remediation Plans
 
 ---
 
 ## CODING-03: Hardcoded `DEFAULT_SPELL_MAP`
 
-**File**: `coding_mvge/mvge.py:44-52`
+**File**: `coding_mvge/mvge.py:16-17`
 
 ### Root Cause
 ```python
-DEFAULT_SPELL_MAP: dict[str, Any] = {
+DEFAULT_SPELL_MAP = {
     "bash": cast_bash,
     "read": cast_read,
     "write": cast_write,
@@ -30,99 +33,27 @@ DEFAULT_SPELL_MAP: dict[str, Any] = {
     "grep": cast_grep,
 }
 ```
-Direct imports from `coding_mvge.spells` couple `coding-mvge` to specific spell implementations. Cannot use custom spells or swap spell implementations without modifying this file.
+Direct imports from `coding_mvge.spells` couple `coding-mvge` to specific builtin spell implementations rather than accepting a dynamic `SpellRegistry`.
 
 ### Fix Steps
-1. **Create `SpellRegistry` protocol** in `mvgeos-agent`:
+1. **Define `SpellRegistry` protocol** in `mvgeos-agent` or `coding-mvge`:
    ```python
-   # mvgeos_agent/spell_registry.py
-   from typing import Protocol
-   from mvgeos_agent.types import MvgeSpell
-
-
    class SpellRegistry(Protocol):
        def get_spell(self, name: str) -> MvgeSpell | None: ...
        def get_all_spells(self) -> list[MvgeSpell]: ...
    ```
-
-2. **Create `DefaultSpellRegistry` implementation** in `coding_mvge/spells`:
-   ```python
-   # coding_mvge/spells/registry.py
-   from mvgeos_agent.spell_registry import SpellRegistry
-   from coding_mvge.spells import cast_bash, cast_read, ...
-
-
-   class DefaultSpellRegistry(SpellRegistry):
-       def __init__(self):
-           self._spells = {
-               "bash": MvgeSpell("bash", ..., parameters=generate_schema(cast_bash)),
-               ...
-           }
-       def get_spell(self, name): return self._spells.get(name)
-       def get_all_spells(self): return list(self._spells.values())
-   ```
-
-3. **Update `CodingMvge.__init__`** to accept `spell_registry: SpellRegistry | None = None`:
-   ```python
-   def __init__(self, ..., spell_registry: SpellRegistry | None = None, ...):
-       self._spell_registry = spell_registry or DefaultSpellRegistry()
-   ```
-
-4. **Update `_build_base_spells()`** to use registry:
-   ```python
-   def _build_base_spells(self) -> list[MvgeSpell]:
-       spells = []
-       for name in self._spell_names:
-           spell = self._spell_registry.get_spell(name)
-           if spell:
-               spells.append(spell)
-       return spells
-   ```
-
-5. **Default registry** provided by `coding-mvge`
+2. **Implement `DefaultSpellRegistry`** in `coding_mvge/spells/`.
+3. Accept optional `spell_registry` in `CodingMvge.__init__` with fallback to `DefaultSpellRegistry()`.
 
 ### Priority: Medium
-### Effort: Medium (~80 lines across 3 files + new protocol)
-### Dependencies: mvgeos-agent (protocol)
+### Effort: Medium (~50 lines)
+### Dependencies: mvgeos-agent
 
 ---
 
-## CODING-04: No Spell Sandboxing
+## CODING-05: No Validation of Rune-Provided Spells
 
-### Root Cause
-`CodingMvge` uses `DEFAULT_SPELL_MAP` which calls `coding_mvge.spells` functions directly. No path validation or sandbox boundaries. Spells execute with full process permissions.
-
-### Fix Steps
-1. **Implement sandboxing in `coding-mvge/spells`**:
-   - `SpellSandbox` class with `allowed_roots`
-   - `resolve_and_validate(path)` method
-   - Module-level `set_sandbox(allowed_roots)`
-
-2. **Call sandbox setup in `CodingMvge.initialize()`**:
-   ```python
-   async def initialize(self):
-       ...
-       from coding_mvge.spells.sandbox import set_sandbox
-
-       set_sandbox([str(Path.cwd())])  # or configurable
-       ...
-   ```
-
-3. **Make sandbox configurable** via `CodingMvge` constructor:
-   ```python
-   def __init__(self, ..., sandbox_roots: list[str] | None = None, ...):
-       self._sandbox_roots = sandbox_roots or [str(Path.cwd())]
-   ```
-
-### Priority: Medium
-### Effort: Large
-### Dependencies: None
-
----
-
-## CODING-05: No Validation of Extension-Provided Spells
-
-**File**: `coding_mvge/mvge.py:221-229`
+**File**: `coding_mvge/mvge.py:108-114`
 
 ### Root Cause
 ```python
@@ -130,58 +61,26 @@ if self._runner is not None:
     for rs in self._runner.get_all_registered_spells():
         spells.append(
             MvgeSpell(
-                name=rs.name, description=rs.description, parameters=rs.parameters
+                name=rs.name,
+                description=rs.description,
+                parameters=rs.parameters,
+                handler=rs.execute,
             )
         )
 ```
-Rune-provided spells added without:
-- Parameter schema validation
-- Checking for name conflicts with base spells
-- Verifying `SpellDefinition.execute()` signature
+Rune-provided spells are appended without:
+- Checking parameter schema shape
+- Verifying execute handler signature
+- Checking for name conflicts against base spells
 
 ### Fix Steps
-1. **Add validation in `CodingMvge._build_spells()`** (or new method):
-   ```python
-   def _merge_rune_spells(self, base_spells: list[MvgeSpell]) -> list[MvgeSpell]:
-       if self._runner is None:
-           return base_spells
-
-       existing_names = {s.name for s in base_spells}
-       for rs in self._runner.get_all_registered_spells():
-           if rs.name in existing_names:
-               logger.warning(
-                   "Rune spell '%s' conflicts with base spell; skipping", rs.name
-               )
-               continue
-           # Validate parameters schema
-           if not isinstance(rs.parameters, dict):
-               logger.warning("Rune spell '%s' has invalid parameters; skipping", rs.name)
-               continue
-           # Validate execute signature
-           if not self._validate_spell_signature(rs):
-               continue
-           base_spells.append(MvgeSpell(...))
-       return base_spells
-   ```
-
-2. **Add `_validate_spell_signature()`**:
-   ```python
-   def _validate_spell_signature(self, spell_def: SpellDefinition) -> bool:
-       import inspect
-
-       sig = inspect.signature(spell_def.execute)
-       params = list(sig.parameters.values())
-       # Must have: spell_cast_id, params, signal?, on_update?
-       if len(params) < 2:
-           return False
-       return True
-   ```
-
-3. **Add warning log** for conflicts (user visibility)
+1. Validate `rs.parameters` schema type before creating `MvgeSpell`.
+2. Inspect `rs.execute` signature via `inspect.signature`.
+3. Check for naming collisions against registered base spells and log collisions.
 
 ### Priority: Medium
-### Effort: Small-Medium (~40 lines in mvge.py)
-### Dependencies: mvgeos-runes (SpellDefinition)
+### Effort: Small-Medium (~30 lines)
+### Dependencies: mvgeos-runes
 
 ---
 
@@ -190,23 +89,20 @@ Rune-provided spells added without:
 | Issue | Depends On | Blocks |
 |-------|------------|--------|
 | CODING-03 | mvgeos-agent (protocol) | — |
-| CODING-04 | — | — |
 | CODING-05 | mvgeos-runes | — |
 
 ---
 
 ## Recommended Implementation Order
 
-1. **CODING-05** (Extension spell validation) — Small, improves robustness
-2. **CODING-03** (Spell registry) — Decouples spell implementations
-3. **CODING-04** (Sandboxing) — Adds execution boundaries to built-in spells
+1. **CODING-05** (Rune spell validation) — Small, robustness
+2. **CODING-03** (Spell registry) — Decoupling
 
 ---
 
 ## Testing Requirements
 
-- **CODING-03**: Test custom `SpellRegistry` injection; verify default registry works
-- **CODING-05**: Test rune spell conflict warning; test invalid parameter rejection; test signature validation
-- **CODING-04**: Test sandbox blocks access outside allowed roots; test backward compat (no sandbox = no restriction)
+- Unit test for custom `SpellRegistry` injection
+- Unit test for rune spell conflict logging and parameter rejection
+- Run: `uv run python -m pytest coding-mvge/tests/ --cov`
 
-Run: `uv run python -m pytest coding-mvge/tests/ --cov`

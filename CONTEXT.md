@@ -63,7 +63,7 @@ An extension: a packaged unit that hooks into a Mvge's lifecycle and can registe
 _Avoid_: Extension (as a spoken term), plugin, addon
 
 **Skill**:
-A capability pack discovered and loaded per the agentskills.io specification: a directory containing `SKILL.md` with YAML frontmatter (name, description) and markdown instructions. Skills are distinct from Spells — a Skill may yield Spell-like executions via `skill_execute` but is never loaded wholesale; it is disclosed progressively (catalog → full instructions → resources).
+A capability pack discovered and loaded per the agentskills.io specification: a directory containing `SKILL.md` with YAML frontmatter (name, description) and markdown instructions. Skills are distinct from Spells — scripts within skills may yield Spell-like executions but skills themselves are never loaded wholesale; it is disclosed progressively (catalog → full instructions → resources).
 _Avoid_: Tool, Spell, plugin
 
 **Channeling**:
