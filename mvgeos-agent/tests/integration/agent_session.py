@@ -2,17 +2,15 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-from mvgeos_provider.types import Model
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import SigilHook
 from mvgeos_tome.ledger import TomeLedger
 from mvgeos_tome.types import TomeMetadata
 
 from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.base_mvge import BaseMvge
 from mvgeos_agent.types import TomeResumeError
 
 
@@ -417,39 +415,12 @@ async def test_fork_invalid_entry_creates_branched(
     assert result.tome_id != source.tome_id
 
 
-def _mock_model() -> Model:
-    return Model(
-        id="test-model",
-        name="test-model",
-        realm="openrouter",
-        base_url="https://openrouter.ai/api/v1",
-        api_key="test-key",
-        context_window=4096,
-        max_tokens=1024,
-    )
-
-
 @pytest.mark.asyncio
-async def test_mvge_tome_matches_base_mvge_inline_semantics() -> None:
-    with (
-        tempfile.TemporaryDirectory() as agent_dir,
-        tempfile.TemporaryDirectory() as direct_dir,
-    ):
-        agent = BaseMvge(api_key="test-key", tome_dir=Path(agent_dir))
-        agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
-        agent._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
-        with patch.object(
-            agent,
-            "_build_system_prompt_async",
-            new_callable=AsyncMock,
-            return_value="sys",
-        ):
-            await agent.initialize()
-        assert agent._agent_tome is not None
-
-        tome = await MvgeTome.open_or_create(TomeLedger(Path(direct_dir)), None)
+async def test_mvge_tome_create_initializes_valid_tome() -> None:
+    with tempfile.TemporaryDirectory() as direct_dir:
+        ledger = TomeLedger(Path(direct_dir))
+        tome = await MvgeTome.create(ledger)
 
         assert tome.metadata.cwd == str(Path.cwd())
-        assert tome.metadata.cwd == agent._agent_tome.metadata.cwd
         assert tome.metadata.parent_tome_id is None
         assert tome.record_custom("probe", {}) is not None

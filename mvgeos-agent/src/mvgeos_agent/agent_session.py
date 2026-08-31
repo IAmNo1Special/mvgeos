@@ -33,7 +33,7 @@ class MvgeTome:
         tome_id: str,
         runner: RuneRunner | None = None,
     ) -> MvgeTome:
-        """Resume an existing Tome session.
+        """Resume an existing Tome.
 
         Raises TomeResumeError when the tome cannot be opened.
         """
@@ -54,7 +54,7 @@ class MvgeTome:
         cwd: str | Path | None = None,
         runner: RuneRunner | None = None,
     ) -> MvgeTome:
-        """Create and start a fresh Tome session."""
+        """Create and start a fresh Tome."""
         cwd_str = str(cwd) if cwd is not None else str(Path.cwd())
         metadata = ledger.create_tome(cwd_str)
         tome = cls(ledger, metadata, runner)
@@ -163,7 +163,7 @@ class MvgeTome:
         return {"cancelled": False}
 
     async def fork(self, entry_id: str) -> MvgeTome | None:
-        """Fork the session at an entry and start the branched tome.
+        """Fork the Tome at an entry and start the branched tome.
 
         Returns None when a SESSION_BEFORE_FORK sigil cancels the fork or the
         ledger rejects the branch; failures leave the source session running.
@@ -182,7 +182,8 @@ class MvgeTome:
             logger.exception("Failed to fork tome: %s", e)
             return None
 
-        await self.shutdown(reason="fork", target_session_file=self.tome_file)
+        new_tome_file = str(self._ledger.tome_file(new_metadata.id))
+        await self.shutdown(reason="fork", target_session_file=new_tome_file)
         new_tome = MvgeTome(self._ledger, new_metadata, self._rune_runner)
         await new_tome.start(reason="fork")
         return new_tome
