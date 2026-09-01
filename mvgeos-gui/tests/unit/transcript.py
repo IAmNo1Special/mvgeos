@@ -282,6 +282,28 @@ def test_from_tome_content_tool_call_without_arguments() -> None:
     assert step.is_complete is True
 
 
+def test_from_tome_content_spell_cast() -> None:
+    content: list[dict[str, Any]] = [
+        {
+            "type": "spell_cast",
+            "spell_cast": {
+                "id": "c1",
+                "name": "bash",
+                "arguments": {"command": "pwd"},
+            },
+        },
+        {"type": "spell_cast", "name": "read", "arguments": {"path": "/x/y"}},
+    ]
+    t = InvocationTranscript.from_tome_content(content)
+    assert len(t.message.steps) == 2
+    assert t.message.steps[0].spell_name == "bash"
+    assert t.message.steps[0].params == {"command": "pwd"}
+    assert t.message.steps[0].step_type is StepType.COMMANDS
+    assert t.message.steps[1].spell_name == "read"
+    assert t.message.steps[1].params == {"path": "/x/y"}
+    assert t.message.steps[1].step_type is StepType.FILES
+
+
 def test_from_tome_content_empty_inputs() -> None:
     for empty in ("", None, []):
         t = InvocationTranscript.from_tome_content(empty)

@@ -54,8 +54,8 @@ def _spell_call(
             role="assistant",
             content=[
                 {
-                    "type": "tool_call",
-                    "tool_call": {"id": call_id, "name": name, "arguments": {}},
+                    "type": "spell_cast",
+                    "spell_cast": {"id": call_id, "name": name, "arguments": {}},
                 }
             ],
             stop_reason=stop,

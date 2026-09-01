@@ -305,7 +305,7 @@ class MvgeTome:
                             stop_reason=stop_reason,
                         )
                     )
-                elif role in ("tool", "spellResult"):
+                elif role in ("spellResult", "tool"):
                     if isinstance(content, list):
                         content_blocks = content
                     elif isinstance(content, str):
@@ -316,14 +316,14 @@ class MvgeTome:
                         ]
                     invocations.append(
                         SpellResultMessage(
-                            role="tool",
+                            role="spellResult",
                             content=content_blocks,
                             spell_name=str(payload.get("spell_name") or ""),
                             spell_cast_id=str(payload.get("spell_cast_id") or ""),
                         )
                     )
             elif entry.type == TomeEntryType.INVOCATION:
-                role = payload.get("role", "tool")
+                role = payload.get("role", "spellResult")
                 content = payload.get("content")
                 if isinstance(content, list):
                     content_blocks = content
@@ -331,10 +331,10 @@ class MvgeTome:
                     content_blocks = [{"type": ContentType.TEXT, "text": content}]
                 else:
                     content_blocks = [{"type": ContentType.TEXT, "text": str(content)}]
-                if role in ("tool", "spellResult"):
+                if role in ("spellResult", "tool"):
                     invocations.append(
                         SpellResultMessage(
-                            role="tool",
+                            role="spellResult",
                             content=content_blocks,
                             spell_name=str(payload.get("spell_name") or ""),
                             spell_cast_id=str(payload.get("spell_cast_id") or ""),
@@ -402,7 +402,7 @@ class MvgeTome:
                                         stop_reason=StopReason.STOP,
                                     )
                                 )
-                            elif item_role in ("tool", "spellResult"):
+                            elif item_role in ("spellResult", "tool"):
                                 if isinstance(item_content, list):
                                     c_blocks = item_content
                                 elif isinstance(item_content, str):
@@ -421,7 +421,7 @@ class MvgeTome:
                                     ]
                                 invocations.append(
                                     SpellResultMessage(
-                                        role="tool",
+                                        role="spellResult",
                                         content=c_blocks,
                                         spell_name=str(item.get("spell_name") or ""),
                                         spell_cast_id=str(

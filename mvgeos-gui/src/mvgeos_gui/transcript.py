@@ -335,11 +335,17 @@ class InvocationTranscript:
                 self._append_part(MessagePartType.CONTEMPLATION, thought)
             if cleaned:
                 self._append_part(MessagePartType.TEXT, cleaned)
-        elif item_type in ("tool_call", "tool_use"):
-            raw_params: object = item.get("arguments", {})
+        elif item_type in ("spell_cast", "tool_call", "tool_use"):
+            spell_obj = (
+                item.get("spell_cast", {})
+                if isinstance(item.get("spell_cast"), dict)
+                else item
+            )
+            spell_name = str(spell_obj.get("name", "") or item.get("name", ""))
+            raw_params: object = spell_obj.get("arguments", item.get("arguments", {}))
             step = ExecutionStep(
-                step_type=_categorize_spell(str(item.get("name", ""))),
-                spell_name=str(item.get("name", "")),
+                step_type=_categorize_spell(spell_name),
+                spell_name=spell_name,
                 params=raw_params if isinstance(raw_params, dict) else {},
                 is_complete=True,
             )

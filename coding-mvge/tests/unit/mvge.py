@@ -481,8 +481,8 @@ class TestCodingMvgeToolCalls:
                                 role="assistant",
                                 content=[
                                     {
-                                        "type": "tool_call",
-                                        "tool_call": {
+                                        "type": "spell_cast",
+                                        "spell_cast": {
                                             "id": "call-1",
                                             "name": "bash",
                                             "arguments": {"command": "echo hi"},

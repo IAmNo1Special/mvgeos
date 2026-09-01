@@ -538,6 +538,7 @@ class TestMigrationAndReconstruction:
         assert invocations[1].content == [{"type": "text", "text": "calling tool"}]
 
         assert isinstance(invocations[2], SpellResultMessage)
+        assert invocations[2].role == "spellResult"
         assert invocations[2].spell_name == "bash"
         assert invocations[2].spell_cast_id == "c1"
 

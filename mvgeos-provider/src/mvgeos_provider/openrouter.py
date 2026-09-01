@@ -38,15 +38,15 @@ def _invocations_to_messages(invocations: list[Any]) -> list[dict[str, Any]]:
                 for block in inv.content:
                     if block.get("type") == "text":
                         text_parts.append(str(block.get("text", "")))
-                    elif block.get("type") == "tool_call":
-                        tc = block.get("tool_call", {})
+                    elif block.get("type") == "spell_cast":
+                        sc = block.get("spell_cast", {})
                         tool_calls.append(
                             {
-                                "id": tc.get("id", ""),
+                                "id": sc.get("id", ""),
                                 "type": "function",
                                 "function": {
-                                    "name": tc.get("name", ""),
-                                    "arguments": json.dumps(tc.get("arguments", {})),
+                                    "name": sc.get("name", ""),
+                                    "arguments": json.dumps(sc.get("arguments", {})),
                                 },
                             }
                         )
@@ -62,7 +62,7 @@ def _invocations_to_messages(invocations: list[Any]) -> list[dict[str, Any]]:
                     messages.append(
                         {"role": "assistant", "content": "".join(text_parts)}
                     )
-        elif hasattr(inv, "role") and inv.role == "spellResult":
+        elif hasattr(inv, "role") and inv.role in ("spellResult", "tool"):
             messages.append(
                 {
                     "role": "tool",

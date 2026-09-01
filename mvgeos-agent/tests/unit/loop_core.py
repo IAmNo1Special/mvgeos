@@ -72,8 +72,8 @@ def _spell_call_response(spell_name: str = "test_spell") -> RealmResponse:
             role="assistant",
             content=[
                 {
-                    "type": "tool_call",
-                    "tool_call": {
+                    "type": "spell_cast",
+                    "spell_cast": {
                         "id": "call-1",
                         "name": spell_name,
                         "arguments": {},

@@ -72,8 +72,8 @@ class TestEstimateInvocationMana:
             role="assistant",
             content=[
                 {
-                    "type": "tool_call",
-                    "tool_call": {"id": "1", "name": "bash", "arguments": {}},
+                    "type": "spell_cast",
+                    "spell_cast": {"id": "1", "name": "bash", "arguments": {}},
                 }
             ],
         )

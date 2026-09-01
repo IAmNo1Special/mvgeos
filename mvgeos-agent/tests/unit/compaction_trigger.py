@@ -283,8 +283,8 @@ class TestTomePersistence:
                     role="assistant",
                     content=[
                         {
-                            "type": "tool_call",
-                            "tool_call": {"id": "1", "name": "x", "arguments": {}},
+                            "type": "spell_cast",
+                            "spell_cast": {"id": "1", "name": "x", "arguments": {}},
                         }
                     ],
                     stop_reason=StopReason.SPELL_USE,

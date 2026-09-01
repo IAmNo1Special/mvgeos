@@ -54,16 +54,17 @@ class TestSigilDataClasses:
 
     def test_before_spell_cast_data(self) -> None:
         data = BeforeSpellCastData(
-            tool_call={
+            spell_cast={
                 "id": "123",
                 "name": "read_file",
                 "arguments": {"path": "test.py"},
             },
             spell_name="read_file",
         )
-        assert data.tool_call["name"] == "read_file"
+        assert data.spell_cast["name"] == "read_file"
         assert data.spell_name == "read_file"
         assert data["spell_name"] == "read_file"
+        assert data["spell_cast"]["id"] == "123"
 
     def test_after_spell_result_data(self) -> None:
         data = AfterSpellResultData(
@@ -283,9 +284,9 @@ class TestSigilDataDictMethods:
     """Test dict-like methods on sigil data classes."""
 
     def test_keys_method(self) -> None:
-        data = BeforeSpellCastData(tool_call={"name": "test"}, spell_name="test")
+        data = BeforeSpellCastData(spell_cast={"name": "test"}, spell_name="test")
         keys = data.keys()
-        assert "tool_call" in keys
+        assert "spell_cast" in keys
         assert "spell_name" in keys
 
     def test_items_method(self) -> None:

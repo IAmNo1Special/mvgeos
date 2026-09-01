@@ -164,8 +164,8 @@ def estimate_invocation_mana(invocation: MvgeInvocation) -> int:
         for block in invocation.content or []:
             if block.get("type") == ContentType.TEXT:
                 chars += len(block.get("text", ""))
-            elif block.get("type") == ContentType.TOOL_CALL:
-                call = block.get("tool_call", {})
+            elif block.get("type") == ContentType.SPELL_CAST:
+                call = block.get("spell_cast", {})
                 chars += len(call.get("name", ""))
                 chars += len(json.dumps(call.get("arguments", {})))
     elif isinstance(invocation, SpellResultMessage):
@@ -321,8 +321,8 @@ def _render_invocation(invocation: MvgeInvocation) -> str | None:
         for block in invocation.content or []:
             if block.get("type") == ContentType.TEXT:
                 parts.append(block.get("text", ""))
-            elif block.get("type") == ContentType.TOOL_CALL:
-                call = block.get("tool_call", {})
+            elif block.get("type") == ContentType.SPELL_CAST:
+                call = block.get("spell_cast", {})
                 parts.append(f"[cast {call.get('name', '')}]")
         text = " ".join(part for part in parts if part)
         return f"Mvge: {text}" if text else None

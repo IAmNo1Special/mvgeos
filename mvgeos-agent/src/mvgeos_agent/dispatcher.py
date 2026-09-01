@@ -41,7 +41,7 @@ class BatchResult:
 
 
 class SpellDispatcher:
-    """Deep module for executing tool call batches concurrently or sequentially.
+    """Deep module for executing spell cast batches concurrently or sequentially.
 
     Encapsulates parallel execution (asyncio.gather), sequential fallback,
     error isolation, sigil hook callbacks, timeout boundaries, and request-order
@@ -56,21 +56,21 @@ class SpellDispatcher:
         emit: EmitSink,
         signal: AbortSignal | None = None,
     ) -> BatchResult:
-        tool_calls = [
-            item["tool_call"]
+        spell_casts = [
+            item["spell_cast"]
             for item in inv.content or []
-            if item.get("type") == ContentType.TOOL_CALL
+            if item.get("type") == ContentType.SPELL_CAST
         ]
-        if not tool_calls:
+        if not spell_casts:
             return BatchResult()
 
         if inv.stop_reason == StopReason.LENGTH:
-            return await self._handle_truncated(tool_calls, emit)
+            return await self._handle_truncated(spell_casts, emit)
 
         # If any spell in batch requests sequential, run sequentially
         has_sequential = False
-        for tool_call in tool_calls:
-            spell_name = tool_call.get("name")
+        for spell_cast in spell_casts:
+            spell_name = spell_cast.get("name")
             spell = context.get_spell(spell_name) if spell_name else None
             if (
                 spell is not None
@@ -81,40 +81,40 @@ class SpellDispatcher:
 
         if has_sequential:
             return await self._dispatch_sequential(
-                tool_calls, context, callbacks, emit, signal
+                spell_casts, context, callbacks, emit, signal
             )
         return await self._dispatch_parallel(
-            tool_calls, context, callbacks, emit, signal
+            spell_casts, context, callbacks, emit, signal
         )
 
     async def _handle_truncated(
         self,
-        tool_calls: list[dict[str, Any]],
+        spell_casts: list[dict[str, Any]],
         emit: EmitSink,
     ) -> BatchResult:
         messages: list[SpellResultMessage] = []
-        for tool_call in tool_calls:
-            msg = _TRUNCATED_SPELL_CALL.format(name=tool_call["name"])
+        for spell_cast in spell_casts:
+            msg = _TRUNCATED_SPELL_CALL.format(name=spell_cast["name"])
             await emit(
                 MvgeEvent(
                     type=MvgeEventType.SPELL_CASTING_START,
                     data={
-                        "spellCastId": tool_call["id"],
-                        "spellName": tool_call["name"],
-                        "arguments": tool_call.get("arguments", {}),
+                        "spellCastId": spell_cast["id"],
+                        "spellName": spell_cast["name"],
+                        "arguments": spell_cast.get("arguments", {}),
                     },
                 )
             )
             await emit(
                 MvgeEvent(
                     type=MvgeEventType.SPELL_CASTING_END,
-                    data={"spellCastId": tool_call["id"], "error": msg},
+                    data={"spellCastId": spell_cast["id"], "error": msg},
                 )
             )
             messages.append(
                 SpellResultMessage(
-                    spell_cast_id=tool_call["id"],
-                    spell_name=tool_call["name"],
+                    spell_cast_id=spell_cast["id"],
+                    spell_name=spell_cast["name"],
                     content=[{"type": "text", "text": msg}],
                     is_error=True,
                 )
@@ -123,18 +123,18 @@ class SpellDispatcher:
 
     async def _dispatch_sequential(
         self,
-        tool_calls: list[dict[str, Any]],
+        spell_casts: list[dict[str, Any]],
         context: LoopContext,
         callbacks: LoopCallbacks,
         emit: EmitSink,
         signal: AbortSignal | None = None,
     ) -> BatchResult:
         messages: list[SpellResultMessage] = []
-        for tool_call in tool_calls:
+        for spell_cast in spell_casts:
             if signal is not None and signal.aborted:
                 raise AbortError("Operation aborted")
             res = await self._execute_single_spell(
-                tool_call, context, callbacks, emit, signal
+                spell_cast, context, callbacks, emit, signal
             )
             if res is not None:
                 messages.append(res)
@@ -144,7 +144,7 @@ class SpellDispatcher:
 
     async def _dispatch_parallel(
         self,
-        tool_calls: list[dict[str, Any]],
+        spell_casts: list[dict[str, Any]],
         context: LoopContext,
         callbacks: LoopCallbacks,
         emit: EmitSink,
@@ -154,8 +154,8 @@ class SpellDispatcher:
             raise AbortError("Operation aborted")
 
         tasks = [
-            self._execute_single_spell(tool_call, context, callbacks, emit, signal)
-            for tool_call in tool_calls
+            self._execute_single_spell(spell_cast, context, callbacks, emit, signal)
+            for spell_cast in spell_casts
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         messages: list[SpellResultMessage] = []
@@ -169,21 +169,21 @@ class SpellDispatcher:
 
     async def _execute_single_spell(
         self,
-        tool_call: dict[str, Any],
+        spell_cast: dict[str, Any],
         context: LoopContext,
         callbacks: LoopCallbacks,
         emit: EmitSink,
         signal: AbortSignal | None = None,
     ) -> SpellResultMessage | None:
-        spell_name = tool_call["name"]
-        spell_cast_id = tool_call["id"]
+        spell_name = spell_cast["name"]
+        spell_cast_id = spell_cast["id"]
 
         if signal is not None and signal.aborted:
             raise AbortError("Operation aborted")
 
         if callbacks.before_spell_cast is not None:
             blocked = await callbacks.before_spell_cast(
-                {"tool_call": tool_call, "spell_name": spell_name}
+                {"spell_cast": spell_cast, "spell_name": spell_name}
             )
             if blocked:
                 return None
@@ -209,7 +209,7 @@ class SpellDispatcher:
                 data={
                     "spellCastId": spell_cast_id,
                     "spellName": spell_name,
-                    "arguments": tool_call.get("arguments", {}),
+                    "arguments": spell_cast.get("arguments", {}),
                 },
             )
         )
@@ -221,7 +221,7 @@ class SpellDispatcher:
                 raw_result = await asyncio.wait_for(
                     spell.execute(
                         spell_cast_id,
-                        tool_call.get("arguments", {}),
+                        spell_cast.get("arguments", {}),
                         signal=signal,
                     ),
                     timeout=context.spell_timeout_ms / 1000,

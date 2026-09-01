@@ -1,6 +1,7 @@
 from typing import Any
 
 from mvgeos_agent.types import (
+    ContentType,
     MvgeResponse,
     MvgeSpell,
     MvgeState,
@@ -8,6 +9,13 @@ from mvgeos_agent.types import (
     StopReason,
     SummonerRequest,
 )
+
+
+def test_content_type_values() -> None:
+    assert ContentType.TEXT.value == "text"
+    assert ContentType.SPELL_CAST.value == "spell_cast"
+    assert ContentType.CONTEMPLATION.value == "contemplation"
+    assert not hasattr(ContentType, "TOOL_CALL")
 
 
 def test_summoner_request_defaults() -> None:

@@ -249,10 +249,11 @@ async def test_stream_accumulates_tool_calls() -> None:
     assert final.stop_reason == StopReason.SPELL_USE.value
     assert final.invocation is not None
     assert final.invocation.stop_reason == StopReason.SPELL_USE
-    tool_call = final.invocation.content[0]["tool_call"]
-    assert tool_call["id"] == "call_1"
-    assert tool_call["name"] == "bash"
-    assert tool_call["arguments"] == {"cmd": "ls"}
+    assert final.invocation.content[0]["type"] == "spell_cast"
+    spell_cast = final.invocation.content[0]["spell_cast"]
+    assert spell_cast["id"] == "call_1"
+    assert spell_cast["name"] == "bash"
+    assert spell_cast["arguments"] == {"cmd": "ls"}
 
 
 @pytest.mark.asyncio

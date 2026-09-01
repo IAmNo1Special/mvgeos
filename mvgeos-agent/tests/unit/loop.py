@@ -120,8 +120,8 @@ class TestMvgeLoop:
                     role="assistant",
                     content=[
                         {
-                            "type": "tool_call",
-                            "tool_call": {
+                            "type": "spell_cast",
+                            "spell_cast": {
                                 "id": "call-1",
                                 "name": "test_spell",
                                 "arguments": {},
@@ -176,8 +176,8 @@ class TestMvgeLoop:
                     role="assistant",
                     content=[
                         {
-                            "type": "tool_call",
-                            "tool_call": {
+                            "type": "spell_cast",
+                            "spell_cast": {
                                 "id": "call-1",
                                 "name": "test_spell",
                                 "arguments": {},
@@ -230,8 +230,8 @@ class TestMvgeLoop:
                     role="assistant",
                     content=[
                         {
-                            "type": "tool_call",
-                            "tool_call": {
+                            "type": "spell_cast",
+                            "spell_cast": {
                                 "id": "call-1",
                                 "name": "test_spell",
                                 "arguments": {},
@@ -255,15 +255,15 @@ class TestMvgeLoop:
         loop = MvgeLoop(state)
         await loop.run(stream_fn, {"id": "test-model"}, "none")
 
-        tool_call_msgs = [
+        spell_cast_msgs = [
             inv
             for inv in state.invocations
             if isinstance(inv, MvgeResponse)
             and inv.content
-            and inv.content[0].get("type") == "tool_call"
+            and inv.content[0].get("type") == "spell_cast"
         ]
-        assert len(tool_call_msgs) == 1
-        assert tool_call_msgs[0].stop_reason == StopReason.SPELL_USE
+        assert len(spell_cast_msgs) == 1
+        assert spell_cast_msgs[0].stop_reason == StopReason.SPELL_USE
 
     @pytest.mark.asyncio
     async def test_loop_accumulates_mana_used(self, state: MvgeState) -> None:
@@ -1012,10 +1012,10 @@ async def test_record_invocation_spell_result_serializes_structured_json() -> No
         )
 
         entries = ledger.get_entries(meta.id)
-        msg_entries = [e for e in entries if e.payload.get("role") == "tool"]
+        msg_entries = [e for e in entries if e.payload.get("role") == "spellResult"]
         assert len(msg_entries) == 1
         entry = msg_entries[0]
-        assert entry.payload["role"] == "tool"
+        assert entry.payload["role"] == "spellResult"
         assert isinstance(entry.payload["content"], list)
         assert entry.payload["content"] == [
             {"type": "text", "text": "file content here"}
@@ -1028,7 +1028,7 @@ async def test_record_invocation_spell_result_serializes_structured_json() -> No
             parsed = json.loads(line)
             if (
                 parsed.get("type") == "message"
-                and parsed.get("payload", {}).get("role") == "tool"
+                and parsed.get("payload", {}).get("role") == "spellResult"
             ):
                 assert isinstance(parsed["payload"]["content"], list)
                 assert parsed["payload"]["content"] == [

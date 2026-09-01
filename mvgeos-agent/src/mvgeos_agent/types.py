@@ -54,7 +54,7 @@ class PromptSource(StrEnum):
 
 class ContentType(StrEnum):
     TEXT = "text"
-    TOOL_CALL = "tool_call"
+    SPELL_CAST = "spell_cast"
     CONTEMPLATION = "contemplation"
 
 

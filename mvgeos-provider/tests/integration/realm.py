@@ -918,10 +918,10 @@ def test_stream_tool_calls_produce_spell_use_invocation() -> None:
     assert final.invocation is not None
     assert final.invocation.stop_reason == StopReason.SPELL_USE
     tool_block = final.invocation.content[0]
-    assert tool_block["type"] == "tool_call"
-    assert tool_block["tool_call"]["id"] == "call_1"
-    assert tool_block["tool_call"]["name"] == "bash"
-    assert tool_block["tool_call"]["arguments"] == {"command": "echo hello"}
+    assert tool_block["type"] == "spell_cast"
+    assert tool_block["spell_cast"]["id"] == "call_1"
+    assert tool_block["spell_cast"]["name"] == "bash"
+    assert tool_block["spell_cast"]["arguments"] == {"command": "echo hello"}
 
 
 def test_invocations_to_messages_serializes_tool_calls() -> None:
@@ -934,8 +934,8 @@ def test_invocations_to_messages_serializes_tool_calls() -> None:
             role="assistant",
             content=[
                 {
-                    "type": "tool_call",
-                    "tool_call": {
+                    "type": "spell_cast",
+                    "spell_cast": {
                         "id": "call_1",
                         "name": "bash",
                         "arguments": {"command": "echo hi"},

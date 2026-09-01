@@ -325,7 +325,7 @@ class MvgeLoop:
             )
         elif isinstance(invocation, SpellResultMessage):
             await session.record_message_async(
-                role="tool",
+                role="spellResult",
                 content=invocation.content,
                 parent_id=parent_id,
             )

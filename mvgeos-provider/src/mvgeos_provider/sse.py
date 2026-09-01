@@ -333,8 +333,8 @@ class SSEStreamingRealm(Realm, ABC):
                 arguments = {}
             blocks.append(
                 {
-                    "type": "tool_call",
-                    "tool_call": {
+                    "type": "spell_cast",
+                    "spell_cast": {
                         "id": acc["id"],
                         "name": acc["name"],
                         "arguments": arguments,

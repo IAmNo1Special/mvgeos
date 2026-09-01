@@ -96,7 +96,7 @@ class AfterInvocationData(_SigilDataMixin):
 class BeforeSpellCastData(_SigilDataMixin):
     """Data passed to BEFORE_SPELL_CAST sigil hook."""
 
-    tool_call: dict[str, Any]
+    spell_cast: dict[str, Any]
     spell_name: str
 
 

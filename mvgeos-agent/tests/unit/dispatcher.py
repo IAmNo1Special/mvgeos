@@ -122,12 +122,12 @@ async def test_dispatch_parallel_execution() -> None:
         stop_reason=StopReason.SPELL_USE,
         content=[
             {
-                "type": "tool_call",
-                "tool_call": {"id": "call_1", "name": "spell_a", "arguments": {}},
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_1", "name": "spell_a", "arguments": {}},
             },
             {
-                "type": "tool_call",
-                "tool_call": {"id": "call_2", "name": "spell_b", "arguments": {}},
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_2", "name": "spell_b", "arguments": {}},
             },
         ],
     )
@@ -169,12 +169,12 @@ async def test_dispatch_preserves_request_order() -> None:
         stop_reason=StopReason.SPELL_USE,
         content=[
             {
-                "type": "tool_call",
-                "tool_call": {"id": "call_1", "name": "spell_a", "arguments": {}},
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_1", "name": "spell_a", "arguments": {}},
             },
             {
-                "type": "tool_call",
-                "tool_call": {"id": "call_2", "name": "spell_b", "arguments": {}},
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_2", "name": "spell_b", "arguments": {}},
             },
         ],
     )
@@ -211,12 +211,12 @@ async def test_dispatch_sequential_fallback() -> None:
         stop_reason=StopReason.SPELL_USE,
         content=[
             {
-                "type": "tool_call",
-                "tool_call": {"id": "call_1", "name": "spell_p", "arguments": {}},
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_1", "name": "spell_p", "arguments": {}},
             },
             {
-                "type": "tool_call",
-                "tool_call": {"id": "call_2", "name": "spell_s", "arguments": {}},
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_2", "name": "spell_s", "arguments": {}},
             },
         ],
     )
@@ -250,12 +250,12 @@ async def test_dispatch_handles_isolated_failure() -> None:
         stop_reason=StopReason.SPELL_USE,
         content=[
             {
-                "type": "tool_call",
-                "tool_call": {"id": "call_1", "name": "spell_good", "arguments": {}},
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_1", "name": "spell_good", "arguments": {}},
             },
             {
-                "type": "tool_call",
-                "tool_call": {"id": "call_2", "name": "spell_bad", "arguments": {}},
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_2", "name": "spell_bad", "arguments": {}},
             },
         ],
     )
@@ -289,8 +289,8 @@ async def test_dispatch_truncated_length_stop() -> None:
         stop_reason=StopReason.LENGTH,
         content=[
             {
-                "type": "tool_call",
-                "tool_call": {"id": "call_1", "name": "spell_a", "arguments": {}},
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_1", "name": "spell_a", "arguments": {}},
             }
         ],
     )
@@ -326,12 +326,12 @@ async def test_dispatch_batch_termination() -> None:
         stop_reason=StopReason.SPELL_USE,
         content=[
             {
-                "type": "tool_call",
-                "tool_call": {"id": "call_1", "name": "spell_t1", "arguments": {}},
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_1", "name": "spell_t1", "arguments": {}},
             },
             {
-                "type": "tool_call",
-                "tool_call": {"id": "call_2", "name": "spell_t2", "arguments": {}},
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_2", "name": "spell_t2", "arguments": {}},
             },
         ],
     )
@@ -362,8 +362,8 @@ async def test_dispatch_single_spell() -> None:
         stop_reason=StopReason.SPELL_USE,
         content=[
             {
-                "type": "tool_call",
-                "tool_call": {
+                "type": "spell_cast",
+                "spell_cast": {
                     "id": "call_single",
                     "name": "spell_single",
                     "arguments": {"key": "val"},
@@ -401,8 +401,8 @@ async def test_dispatch_missing_spell() -> None:
         stop_reason=StopReason.SPELL_USE,
         content=[
             {
-                "type": "tool_call",
-                "tool_call": {
+                "type": "spell_cast",
+                "spell_cast": {
                     "id": "call_missing",
                     "name": "spell_non_existent",
                     "arguments": {},

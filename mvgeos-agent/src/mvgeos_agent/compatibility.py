@@ -102,6 +102,14 @@ def validate_session_compatibility(
             spell_name = entry.payload.get("spell_name") or entry.payload.get("name")
             if isinstance(spell_name, str) and spell_name:
                 discovered_spells.add(spell_name)
+            content = entry.payload.get("content")
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "spell_cast":
+                        sc = block.get("spell_cast", {})
+                        sc_name = sc.get("name")
+                        if isinstance(sc_name, str) and sc_name:
+                            discovered_spells.add(sc_name)
             tool_calls = entry.payload.get("tool_calls")
             if isinstance(tool_calls, list):
                 for tc in tool_calls:
