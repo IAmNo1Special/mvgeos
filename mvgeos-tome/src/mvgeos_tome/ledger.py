@@ -11,12 +11,20 @@ from pathlib import Path
 from typing import Any
 
 from mvgeos_tome.locking import FileLock
+from mvgeos_tome.migration import (
+    CURRENT_SESSION_VERSION,
+    _migrate_v1_to_v2,
+    _migrate_v2_to_v3,
+    extract_session_version,
+    migrate_session_data,
+)
 from mvgeos_tome.types import (
     TomeEntry,
     TomeEntryType,
     TomeIntegrityIssue,
     TomeIntegrityReport,
     TomeMetadata,
+    TomeVersionError,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,6 +59,10 @@ def _parse_tome_entry(raw: dict[str, Any]) -> TomeEntry:
 
 class TomeLedger:
     _MAX_CACHE_SIZE = 32
+
+    _migrate_v1_to_v2 = staticmethod(_migrate_v1_to_v2)
+    _migrate_v2_to_v3 = staticmethod(_migrate_v2_to_v3)
+    migrate_session_data = staticmethod(migrate_session_data)
 
     def __init__(self, tome_dir: Path) -> None:
         self._tome_dir = tome_dir
@@ -173,7 +185,12 @@ class TomeLedger:
                     meta = self._load_tome_metadata(f.stem)
                     if meta and meta.cwd == cwd:
                         return meta
-                except json.JSONDecodeError, KeyError, ValueError:
+                except (
+                    json.JSONDecodeError,
+                    KeyError,
+                    ValueError,
+                    TomeVersionError,
+                ):
                     continue
             return None
 
@@ -321,6 +338,21 @@ class TomeLedger:
                 first_line = f.readline()
                 if not first_line:
                     return
+                try:
+                    header = json.loads(first_line.strip())
+                except json.JSONDecodeError:
+                    return
+                if not isinstance(header, dict) or header.get("type") != "session":
+                    return
+
+                version = extract_session_version(header)
+
+                # For legacy sessions (v1 or v2), run full migration to establish chain
+                if version < CURRENT_SESSION_VERSION:
+                    entries = self._read_tome_entries(resolved_id)
+                    yield from entries
+                    return
+
                 for idx, raw_line in enumerate(f, start=2):
                     line = raw_line.strip()
                     if not line:
@@ -349,6 +381,8 @@ class TomeLedger:
                             e,
                         )
                         continue
+        except TomeVersionError:
+            raise
         except Exception as e:
             logger.warning("Failed to stream tome file %s: %s", tome_file, e)
             return
@@ -360,6 +394,11 @@ class TomeLedger:
             resolved_id = self._resolve_tome_id(tome_id) or tome_id
             if resolved_id in self._entries_cache:
                 return self._entries_cache[resolved_id][-limit:]
+            meta = self._tomles.get(resolved_id) or self._load_tome_metadata(
+                resolved_id
+            )
+            if meta and meta.version < CURRENT_SESSION_VERSION:
+                return self._read_tome_entries(resolved_id)[-limit:]
             return self._read_last_n_entries_from_disk(resolved_id, limit)
 
     def get_entry(self, tome_id: str, entry_id: str) -> TomeEntry | None:
@@ -464,7 +503,13 @@ class TomeLedger:
                 meta = self._load_tome_metadata(f.stem)
                 if meta:
                     self._tomles[meta.id] = meta
-            except json.JSONDecodeError, KeyError, ValueError:
+            except (
+                json.JSONDecodeError,
+                KeyError,
+                ValueError,
+                TomeVersionError,
+            ) as e:
+                logger.warning("Failed to load header for %s: %s", f, e)
                 continue
 
     def _load_tome_metadata(self, tome_id_or_path: str | Path) -> TomeMetadata | None:
@@ -484,6 +529,9 @@ class TomeLedger:
                 header = json.loads(first_line)
                 if not isinstance(header, dict) or header.get("type") != "session":
                     return None
+
+                version = extract_session_version(header)
+
                 return TomeMetadata(
                     id=header["id"],
                     created_at=header["timestamp"],
@@ -491,7 +539,10 @@ class TomeLedger:
                     parent_tome_id=header.get("parentSession"),
                     active_leaf_id=header.get("activeLeafId"),
                     schema_version=header.get("schema_version", "1.0"),
+                    version=version,
                 )
+        except TomeVersionError:
+            raise
         except json.JSONDecodeError, KeyError, ValueError:
             return None
 
@@ -516,7 +567,14 @@ class TomeLedger:
                 first_line = f.readline()
                 if not first_line:
                     return []
-                entries: list[TomeEntry] = []
+                try:
+                    header = json.loads(first_line)
+                except json.JSONDecodeError:
+                    return []
+                if not isinstance(header, dict) or header.get("type") != "session":
+                    return []
+
+                raw_entries: list[dict[str, Any]] = []
                 for idx, raw_line in enumerate(f, start=2):
                     line = raw_line.strip()
                     if not line:
@@ -531,7 +589,7 @@ class TomeLedger:
                                 idx,
                             )
                             continue
-                        entries.append(_parse_tome_entry(raw))
+                        raw_entries.append(raw)
                     except (
                         json.JSONDecodeError,
                         KeyError,
@@ -545,7 +603,20 @@ class TomeLedger:
                             e,
                         )
                         continue
-                return entries
+
+                migrated_hdr, migrated_entries = self.migrate_session_data(
+                    header, raw_entries
+                )
+
+                if tome_id in self._tomles:
+                    meta = self._tomles[tome_id]
+                    meta.version = migrated_hdr.get("version", CURRENT_SESSION_VERSION)
+                    if migrated_hdr.get("activeLeafId") and not meta.active_leaf_id:
+                        meta.active_leaf_id = migrated_hdr["activeLeafId"]
+
+                return [_parse_tome_entry(e) for e in migrated_entries]
+        except TomeVersionError:
+            raise
         except Exception as e:
             logger.warning("Failed to read tome file %s: %s", tome_file, e)
             return []
@@ -755,6 +826,17 @@ class TomeLedger:
                                                 "Invalid session header: "
                                                 "missing or invalid 'timestamp'"
                                             ),
+                                            raw_line=header_raw,
+                                        )
+                                    )
+
+                                try:
+                                    extract_session_version(header)
+                                except TomeVersionError as e:
+                                    issues.append(
+                                        TomeIntegrityIssue(
+                                            line_number=1,
+                                            message=str(e),
                                             raw_line=header_raw,
                                         )
                                     )

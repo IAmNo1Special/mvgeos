@@ -24,6 +24,15 @@ class TomeEntry:
     payload: dict[str, Any]
 
 
+class TomeVersionError(Exception):
+    """Raised when encountering an unsupported or invalid session schema version."""
+
+    def __init__(self, version: Any, message: str | None = None) -> None:
+        self.version = version
+        msg = message or f"Unsupported session version: {version}"
+        super().__init__(msg)
+
+
 @dataclass
 class TomeMetadata:
     id: str
@@ -32,6 +41,7 @@ class TomeMetadata:
     parent_tome_id: str | None = None
     active_leaf_id: str | None = None
     schema_version: str = "1.0"
+    version: int = 3
 
 
 @dataclass
