@@ -4,9 +4,10 @@ import asyncio
 from pathlib import Path
 
 import typer
-from coding_mvge.mvge import CodingMvge
+from mvgeos_agent.base_mvge import BaseMvge
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_agent.environment import MvgeEnvironment
+from mvgeos_agent.protocol import AgentFactory, MvgeAgent
 from mvgeos_agent.snapshot import RuntimeSnapshot
 
 from mvgeos_cli.console import format_error, get_console
@@ -86,21 +87,34 @@ def _write_output(output: str, content: str) -> None:
 async def _assemble(
     agent_name: str,
     extension_dir: str | None,
+    agent_factory: AgentFactory | None = None,
 ) -> RuntimeSnapshot:
     """Load runes and assemble the runtime snapshot (read-only).
 
-    Creates a CodingMvge with an MvgeEnvironment, loads runes and skills
+    Creates an agent with an MvgeEnvironment, loads runes and skills
     from disk, and returns a serialisable RuntimeSnapshot. No API key
     or realm is required — this is a static introspection path.
     """
     env = MvgeEnvironment.resolve(agent_name=agent_name)
-    agent = CodingMvge(
-        api_key="",
-        name=agent_name,
-        extension_dir=extension_dir,
-        environment=env,
-    )
-    await agent._load_runes()
+    agent: MvgeAgent | BaseMvge
+    if agent_factory is not None:
+        agent = agent_factory(
+            api_key="",
+            name=agent_name,
+            extension_dir=extension_dir,
+            environment=env,
+        )
+    else:
+        agent = BaseMvge(
+            api_key="",
+            name=agent_name,
+            extension_dir=extension_dir,
+            environment=env,
+        )
+    if hasattr(agent, "load_runes"):
+        await agent.load_runes()
+    elif hasattr(agent, "_load_runes"):
+        await agent._load_runes()
     return agent.build_snapshot()
 
 

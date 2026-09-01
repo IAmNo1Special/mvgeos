@@ -17,10 +17,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol
 
-from coding_mvge import CodingMvge
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
-from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.errors import RateLimitError
+from mvgeos_agent.protocol import AgentFactory, MvgeAgent
 from mvgeos_agent.types import MvgeEvent, MvgeResponse, QueueMode
 from mvgeos_provider.model_registry import ModelRegistry
 from prompt_toolkit import PromptSession
@@ -35,6 +34,7 @@ from rich.markdown import Markdown
 from rich.text import Text
 
 from mvgeos_cli import DEFAULT_MODEL
+from mvgeos_cli.agent_factory import create_agent, validate_api_key
 from mvgeos_cli.commands.setup import install_missing_deps
 from mvgeos_cli.console import format_error
 
@@ -173,11 +173,14 @@ def _git_branch() -> str | None:
     return branch or None
 
 
-def _mana_context(agent: CodingMvge) -> tuple[str, str]:
-    state = getattr(agent, "_state", None)
-    if state is None:
+def _mana_context(agent: MvgeAgent) -> tuple[str, str]:
+    used = getattr(agent, "mana_used", None)
+    if used is None:
+        state = getattr(agent, "_state", None)
+        if state is not None:
+            used = getattr(state, "mana_used", None)
+    if used is None:
         return "", "mana ?"
-    used = getattr(state, "mana_used", 0) or 0
     return "", f"mana {used}"
 
 
@@ -210,7 +213,7 @@ def _fit_footer(items: list[tuple[str, str]], width: int) -> list[tuple[str, str
 
 
 def _format_tome_info(
-    agent: CodingMvge, branch: str | None = None, fit: bool = True
+    agent: MvgeAgent, branch: str | None = None, fit: bool = True
 ) -> list[tuple[str, str]]:
     cwd = _format_cwd()
     if branch:
@@ -221,8 +224,10 @@ def _format_tome_info(
         items.append(("dim", f"  tome {tid[:8]}"))
     mana_style, mana_text = _mana_context(agent)
     items.append((mana_style, f"  {mana_text}"))
-    right = agent._model_id
-    thinking = getattr(agent, "_contemplation_level", None)
+    right = getattr(agent, "model_id", getattr(agent, "_model_id", ""))
+    thinking = getattr(
+        agent, "contemplation_level", getattr(agent, "_contemplation_level", None)
+    )
     if thinking:
         right = f"{right} • {thinking}"
     items.append(("", f"  {right}"))
@@ -320,7 +325,7 @@ def _check_and_warn_missing_deps(
 
 def _handle_command(
     command: str,
-    agent: CodingMvge,
+    agent: MvgeAgent,
     registry: ModelRegistry,
     out: Callable[[str], None] = console.print,
 ) -> ReplAction:
@@ -340,11 +345,12 @@ def _handle_command(
     if cmd == "/tome":
         tid = agent.tome_id or "none"
         out(f"[dim]Tome ID: {tid}[/dim]")
-        out(f"[dim]Model: {agent._model_id}[/dim]")
+        out(f"[dim]Model: {agent.model_id}[/dim]")
         builtin = agent.enabled_spells
         rune_spells = []
-        if agent._state is not None:
-            for spell in agent._state.spells:
+        state = getattr(agent, "_state", None)
+        if state is not None:
+            for spell in state.spells:
                 if spell.name not in builtin:
                     rune_spells.append(spell.name)
         if builtin:
@@ -357,7 +363,7 @@ def _handle_command(
     if cmd in ("/model", "/models"):
         stripped = args.strip()
         if not stripped or stripped in ("--free", "-f"):
-            out(f"[bold]Current model:[/bold] {agent._model_id}")
+            out(f"[bold]Current model:[/bold] {agent.model_id}")
             out("[bold]Available models:[/bold]")
             all_models = registry.list_all()
             if stripped in ("--free", "-f"):
@@ -372,7 +378,8 @@ def _handle_command(
             out(format_error(f"Unknown model: {candidate}"))
             out("[dim]Try /refresh-models to fetch the latest catalog[/dim]")
             return ReplAction.CONTINUE
-        agent._model_id = candidate
+        if hasattr(agent, "_model_id"):
+            object.__setattr__(agent, "_model_id", candidate)
         return ReplAction.SWITCH_MODEL
 
     if cmd == "/refresh-models":
@@ -381,14 +388,16 @@ def _handle_command(
     if cmd == "/spells":
         if args:
             new_spells = [s.strip() for s in args.split(",") if s.strip()]
-            agent._spell_names = new_spells
+            if hasattr(agent, "_spell_names"):
+                object.__setattr__(agent, "_spell_names", new_spells)
             out(f"[green]Spells set to: {', '.join(new_spells)}[/green]")
         else:
             # Show both builtin and rune-discovered spells
             builtin = agent.enabled_spells
             rune_spells = []
-            if agent._state is not None:
-                for spell in agent._state.spells:
+            state = getattr(agent, "_state", None)
+            if state is not None:
+                for spell in state.spells:
                     if spell.name not in builtin:
                         rune_spells.append(spell.name)
             if builtin:
@@ -426,8 +435,10 @@ def _handle_command(
 
     if cmd == "/resume":
         if args:
-            agent._tome_resume = args.strip()
-            out(f"[green]Will resume: {agent._tome_resume}[/green]")
+            target_path = args.strip()
+            if hasattr(agent, "_tome_resume"):
+                object.__setattr__(agent, "_tome_resume", target_path)
+            out(f"[green]Will resume: {target_path}[/green]")
             return ReplAction.NEW_SESSION
         out(format_error("Usage: /resume <path-to-tome.jsonl>"))
         return ReplAction.CONTINUE
@@ -859,56 +870,8 @@ class StreamRenderer:
             self._narration_finalized = True
 
 
-def _validate_api_key(api_key: str) -> None:
-    """Validate OpenRouter API key format. Raises ValueError if invalid."""
-    if not api_key or not api_key.startswith("sk-or-"):
-        raise ValueError(
-            "Invalid OpenRouter API key. It must start with 'sk-or-'. "
-            "Get a key at https://openrouter.ai/keys"
-        )
-
-
-async def _create_agent(
-    model: str,
-    api_key: str,
-    spells: str,
-    extension_dir: str | None,
-    tome_dir: str | None,
-    resume: str | None,
-    provider: str | None,
-    temperature: float,
-    max_tokens: int,
-    contemplation: str,
-    agent_name: str = DEFAULT_AGENT_NAME,
-) -> CodingMvge:
-    _validate_api_key(api_key)
-    spells_list = [s.strip() for s in spells.split(",") if s.strip()]
-    overrides: dict[str, Any] = {}
-    if model:
-        overrides["model"] = model
-    if temperature is not None:
-        overrides["temperature"] = temperature
-    if max_tokens is not None:
-        overrides["max_tokens"] = max_tokens
-    if contemplation:
-        overrides["contemplation_level"] = contemplation
-
-    env = MvgeEnvironment.resolve(
-        agent_name,
-        extension_dir=extension_dir,
-        overrides=overrides if overrides else None,
-    )
-    agent = CodingMvge(
-        api_key=api_key,
-        spells=spells_list,
-        extension_dir=extension_dir,
-        tome_dir=Path(tome_dir) if tome_dir else None,
-        tome_resume=resume,
-        provider_name=provider,
-        environment=env,
-    )
-    await agent.initialize()
-    return agent
+_validate_api_key = validate_api_key
+_create_agent = create_agent
 
 
 async def run_repl(
@@ -923,6 +886,7 @@ async def run_repl(
     contemplation: str = "medium",
     tome_dir: str | None = None,
     agent_name: str = DEFAULT_AGENT_NAME,
+    agent_factory: AgentFactory | None = None,
 ) -> None:
     if api_key is None:
         api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -945,6 +909,7 @@ async def run_repl(
             max_tokens=max_tokens,
             contemplation=contemplation,
             agent_name=agent_name,
+            agent_factory=agent_factory,
         )
     except ValueError as e:
         console.print(format_error(e))
@@ -1045,12 +1010,15 @@ async def run_repl(
                 console.print("[dim]Goodbye.[/dim]")
                 break
             if action == ReplAction.SWITCH_MODEL:
+                target_model = getattr(
+                    agent, "model_id", getattr(agent, "_model_id", "")
+                )
                 try:
-                    await agent.switch_model(agent._model_id)
+                    await agent.switch_model(target_model)
                 except ValueError as e:
                     console.print(format_error(e))
                     continue
-                console.print(f"[green]Model switched: {agent._model_id}[/green]")
+                console.print(f"[green]Model switched: {target_model}[/green]")
                 continue
             if action == ReplAction.REFRESH_MODELS:
                 console.print(
@@ -1068,7 +1036,8 @@ async def run_repl(
             if action == ReplAction.NEW_SESSION:
                 console.print("[yellow]Starting a new tome...[/yellow]")
                 await agent.close()
-                agent._initialized = False
+                if hasattr(agent, "_initialized"):
+                    object.__setattr__(agent, "_initialized", False)
                 await agent.initialize()
                 console.print(f"[green]New tome: {agent.tome_id}[/green]")
             continue

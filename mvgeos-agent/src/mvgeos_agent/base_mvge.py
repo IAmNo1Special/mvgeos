@@ -139,6 +139,29 @@ class BaseMvge:
         return None
 
     @property
+    def session_id(self) -> str | None:
+        """Alias for tome_id adhering to standard agent protocol vocabulary."""
+        return self.tome_id
+
+    @property
+    def model_id(self) -> str:
+        return self._model_id
+
+    @property
+    def contemplation_level(self) -> ContemplationLevel | str:
+        return self._contemplation_level
+
+    @property
+    def mana_used(self) -> int | None:
+        if self._state is not None:
+            return getattr(self._state, "mana_used", None)
+        return None
+
+    @property
+    def enabled_spells(self) -> list[str]:
+        return list(self._spell_names or [])
+
+    @property
     def registered_commands(self) -> list[str]:
         if self._runner is None:
             return []
@@ -177,6 +200,10 @@ class BaseMvge:
         else:
             base_diags = list(self._environment.diagnostics)
         return base_diags + self._resume_diagnostics
+
+    async def load_runes(self) -> None:
+        """Public entry point for rune loading."""
+        await self._load_runes()
 
     def validate_tome_compatibility(
         self,

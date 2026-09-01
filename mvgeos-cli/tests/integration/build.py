@@ -345,23 +345,24 @@ class TestBuildCommand:
 
 class TestAssemble:
     @patch("mvgeos_cli.commands.build.MvgeEnvironment")
-    @patch("mvgeos_cli.commands.build.CodingMvge")
+    @patch("mvgeos_cli.commands.build.BaseMvge")
     def test_assemble_creates_environment(
         self,
-        mock_coding_cls: MagicMock,
+        mock_agent_cls: MagicMock,
         mock_env_cls: MagicMock,
     ) -> None:
         mock_env = MagicMock()
         mock_env_cls.resolve.return_value = mock_env
         mock_agent = MagicMock()
         mock_agent._load_runes = AsyncMock()
+        mock_agent.load_runes = AsyncMock()
         mock_agent.build_snapshot.return_value = _make_snapshot()
-        mock_coding_cls.return_value = mock_agent
+        mock_agent_cls.return_value = mock_agent
 
         result = asyncio.run(_assemble("test-agent", None))
 
         mock_env_cls.resolve.assert_called_once_with(agent_name="test-agent")
-        mock_coding_cls.assert_called_once_with(
+        mock_agent_cls.assert_called_once_with(
             api_key="",
             name="test-agent",
             extension_dir=None,
@@ -370,42 +371,42 @@ class TestAssemble:
         assert isinstance(result, RuntimeSnapshot)
 
     @patch("mvgeos_cli.commands.build.MvgeEnvironment")
-    @patch("mvgeos_cli.commands.build.CodingMvge")
+    @patch("mvgeos_cli.commands.build.BaseMvge")
     def test_assemble_loads_runes_and_builds_snapshot(
         self,
-        mock_coding_cls: MagicMock,
+        mock_agent_cls: MagicMock,
         mock_env_cls: MagicMock,
     ) -> None:
         mock_env_cls.resolve.return_value = MagicMock()
         mock_agent = MagicMock()
-        mock_agent._load_runes = AsyncMock()
+        mock_agent.load_runes = AsyncMock()
         snapshot = _make_snapshot()
         mock_agent.build_snapshot.return_value = snapshot
-        mock_coding_cls.return_value = mock_agent
+        mock_agent_cls.return_value = mock_agent
 
         result = asyncio.run(_assemble("test-agent", "/tmp/ext"))
 
-        mock_agent._load_runes.assert_awaited_once()
+        mock_agent.load_runes.assert_awaited_once()
         mock_agent.build_snapshot.assert_called_once()
         assert result is snapshot
 
     @patch("mvgeos_cli.commands.build.MvgeEnvironment")
-    @patch("mvgeos_cli.commands.build.CodingMvge")
+    @patch("mvgeos_cli.commands.build.BaseMvge")
     def test_assemble_passes_extension_dir(
         self,
-        mock_coding_cls: MagicMock,
+        mock_agent_cls: MagicMock,
         mock_env_cls: MagicMock,
     ) -> None:
         mock_env = MagicMock()
         mock_env_cls.resolve.return_value = mock_env
         mock_agent = MagicMock()
-        mock_agent._load_runes = AsyncMock()
+        mock_agent.load_runes = AsyncMock()
         mock_agent.build_snapshot.return_value = _make_snapshot()
-        mock_coding_cls.return_value = mock_agent
+        mock_agent_cls.return_value = mock_agent
 
         asyncio.run(_assemble("test-agent", "/tmp/extensions"))
 
-        mock_coding_cls.assert_called_once_with(
+        mock_agent_cls.assert_called_once_with(
             api_key="",
             name="test-agent",
             extension_dir="/tmp/extensions",

@@ -1,4 +1,5 @@
 from mvgeos_agent.agent_session import MvgeTome
+from mvgeos_agent.base_mvge import BaseMvge
 from mvgeos_agent.environment import (
     AgentConfig,
     MvgeEnvironment,
@@ -7,6 +8,7 @@ from mvgeos_agent.environment import (
     ResolvedPrompt,
 )
 from mvgeos_agent.harness import MvgeHarness
+from mvgeos_agent.protocol import AgentFactory, MvgeAgent
 from mvgeos_agent.sandbox import MvgeSandbox
 from mvgeos_agent.snapshot import (
     RuntimeSnapshot,
@@ -44,7 +46,10 @@ __all__ = [
     "AbortError",
     "AbortSignal",
     "AgentConfig",
+    "AgentFactory",
+    "BaseMvge",
     "ContemplationLevel",
+    "MvgeAgent",
     "MvgeEnvironment",
     "MvgeEvent",
     "MvgeEventType",

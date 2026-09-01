@@ -8,15 +8,16 @@ from typing import Any, cast
 
 import typer
 import typer._click as _click
-from coding_mvge import CodingMvge
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
     DEFAULT_TOME_DIR,
 )
 from mvgeos_agent.environment import MvgeEnvironment
+from mvgeos_agent.protocol import AgentFactory, MvgeAgent
 from typer._click.parser import _split_opt
 from typer.core import TyperGroup
 
+from mvgeos_cli.agent_factory import create_agent, validate_api_key
 from mvgeos_cli.auth import (
     load_api_key_from_auth,
     prompt_api_key,
@@ -26,9 +27,7 @@ from mvgeos_cli.commands.build import build_app
 from mvgeos_cli.commands.config import config_app
 from mvgeos_cli.commands.info import info_app
 from mvgeos_cli.commands.repl import (
-    _create_agent,
     _display_response,
-    _validate_api_key,
     run_repl,
 )
 from mvgeos_cli.commands.setup import DefaultCheckGroup, setup_app
@@ -38,6 +37,7 @@ from mvgeos_cli.console import configure_streams, format_error, get_console
 
 console = get_console()
 
+_create_agent = create_agent
 _load_api_key_from_auth = load_api_key_from_auth
 
 
@@ -48,7 +48,7 @@ def _default_spells_from_config(resolved: dict[str, Any]) -> str:
     return str(val)
 
 
-async def _run_print_mode(agent: CodingMvge, prompts: list[str]) -> int:
+async def _run_print_mode(agent: MvgeAgent, prompts: list[str]) -> int:
     try:
         for prompt in prompts:
             result = await agent.run(prompt)
@@ -74,6 +74,7 @@ async def _run_agent(
     tui: bool,
     agent_name: str = DEFAULT_AGENT_NAME,
     prompts: list[str] | None = None,
+    agent_factory: AgentFactory | None = None,
 ) -> int:
     prompts_out = ([incantation] if incantation else []) + (prompts or [])
 
@@ -89,7 +90,7 @@ async def _run_agent(
     if spells_enabled is not None:
         overrides["spells_enabled"] = spells_enabled
 
-    agent: CodingMvge | None = None
+    agent: MvgeAgent | None = None
     try:
         env = MvgeEnvironment.resolve(
             agent_name=agent_name,
@@ -129,6 +130,7 @@ async def _run_agent(
                     contemplation=contemplation_level,
                     tome_dir=tome_dir,
                     agent_name=agent_name,
+                    agent_factory=agent_factory,
                 )
                 return 0
 
@@ -144,10 +146,11 @@ async def _run_agent(
                 contemplation=contemplation_level,
                 tome_dir=tome_dir,
                 agent_name=agent_name,
+                agent_factory=agent_factory,
             )
             return 0
 
-        _validate_api_key(api_key)
+        validate_api_key(api_key)
         agent = await _create_agent(
             model=model_id,
             api_key=api_key,
@@ -160,6 +163,7 @@ async def _run_agent(
             max_tokens=max_tokens,
             contemplation=contemplation_level,
             agent_name=agent_name,
+            agent_factory=agent_factory,
         )
         return await _run_print_mode(agent, prompts_out)
     except Exception as exc:

@@ -8,9 +8,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from coding_mvge import CodingMvge
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_agent.errors import RateLimitError
+from mvgeos_agent.protocol import AgentFactory, MvgeAgent
 from mvgeos_provider.model_registry import ModelRegistry
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
@@ -34,6 +34,7 @@ from rich.markup import render as render_markup
 from rich.text import Text
 
 from mvgeos_cli import DEFAULT_MODEL
+from mvgeos_cli.agent_factory import create_agent, validate_api_key
 from mvgeos_cli.commands.repl import (
     NoConsoleScreenBufferError,
     ReplAction,
@@ -41,7 +42,6 @@ from mvgeos_cli.commands.repl import (
     StreamRenderer,
     _check_and_warn_load_failures,
     _check_and_warn_missing_deps,
-    _create_agent,
     _fit_footer,
     _format_tome_info,
     _git_branch,
@@ -273,7 +273,7 @@ class TranscriptControl(UIControl):
 class TuiApp:
     def __init__(
         self,
-        agent: CodingMvge,
+        agent: MvgeAgent,
         sink: TuiSink,
         registry: ModelRegistry,
         renderer: StreamRenderer,
@@ -423,12 +423,15 @@ class TuiApp:
             self.application.exit()
             return
         if action == ReplAction.SWITCH_MODEL:
+            target_model = getattr(
+                self.agent, "model_id", getattr(self.agent, "_model_id", "")
+            )
             try:
-                await self.agent.switch_model(self.agent._model_id)
+                await self.agent.switch_model(target_model)
             except ValueError as e:
                 self._out(format_error(e))
                 return
-            self._out(f"[green]Model switched: {self.agent._model_id}[/green]")
+            self._out(f"[green]Model switched: {target_model}[/green]")
         elif action == ReplAction.REFRESH_MODELS:
             self._out("[yellow]Fetching latest models from OpenRouter...[/yellow]")
             try:
@@ -440,7 +443,8 @@ class TuiApp:
         elif action == ReplAction.NEW_SESSION:
             self._out("[yellow]Starting a new session...[/yellow]")
             await self.agent.close()
-            self.agent._initialized = False
+            if hasattr(self.agent, "_initialized"):
+                object.__setattr__(self.agent, "_initialized", False)
             try:
                 await self.agent.initialize()
             except ValueError as e:
@@ -451,6 +455,10 @@ class TuiApp:
 
     async def run(self) -> None:
         await self.application.run_async()
+
+
+_validate_api_key = validate_api_key
+_create_agent = create_agent
 
 
 async def run_tui(
@@ -465,6 +473,7 @@ async def run_tui(
     contemplation: str = "medium",
     tome_dir: str | None = None,
     agent_name: str = DEFAULT_AGENT_NAME,
+    agent_factory: AgentFactory | None = None,
 ) -> None:
     if api_key is None:
         api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -487,6 +496,7 @@ async def run_tui(
             max_tokens=max_tokens,
             contemplation=contemplation,
             agent_name=agent_name,
+            agent_factory=agent_factory,
         )
     except ValueError as e:
         console.print(format_error(e))
