@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-09-01
+
+
+### Bug Fixes
+
+- **tome:** resolve cross-platform mypy ctypes and wintypes type resolution (70b2643)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (302e2e6)
+
+- **release:** v1.6.0 (c856e35)
+
+
+### Features
+
+- **agent:** optimize spell lookup in dispatch loop with indexed map (#111) (b063308)
+
+- **tome:** add session file and line-level integrity verification (81c552d)
+
+- **tome:** implement line streaming iterator and tail reader (#114) (0286f01)
+
+- **tome:** add automated session schema version migration pipeline (closes #115) (c0ade5c)
+
+
+### Refactoring
+
+- **gui:** consolidate Git workspace inspection behind git_workspace (5452a7b)
+
+- **coding-mvge:** deepen BuiltinSpells and eliminate per-cast reflection (146f04e)
+
+- **agent:** remove unused spell_map property and redundant constants (d05d7d2)
+
+
 ## [1.5.0] - 2026-08-31
 
 
