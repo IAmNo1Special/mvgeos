@@ -11,6 +11,7 @@ from mvgeos_runes.types import (
     Diagnostic,
     DiagnosticKind,
     RegisteredCommand,
+    RuneContext,
     RuneLoad,
     RuneManifest,
     RuneScope,
@@ -850,3 +851,23 @@ class TestRuneRunnerSigils:
         assert SigilHook.AFTER_INVOCATION in handlers
         assert len(handlers[SigilHook.BEFORE_INVOCATION]) == 1
         assert len(handlers[SigilHook.AFTER_INVOCATION]) == 1
+
+
+class TestRuneRunnerContext:
+    def test_default_runner_context(self) -> None:
+        runner = RuneRunner()
+        assert runner.context == RuneContext()
+
+    def test_bind_context(self) -> None:
+        runner = RuneRunner()
+        ctx = RuneContext(
+            cwd="/workspace",
+            mode="cli",
+            has_ui=False,
+            agent_name="tester",
+            api_key="key-123",
+        )
+        runner.bind_context(ctx)
+        assert runner.context == ctx
+        assert runner.context.agent_name == "tester"
+        assert runner.context.api_key == "key-123"

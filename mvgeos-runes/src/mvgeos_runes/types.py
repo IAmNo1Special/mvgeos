@@ -403,7 +403,7 @@ class RuneManifest:
     enabled: bool = True
 
 
-@dataclass
+@dataclass(frozen=True)
 class RuneContext:
     cwd: str = ""
     mode: str = "cli"
