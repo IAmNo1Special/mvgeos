@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import json
 import logging
 import os
@@ -7,15 +8,12 @@ import socket
 import sys
 import time
 from contextlib import suppress
+from ctypes import wintypes
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 import filelock
-
-if sys.platform == "win32":
-    import ctypes
-    from ctypes import wintypes
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +59,10 @@ def _is_windows_process_alive(pid: int) -> bool:
         wait_timeout = 0x102
         wait_object_0 = 0
 
-        kernel32 = ctypes.windll.kernel32
+        windll = getattr(ctypes, "windll", None)
+        if windll is None:
+            return False
+        kernel32 = windll.kernel32
         handle = kernel32.OpenProcess(
             process_query_limited_information | synchronize,
             False,

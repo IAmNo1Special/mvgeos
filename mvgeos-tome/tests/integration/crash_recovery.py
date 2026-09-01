@@ -1,3 +1,4 @@
+import ctypes
 import os
 import signal
 import subprocess
@@ -5,11 +6,8 @@ import sys
 import tempfile
 import time
 from contextlib import suppress
+from ctypes import wintypes
 from pathlib import Path
-
-if sys.platform == "win32":
-    import ctypes
-    from ctypes import wintypes
 
 from mvgeos_tome.ledger import TomeLedger
 from mvgeos_tome.locking import FileLock
@@ -18,14 +16,16 @@ from mvgeos_tome.types import TomeEntry, TomeEntryType
 
 def _kill_pid(pid: int) -> None:
     if sys.platform == "win32":
-        kernel32 = ctypes.windll.kernel32
-        process_terminate = 0x0001
-        handle = kernel32.OpenProcess(process_terminate, False, wintypes.DWORD(pid))
-        if handle:
-            try:
-                kernel32.TerminateProcess(handle, 1)
-            finally:
-                kernel32.CloseHandle(handle)
+        windll = getattr(ctypes, "windll", None)
+        if windll:
+            kernel32 = windll.kernel32
+            process_terminate = 0x0001
+            handle = kernel32.OpenProcess(process_terminate, False, wintypes.DWORD(pid))
+            if handle:
+                try:
+                    kernel32.TerminateProcess(handle, 1)
+                finally:
+                    kernel32.CloseHandle(handle)
     else:
         with suppress(OSError):
             os.kill(pid, signal.SIGKILL)
