@@ -448,3 +448,135 @@ class TestCompatibility:
         assert tome.compatibility_report is not None
         assert tome.compatibility_report.compatible
         assert len(tome.compatibility_report.diagnostics) == 0
+
+
+class TestMigrationAndReconstruction:
+    @pytest.mark.asyncio
+    async def test_version_property_reflects_metadata(self) -> None:
+        meta = TomeMetadata(id="a" * 32, created_at="now", cwd="/test", version=3)
+        ledger = MagicMock()
+        tome = MvgeTome(ledger, meta)
+        assert tome.version == 3
+
+    @pytest.mark.asyncio
+    async def test_open_future_version_raises_tome_resume_error(self) -> None:
+        from mvgeos_tome import TomeVersionError
+
+        ledger = MagicMock()
+        ledger.open_tome.side_effect = TomeVersionError(4, "Unsupported version")
+
+        with pytest.raises(TomeResumeError) as exc_info:
+            await MvgeTome.open(ledger, "future-tome")
+
+        assert "future-tome" in str(exc_info.value)
+        assert isinstance(exc_info.value.__cause__, TomeVersionError)
+
+    @pytest.mark.asyncio
+    async def test_reconstruct_invocations_various_entry_types(self) -> None:
+        from mvgeos_tome.types import TomeEntry, TomeEntryType
+
+        from mvgeos_agent.types import (
+            ContentType,
+            MvgeResponse,
+            SpellResultMessage,
+            SummonerRequest,
+        )
+
+        entries = [
+            TomeEntry(
+                id="e1",
+                parent_id=None,
+                type=TomeEntryType.MESSAGE,
+                timestamp=1000.0,
+                payload={"role": "user", "content": "hello agent"},
+            ),
+            TomeEntry(
+                id="e2",
+                parent_id="e1",
+                type=TomeEntryType.MESSAGE,
+                timestamp=1001.0,
+                payload={
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "calling tool"}],
+                },
+            ),
+            TomeEntry(
+                id="e3",
+                parent_id="e2",
+                type=TomeEntryType.INVOCATION,
+                timestamp=1002.0,
+                payload={
+                    "role": "tool",
+                    "content": [{"type": "text", "text": "tool output"}],
+                    "spell_name": "bash",
+                    "spell_cast_id": "c1",
+                },
+            ),
+            TomeEntry(
+                id="e4",
+                parent_id="e3",
+                type=TomeEntryType.MESSAGE,
+                timestamp=1003.0,
+                payload={"role": "assistant", "content": "plain text response"},
+            ),
+        ]
+        meta = TomeMetadata(
+            id="a" * 32, created_at="now", cwd="/test", active_leaf_id="e4"
+        )
+        ledger = MagicMock()
+        ledger.get_entries_for_context.return_value = entries
+        ledger.get_leaf_id.return_value = "e4"
+
+        tome = MvgeTome(ledger, meta)
+        invocations = tome.reconstruct_invocations()
+
+        assert len(invocations) == 4
+        assert isinstance(invocations[0], SummonerRequest)
+        assert invocations[0].content == "hello agent"
+
+        assert isinstance(invocations[1], MvgeResponse)
+        assert invocations[1].content == [{"type": "text", "text": "calling tool"}]
+
+        assert isinstance(invocations[2], SpellResultMessage)
+        assert invocations[2].spell_name == "bash"
+        assert invocations[2].spell_cast_id == "c1"
+
+        assert isinstance(invocations[3], MvgeResponse)
+        assert invocations[3].content == [
+            {"type": ContentType.TEXT, "text": "plain text response"}
+        ]
+
+    @pytest.mark.asyncio
+    async def test_reconstruct_invocations_with_compaction(self) -> None:
+        from mvgeos_tome.types import TomeEntry, TomeEntryType
+
+        from mvgeos_agent.types import SummonerRequest
+
+        entries = [
+            TomeEntry(
+                id="c1",
+                parent_id=None,
+                type=TomeEntryType.COMPACTION,
+                timestamp=1000.0,
+                payload={
+                    "summary": "Compacted conversation",
+                    "manaBefore": 5000,
+                    "retainedTail": [{"role": "user", "content": "tail question"}],
+                },
+            ),
+        ]
+        meta = TomeMetadata(
+            id="a" * 32, created_at="now", cwd="/test", active_leaf_id="c1"
+        )
+        ledger = MagicMock()
+        ledger.get_entries_for_context.return_value = entries
+        ledger.get_leaf_id.return_value = "c1"
+
+        tome = MvgeTome(ledger, meta)
+        invocations = tome.reconstruct_invocations()
+
+        assert len(invocations) == 2
+        assert isinstance(invocations[0], SummonerRequest)
+        assert "Compacted conversation" in invocations[0].content
+        assert isinstance(invocations[1], SummonerRequest)
+        assert invocations[1].content == "tail question"

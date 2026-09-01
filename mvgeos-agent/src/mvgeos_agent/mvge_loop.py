@@ -279,7 +279,7 @@ class MvgeLoop:
 
         if event.type == MvgeEventType.INPUT:
             transformed = event.data.get("content")
-            for inv in self._state.invocations:
+            for inv in reversed(self._state.invocations):
                 if isinstance(inv, SummonerRequest):
                     inv.content = transformed
                     break

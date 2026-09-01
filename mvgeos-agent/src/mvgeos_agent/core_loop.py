@@ -290,7 +290,7 @@ async def run_loop(
         invocations = await callbacks.transform_context(invocations)
 
     initial = next(
-        (inv for inv in invocations if isinstance(inv, SummonerRequest)),
+        (inv for inv in reversed(invocations) if isinstance(inv, SummonerRequest)),
         None,
     )
     if initial is not None:

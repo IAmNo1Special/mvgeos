@@ -10,13 +10,27 @@ from typing import Any
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import SigilHook
 from mvgeos_tome.ledger import TomeLedger
-from mvgeos_tome.types import TomeEntry, TomeMetadata
+from mvgeos_tome.types import (
+    TomeEntry,
+    TomeEntryType,
+    TomeMetadata,
+    TomeVersionError,
+)
 
 from mvgeos_agent.compatibility import (
     SessionCompatibilityReport,
     validate_session_compatibility,
 )
-from mvgeos_agent.types import TomeIncompatibleError, TomeResumeError
+from mvgeos_agent.types import (
+    ContentType,
+    MvgeInvocation,
+    MvgeResponse,
+    SpellResultMessage,
+    StopReason,
+    SummonerRequest,
+    TomeIncompatibleError,
+    TomeResumeError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +62,12 @@ class MvgeTome:
         """Resume an existing Tome, validating compatibility with active config.
 
         Raises:
-            TomeResumeError: when the tome cannot be opened.
+            TomeResumeError: when the tome cannot be opened or version is unsupported.
             TomeIncompatibleError: when strict=True and compatibility checks fail.
         """
         try:
             metadata = ledger.open_tome(tome_id)
-        except (ValueError, FileNotFoundError) as e:
+        except (ValueError, FileNotFoundError, TomeVersionError) as e:
             raise TomeResumeError(tome_id) from e
         if metadata is None:
             raise TomeResumeError(tome_id)
@@ -200,6 +214,10 @@ class MvgeTome:
         self.last_compatibility_report: SessionCompatibilityReport | None = None
 
     @property
+    def version(self) -> int:
+        return self._metadata.version
+
+    @property
     def tome_id(self) -> str:
         return self._metadata.id
 
@@ -225,6 +243,194 @@ class MvgeTome:
         return (
             self._ledger.get_leaf_id(self._metadata.id) or self._metadata.active_leaf_id
         )
+
+    def get_entries(
+        self,
+        entry_type: TomeEntryType | None = None,
+        limit: int | None = None,
+    ) -> list[TomeEntry]:
+        """Fetch entries recorded in this tome session."""
+        return self._ledger.get_entries(
+            self._metadata.id, entry_type=entry_type, limit=limit
+        )
+
+    def get_context_entries(
+        self,
+        leaf_id: str | None = None,
+        max_entries: int | None = None,
+    ) -> list[TomeEntry]:
+        """Fetch entries along the branch ending at leaf_id (or active leaf)."""
+        target_leaf = leaf_id or self.active_leaf_id
+        return self._ledger.get_entries_for_context(
+            self._metadata.id, leaf_id=target_leaf, max_entries=max_entries
+        )
+
+    def reconstruct_invocations(self) -> list[MvgeInvocation]:
+        """Reconstruct prior conversation invocations from active session branch."""
+        leaf_id = self.active_leaf_id
+        entries = self._ledger.get_entries_for_context(
+            self._metadata.id, leaf_id=leaf_id
+        )
+        invocations: list[MvgeInvocation] = []
+
+        for entry in entries:
+            payload = entry.payload or {}
+            if entry.type == TomeEntryType.MESSAGE:
+                role = payload.get("role")
+                content = payload.get("content")
+                if role == "user":
+                    user_content = content if isinstance(content, str) else str(content)
+                    invocations.append(
+                        SummonerRequest(role="user", content=user_content)
+                    )
+                elif role == "assistant":
+                    if isinstance(content, list):
+                        content_blocks = content
+                    elif isinstance(content, str):
+                        content_blocks = [{"type": ContentType.TEXT, "text": content}]
+                    else:
+                        content_blocks = [
+                            {"type": ContentType.TEXT, "text": str(content)}
+                        ]
+                    stop_reason = StopReason.STOP
+                    if "stop_reason" in payload:
+                        try:
+                            stop_reason = StopReason(payload["stop_reason"])
+                        except ValueError:
+                            stop_reason = StopReason.STOP
+                    invocations.append(
+                        MvgeResponse(
+                            role="assistant",
+                            content=content_blocks,
+                            stop_reason=stop_reason,
+                        )
+                    )
+                elif role in ("tool", "spellResult"):
+                    if isinstance(content, list):
+                        content_blocks = content
+                    elif isinstance(content, str):
+                        content_blocks = [{"type": ContentType.TEXT, "text": content}]
+                    else:
+                        content_blocks = [
+                            {"type": ContentType.TEXT, "text": str(content)}
+                        ]
+                    invocations.append(
+                        SpellResultMessage(
+                            role="tool",
+                            content=content_blocks,
+                            spell_name=str(payload.get("spell_name") or ""),
+                            spell_cast_id=str(payload.get("spell_cast_id") or ""),
+                        )
+                    )
+            elif entry.type == TomeEntryType.INVOCATION:
+                role = payload.get("role", "tool")
+                content = payload.get("content")
+                if isinstance(content, list):
+                    content_blocks = content
+                elif isinstance(content, str):
+                    content_blocks = [{"type": ContentType.TEXT, "text": content}]
+                else:
+                    content_blocks = [{"type": ContentType.TEXT, "text": str(content)}]
+                if role in ("tool", "spellResult"):
+                    invocations.append(
+                        SpellResultMessage(
+                            role="tool",
+                            content=content_blocks,
+                            spell_name=str(payload.get("spell_name") or ""),
+                            spell_cast_id=str(payload.get("spell_cast_id") or ""),
+                        )
+                    )
+                elif role == "assistant":
+                    invocations.append(
+                        MvgeResponse(
+                            role="assistant",
+                            content=content_blocks,
+                            stop_reason=StopReason.STOP,
+                        )
+                    )
+                elif role == "user":
+                    user_content = content if isinstance(content, str) else str(content)
+                    invocations.append(
+                        SummonerRequest(role="user", content=user_content)
+                    )
+            elif entry.type == TomeEntryType.COMPACTION:
+                summary = payload.get("summary", "")
+                invocations.append(
+                    SummonerRequest(
+                        role="user",
+                        content=f"Summary of earlier conversation:\n\n{summary}",
+                    )
+                )
+                retained_tail = payload.get("retainedTail")
+                if isinstance(retained_tail, list):
+                    for item in retained_tail:
+                        if isinstance(item, dict):
+                            item_role = item.get("role")
+                            item_content = item.get("content")
+                            if item_role == "user":
+                                invocations.append(
+                                    SummonerRequest(
+                                        role="user",
+                                        content=(
+                                            item_content
+                                            if isinstance(item_content, str)
+                                            else str(item_content)
+                                        ),
+                                    )
+                                )
+                            elif item_role == "assistant":
+                                if isinstance(item_content, list):
+                                    c_blocks = item_content
+                                elif isinstance(item_content, str):
+                                    c_blocks = [
+                                        {
+                                            "type": ContentType.TEXT,
+                                            "text": item_content,
+                                        }
+                                    ]
+                                else:
+                                    c_blocks = [
+                                        {
+                                            "type": ContentType.TEXT,
+                                            "text": str(item_content),
+                                        }
+                                    ]
+                                invocations.append(
+                                    MvgeResponse(
+                                        role="assistant",
+                                        content=c_blocks,
+                                        stop_reason=StopReason.STOP,
+                                    )
+                                )
+                            elif item_role in ("tool", "spellResult"):
+                                if isinstance(item_content, list):
+                                    c_blocks = item_content
+                                elif isinstance(item_content, str):
+                                    c_blocks = [
+                                        {
+                                            "type": ContentType.TEXT,
+                                            "text": item_content,
+                                        }
+                                    ]
+                                else:
+                                    c_blocks = [
+                                        {
+                                            "type": ContentType.TEXT,
+                                            "text": str(item_content),
+                                        }
+                                    ]
+                                invocations.append(
+                                    SpellResultMessage(
+                                        role="tool",
+                                        content=c_blocks,
+                                        spell_name=str(item.get("spell_name") or ""),
+                                        spell_cast_id=str(
+                                            item.get("spell_cast_id") or ""
+                                        ),
+                                    )
+                                )
+
+        return invocations
 
     def bind_runner(self, runner: RuneRunner) -> None:
         self._rune_runner = runner
@@ -329,7 +535,7 @@ class MvgeTome:
             if metadata is None:
                 logger.error("Failed to open target tome: %s", target_tome_id)
                 return None
-        except (ValueError, FileNotFoundError) as e:
+        except (ValueError, FileNotFoundError, TomeVersionError) as e:
             logger.exception("Failed to open target tome: %s", e)
             return None
 

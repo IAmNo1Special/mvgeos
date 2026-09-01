@@ -434,13 +434,18 @@ class BaseMvge:
         assert self._model is not None
         assert self._realm is not None
         assert self._agent_tome is not None
+
+        initial_invocations: list[MvgeInvocation] = []
+        if self._tome_resume:
+            initial_invocations = self._agent_tome.reconstruct_invocations()
+
         self._state = MvgeState(
             system_prompt=final_prompt,
             prompt_source=self._prompt_source,
             model=dataclasses.asdict(self._model),
             contemplation_level=ContemplationLevel(self._contemplation_level),
             spells=self._build_spells(),
-            invocations=[],
+            invocations=initial_invocations,
             max_tokens=self._max_tokens,
             temperature=self._temperature,
             contemplation_budget=self._contemplation_budget,
