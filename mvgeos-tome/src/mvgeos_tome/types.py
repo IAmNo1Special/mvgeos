@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
@@ -32,3 +32,22 @@ class TomeMetadata:
     parent_tome_id: str | None = None
     active_leaf_id: str | None = None
     schema_version: str = "1.0"
+
+
+@dataclass
+class TomeIntegrityIssue:
+    line_number: int
+    message: str
+    raw_line: str | None = None
+
+
+@dataclass
+class TomeIntegrityReport:
+    valid: bool
+    tome_id: str
+    issues: list[TomeIntegrityIssue] = field(default_factory=list)
+    total_lines: int = 0
+    valid_entries_count: int = 0
+
+    def __bool__(self) -> bool:
+        return self.valid

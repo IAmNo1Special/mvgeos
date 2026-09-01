@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import uuid
 from collections import OrderedDict
 from datetime import UTC, datetime
@@ -9,7 +10,15 @@ from pathlib import Path
 from typing import Any
 
 from mvgeos_tome.locking import FileLock
-from mvgeos_tome.types import TomeEntry, TomeEntryType, TomeMetadata
+from mvgeos_tome.types import (
+    TomeEntry,
+    TomeEntryType,
+    TomeIntegrityIssue,
+    TomeIntegrityReport,
+    TomeMetadata,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def _generate_short_id() -> str:
@@ -122,7 +131,7 @@ class TomeLedger:
                     meta = self._load_tome_metadata(f.stem)
                     if meta and meta.cwd == cwd:
                         return meta
-                except json.JSONDecodeError, ValueError:
+                except json.JSONDecodeError, KeyError, ValueError:
                     continue
             return None
 
@@ -352,7 +361,7 @@ class TomeLedger:
                 meta = self._load_tome_metadata(f.stem)
                 if meta:
                     self._tomles[meta.id] = meta
-            except json.JSONDecodeError, ValueError:
+            except json.JSONDecodeError, KeyError, ValueError:
                 continue
 
     def _load_tome_metadata(self, tome_id_or_path: str | Path) -> TomeMetadata | None:
@@ -364,21 +373,24 @@ class TomeLedger:
         if not tome_file.exists():
             return None
 
-        with tome_file.open("r", encoding="utf-8") as f:
-            first_line = f.readline()
-            if not first_line:
-                return None
-            header = json.loads(first_line)
-            if header.get("type") != "session":
-                return None
-            return TomeMetadata(
-                id=header["id"],
-                created_at=header["timestamp"],
-                cwd=header["cwd"],
-                parent_tome_id=header.get("parentSession"),
-                active_leaf_id=header.get("activeLeafId"),
-                schema_version=header.get("schema_version", "1.0"),
-            )
+        try:
+            with tome_file.open("r", encoding="utf-8") as f:
+                first_line = f.readline()
+                if not first_line:
+                    return None
+                header = json.loads(first_line)
+                if not isinstance(header, dict) or header.get("type") != "session":
+                    return None
+                return TomeMetadata(
+                    id=header["id"],
+                    created_at=header["timestamp"],
+                    cwd=header["cwd"],
+                    parent_tome_id=header.get("parentSession"),
+                    active_leaf_id=header.get("activeLeafId"),
+                    schema_version=header.get("schema_version", "1.0"),
+                )
+        except json.JSONDecodeError, KeyError, ValueError:
+            return None
 
     def _read_tome_entries(self, tome_id: str) -> list[TomeEntry]:
         resolved_id = self._resolve_tome_id(tome_id) or tome_id
@@ -396,25 +408,316 @@ class TomeLedger:
         tome_file = self._tome_file_path(tome_id)
         if not tome_file.exists():
             return []
-        with tome_file.open("r", encoding="utf-8") as f:
-            lines = f.readlines()
+        try:
+            with tome_file.open("r", encoding="utf-8") as f:
+                lines = f.readlines()
+        except Exception as e:
+            logger.warning("Failed to read tome file %s: %s", tome_file, e)
+            return []
         if not lines:
             return []
         entries: list[TomeEntry] = []
-        for line in lines[1:]:
-            line = line.strip()
+        for idx, raw_line in enumerate(lines[1:], start=2):
+            line = raw_line.strip()
             if not line:
                 continue
-            raw = json.loads(line)
-            entry = TomeEntry(
-                id=raw["id"],
-                parent_id=raw.get("parentId"),
-                type=TomeEntryType(raw["type"]),
-                timestamp=raw["timestamp"],
-                payload=raw.get("payload", {}),
-            )
-            entries.append(entry)
+            try:
+                raw = json.loads(line)
+                if not isinstance(raw, dict):
+                    logger.warning(
+                        "Malformed entry in tome %s at line %d: expected JSON object",
+                        tome_id,
+                        idx,
+                    )
+                    continue
+                entry = TomeEntry(
+                    id=raw["id"],
+                    parent_id=raw.get("parentId"),
+                    type=TomeEntryType(raw["type"]),
+                    timestamp=float(raw["timestamp"]),
+                    payload=raw.get("payload", {}),
+                )
+                entries.append(entry)
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
+                logger.warning(
+                    "Damaged entry in tome %s at line %d: %s",
+                    tome_id,
+                    idx,
+                    e,
+                )
+                continue
         return entries
+
+    def verify_integrity(self, tome_id: str | Path) -> TomeIntegrityReport:
+        with self._lock:
+            if isinstance(tome_id, Path):
+                target_path = tome_id
+                resolved_id = target_path.stem
+            elif Path(tome_id).is_file():
+                target_path = Path(tome_id)
+                resolved_id = target_path.stem
+            else:
+                resolved_id = self._resolve_tome_id(str(tome_id)) or str(tome_id)
+                target_path = self._tome_file_path(resolved_id)
+
+            if not target_path.exists():
+                return TomeIntegrityReport(
+                    valid=False,
+                    tome_id=resolved_id,
+                    issues=[
+                        TomeIntegrityIssue(
+                            line_number=0,
+                            message=f"Tome file does not exist: {target_path}",
+                        )
+                    ],
+                    total_lines=0,
+                    valid_entries_count=0,
+                )
+
+            try:
+                with target_path.open("r", encoding="utf-8") as f:
+                    lines = f.readlines()
+            except Exception as e:
+                return TomeIntegrityReport(
+                    valid=False,
+                    tome_id=resolved_id,
+                    issues=[
+                        TomeIntegrityIssue(
+                            line_number=0,
+                            message=f"Failed to read file: {e}",
+                        )
+                    ],
+                    total_lines=0,
+                    valid_entries_count=0,
+                )
+
+            if not lines:
+                return TomeIntegrityReport(
+                    valid=False,
+                    tome_id=resolved_id,
+                    issues=[
+                        TomeIntegrityIssue(
+                            line_number=1,
+                            message="Tome file is empty (missing session header)",
+                        )
+                    ],
+                    total_lines=0,
+                    valid_entries_count=0,
+                )
+
+            issues: list[TomeIntegrityIssue] = []
+            total_lines = len(lines)
+            valid_entries_count = 0
+
+            # Line 1: Header verification
+            header_raw = lines[0].rstrip("\r\n")
+            if not header_raw.strip():
+                issues.append(
+                    TomeIntegrityIssue(
+                        line_number=1,
+                        message="Missing session header (line is empty)",
+                        raw_line=header_raw,
+                    )
+                )
+            else:
+                try:
+                    header = json.loads(header_raw)
+                    if not isinstance(header, dict):
+                        issues.append(
+                            TomeIntegrityIssue(
+                                line_number=1,
+                                message="Invalid session header: expected JSON object",
+                                raw_line=header_raw,
+                            )
+                        )
+                    else:
+                        if header.get("type") != "session":
+                            issues.append(
+                                TomeIntegrityIssue(
+                                    line_number=1,
+                                    message=(
+                                        "Invalid session header: missing or "
+                                        f"invalid 'type' (expected 'session', "
+                                        f"got {header.get('type')!r})"
+                                    ),
+                                    raw_line=header_raw,
+                                )
+                            )
+                        if not header.get("id") or not isinstance(
+                            header.get("id"), str
+                        ):
+                            issues.append(
+                                TomeIntegrityIssue(
+                                    line_number=1,
+                                    message=(
+                                        "Invalid session header: "
+                                        "missing or invalid 'id'"
+                                    ),
+                                    raw_line=header_raw,
+                                )
+                            )
+                        elif header.get("id") != target_path.stem:
+                            issues.append(
+                                TomeIntegrityIssue(
+                                    line_number=1,
+                                    message=(
+                                        "Header ID mismatch: expected "
+                                        f"'{target_path.stem}', "
+                                        f"got '{header.get('id')}'"
+                                    ),
+                                    raw_line=header_raw,
+                                )
+                            )
+
+                        if "cwd" not in header or not isinstance(
+                            header.get("cwd"), str
+                        ):
+                            issues.append(
+                                TomeIntegrityIssue(
+                                    line_number=1,
+                                    message=(
+                                        "Invalid session header: "
+                                        "missing or invalid 'cwd'"
+                                    ),
+                                    raw_line=header_raw,
+                                )
+                            )
+                        if "timestamp" not in header or not isinstance(
+                            header.get("timestamp"), str
+                        ):
+                            issues.append(
+                                TomeIntegrityIssue(
+                                    line_number=1,
+                                    message=(
+                                        "Invalid session header: "
+                                        "missing or invalid 'timestamp'"
+                                    ),
+                                    raw_line=header_raw,
+                                )
+                            )
+                except json.JSONDecodeError as e:
+                    issues.append(
+                        TomeIntegrityIssue(
+                            line_number=1,
+                            message=f"Corrupted session header: invalid JSON: {e}",
+                            raw_line=header_raw,
+                        )
+                    )
+
+            # Lines 2+: Entries verification
+            for idx, raw in enumerate(lines[1:], start=2):
+                line = raw.rstrip("\r\n")
+                if not line.strip():
+                    issues.append(
+                        TomeIntegrityIssue(
+                            line_number=idx,
+                            message="Empty or blank line in JSONL stream",
+                            raw_line=line,
+                        )
+                    )
+                    continue
+
+                try:
+                    entry_raw = json.loads(line)
+                except json.JSONDecodeError as e:
+                    issues.append(
+                        TomeIntegrityIssue(
+                            line_number=idx,
+                            message=f"Invalid JSON (truncated or corrupted): {e}",
+                            raw_line=line,
+                        )
+                    )
+                    continue
+
+                if not isinstance(entry_raw, dict):
+                    issues.append(
+                        TomeIntegrityIssue(
+                            line_number=idx,
+                            message="Malformed entry: expected JSON object",
+                            raw_line=line,
+                        )
+                    )
+                    continue
+
+                has_entry_issue = False
+                if not entry_raw.get("id") or not isinstance(entry_raw.get("id"), str):
+                    issues.append(
+                        TomeIntegrityIssue(
+                            line_number=idx,
+                            message="Malformed entry: missing or invalid 'id' field",
+                            raw_line=line,
+                        )
+                    )
+                    has_entry_issue = True
+
+                entry_type_raw = entry_raw.get("type")
+                if not entry_type_raw or not isinstance(entry_type_raw, str):
+                    issues.append(
+                        TomeIntegrityIssue(
+                            line_number=idx,
+                            message="Malformed entry: missing or invalid 'type' field",
+                            raw_line=line,
+                        )
+                    )
+                    has_entry_issue = True
+                else:
+                    try:
+                        TomeEntryType(entry_type_raw)
+                    except ValueError:
+                        issues.append(
+                            TomeIntegrityIssue(
+                                line_number=idx,
+                                message=(
+                                    f"Malformed entry: invalid entry type "
+                                    f"'{entry_type_raw}'"
+                                ),
+                                raw_line=line,
+                            )
+                        )
+                        has_entry_issue = True
+
+                ts = entry_raw.get("timestamp")
+                if (
+                    ts is None
+                    or isinstance(ts, bool)
+                    or not isinstance(ts, (int, float))
+                ):
+                    issues.append(
+                        TomeIntegrityIssue(
+                            line_number=idx,
+                            message=(
+                                "Malformed entry: missing or invalid 'timestamp' "
+                                "(must be number)"
+                            ),
+                            raw_line=line,
+                        )
+                    )
+                    has_entry_issue = True
+
+                payload = entry_raw.get("payload")
+                if payload is not None and not isinstance(payload, dict):
+                    issues.append(
+                        TomeIntegrityIssue(
+                            line_number=idx,
+                            message="Malformed entry: 'payload' must be an object/dict",
+                            raw_line=line,
+                        )
+                    )
+                    has_entry_issue = True
+
+                if not has_entry_issue:
+                    valid_entries_count += 1
+
+            return TomeIntegrityReport(
+                valid=len(issues) == 0,
+                tome_id=resolved_id,
+                issues=issues,
+                total_lines=total_lines,
+                valid_entries_count=valid_entries_count,
+            )
+
+    async def verify_integrity_async(self, tome_id: str | Path) -> TomeIntegrityReport:
+        return await asyncio.to_thread(self.verify_integrity, tome_id)
 
     def _write_tome_file(
         self, metadata: TomeMetadata, entries: list[TomeEntry]

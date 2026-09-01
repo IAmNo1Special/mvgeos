@@ -253,3 +253,29 @@ def tome_fork(
     except (KeyError, ValueError) as e:
         console.print(format_error(f"Failed to fork tome: {e}"))
         raise typer.Exit(1) from e
+
+
+@tome_app.command("verify")
+def tome_verify(
+    tome_id: str = typer.Argument(..., help="Tome ID to verify"),
+) -> None:
+    """Verify integrity of a tome session file."""
+    tome_dir = get_tome_dir()
+    ledger = TomeLedger(tome_dir)
+
+    report = ledger.verify_integrity(tome_id)
+    if report.valid:
+        console.print(f"[green]Tome {report.tome_id[:8]} is valid.[/green]")
+        console.print(
+            f"[dim]Total lines: {report.total_lines}, "
+            f"Valid entries: {report.valid_entries_count}[/dim]"
+        )
+    else:
+        console.print(
+            format_error(
+                f"Tome {report.tome_id} has {len(report.issues)} integrity issue(s):"
+            )
+        )
+        for issue in report.issues:
+            console.print(f"  [red]Line {issue.line_number}:[/red] {issue.message}")
+        raise typer.Exit(1)

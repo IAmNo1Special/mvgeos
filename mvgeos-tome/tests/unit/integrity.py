@@ -1,0 +1,366 @@
+from __future__ import annotations
+
+import json
+import logging
+import time
+from pathlib import Path
+
+import pytest
+
+from mvgeos_tome.ledger import TomeLedger
+from mvgeos_tome.types import TomeIntegrityReport
+
+
+def _write_raw_tome_file(
+    tome_dir: Path, filename: str, lines: list[str | dict]
+) -> Path:
+    target = tome_dir / filename
+    with target.open("w", encoding="utf-8") as f:
+        for item in lines:
+            if isinstance(item, dict):
+                f.write(json.dumps(item) + "\n")
+            else:
+                f.write(item + "\n")
+    return target
+
+
+class TestTomeIntegrityVerification:
+    def test_verify_integrity_valid_tome(self, tmp_path: Path) -> None:
+        ledger = TomeLedger(tmp_path)
+        tome = ledger.create_tome("/test/workspace")
+        e1 = ledger.append_message(tome.id, "user", "hello")
+        ledger.append_leaf(tome.id, e1.id)
+
+        report = ledger.verify_integrity(tome.id)
+
+        assert isinstance(report, TomeIntegrityReport)
+        assert report.valid is True
+        assert report.tome_id == tome.id
+        assert len(report.issues) == 0
+        assert report.total_lines == 3
+        assert report.valid_entries_count == 2
+        assert bool(report) is True
+
+    def test_verify_integrity_missing_file(self, tmp_path: Path) -> None:
+        ledger = TomeLedger(tmp_path)
+
+        report = ledger.verify_integrity("nonexistent-tome")
+
+        assert report.valid is False
+        assert len(report.issues) == 1
+        assert report.issues[0].line_number == 0
+        assert "does not exist" in report.issues[0].message.lower()
+
+    def test_verify_integrity_empty_file(self, tmp_path: Path) -> None:
+        ledger = TomeLedger(tmp_path)
+        empty_file = tmp_path / "empty-tome.jsonl"
+        empty_file.touch()
+
+        report = ledger.verify_integrity("empty-tome")
+
+        assert report.valid is False
+        assert len(report.issues) == 1
+        assert report.issues[0].line_number == 1
+        assert "empty" in report.issues[0].message.lower()
+
+    def test_verify_integrity_corrupted_header_json(self, tmp_path: Path) -> None:
+        _write_raw_tome_file(tmp_path, "bad-header.jsonl", ["{not-valid-json"])
+        ledger = TomeLedger(tmp_path)
+
+        report = ledger.verify_integrity("bad-header")
+
+        assert report.valid is False
+        assert any(
+            i.line_number == 1 and "header" in i.message.lower() for i in report.issues
+        )
+
+    def test_verify_integrity_header_not_object(self, tmp_path: Path) -> None:
+        _write_raw_tome_file(tmp_path, "arr-header.jsonl", ['["not", "an", "object"]'])
+        ledger = TomeLedger(tmp_path)
+
+        report = ledger.verify_integrity("arr-header")
+
+        assert report.valid is False
+        assert report.issues[0].line_number == 1
+        assert "object" in report.issues[0].message.lower()
+
+    def test_verify_integrity_header_type_mismatch(self, tmp_path: Path) -> None:
+        header = {
+            "type": "message",
+            "id": "type-mismatch",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "cwd": "/tmp",
+        }
+        _write_raw_tome_file(tmp_path, "type-mismatch.jsonl", [header])
+        ledger = TomeLedger(tmp_path)
+
+        report = ledger.verify_integrity("type-mismatch")
+
+        assert report.valid is False
+        assert report.issues[0].line_number == 1
+        assert "session" in report.issues[0].message.lower()
+
+    def test_verify_integrity_header_id_mismatch(self, tmp_path: Path) -> None:
+        header = {
+            "type": "session",
+            "id": "actual-id-999",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "cwd": "/tmp",
+        }
+        _write_raw_tome_file(tmp_path, "expected-filename.jsonl", [header])
+        ledger = TomeLedger(tmp_path)
+
+        report = ledger.verify_integrity("expected-filename")
+
+        assert report.valid is False
+        assert report.issues[0].line_number == 1
+        assert "mismatch" in report.issues[0].message.lower()
+
+    def test_verify_integrity_header_missing_required_fields(
+        self, tmp_path: Path
+    ) -> None:
+        header = {
+            "type": "session",
+            "id": "missing-fields",
+        }
+        _write_raw_tome_file(tmp_path, "missing-fields.jsonl", [header])
+        ledger = TomeLedger(tmp_path)
+
+        report = ledger.verify_integrity("missing-fields")
+
+        assert report.valid is False
+        assert report.issues[0].line_number == 1
+
+    def test_verify_integrity_truncated_write_in_entries(self, tmp_path: Path) -> None:
+        header = {
+            "type": "session",
+            "id": "truncated-tome",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "cwd": "/tmp",
+        }
+        entry1 = {
+            "id": "e1",
+            "parentId": None,
+            "type": "message",
+            "timestamp": time.time(),
+            "payload": {"role": "user", "content": "hello"},
+        }
+        truncated_line = '{"id": "e2", "parentId": "e1", "type": "messa'
+        _write_raw_tome_file(
+            tmp_path, "truncated-tome.jsonl", [header, entry1, truncated_line]
+        )
+        ledger = TomeLedger(tmp_path)
+
+        report = ledger.verify_integrity("truncated-tome")
+
+        assert report.valid is False
+        assert len(report.issues) == 1
+        assert report.issues[0].line_number == 3
+        assert (
+            "json" in report.issues[0].message.lower()
+            or "truncated" in report.issues[0].message.lower()
+        )
+        assert report.total_lines == 3
+        assert report.valid_entries_count == 1
+
+    def test_verify_integrity_invalid_json_entry(self, tmp_path: Path) -> None:
+        header = {
+            "type": "session",
+            "id": "invalid-json",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "cwd": "/tmp",
+        }
+        garbage_line = "<<<<< GARBAGE DATA >>>>>"
+        _write_raw_tome_file(tmp_path, "invalid-json.jsonl", [header, garbage_line])
+        ledger = TomeLedger(tmp_path)
+
+        report = ledger.verify_integrity("invalid-json")
+
+        assert report.valid is False
+        assert report.issues[0].line_number == 2
+        assert "json" in report.issues[0].message.lower()
+
+    def test_verify_integrity_entry_not_object(self, tmp_path: Path) -> None:
+        header = {
+            "type": "session",
+            "id": "arr-entry",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "cwd": "/tmp",
+        }
+        _write_raw_tome_file(tmp_path, "arr-entry.jsonl", [header, "[1, 2, 3]"])
+        ledger = TomeLedger(tmp_path)
+
+        report = ledger.verify_integrity("arr-entry")
+
+        assert report.valid is False
+        assert report.issues[0].line_number == 2
+        assert "object" in report.issues[0].message.lower()
+
+    def test_verify_integrity_entry_missing_id(self, tmp_path: Path) -> None:
+        header = {
+            "type": "session",
+            "id": "missing-id",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "cwd": "/tmp",
+        }
+        entry = {
+            "parentId": None,
+            "type": "message",
+            "timestamp": time.time(),
+            "payload": {},
+        }
+        _write_raw_tome_file(tmp_path, "missing-id.jsonl", [header, entry])
+        ledger = TomeLedger(tmp_path)
+
+        report = ledger.verify_integrity("missing-id")
+
+        assert report.valid is False
+        assert report.issues[0].line_number == 2
+        assert "id" in report.issues[0].message.lower()
+
+    def test_verify_integrity_entry_invalid_type(self, tmp_path: Path) -> None:
+        header = {
+            "type": "session",
+            "id": "bad-type",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "cwd": "/tmp",
+        }
+        entry = {
+            "id": "e1",
+            "parentId": None,
+            "type": "completely_invalid_type_123",
+            "timestamp": time.time(),
+            "payload": {},
+        }
+        _write_raw_tome_file(tmp_path, "bad-type.jsonl", [header, entry])
+        ledger = TomeLedger(tmp_path)
+
+        report = ledger.verify_integrity("bad-type")
+
+        assert report.valid is False
+        assert report.issues[0].line_number == 2
+        assert "type" in report.issues[0].message.lower()
+
+    def test_verify_integrity_entry_invalid_timestamp(self, tmp_path: Path) -> None:
+        header = {
+            "type": "session",
+            "id": "bad-ts",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "cwd": "/tmp",
+        }
+        entry = {
+            "id": "e1",
+            "parentId": None,
+            "type": "message",
+            "timestamp": "not-a-number",
+            "payload": {},
+        }
+        _write_raw_tome_file(tmp_path, "bad-ts.jsonl", [header, entry])
+        ledger = TomeLedger(tmp_path)
+
+        report = ledger.verify_integrity("bad-ts")
+
+        assert report.valid is False
+        assert report.issues[0].line_number == 2
+        assert "timestamp" in report.issues[0].message.lower()
+
+    def test_verify_integrity_entry_invalid_payload(self, tmp_path: Path) -> None:
+        header = {
+            "type": "session",
+            "id": "bad-payload",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "cwd": "/tmp",
+        }
+        entry = {
+            "id": "e1",
+            "parentId": None,
+            "type": "message",
+            "timestamp": time.time(),
+            "payload": "string-not-dict",
+        }
+        _write_raw_tome_file(tmp_path, "bad-payload.jsonl", [header, entry])
+        ledger = TomeLedger(tmp_path)
+
+        report = ledger.verify_integrity("bad-payload")
+
+        assert report.valid is False
+        assert report.issues[0].line_number == 2
+        assert "payload" in report.issues[0].message.lower()
+
+    def test_verify_integrity_empty_line_in_stream(self, tmp_path: Path) -> None:
+        header = {
+            "type": "session",
+            "id": "blank-lines",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "cwd": "/tmp",
+        }
+        entry = {
+            "id": "e1",
+            "parentId": None,
+            "type": "message",
+            "timestamp": time.time(),
+            "payload": {},
+        }
+        _write_raw_tome_file(tmp_path, "blank-lines.jsonl", [header, "", entry])
+        ledger = TomeLedger(tmp_path)
+
+        report = ledger.verify_integrity("blank-lines")
+
+        assert report.valid is False
+        assert any(i.line_number == 2 for i in report.issues)
+
+    @pytest.mark.asyncio
+    async def test_verify_integrity_async(self, tmp_path: Path) -> None:
+        ledger = TomeLedger(tmp_path)
+        tome = await ledger.create_tome_async("/test/workspace")
+        await ledger.append_message_async(tome.id, "user", "async test")
+
+        report = await ledger.verify_integrity_async(tome.id)
+
+        assert report.valid is True
+        assert report.tome_id == tome.id
+        assert report.valid_entries_count == 1
+
+
+class TestReadResilienceWithCorruptedLines:
+    def test_read_entries_skips_damaged_records_and_logs_warning(
+        self, caplog: pytest.LogCaptureFixture, tmp_path: Path
+    ) -> None:
+        header = {
+            "type": "session",
+            "id": "resilient-tome",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "cwd": "/tmp",
+        }
+        entry1 = {
+            "id": "e1",
+            "parentId": None,
+            "type": "message",
+            "timestamp": time.time(),
+            "payload": {"role": "user", "content": "first valid"},
+        }
+        corrupted_line = '{"id": "e2", "parentId": "e1", TRUNCATED...'
+        entry3 = {
+            "id": "e3",
+            "parentId": "e1",
+            "type": "message",
+            "timestamp": time.time(),
+            "payload": {"role": "assistant", "content": "third valid"},
+        }
+        _write_raw_tome_file(
+            tmp_path,
+            "resilient-tome.jsonl",
+            [header, entry1, corrupted_line, entry3],
+        )
+        ledger = TomeLedger(tmp_path)
+
+        with caplog.at_level(logging.WARNING):
+            entries = ledger.get_entries("resilient-tome")
+
+        assert len(entries) == 2
+        assert entries[0].id == "e1"
+        assert entries[1].id == "e3"
+        assert any(
+            "resilient-tome" in record.message and "line 3" in record.message
+            for record in caplog.records
+        )

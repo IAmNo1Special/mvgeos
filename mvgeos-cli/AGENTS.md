@@ -51,6 +51,7 @@ Test paths follow pattern: `mvgeos-cli/tests/unit/<module>.py` and `mvgeos-cli/t
 | `mvgeos tome export <id> [-f <fmt>] [-o <file>]` | Export Tome to JSON or Markdown |
 | `mvgeos tome create [--cwd <dir>] [--parent <id>]` | Create new Tome |
 | `mvgeos tome fork <id> [-l <leaf_id>]` | Fork Tome from a leaf |
+| `mvgeos tome verify <id>` | Verify session file and entry integrity |
 | `mvgeos config show [--agent-name <name>]` | Show configuration with provenance layers |
 | `mvgeos config set <key> <value>` | Set configuration value in agent-scope |
 | `mvgeos config get <key>` | Get configuration value with provenance |

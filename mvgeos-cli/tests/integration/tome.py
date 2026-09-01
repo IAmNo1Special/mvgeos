@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import typer
+from mvgeos_tome.ledger import TomeLedger
 from mvgeos_tome.types import TomeMetadata
 from typer.testing import CliRunner
 
@@ -481,6 +482,37 @@ def test_render_tome_list_ascii_long_cwd_uses_ascii_ellipsis() -> None:
     assert "..." in output
     assert "…" not in output
     assert all(ord(ch) < 128 for ch in output)
+
+
+def test_tome_verify_help() -> None:
+    result = runner.invoke(tome_app, ["verify", "--help"])
+    assert result.exit_code == 0
+    assert "Verify integrity of a tome session file" in result.stdout
+
+
+def test_tome_verify_valid_session(tmp_path: Path) -> None:
+    ledger = TomeLedger(tmp_path)
+    meta = ledger.create_tome("/workspace")
+    ledger.append_message(meta.id, "user", "hi")
+
+    with patch("mvgeos_cli.commands.tome.get_tome_dir", return_value=tmp_path):
+        result = runner.invoke(tome_app, ["verify", meta.id])
+        assert result.exit_code == 0
+        assert "is valid" in result.stdout
+
+
+def test_tome_verify_corrupted_session(tmp_path: Path) -> None:
+    ledger = TomeLedger(tmp_path)
+    meta = ledger.create_tome("/workspace")
+    tome_file = ledger.tome_file(meta.id)
+    with tome_file.open("a", encoding="utf-8") as f:
+        f.write('{"id": "bad", "truncated": true\n')
+
+    with patch("mvgeos_cli.commands.tome.get_tome_dir", return_value=tmp_path):
+        result = runner.invoke(tome_app, ["verify", meta.id])
+        assert result.exit_code == 1
+        assert "integrity issue" in result.stdout
+        assert "Line 2:" in result.stdout
 
 
 if __name__ == "__main__":
