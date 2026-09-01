@@ -9,6 +9,7 @@ from mvgeos_agent.core_loop import LoopCallbacks, LoopContext
 from mvgeos_agent.dispatcher import BatchResult, SpellDispatcher
 from mvgeos_agent.types import (
     MvgeEvent,
+    MvgeEventType,
     MvgeResponse,
     MvgeSpell,
     SpellExecutionMode,
@@ -344,3 +345,82 @@ async def test_dispatch_batch_termination() -> None:
 
     assert len(res.messages) == 2
     assert res.terminate is True
+
+
+@pytest.mark.asyncio
+async def test_dispatch_single_spell() -> None:
+    events: list[MvgeEvent] = []
+
+    async def emit(event: MvgeEvent) -> None:
+        events.append(event)
+
+    spell = SlowMockSpell("spell_single", delay_s=0, result_text="single_output")
+    dispatcher = SpellDispatcher()
+    context = LoopContext(spells=[spell])
+
+    inv = MvgeResponse(
+        stop_reason=StopReason.SPELL_USE,
+        content=[
+            {
+                "type": "tool_call",
+                "tool_call": {
+                    "id": "call_single",
+                    "name": "spell_single",
+                    "arguments": {"key": "val"},
+                },
+            }
+        ],
+    )
+
+    res = await dispatcher.dispatch_batch(
+        inv=inv,
+        context=context,
+        callbacks=LoopCallbacks(),
+        emit=emit,
+    )
+
+    assert len(res.messages) == 1
+    assert res.messages[0].spell_cast_id == "call_single"
+    assert res.messages[0].spell_name == "spell_single"
+    assert "single_output" in str(res.messages[0].content)
+    assert res.messages[0].is_error is False
+
+
+@pytest.mark.asyncio
+async def test_dispatch_missing_spell() -> None:
+    events: list[MvgeEvent] = []
+
+    async def emit(event: MvgeEvent) -> None:
+        events.append(event)
+
+    spell = SlowMockSpell("spell_existing", delay_s=0, result_text="existing")
+    dispatcher = SpellDispatcher()
+    context = LoopContext(spells=[spell])
+
+    inv = MvgeResponse(
+        stop_reason=StopReason.SPELL_USE,
+        content=[
+            {
+                "type": "tool_call",
+                "tool_call": {
+                    "id": "call_missing",
+                    "name": "spell_non_existent",
+                    "arguments": {},
+                },
+            }
+        ],
+    )
+
+    res = await dispatcher.dispatch_batch(
+        inv=inv,
+        context=context,
+        callbacks=LoopCallbacks(),
+        emit=emit,
+    )
+
+    # Missing spell returns no SpellResultMessage and emits error event
+    assert len(res.messages) == 0
+    end_events = [e for e in events if e.type == MvgeEventType.SPELL_CASTING_END]
+    assert len(end_events) == 1
+    assert end_events[0].data["spellCastId"] == "call_missing"
+    assert "error" in end_events[0].data

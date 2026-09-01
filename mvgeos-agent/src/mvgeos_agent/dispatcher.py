@@ -71,7 +71,7 @@ class SpellDispatcher:
         has_sequential = False
         for tool_call in tool_calls:
             spell_name = tool_call.get("name")
-            spell = next((s for s in context.spells if s.name == spell_name), None)
+            spell = context.get_spell(spell_name) if spell_name else None
             if (
                 spell is not None
                 and spell.execution_mode == SpellExecutionMode.SEQUENTIAL
@@ -188,7 +188,7 @@ class SpellDispatcher:
             if blocked:
                 return None
 
-        spell = next((s for s in context.spells if s.name == spell_name), None)
+        spell = context.get_spell(spell_name)
         if spell is None:
             err: MvgeError = SpellNotFoundError(spell_name)
             await emit(

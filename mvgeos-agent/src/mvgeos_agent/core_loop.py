@@ -60,6 +60,25 @@ class LoopContext:
     exclude_contemplation: bool = False
     max_turns: int = 50
     queue_mode: QueueMode = QueueMode.ONE_AT_A_TIME
+    _spell_index: dict[str, MvgeSpell] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "_spell_index",
+            {spell.name: spell for spell in self.spells},
+        )
+
+    def get_spell(self, name: str) -> MvgeSpell | None:
+        """Lookup a spell by name in O(1) time."""
+        return self._spell_index.get(name)
+
+    @property
+    def spell_map(self) -> dict[str, MvgeSpell]:
+        """Dictionary mapping of spell names to MvgeSpell instances."""
+        return self._spell_index
 
 
 @dataclass

@@ -128,6 +128,20 @@ class TestRunLoopInterface:
         with pytest.raises(AttributeError):
             context.system_prompt = "mutated"  # type: ignore[misc]
 
+    def test_loop_context_get_spell(self, spell: MvgeSpell) -> None:
+        ctx = LoopContext(spells=[spell])
+        assert ctx.get_spell("test_spell") is spell
+        assert ctx.get_spell("non_existent_spell") is None
+
+    def test_loop_context_spell_map(self, spell: MvgeSpell) -> None:
+        ctx = LoopContext(spells=[spell])
+        assert ctx.spell_map == {"test_spell": spell}
+
+    def test_loop_context_empty_spells(self) -> None:
+        ctx = LoopContext()
+        assert ctx.get_spell("any_spell") is None
+        assert ctx.spell_map == {}
+
     def test_callbacks_default_to_none(self) -> None:
         callbacks = LoopCallbacks()
         assert callbacks.transform_context is None
