@@ -1057,7 +1057,7 @@ async def run_repl(
                     "[yellow]Fetching latest models from OpenRouter...[/yellow]"
                 )
                 try:
-                    count = await registry.refresh()
+                    count = await registry.refresh(force_refresh=True)
                 except Exception as exc:
                     console.print(format_error(f"Failed to refresh models: {exc}"))
                 else:

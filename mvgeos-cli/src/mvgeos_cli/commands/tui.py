@@ -432,7 +432,7 @@ class TuiApp:
         elif action == ReplAction.REFRESH_MODELS:
             self._out("[yellow]Fetching latest models from OpenRouter...[/yellow]")
             try:
-                count = await self.registry.refresh()
+                count = await self.registry.refresh(force_refresh=True)
             except Exception as e:
                 self._out(format_error(f"Failed to refresh models: {e}"))
             else:

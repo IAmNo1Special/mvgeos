@@ -7,6 +7,7 @@ from mvgeos_provider.registry import (
     get_default_realm_registry,
     get_flat_model_ids,
     get_model_options,
+    refresh_models,
 )
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 
@@ -23,4 +24,5 @@ __all__ = [
     "get_model",
     "get_model_options",
     "list_models",
+    "refresh_models",
 ]

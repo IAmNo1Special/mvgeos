@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -255,3 +255,79 @@ def test_realm_registry_get_model_options_and_flat_ids() -> None:
     top_flat_ids = get_flat_model_ids()
     assert top_options == options
     assert top_flat_ids == flat_ids
+
+
+def test_realm_registry_custom_ttl() -> None:
+    reg = RealmRegistry(cache_ttl_seconds=1234)
+    assert reg.cache_ttl_seconds == 1234
+    assert reg.model_registry.cache_ttl_seconds == 1234
+
+    default_reg = RealmRegistry()
+    assert default_reg.cache_ttl_seconds == 86400
+
+
+@pytest.mark.asyncio
+async def test_realm_registry_refresh_models_cached_vs_force(tmp_path: Path) -> None:
+    cache_path = tmp_path / "models.json"
+    cache_payload = {
+        "_cached_at": 1000.0,
+        "models": [
+            {
+                "id": "community/cached-model",
+                "name": "Cached Model",
+                "context_length": 4096,
+                "supported_parameters": [],
+                "is_free": False,
+            }
+        ],
+    }
+    cache_path.write_text(json.dumps(cache_payload), encoding="utf-8")
+
+    with patch("time.time", return_value=1050.0):
+        model_reg = ModelRegistry(cache_path=cache_path, cache_ttl_seconds=3600)
+        reg = RealmRegistry(model_registry=model_reg)
+
+        # Non-force refresh hits valid cache and returns 0 without network call
+        with patch(
+            "mvgeos_provider.model_registry.httpx.AsyncClient"
+        ) as mock_client_cls:
+            count = await reg.refresh_models(force_refresh=False)
+            assert count == 0
+            mock_client_cls.assert_not_called()
+
+        # Force refresh bypasses valid cache and fetches live models
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {"id": "live/new-model", "name": "Live New Model"},
+            ]
+        }
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch(
+            "mvgeos_provider.model_registry.httpx.AsyncClient", return_value=mock_client
+        ):
+            count = await reg.refresh_models(force_refresh=True)
+
+        assert count == 1
+        assert reg.model_registry.get("live/new-model") is not None
+
+
+@pytest.mark.asyncio
+async def test_top_level_refresh_models() -> None:
+    from mvgeos_provider.registry import refresh_models
+
+    with patch(
+        "mvgeos_provider.registry.get_default_realm_registry"
+    ) as mock_get_default:
+        mock_reg = MagicMock()
+        mock_reg.refresh_models = AsyncMock(return_value=42)
+        mock_get_default.return_value = mock_reg
+
+        result = await refresh_models(force_refresh=True)
+        assert result == 42
+        mock_reg.refresh_models.assert_awaited_once_with(force_refresh=True)

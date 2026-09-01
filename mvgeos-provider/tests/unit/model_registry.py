@@ -204,3 +204,126 @@ def test_get_flat_model_ids(tmp_path: Path) -> None:
     assert "a/model" in ids
     assert "b/model" in ids
     assert "~hidden" not in ids
+
+
+def test_init_cache_ttl_configurable(tmp_path: Path) -> None:
+    reg = ModelRegistry(cache_path=tmp_path / "c.json", cache_ttl_seconds=3600)
+    assert reg.cache_ttl_seconds == 3600
+    default_reg = ModelRegistry(cache_path=tmp_path / "c2.json")
+    assert default_reg.cache_ttl_seconds == CACHE_TTL_SECONDS
+
+
+def test_load_cache_custom_ttl_hit(tmp_path: Path) -> None:
+    cache_path = tmp_path / "cache.json"
+    cache_path.write_text(
+        json.dumps(
+            {"_cached_at": time.time() - 500, "models": [{"id": "a/b", "name": "A B"}]}
+        ),
+        encoding="utf-8",
+    )
+    reg = ModelRegistry(cache_path=cache_path, cache_ttl_seconds=1000)
+    assert reg.load_cache() is True
+    assert reg.get("a/b") is not None
+
+
+def test_load_cache_custom_ttl_expired(tmp_path: Path) -> None:
+    cache_path = tmp_path / "cache.json"
+    cache_path.write_text(
+        json.dumps(
+            {"_cached_at": time.time() - 500, "models": [{"id": "a/b", "name": "A B"}]}
+        ),
+        encoding="utf-8",
+    )
+    reg = ModelRegistry(cache_path=cache_path, cache_ttl_seconds=300)
+    assert reg.load_cache() is False
+
+
+def test_load_cache_force_refresh_bypasses_cache(tmp_path: Path) -> None:
+    cache_path = tmp_path / "cache.json"
+    cache_path.write_text(
+        json.dumps(
+            {"_cached_at": time.time(), "models": [{"id": "a/b", "name": "A B"}]}
+        ),
+        encoding="utf-8",
+    )
+    reg = ModelRegistry(cache_path=cache_path)
+    assert reg.load_cache(force_refresh=True) is False
+
+
+@pytest.mark.asyncio
+async def test_refresh_with_valid_cache_returns_zero_without_network(
+    tmp_path: Path,
+) -> None:
+    cache_path = tmp_path / "cache.json"
+    cache_path.write_text(
+        json.dumps(
+            {"_cached_at": time.time(), "models": [{"id": "a/b", "name": "A B"}]}
+        ),
+        encoding="utf-8",
+    )
+    reg = ModelRegistry(cache_path=cache_path)
+    assert reg.load_cache() is True
+
+    with patch("mvgeos_provider.model_registry.httpx.AsyncClient") as mock_client_cls:
+        count = await reg.refresh(force_refresh=False)
+        assert count == 0
+        mock_client_cls.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_refresh_force_refresh_bypasses_valid_cache(tmp_path: Path) -> None:
+    cache_path = tmp_path / "cache.json"
+    cache_path.write_text(
+        json.dumps(
+            {"_cached_at": time.time(), "models": [{"id": "a/b", "name": "A B"}]}
+        ),
+        encoding="utf-8",
+    )
+    reg = ModelRegistry(cache_path=cache_path)
+    assert reg.load_cache() is True
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "data": [
+            {"id": "new/model", "name": "New Model"},
+        ]
+    }
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.get = AsyncMock(return_value=mock_response)
+
+    with patch(
+        "mvgeos_provider.model_registry.httpx.AsyncClient", return_value=mock_client
+    ):
+        count = await reg.refresh(force_refresh=True)
+
+    assert count == 1
+    assert reg.get("new/model") is not None
+
+
+@pytest.mark.asyncio
+async def test_auto_refresh_force_refresh(tmp_path: Path) -> None:
+    reg = ModelRegistry(cache_path=tmp_path / "c.json")
+    reg._refreshed = True
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "data": [
+            {"id": "live/model", "name": "Live Model"},
+        ]
+    }
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.get = AsyncMock(return_value=mock_response)
+
+    with patch(
+        "mvgeos_provider.model_registry.httpx.AsyncClient", return_value=mock_client
+    ):
+        count = await reg.auto_refresh(force_refresh=True)
+
+    assert count == 1
+    assert reg.get("live/model") is not None

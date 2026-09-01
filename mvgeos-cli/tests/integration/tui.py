@@ -254,7 +254,7 @@ class FakeAgent:
 
 
 class FakeRegistry:
-    async def refresh(self) -> int:
+    async def refresh(self, force_refresh: bool = False) -> int:
         return 0
 
     def get(self, model_id: str) -> object | None:

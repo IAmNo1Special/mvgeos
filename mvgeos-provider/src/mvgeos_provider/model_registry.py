@@ -22,11 +22,20 @@ def _default_cache_path() -> Path:
 
 
 class ModelRegistry:
-    def __init__(self, cache_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        cache_path: Path | None = None,
+        cache_ttl_seconds: int = CACHE_TTL_SECONDS,
+    ) -> None:
         self._models: dict[str, Model] = {}
         self._cache_path = cache_path or _default_cache_path()
+        self._cache_ttl_seconds = cache_ttl_seconds
         self._refreshed = False
         self._load_baseline()
+
+    @property
+    def cache_ttl_seconds(self) -> int:
+        return self._cache_ttl_seconds
 
     @property
     def models(self) -> dict[str, Model]:
@@ -67,7 +76,9 @@ class ModelRegistry:
     def _load_baseline(self) -> None:
         self._models.update(MODELS)
 
-    def load_cache(self) -> bool:
+    def load_cache(self, force_refresh: bool = False) -> bool:
+        if force_refresh:
+            return False
         if not self._cache_path.exists():
             return False
         try:
@@ -75,7 +86,7 @@ class ModelRegistry:
         except json.JSONDecodeError, OSError:
             return False
         timestamp = data.get("_cached_at", 0)
-        if time.time() - timestamp > CACHE_TTL_SECONDS:
+        if time.time() - timestamp > self._cache_ttl_seconds:
             return False
         for entry in data.get("models", []):
             mid = entry["id"]
@@ -99,20 +110,27 @@ class ModelRegistry:
         """Return True if no valid cache has been loaded yet."""
         return not self._refreshed
 
-    async def auto_refresh(self) -> int:
-        """Refresh only if cache is stale or missing.
+    async def auto_refresh(self, force_refresh: bool = False) -> int:
+        """Refresh only if cache is stale or missing (unless forced).
 
         Returns the number of models loaded from the API, or 0 if
         the cache was already fresh.
         """
-        if not self.needs_refresh():
+        if not force_refresh and not self.needs_refresh():
             return 0
-        return await self.refresh()
+        return await self.refresh(force_refresh=force_refresh)
 
-    async def refresh(self) -> int:
+    async def refresh(
+        self,
+        force_refresh: bool = False,
+        client: httpx.AsyncClient | None = None,
+    ) -> int:
+        if not force_refresh and (self._refreshed or self.load_cache()):
+            return 0
+
         count = 0
         try:
-            async with httpx.AsyncClient() as client:
+            if client is not None:
                 response = await client.get(OPENROUTER_MODELS_URL, timeout=30)
                 if response.status_code != 200:
                     logger.warning(
@@ -120,12 +138,22 @@ class ModelRegistry:
                         response.status_code,
                     )
                 res_json = response.json()
-                if isinstance(res_json, dict):
-                    api_data: list[dict[str, Any]] = res_json.get("data", [])
-                elif isinstance(res_json, list):
-                    api_data = res_json
-                else:
-                    api_data = []
+            else:
+                async with httpx.AsyncClient() as http_client:
+                    response = await http_client.get(OPENROUTER_MODELS_URL, timeout=30)
+                    if response.status_code != 200:
+                        logger.warning(
+                            "OpenRouter models API returned %d",
+                            response.status_code,
+                        )
+                    res_json = response.json()
+
+            if isinstance(res_json, dict):
+                api_data: list[dict[str, Any]] = res_json.get("data", [])
+            elif isinstance(res_json, list):
+                api_data = res_json
+            else:
+                api_data = []
         except Exception:
             logger.exception("Failed to fetch OpenRouter models")
             return 0

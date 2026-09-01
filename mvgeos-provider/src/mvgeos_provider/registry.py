@@ -16,9 +16,13 @@ class RealmRegistry:
         self,
         shared_client: httpx.AsyncClient | None = None,
         model_registry: ModelRegistry | None = None,
+        cache_ttl_seconds: int = 86400,
     ) -> None:
         self._shared_client = shared_client
-        self._model_registry = model_registry or ModelRegistry()
+        self._cache_ttl_seconds = cache_ttl_seconds
+        self._model_registry = model_registry or ModelRegistry(
+            cache_ttl_seconds=cache_ttl_seconds
+        )
         self._model_registry.load_cache()
         self._extension_providers: dict[str, dict[str, Any]] = {}
         self._builtin_providers: dict[str, Callable[..., Realm]] = {
@@ -28,8 +32,23 @@ class RealmRegistry:
         }
 
     @property
+    def cache_ttl_seconds(self) -> int:
+        return self._model_registry.cache_ttl_seconds
+
+    @property
     def model_registry(self) -> ModelRegistry:
         return self._model_registry
+
+    async def refresh_models(self, force_refresh: bool = False) -> int:
+        """Refresh model catalog from provider APIs or cache.
+
+        Args:
+            force_refresh: If True, bypass disk cache and fetch live models.
+
+        Returns:
+            Number of models loaded from the API, or 0 if cache was used.
+        """
+        return await self._model_registry.refresh(force_refresh=force_refresh)
 
     def get_model_options(self) -> dict[str, str]:
         """Return model display options with free models first, sorted by id."""
@@ -230,3 +249,10 @@ def get_model_options() -> dict[str, str]:
 def get_flat_model_ids() -> list[str]:
     """Return all valid model IDs (ignoring internal ~ prefixes)."""
     return get_default_realm_registry().get_flat_model_ids()
+
+
+async def refresh_models(force_refresh: bool = False) -> int:
+    """Refresh model catalog using the default realm registry."""
+    return await get_default_realm_registry().refresh_models(
+        force_refresh=force_refresh
+    )
