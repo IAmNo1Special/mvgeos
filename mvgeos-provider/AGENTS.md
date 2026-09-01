@@ -26,11 +26,12 @@ Test paths follow pattern: `mvgeos-provider/tests/unit/<module>.py` and `mvgeos-
 | Type | Purpose |
 | --- | --- |
 | `Realm` | Abstract provider protocol (`stream()`, `complete()`, `close()`) |
+| `RealmFactory` | Protocol for pluggable realm constructors (`(api_key, base_url, **kwargs) -> Realm`) |
 | `OpenRouterRealm` | OpenRouter SSE channeling implementation |
 | `Model` | Model descriptor (has `realm`, `max_completion_mana`, `context_window`, `is_free`) |
 | `ChannelConfig` | Per-request config (temperature, `max_tokens`, `max_output_mana`, contemplation, tools) |
 | `RealmResponse` | Stream chunk wrapper (`invocation`, `mana_used`, error fields) |
-| `RealmRegistry` | Factory for realms; extension-provider configs |
+| `RealmRegistry` | Factory for realms; dynamic factory registration; extension-provider configs |
 | `ModelRegistry` | Model catalog with disk cache + OpenRouter refresh |
 
 ## Field Naming

@@ -1,4 +1,4 @@
-from mvgeos_provider.base import Realm
+from mvgeos_provider.base import Realm, RealmFactory
 from mvgeos_provider.model_registry import ModelRegistry
 from mvgeos_provider.models import get_model, list_models
 from mvgeos_provider.openrouter import OpenRouterRealm
@@ -18,6 +18,7 @@ __all__ = [
     "ModelRegistry",
     "OpenRouterRealm",
     "Realm",
+    "RealmFactory",
     "RealmRegistry",
     "RealmResponse",
     "SSEChunk",

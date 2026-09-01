@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 import httpx
 
-from mvgeos_provider.base import Realm
+from mvgeos_provider.base import Realm, RealmFactory
 from mvgeos_provider.model_registry import ModelRegistry
 from mvgeos_provider.openrouter import OpenRouterRealm
 from mvgeos_provider.types import Model
@@ -25,11 +24,16 @@ class RealmRegistry:
         )
         self._model_registry.load_cache()
         self._extension_providers: dict[str, dict[str, Any]] = {}
-        self._builtin_providers: dict[str, Callable[..., Realm]] = {
-            "openrouter": lambda api_key="", base_url="": OpenRouterRealm(
-                api_key=api_key, base_url=base_url, client=self.get_shared_client()
-            ),
-        }
+        self._realm_factories: dict[str, RealmFactory] = {}
+        self._default_realm_factory: RealmFactory = (
+            lambda api_key="", base_url="", **kwargs: OpenRouterRealm(
+                api_key=api_key,
+                base_url=base_url or "https://openrouter.ai/api/v1",
+                client=self.get_shared_client(),
+            )
+        )
+        self._realm_factories["openrouter"] = self._default_realm_factory
+        self._builtin_providers = self._realm_factories
 
     @property
     def cache_ttl_seconds(self) -> int:
@@ -82,8 +86,32 @@ class RealmRegistry:
     def get_registered_providers(self) -> list[str]:
         return list(self._extension_providers.keys())
 
+    def register_realm_factory(self, prefix: str, factory: RealmFactory) -> None:
+        """Register a pluggable RealmFactory for a provider prefix."""
+        if not prefix or not isinstance(prefix, str) or not prefix.strip():
+            raise ValueError("Prefix must be a non-empty string")
+        if not callable(factory):
+            raise TypeError(f"Realm factory for '{prefix}' must be callable")
+        self._realm_factories[prefix.strip()] = factory
+
+    def get_realm_factory(self, prefix: str) -> RealmFactory | None:
+        """Get the registered RealmFactory for a prefix, or None."""
+        return self._realm_factories.get(prefix)
+
+    def has_realm_factory(self, prefix: str) -> bool:
+        """Check whether a RealmFactory is registered for a prefix."""
+        return prefix in self._realm_factories
+
+    def get_registered_realm_factories(self) -> list[str]:
+        """Return a list of all registered realm factory prefixes."""
+        return list(self._realm_factories.keys())
+
     def has_provider(self, name: str) -> bool:
-        return name in self._extension_providers or name in self._builtin_providers
+        return (
+            name in self._extension_providers
+            or name in self._realm_factories
+            or name in self._builtin_providers
+        )
 
     def _get_extension_config(
         self, model: Model, provider_name: str | None = None
@@ -99,6 +127,29 @@ class RealmRegistry:
                 return self._extension_providers[part]
         return None
 
+    def _find_realm_factory(
+        self, model: Model, provider_name: str | None = None
+    ) -> RealmFactory | None:
+        candidates: list[str] = []
+        if provider_name:
+            candidates.append(provider_name)
+        if (
+            model.provider
+            and model.provider != "openrouter"
+            and model.provider not in candidates
+        ):
+            candidates.append(model.provider)
+        for part in model.id.split("/"):
+            if part and part != "openrouter" and part not in candidates:
+                candidates.append(part)
+        if model.realm and model.realm not in candidates:
+            candidates.append(model.realm)
+
+        for candidate in candidates:
+            if candidate in self._realm_factories:
+                return self._realm_factories[candidate]
+        return None
+
     def create_realm(
         self,
         model: Model,
@@ -106,61 +157,18 @@ class RealmRegistry:
         provider_name: str | None = None,
     ) -> Realm:
         ext_config = self._get_extension_config(model, provider_name)
-        if ext_config is not None:
-            base_url = ext_config.get("baseUrl") or model.base_url
-            key = ext_config.get("apiKey") or api_key
-            pname = provider_name or (
-                model.realm
-                if model.realm in self._extension_providers
-                else model.provider
-                if model.provider in self._extension_providers
-                else model.realm
-            )
-            realm_factory = self._builtin_providers.get(
-                pname
-            ) or self._builtin_providers.get(model.realm)
-            if realm_factory is not None:
-                return realm_factory(api_key=key, base_url=base_url)
-
-            class _DynamicRealm(Realm):
-                def __init__(self, config: dict[str, Any]) -> None:
-                    self._config = config
-                    self._http_client: Any | None = None
-
-                async def stream(
-                    self,
-                    model_obj: Model,
-                    invocations: list[Any],
-                    config: Any,
-                    signal: Any | None = None,
-                ) -> Any:
-                    base_url_val = self._config.get("baseUrl", "")
-                    fallback = OpenRouterRealm(
-                        api_key=self._config.get("apiKey", ""),
-                        base_url=base_url_val,
-                    )
-                    async for resp in fallback.stream(
-                        model_obj, invocations, config, signal
-                    ):
-                        yield resp
-
-                async def close(self) -> None:
-                    if self._http_client is not None:
-                        await self._http_client.aclose()
-
-            return _DynamicRealm(ext_config)
-
-        pname = provider_name or model.realm
-        realm_factory = self._builtin_providers.get(
-            pname,
-            self._builtin_providers.get(
-                model.realm,
-                lambda api_key="", base_url="": OpenRouterRealm(
-                    api_key=api_key, base_url=base_url, client=self.get_shared_client()
-                ),
-            ),
+        base_url = (ext_config.get("baseUrl") if ext_config else None) or model.base_url
+        key = (
+            (ext_config.get("apiKey") if ext_config else None)
+            or model.api_key
+            or api_key
         )
-        return realm_factory(api_key=api_key, base_url=model.base_url)
+
+        factory = self._find_realm_factory(model, provider_name)
+        if factory is not None:
+            return factory(api_key=key, base_url=base_url)
+
+        return self._default_realm_factory(api_key=key, base_url=base_url)
 
     def compose_model(
         self,

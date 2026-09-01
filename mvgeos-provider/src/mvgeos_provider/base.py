@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from mvgeos_provider.types import AbortSignal, ChannelConfig, Model
 
@@ -33,3 +33,23 @@ class Realm:
 
     async def close(self) -> None:
         pass
+
+
+@runtime_checkable
+class RealmFactory(Protocol):
+    """Protocol for factories that construct Realm instances."""
+
+    def __call__(
+        self,
+        api_key: str = "",
+        base_url: str = "",
+        **kwargs: Any,
+    ) -> Realm:
+        """Create and return a configured Realm instance."""
+        ...
+
+
+__all__ = [
+    "Realm",
+    "RealmFactory",
+]

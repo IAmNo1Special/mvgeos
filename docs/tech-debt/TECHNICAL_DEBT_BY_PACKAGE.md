@@ -20,7 +20,7 @@
 
 ### Architecture Quirks
 - **Streaming tightly coupled to OpenRouter SSE format**: `_invocations_to_messages()` and `OpenRouterRealm.stream()` handle SSE delta payloads directly (`openrouter.py:99-143, 183-266`). `Realm` base class in `base.py` lacks a generic streaming parser abstraction.
-- **Dynamic provider fallback**: In `registry.py:98-124`, non-builtin extension providers use an inline `_DynamicRealm` fallback class.
+- [RESOLVED] **Dynamic provider fallback**: Resolved via pluggable `RealmFactory` protocol in `RealmRegistry` (`registry.py`, Issue #121).
 
 ### Performance & Scale
 - **24h cache TTL**: `CACHE_TTL_SECONDS = 86400` in `model_registry.py:17` is static and not configurable per registry instance.

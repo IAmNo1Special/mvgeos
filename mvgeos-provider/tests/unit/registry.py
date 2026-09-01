@@ -6,11 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mvgeos_provider.base import Realm
+from mvgeos_provider.base import Realm, RealmFactory
 from mvgeos_provider.model_registry import ModelRegistry
 from mvgeos_provider.openrouter import OpenRouterRealm
 from mvgeos_provider.registry import RealmRegistry
-from mvgeos_provider.types import Model
+from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 
 
 def test_register_provider() -> None:
@@ -331,3 +331,195 @@ async def test_top_level_refresh_models() -> None:
         result = await refresh_models(force_refresh=True)
         assert result == 42
         mock_reg.refresh_models.assert_awaited_once_with(force_refresh=True)
+
+
+class DummyCustomRealm(Realm):
+    def __init__(self, api_key: str = "", base_url: str = "", **kwargs: object) -> None:
+        self.api_key = api_key
+        self.base_url = base_url
+        self.kwargs = kwargs
+
+    async def stream(
+        self,
+        model: Model,
+        invocations: list[object],
+        config: ChannelConfig,
+        signal: object | None = None,
+    ):
+        yield RealmResponse(
+            model=model,
+            mana_used=42,
+            stop_reason="stop",
+        )
+
+
+def test_realm_factory_protocol_runtime_check() -> None:
+    def factory_func(api_key: str = "", base_url: str = "", **kwargs: object) -> Realm:
+        return DummyCustomRealm(api_key, base_url, **kwargs)
+
+    assert isinstance(factory_func, RealmFactory)
+
+    class FactoryClass:
+        def __call__(
+            self, api_key: str = "", base_url: str = "", **kwargs: object
+        ) -> Realm:
+            return DummyCustomRealm(api_key, base_url, **kwargs)
+
+    assert isinstance(FactoryClass(), RealmFactory)
+    assert not isinstance("not_a_factory", RealmFactory)
+
+
+def test_register_realm_factory_validation() -> None:
+    reg = RealmRegistry()
+    with pytest.raises(ValueError, match="Prefix must be a non-empty string"):
+        reg.register_realm_factory("", DummyCustomRealm)
+
+    with pytest.raises(ValueError, match="Prefix must be a non-empty string"):
+        reg.register_realm_factory("   ", DummyCustomRealm)
+
+    with pytest.raises(TypeError, match="must be callable"):
+        reg.register_realm_factory("dummy", "not-callable")  # type: ignore[arg-type]
+
+
+def test_register_and_get_realm_factory() -> None:
+    reg = RealmRegistry()
+    assert not reg.has_realm_factory("custom")
+    assert reg.get_realm_factory("custom") is None
+
+    reg.register_realm_factory("custom", DummyCustomRealm)
+    assert reg.has_realm_factory("custom")
+    assert reg.get_realm_factory("custom") is DummyCustomRealm
+    assert "custom" in reg.get_registered_realm_factories()
+    assert reg.has_provider("custom")
+
+
+def test_create_realm_resolves_registered_factory_by_provider_name() -> None:
+    reg = RealmRegistry()
+    reg.register_realm_factory("my_custom", DummyCustomRealm)
+
+    model = Model(
+        id="generic-model",
+        name="Generic",
+        realm="openrouter",
+        base_url="https://api.example.com",
+        api_key="secret-key",
+    )
+    realm = reg.create_realm(model, api_key="secret-key", provider_name="my_custom")
+    assert isinstance(realm, DummyCustomRealm)
+    assert realm.api_key == "secret-key"
+    assert realm.base_url == "https://api.example.com"
+
+
+def test_create_realm_resolves_registered_factory_by_model_realm() -> None:
+    reg = RealmRegistry()
+    reg.register_realm_factory("custom_backend", DummyCustomRealm)
+
+    model = Model(
+        id="model-without-slash",
+        name="Custom",
+        realm="custom_backend",
+        base_url="https://custom.backend.internal",
+        api_key="internal-key",
+    )
+    realm = reg.create_realm(model, api_key="internal-key")
+    assert isinstance(realm, DummyCustomRealm)
+    assert realm.api_key == "internal-key"
+    assert realm.base_url == "https://custom.backend.internal"
+
+
+def test_create_realm_resolves_registered_factory_by_model_provider() -> None:
+    reg = RealmRegistry()
+    reg.register_realm_factory("anthropic", DummyCustomRealm)
+
+    model = Model(
+        id="anthropic/claude-3-5-sonnet",
+        name="Claude 3.5 Sonnet",
+        realm="openrouter",
+        base_url="https://anthropic.direct",
+        api_key="anthropic-key",
+    )
+    realm = reg.create_realm(model, api_key="anthropic-key")
+    assert isinstance(realm, DummyCustomRealm)
+    assert realm.api_key == "anthropic-key"
+    assert realm.base_url == "https://anthropic.direct"
+
+
+def test_create_realm_with_extension_config_and_registered_factory() -> None:
+    reg = RealmRegistry()
+    reg.register_realm_factory("ollama", DummyCustomRealm)
+    reg.register_provider(
+        "ollama", {"baseUrl": "http://127.0.0.1:11434", "apiKey": "ollama-token"}
+    )
+
+    model = Model(
+        id="ollama/llama3.1",
+        name="Llama 3.1",
+        realm="ollama",
+        base_url="",
+        api_key="",
+    )
+    realm = reg.create_realm(model, api_key="")
+    assert isinstance(realm, DummyCustomRealm)
+    assert realm.api_key == "ollama-token"
+    assert realm.base_url == "http://127.0.0.1:11434"
+
+
+def test_resolve_with_registered_realm_factory() -> None:
+    reg = RealmRegistry()
+    reg.register_realm_factory("local_provider", DummyCustomRealm)
+    reg.register_provider("local_provider", {"baseUrl": "http://localhost:8080"})
+
+    model, realm = reg.resolve("local_provider/my-model", api_key="resolve-key")
+    assert model.id == "local_provider/my-model"
+    assert model.realm == "local_provider"
+    assert model.base_url == "http://localhost:8080"
+    assert isinstance(realm, DummyCustomRealm)
+    assert realm.api_key == "resolve-key"
+    assert realm.base_url == "http://localhost:8080"
+
+
+@pytest.mark.asyncio
+async def test_custom_realm_streaming_and_token_counting() -> None:
+    reg = RealmRegistry()
+    reg.register_realm_factory("custom_math", DummyCustomRealm)
+
+    model = Model(
+        id="custom_math/solver-v1",
+        name="Solver",
+        realm="custom_math",
+        base_url="https://math.test",
+        api_key="key",
+    )
+    realm = reg.create_realm(model, api_key="key")
+    assert isinstance(realm, DummyCustomRealm)
+
+    config = ChannelConfig(model=model)
+    responses: list[RealmResponse] = []
+    async for resp in realm.stream(model, [], config):
+        responses.append(resp)
+
+    assert len(responses) == 1
+    assert responses[0].mana_used == 42
+    assert responses[0].stop_reason == "stop"
+
+
+def test_factory_instantiation_error_handling() -> None:
+    def failing_factory(
+        api_key: str = "", base_url: str = "", **kwargs: object
+    ) -> Realm:
+        raise RuntimeError("Failed to initialize custom realm connection")
+
+    reg = RealmRegistry()
+    reg.register_realm_factory("failing_prov", failing_factory)
+
+    model = Model(
+        id="failing_prov/broken-model",
+        name="Broken",
+        realm="failing_prov",
+        base_url="https://broken.test",
+        api_key="key",
+    )
+    with pytest.raises(
+        RuntimeError, match="Failed to initialize custom realm connection"
+    ):
+        reg.create_realm(model, api_key="key")
