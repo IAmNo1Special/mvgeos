@@ -1,19 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import json
-from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 
-from mvgeos_provider.base import Realm
-from mvgeos_provider.retry import (
-    ServerRetryDelayTooLongError,
-    is_retryable_status,
-    realm_request_delay_ms,
-    retry_realm_request,
-)
+from mvgeos_provider.retry import retry_realm_request
+from mvgeos_provider.sse import SSEChunk, SSEStreamingRealm
 from mvgeos_provider.types import (
     AbortError,
     AbortSignal,
@@ -27,73 +20,10 @@ from mvgeos_provider.types import (
 _REASONING_MODELS = ("openai/o1", "openai/o3")
 
 
-async def _sleep_with_signal(delay_seconds: float, signal: AbortSignal | None) -> None:
-    """Sleep for delay_seconds, but abort early if signal is aborted."""
-    if signal is None:
-        await asyncio.sleep(delay_seconds)
-        return
-
-    if signal.aborted:
-        raise AbortError("Operation aborted")
-
-    task = asyncio.ensure_future(asyncio.sleep(delay_seconds))
-
-    def _on_abort() -> None:
-        if not task.done():
-            task.cancel()
-
-    signal.on_abort(_on_abort)
-    try:
-        await task
-    except asyncio.CancelledError:
-        if signal.aborted:
-            raise AbortError("Operation aborted") from None
-        raise
-
-
-def _mana_usage(usage: dict[str, Any]) -> dict[str, float]:
-    """Break a Realm usage block into the Mana figures compaction reads."""
-    if not usage:
-        return {}
-    prompt = usage.get("prompt_tokens", 0)
-    completion = usage.get("completion_tokens", 0)
-    total = usage.get("total_tokens", prompt + completion)
-    breakdown: dict[str, float] = {
-        "input": prompt,
-        "output": completion,
-        "total": total,
-    }
-    reasoning = usage.get("completion_tokens_details", {}).get("reasoning_tokens")
-    if reasoning:
-        breakdown["contemplation"] = reasoning
-    return breakdown
-
-
 def _supports_reasoning(model: Model) -> bool:
     if model.supported_parameters:
         return "reasoning" in model.supported_parameters
     return any(m in model.id for m in _REASONING_MODELS)
-
-
-def _error_from_response(response: Any) -> tuple[str, str | None]:
-    try:
-        body = response.read()
-        error_data = json.loads(body.decode("utf-8")) if body else {}
-    except Exception:
-        error_data = {}
-    message = error_data.get("error", {}).get("message", f"HTTP {response.status_code}")
-    if message:
-        message = message.replace("\r\n", "\n").replace("\r", "\n").strip("\n")
-    if response.status_code == 429:
-        error_code = "rate_limited"
-        # Use a clean message for rate limits; the CLI shows a friendly template
-        if message == f"HTTP {response.status_code}":
-            message = "Rate limit exceeded"
-    elif response.status_code == 401:
-        error_code = "auth_failed"
-    else:
-        error_code = None
-    return message, error_code
 
 
 def _invocations_to_messages(invocations: list[Any]) -> list[dict[str, Any]]:
@@ -143,24 +73,19 @@ def _invocations_to_messages(invocations: list[Any]) -> list[dict[str, Any]]:
     return messages
 
 
-class OpenRouterRealm(Realm):
+class OpenRouterRealm(SSEStreamingRealm):
+    realm_name: str = "openrouter"
+
     def __init__(
         self,
         api_key: str,
         base_url: str = "https://openrouter.ai/api/v1",
         client: httpx.AsyncClient | None = None,
     ) -> None:
-        self._api_key = api_key
-        self._base_url = base_url or "https://openrouter.ai/api/v1"
-        self._owned_client = client is None
-        self._client = client or httpx.AsyncClient(
-            base_url=self._base_url,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            timeout=httpx.Timeout(60.0),
-            limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
+        super().__init__(
+            api_key=api_key,
+            base_url=base_url or "https://openrouter.ai/api/v1",
+            client=client,
         )
 
     def _prepare_request_url_and_headers(
@@ -179,17 +104,16 @@ class OpenRouterRealm(Realm):
             headers.update(model.headers)
         return url, headers
 
-    async def stream(
+    def _prepare_request(
         self,
         model: Model,
         invocations: list[Any],
         config: ChannelConfig,
-        signal: AbortSignal | None = None,
-    ) -> AsyncIterator[RealmResponse]:
+    ) -> tuple[str, dict[str, str], dict[str, Any]]:
         messages = _invocations_to_messages(invocations)
         url, headers = self._prepare_request_url_and_headers(model)
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": model.id,
             "messages": messages,
             "temperature": config.temperature,
@@ -209,60 +133,27 @@ class OpenRouterRealm(Realm):
         if config.tools:
             payload["tools"] = config.tools
 
-        max_attempts = max(1, config.max_retries)
-        for attempt in range(max_attempts):
-            if signal is not None and signal.aborted:
-                raise AbortError("Operation aborted")
-            async with self._client.stream(
-                "POST",
-                url,
-                headers=headers,
-                json=payload,
-                timeout=config.timeout_ms / 1000,
-            ) as response:
-                try:
-                    if response.status_code == 200:
-                        async for item in self._consume_stream(model, response):
-                            if signal is not None and signal.aborted:
-                                raise AbortError("Operation aborted")
-                            yield item
-                        return
+        return url, headers, payload
 
-                    message, error_code = _error_from_response(response)
-                    if not is_retryable_status(response.status_code, response.headers):
-                        yield RealmResponse(
-                            model=model, error_message=message, error_code=error_code
-                        )
-                        return
-                finally:
-                    # Ensure response is fully consumed/closed on abort
-                    if signal is not None and signal.aborted:
-                        await response.aclose()
+    def _parse_sse_chunk(self, chunk: dict[str, Any]) -> SSEChunk | None:
+        usage = chunk.get("usage")
+        choices = chunk.get("choices") or []
+        if not choices:
+            if usage:
+                return SSEChunk(usage=usage)
+            return None
 
-                if attempt >= max_attempts - 1:
-                    yield RealmResponse(
-                        model=model, error_message=message, error_code=error_code
-                    )
-                    return
+        choice = choices[0]
+        delta = choice.get("delta", {})
+        contemplation = delta.get("reasoning") or delta.get("reasoning_content")
 
-                try:
-                    delay_ms = realm_request_delay_ms(response.headers, attempt)
-                except ServerRetryDelayTooLongError as exc:
-                    yield RealmResponse(
-                        model=model,
-                        error_message=f"{exc}. {message}",
-                        error_code=error_code,
-                    )
-                    return
-
-            try:
-                await _sleep_with_signal(delay_ms / 1000, signal)
-            except AbortError:
-                raise
-            except asyncio.CancelledError:
-                if signal is not None and signal.aborted:
-                    raise AbortError("Operation aborted") from None
-                raise
+        return SSEChunk(
+            content=delta.get("content"),
+            contemplation=contemplation,
+            tool_calls=delta.get("tool_calls"),
+            finish_reason=choice.get("finish_reason"),
+            usage=usage,
+        )
 
     async def complete(
         self,
@@ -305,7 +196,7 @@ class OpenRouterRealm(Realm):
             )
 
         if response.status_code != 200:
-            message, error_code = _error_from_response(response)
+            message, error_code = self._parse_error(response)
             return RealmResponse(
                 model=model, error_message=message, error_code=error_code
             )
@@ -325,150 +216,17 @@ class OpenRouterRealm(Realm):
             invocation=MvgeResponse(
                 role="assistant",
                 content=[{"type": "text", "text": content}],
-                realm="openrouter",
+                realm=self.realm_name,
                 model=model.id,
                 stop_reason=StopReason.STOP,
-                mana_usage=_mana_usage(usage),
+                mana_usage=self._parse_usage(usage),
             ),
             mana_used=usage.get("total_tokens", 0),
             stop_reason=StopReason.STOP.value,
         )
 
-    async def _consume_stream(
-        self,
-        model: Model,
-        response: Any,
-    ) -> AsyncIterator[RealmResponse]:
-        text_parts: list[str] = []
-        contemplation_parts: list[str] = []
-        tool_calls_acc: dict[int, dict[str, Any]] = {}
-        usage_acc: dict[str, Any] = {}
 
-        async for line in response.aiter_lines():
-            if not line:
-                continue
-            line_str = line if isinstance(line, str) else line.decode("utf-8")
-            if not line_str.startswith("data: "):
-                continue
-            data = line_str[6:]
-            if data.strip() == "[DONE]":
-                break
-            try:
-                chunk = json.loads(data)
-            except json.JSONDecodeError:
-                continue
-
-            if chunk.get("usage"):
-                usage_acc = chunk["usage"]
-
-            choices = chunk.get("choices") or []
-            if not choices:
-                continue
-
-            choice = choices[0]
-            delta = choice.get("delta", {})
-            finish_reason = choice.get("finish_reason")
-            usage = chunk.get("usage") or usage_acc
-
-            # Contemplation arrives as its own delta field. Surface it as a
-            # distinct block so it never lands in the answer text.
-            contemplation = delta.get("reasoning") or delta.get("reasoning_content")
-            if contemplation:
-                contemplation_parts.append(contemplation)
-                yield RealmResponse(
-                    model=model,
-                    invocation=MvgeResponse(
-                        role="assistant",
-                        content=[{"type": "contemplation", "text": contemplation}],
-                        realm="openrouter",
-                        model=model.id,
-                    ),
-                    stop_reason="pending",
-                )
-
-            content = delta.get("content")
-            if content:
-                text_parts.append(content)
-                yield RealmResponse(
-                    model=model,
-                    invocation=MvgeResponse(
-                        role="assistant",
-                        content=[{"type": "text", "text": content}],
-                        realm="openrouter",
-                        model=model.id,
-                    ),
-                    stop_reason="pending",
-                )
-
-            for tc in delta.get("tool_calls") or []:
-                index = tc.get("index", 0)
-                acc = tool_calls_acc.setdefault(
-                    index, {"id": "", "name": "", "arguments": ""}
-                )
-                if tc.get("id"):
-                    acc["id"] = tc["id"]
-                func = tc.get("function", {})
-                if func.get("name"):
-                    acc["name"] = func["name"]
-                if func.get("arguments"):
-                    acc["arguments"] += func["arguments"]
-
-            if finish_reason:
-                blocks: list[dict[str, Any]] = []
-                if contemplation_parts:
-                    blocks.append(
-                        {
-                            "type": "contemplation",
-                            "text": "".join(contemplation_parts),
-                        }
-                    )
-                if text_parts:
-                    blocks.append({"type": "text", "text": "".join(text_parts)})
-                for index in sorted(tool_calls_acc):
-                    acc = tool_calls_acc[index]
-                    try:
-                        arguments = (
-                            json.loads(acc["arguments"]) if acc["arguments"] else {}
-                        )
-                    except json.JSONDecodeError:
-                        arguments = {}
-                    blocks.append(
-                        {
-                            "type": "tool_call",
-                            "tool_call": {
-                                "id": acc["id"],
-                                "name": acc["name"],
-                                "arguments": arguments,
-                            },
-                        }
-                    )
-                if tool_calls_acc:
-                    stop_reason = StopReason.SPELL_USE
-                elif finish_reason == "length":
-                    stop_reason = StopReason.LENGTH
-                else:
-                    stop_reason = StopReason.STOP
-
-                invocation = MvgeResponse(
-                    role="assistant",
-                    content=blocks,
-                    realm="openrouter",
-                    model=model.id,
-                    stop_reason=stop_reason,
-                    mana_usage=_mana_usage(usage),
-                )
-                yield RealmResponse(
-                    model=model,
-                    invocation=invocation,
-                    mana_used=usage.get("total_tokens", 0),
-                    stop_reason=stop_reason.value,
-                )
-                return
-
-    async def close(self) -> None:
-        if (
-            self._owned_client
-            and self._client is not None
-            and not self._client.is_closed
-        ):
-            await self._client.aclose()
+__all__ = [
+    "OpenRouterRealm",
+    "_invocations_to_messages",
+]

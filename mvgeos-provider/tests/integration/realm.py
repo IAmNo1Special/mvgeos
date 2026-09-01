@@ -38,7 +38,7 @@ def _mock_response(status_code, headers, body):
 
 
 def test_error_from_response_strips_leading_trailing_newlines() -> None:
-    from mvgeos_provider.openrouter import _error_from_response
+    from mvgeos_provider.sse import _error_from_response
 
     resp = _mock_response(
         400,
@@ -52,7 +52,7 @@ def test_error_from_response_strips_leading_trailing_newlines() -> None:
 
 
 def test_error_from_response_normalizes_crlf() -> None:
-    from mvgeos_provider.openrouter import _error_from_response
+    from mvgeos_provider.sse import _error_from_response
 
     resp = _mock_response(
         400,
@@ -66,7 +66,7 @@ def test_error_from_response_normalizes_crlf() -> None:
 
 
 def test_error_from_response_preserves_internal_newlines() -> None:
-    from mvgeos_provider.openrouter import _error_from_response
+    from mvgeos_provider.sse import _error_from_response
 
     resp = _mock_response(
         400,

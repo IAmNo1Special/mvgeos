@@ -1,0 +1,472 @@
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from typing import Any
+from unittest.mock import AsyncMock, patch
+
+import httpx
+import pytest
+
+from mvgeos_provider.sse import SSEChunk, SSEStreamingRealm
+from mvgeos_provider.types import (
+    AbortController,
+    AbortError,
+    ChannelConfig,
+    Model,
+    RealmResponse,
+    StopReason,
+)
+
+
+class AsyncLineIterator:
+    def __init__(self, lines: list[bytes]) -> None:
+        self._lines = lines
+        self._index = 0
+
+    def __aiter__(self) -> AsyncLineIterator:
+        return self
+
+    async def __anext__(self) -> bytes:
+        if self._index >= len(self._lines):
+            raise StopAsyncIteration
+        line = self._lines[self._index]
+        self._index += 1
+        return line
+
+
+class MockStreamResponse:
+    def __init__(
+        self,
+        lines: list[bytes],
+        status_code: int = 200,
+        headers: dict[str, str] | None = None,
+        body: bytes | None = None,
+    ) -> None:
+        self._lines = lines
+        self.status_code = status_code
+        self.headers = headers or {}
+        self._body = body or b""
+        self.aclose = AsyncMock()
+
+    async def aiter_lines(self) -> AsyncIterator[bytes]:
+        async for line in AsyncLineIterator(self._lines):
+            yield line
+
+    def read(self) -> bytes:
+        return self._body
+
+
+def _make_client(
+    lines: list[bytes],
+    status_code: int = 200,
+    headers: dict[str, str] | None = None,
+    body: bytes | None = None,
+    sink: dict[str, Any] | None = None,
+) -> httpx.AsyncClient:
+    class _MockStreamCM:
+        def __init__(self, method: str, url: str, **kwargs: Any) -> None:
+            if sink is not None:
+                sink.update(kwargs)
+                sink["method"] = method
+                sink["url"] = url
+
+        async def __aenter__(self) -> MockStreamResponse:
+            return MockStreamResponse(
+                lines=lines,
+                status_code=status_code,
+                headers=headers,
+                body=body,
+            )
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+    client = AsyncMock(spec=httpx.AsyncClient)
+    client.stream = _MockStreamCM
+    client.is_closed = False
+    return client
+
+
+def _make_sequence_client(
+    entries: list[tuple[int, dict[str, str], list[bytes], bytes]],
+) -> httpx.AsyncClient:
+    class _SeqCM:
+        _calls = 0
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        async def __aenter__(self) -> MockStreamResponse:
+            idx = min(_SeqCM._calls, len(entries) - 1)
+            _SeqCM._calls += 1
+            status, headers, lines, body = entries[idx]
+            return MockStreamResponse(
+                lines=lines,
+                status_code=status,
+                headers=headers,
+                body=body,
+            )
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+    client = AsyncMock(spec=httpx.AsyncClient)
+    client.stream = _SeqCM
+    client.is_closed = False
+    return client
+
+
+class DummySSERealm(SSEStreamingRealm):
+    def _prepare_request(
+        self,
+        model: Model,
+        invocations: list[Any],
+        config: ChannelConfig,
+    ) -> tuple[str, dict[str, str], dict[str, Any]]:
+        url = f"{self._base_url}/chat/completions"
+        headers = {"Authorization": f"Bearer {self._api_key}"}
+        payload: dict[str, Any] = {
+            "model": model.id,
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": True,
+        }
+        if config.tools:
+            payload["tools"] = config.tools
+        return url, headers, payload
+
+    def _parse_sse_chunk(self, chunk: dict[str, Any]) -> SSEChunk | None:
+        usage = chunk.get("usage")
+        choices = chunk.get("choices") or []
+        if not choices:
+            if usage:
+                return SSEChunk(usage=usage)
+            return None
+
+        choice = choices[0]
+        delta = choice.get("delta", {})
+        return SSEChunk(
+            content=delta.get("content"),
+            contemplation=delta.get("reasoning"),
+            tool_calls=delta.get("tool_calls"),
+            finish_reason=choice.get("finish_reason"),
+            usage=usage,
+        )
+
+
+def _test_model() -> Model:
+    return Model(
+        id="test-provider/test-model",
+        name="Test Model",
+        realm="test-realm",
+        base_url="https://api.example.com/v1",
+        api_key="test-key",
+    )
+
+
+async def _collect(gen: AsyncIterator[RealmResponse]) -> list[RealmResponse]:
+    return [item async for item in gen]
+
+
+@pytest.mark.asyncio
+async def test_stream_text_deltas_and_final_invocation() -> None:
+    lines = [
+        b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
+        b'data: {"choices":[{"delta":{"content":" world"}}]}\n\n',
+        b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+        b"data: [DONE]\n\n",
+    ]
+    realm = DummySSERealm(client=_make_client(lines))
+    model = _test_model()
+    config = ChannelConfig(model=model)
+
+    responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 3
+    # Two partial deltas
+    assert responses[0].stop_reason == "pending"
+    assert responses[0].invocation is not None
+    assert responses[0].invocation.content == [{"type": "text", "text": "Hello"}]
+
+    assert responses[1].stop_reason == "pending"
+    assert responses[1].invocation is not None
+    assert responses[1].invocation.content == [{"type": "text", "text": " world"}]
+
+    # Final response
+    assert responses[2].stop_reason == "stop"
+    assert responses[2].invocation is not None
+    assert responses[2].invocation.content == [{"type": "text", "text": "Hello world"}]
+    assert responses[2].invocation.stop_reason == StopReason.STOP
+    assert responses[2].invocation.realm == "test-realm"
+
+
+@pytest.mark.asyncio
+async def test_stream_contemplation_deltas() -> None:
+    lines = [
+        b'data: {"choices":[{"delta":{"reasoning":"Thinking deep"}}]}\n\n',
+        b'data: {"choices":[{"delta":{"content":"Answer"}}]}\n\n',
+        b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+        b"data: [DONE]\n\n",
+    ]
+    realm = DummySSERealm(client=_make_client(lines))
+    model = _test_model()
+    config = ChannelConfig(model=model)
+
+    responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 3
+    assert responses[0].invocation is not None
+    assert responses[0].invocation.content == [
+        {"type": "contemplation", "text": "Thinking deep"}
+    ]
+
+    final = responses[-1]
+    assert final.invocation is not None
+    assert final.invocation.content == [
+        {"type": "contemplation", "text": "Thinking deep"},
+        {"type": "text", "text": "Answer"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_stream_accumulates_tool_calls() -> None:
+    lines = [
+        (
+            b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1",'
+            b'"type":"function","function":{"name":"bash","arguments":"{\\"cmd\\":'
+            b' \\"ls\\"}"}}]}}]}\n\n'
+        ),
+        b'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+        b"data: [DONE]\n\n",
+    ]
+    realm = DummySSERealm(client=_make_client(lines))
+    model = _test_model()
+    config = ChannelConfig(model=model)
+
+    responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 1
+    final = responses[0]
+    assert final.stop_reason == StopReason.SPELL_USE.value
+    assert final.invocation is not None
+    assert final.invocation.stop_reason == StopReason.SPELL_USE
+    tool_call = final.invocation.content[0]["tool_call"]
+    assert tool_call["id"] == "call_1"
+    assert tool_call["name"] == "bash"
+    assert tool_call["arguments"] == {"cmd": "ls"}
+
+
+@pytest.mark.asyncio
+async def test_stream_mana_usage_breakdown() -> None:
+    lines = [
+        b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n',
+        (
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}],'
+            b'"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14,'
+            b'"completion_tokens_details":{"reasoning_tokens":2}}}\n\n'
+        ),
+        b"data: [DONE]\n\n",
+    ]
+    realm = DummySSERealm(client=_make_client(lines))
+    model = _test_model()
+    config = ChannelConfig(model=model)
+
+    responses = await _collect(realm.stream(model, [], config))
+
+    final = responses[-1]
+    assert final.mana_used == 14
+    assert final.invocation is not None
+    assert final.invocation.mana_usage == {
+        "input": 10.0,
+        "output": 4.0,
+        "total": 14.0,
+        "contemplation": 2.0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_stream_handles_empty_choices_and_done() -> None:
+    lines = [
+        b'data: {"choices":[]}\n\n',
+        b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n',
+        (
+            b'data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":1,'
+            b'"total_tokens":4}}\n\n'
+        ),
+        b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+        b"data: [DONE]\n\n",
+    ]
+    realm = DummySSERealm(client=_make_client(lines))
+    model = _test_model()
+    config = ChannelConfig(model=model)
+
+    responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 2
+    final = responses[-1]
+    assert final.mana_used == 4
+    assert final.invocation is not None
+    assert final.invocation.content == [{"type": "text", "text": "ok"}]
+
+
+@pytest.mark.asyncio
+async def test_stream_finish_reason_length_maps_to_length() -> None:
+    lines = [
+        b'data: {"choices":[{"delta":{"content":"truncated"}}]}\n\n',
+        b'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n',
+        b"data: [DONE]\n\n",
+    ]
+    realm = DummySSERealm(client=_make_client(lines))
+    model = _test_model()
+    config = ChannelConfig(model=model)
+
+    responses = await _collect(realm.stream(model, [], config))
+
+    final = responses[-1]
+    assert final.stop_reason == "length"
+    assert final.invocation is not None
+    assert final.invocation.stop_reason == StopReason.LENGTH
+
+
+@pytest.mark.asyncio
+async def test_stream_cancelled_before_request_raises_abort_error() -> None:
+    realm = DummySSERealm()
+    model = _test_model()
+    config = ChannelConfig(model=model)
+
+    controller = AbortController()
+    controller.abort()
+
+    with pytest.raises(AbortError, match="Operation aborted"):
+        async for _ in realm.stream(model, [], config, signal=controller.signal):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_stream_cancelled_mid_stream_raises_abort_error() -> None:
+    controller = AbortController()
+
+    class AbortingStreamCM:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        async def __aenter__(self) -> MockStreamResponse:
+            resp = MockStreamResponse(
+                lines=[b'data: {"choices":[{"delta":{"content":"part1"}}]}\n\n']
+            )
+
+            async def aborting_iter() -> AsyncIterator[bytes]:
+                yield b'data: {"choices":[{"delta":{"content":"part1"}}]}\n\n'
+                controller.abort()
+                yield b'data: {"choices":[{"delta":{"content":"part2"}}]}\n\n'
+
+            resp.aiter_lines = aborting_iter  # type: ignore[method-assign]
+            return resp
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+    client = AsyncMock(spec=httpx.AsyncClient)
+    client.stream = AbortingStreamCM
+    realm = DummySSERealm(client=client)
+    model = _test_model()
+    config = ChannelConfig(model=model)
+
+    with pytest.raises(AbortError, match="Operation aborted"):
+        await _collect(realm.stream(model, [], config, signal=controller.signal))
+
+
+@pytest.mark.asyncio
+async def test_stream_error_translation_401_auth_failed() -> None:
+    client = _make_client(
+        lines=[],
+        status_code=401,
+        body=b'{"error": {"message": "Invalid API key"}}',
+    )
+    realm = DummySSERealm(client=client)
+    model = _test_model()
+    config = ChannelConfig(model=model)
+
+    responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 1
+    assert responses[0].error_code == "auth_failed"
+    assert responses[0].error_message == "Invalid API key"
+
+
+@pytest.mark.asyncio
+async def test_stream_error_translation_429_rate_limited() -> None:
+    client = _make_client(
+        lines=[],
+        status_code=429,
+        body=b'{"error": {"message": "Rate limit exceeded"}}',
+    )
+    realm = DummySSERealm(client=client)
+    model = _test_model()
+    config = ChannelConfig(model=model, max_retries=1)
+
+    responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 1
+    assert responses[0].error_code == "rate_limited"
+    assert responses[0].error_message == "Rate limit exceeded"
+
+
+@pytest.mark.asyncio
+async def test_stream_retries_transient_503_then_succeeds() -> None:
+    client = _make_sequence_client(
+        [
+            (503, {}, [], b'{"error":{"message":"Temporarily unavailable"}}'),
+            (
+                200,
+                {},
+                [
+                    b'data: {"choices":[{"delta":{"content":"recovered"}}]}\n\n',
+                    b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+                    b"data: [DONE]\n\n",
+                ],
+                b"",
+            ),
+        ]
+    )
+    realm = DummySSERealm(client=client)
+    model = _test_model()
+    config = ChannelConfig(model=model, max_retries=3)
+
+    with patch("asyncio.sleep", new=AsyncMock()):
+        responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 2
+    assert responses[-1].stop_reason == "stop"
+    assert responses[-1].invocation is not None
+    assert responses[-1].invocation.content == [{"type": "text", "text": "recovered"}]
+
+
+@pytest.mark.asyncio
+async def test_stream_server_retry_delay_too_long() -> None:
+    client = _make_client(
+        lines=[],
+        status_code=429,
+        headers={"retry-after": "300"},
+        body=b'{"error":{"message":"Slow down"}}',
+    )
+    realm = DummySSERealm(client=client)
+    model = _test_model()
+    config = ChannelConfig(model=model, max_retries=2)
+
+    responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 1
+    assert responses[0].error_message is not None
+    assert "retry delay" in responses[0].error_message
+
+
+@pytest.mark.asyncio
+async def test_close_realm() -> None:
+    client = httpx.AsyncClient()
+    realm = DummySSERealm(client=client)
+    await realm.close()
+    assert not client.is_closed
+    await client.aclose()
+
+    owned_realm = DummySSERealm()
+    await owned_realm.close()

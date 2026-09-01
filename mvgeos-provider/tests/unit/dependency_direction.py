@@ -51,6 +51,7 @@ def test_provider_package_importable_without_agent_side_effects() -> None:
                 "import mvgeos_provider.openrouter\n"
                 "import mvgeos_provider.registry\n"
                 "import mvgeos_provider.retry\n"
+                "import mvgeos_provider.sse\n"
                 "import mvgeos_provider.types\n"
                 "assert 'mvgeos_agent' not in sys.modules, "
                 "'provider imports pulled in mvgeos_agent'\n"

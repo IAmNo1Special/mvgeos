@@ -9,6 +9,7 @@ from mvgeos_provider.registry import (
     get_model_options,
     refresh_models,
 )
+from mvgeos_provider.sse import SSEChunk, SSEStreamingRealm
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 
 __all__ = [
@@ -19,6 +20,8 @@ __all__ = [
     "Realm",
     "RealmRegistry",
     "RealmResponse",
+    "SSEChunk",
+    "SSEStreamingRealm",
     "get_default_realm_registry",
     "get_flat_model_ids",
     "get_model",
