@@ -26,9 +26,15 @@ def test_tome_metadata_has_required_fields() -> None:
         cwd="/home/user/project",
         parent_tome_id=None,
         active_leaf_id=None,
+        model="openai/gpt-4o",
+        contemplation_level="high",
+        spells=["bash", "read_file"],
     )
     assert meta.id == "tome-1"
     assert meta.cwd == "/home/user/project"
+    assert meta.model == "openai/gpt-4o"
+    assert meta.contemplation_level == "high"
+    assert meta.spells == ["bash", "read_file"]
 
 
 def test_tome_integrity_report_properties() -> None:

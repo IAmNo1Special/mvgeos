@@ -26,6 +26,13 @@ from mvgeos_provider.types import (
 from mvgeos_runes.types import ExecutionMode
 from pydantic import BaseModel, ValidationError, create_model
 
+from mvgeos_agent.errors import (
+    TomeIncompatibleError as TomeIncompatibleError,
+)
+from mvgeos_agent.errors import (
+    TomeResumeError as TomeResumeError,
+)
+
 SpellExecutionMode = ExecutionMode
 
 if TYPE_CHECKING:
@@ -253,10 +260,6 @@ class MvgeState:
 
     def __post_init__(self) -> None:
         self._spell_index = {s.name: s for s in self.spells}
-
-
-class TomeResumeError(Exception):
-    """Raised when resuming a tome fails."""
 
 
 @dataclass

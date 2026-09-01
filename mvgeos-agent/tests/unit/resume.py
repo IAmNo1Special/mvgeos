@@ -6,9 +6,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mvgeos_provider.types import Model
+from mvgeos_tome.ledger import TomeLedger
 
 from mvgeos_agent.base_mvge import BaseMvge
-from mvgeos_agent.types import TomeResumeError
+from mvgeos_agent.types import MvgeSpell, TomeResumeError
 
 
 def _mock_model() -> Model:
@@ -153,3 +154,283 @@ async def test_resume_tome_missing_id_raises_error() -> None:
             await agent.initialize()
 
         assert "nonexistent_id" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_resume_matching_config_succeeds_without_warnings() -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tome_dir = Path(tmp_dir)
+        ledger = TomeLedger(tome_dir)
+        meta = ledger.create_tome(
+            "/test",
+            model="test-model",
+            contemplation_level="medium",
+            spells=["spell_a", "spell_b"],
+        )
+
+        class SpellAgent(BaseMvge):
+            def _build_spells(self) -> list[MvgeSpell]:
+                return [
+                    MvgeSpell(name="spell_a", description="a", parameters={}),
+                    MvgeSpell(name="spell_b", description="b", parameters={}),
+                ]
+
+        agent = SpellAgent(
+            api_key="test-key",
+            tome_dir=tome_dir,
+            tome_resume=meta.id,
+        )
+        agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
+        agent._provider_registry.resolve = MagicMock(
+            return_value=(_mock_model(), MagicMock())
+        )  # type: ignore[method-assign]
+        agent._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
+        with patch.object(
+            agent,
+            "_build_system_prompt_async",
+            new_callable=AsyncMock,
+            return_value="sys",
+        ):
+            await agent.initialize()
+
+        assert agent._agent_tome is not None
+        assert agent._agent_tome.tome_id == meta.id
+        # No resume diagnostics
+        assert len(agent._resume_diagnostics) == 0
+
+
+@pytest.mark.asyncio
+async def test_resume_mismatched_model_non_strict_emits_diagnostic() -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tome_dir = Path(tmp_dir)
+        ledger = TomeLedger(tome_dir)
+        meta = ledger.create_tome(
+            "/test",
+            model="different-model",
+            contemplation_level="medium",
+            spells=[],
+        )
+
+        agent = BaseMvge(
+            api_key="test-key",
+            tome_dir=tome_dir,
+            tome_resume=meta.id,
+            strict_resume=False,
+        )
+        agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
+        agent._provider_registry.resolve = MagicMock(
+            return_value=(_mock_model(), MagicMock())
+        )  # type: ignore[method-assign]
+        agent._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
+        with patch.object(
+            agent,
+            "_build_system_prompt_async",
+            new_callable=AsyncMock,
+            return_value="sys",
+        ):
+            await agent.initialize()
+
+        assert agent._agent_tome is not None
+        assert agent._agent_tome.tome_id == meta.id
+        diags = agent.diagnostics
+        assert any("different-model" in d.message for d in diags)
+
+
+@pytest.mark.asyncio
+async def test_resume_mismatched_model_strict_raises_tome_incompatible() -> None:
+    from mvgeos_agent.errors import TomeIncompatibleError
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tome_dir = Path(tmp_dir)
+        ledger = TomeLedger(tome_dir)
+        meta = ledger.create_tome(
+            "/test",
+            model="different-model",
+            contemplation_level="medium",
+            spells=[],
+        )
+
+        agent = BaseMvge(
+            api_key="test-key",
+            tome_dir=tome_dir,
+            tome_resume=meta.id,
+            strict_resume=True,
+        )
+        agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
+        agent._provider_registry.resolve = MagicMock(
+            return_value=(_mock_model(), MagicMock())
+        )  # type: ignore[method-assign]
+        agent._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
+        with (
+            patch.object(
+                agent,
+                "_build_system_prompt_async",
+                new_callable=AsyncMock,
+                return_value="sys",
+            ),
+            pytest.raises(TomeIncompatibleError) as exc_info,
+        ):
+            await agent.initialize()
+
+        assert "different-model" in str(exc_info.value)
+        assert exc_info.value.tome_id == meta.id
+        assert exc_info.value.model_mismatch == ("different-model", "test-model")
+
+
+@pytest.mark.asyncio
+async def test_resume_missing_spells_strict_raises_tome_incompatible() -> None:
+    from mvgeos_agent.errors import TomeIncompatibleError
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tome_dir = Path(tmp_dir)
+        ledger = TomeLedger(tome_dir)
+        meta = ledger.create_tome(
+            "/test",
+            model="test-model",
+            contemplation_level="medium",
+            spells=["required_custom_spell", "bash"],
+        )
+
+        class LimitedAgent(BaseMvge):
+            def _build_spells(self) -> list[MvgeSpell]:
+                return [MvgeSpell(name="bash", description="b", parameters={})]
+
+        agent = LimitedAgent(
+            api_key="test-key",
+            tome_dir=tome_dir,
+            tome_resume=meta.id,
+            strict_resume=True,
+        )
+        agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
+        agent._provider_registry.resolve = MagicMock(
+            return_value=(_mock_model(), MagicMock())
+        )  # type: ignore[method-assign]
+        agent._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
+        with (
+            patch.object(
+                agent,
+                "_build_system_prompt_async",
+                new_callable=AsyncMock,
+                return_value="sys",
+            ),
+            pytest.raises(TomeIncompatibleError) as exc_info,
+        ):
+            await agent.initialize()
+
+        assert "required_custom_spell" in str(exc_info.value)
+        assert "required_custom_spell" in exc_info.value.missing_spells
+
+
+@pytest.mark.asyncio
+async def test_resume_missing_spells_non_strict_emits_diagnostic() -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tome_dir = Path(tmp_dir)
+        ledger = TomeLedger(tome_dir)
+        meta = ledger.create_tome(
+            "/test",
+            model="test-model",
+            contemplation_level="medium",
+            spells=["required_custom_spell", "bash"],
+        )
+
+        class LimitedAgent(BaseMvge):
+            def _build_spells(self) -> list[MvgeSpell]:
+                return [MvgeSpell(name="bash", description="b", parameters={})]
+
+        agent = LimitedAgent(
+            api_key="test-key",
+            tome_dir=tome_dir,
+            tome_resume=meta.id,
+            strict_resume=False,
+        )
+        agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
+        agent._provider_registry.resolve = MagicMock(
+            return_value=(_mock_model(), MagicMock())
+        )  # type: ignore[method-assign]
+        agent._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
+        with patch.object(
+            agent,
+            "_build_system_prompt_async",
+            new_callable=AsyncMock,
+            return_value="sys",
+        ):
+            await agent.initialize()
+
+        assert agent._agent_tome is not None
+        diags = agent.diagnostics
+        assert any("required_custom_spell" in d.message for d in diags)
+
+
+@pytest.mark.asyncio
+async def test_resume_force_fork_branches_incompatible_session() -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tome_dir = Path(tmp_dir)
+        ledger = TomeLedger(tome_dir)
+        meta = ledger.create_tome(
+            "/test",
+            model="old-model",
+            contemplation_level="low",
+            spells=["old_spell"],
+        )
+        e1 = ledger.append_message(meta.id, "user", "turn 1")
+        ledger.append_leaf(meta.id, e1.id)
+
+        class NewAgent(BaseMvge):
+            def _build_spells(self) -> list[MvgeSpell]:
+                return [MvgeSpell(name="new_spell", description="n", parameters={})]
+
+        agent = NewAgent(
+            api_key="test-key",
+            tome_dir=tome_dir,
+            tome_resume=meta.id,
+            force_fork_resume=True,
+        )
+        agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
+        agent._provider_registry.resolve = MagicMock(
+            return_value=(_mock_model(), MagicMock())
+        )  # type: ignore[method-assign]
+        agent._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
+        with patch.object(
+            agent,
+            "_build_system_prompt_async",
+            new_callable=AsyncMock,
+            return_value="sys",
+        ):
+            await agent.initialize()
+
+        assert agent._agent_tome is not None
+        # Forked tome has a new ID and points to parent
+        assert agent._agent_tome.tome_id != meta.id
+        assert agent._agent_tome.metadata.parent_tome_id == meta.id
+        assert agent._agent_tome.metadata.model == "test-model"
+        assert agent._agent_tome.metadata.spells == ["new_spell"]
+
+        # Ancestor history preserved
+        entries = ledger.get_entries(agent._agent_tome.tome_id)
+        assert len(entries) >= 1
+        assert entries[0].id == e1.id
+
+
+@pytest.mark.asyncio
+async def test_validate_tome_compatibility_helper() -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tome_dir = Path(tmp_dir)
+        ledger = TomeLedger(tome_dir)
+        meta = ledger.create_tome(
+            "/test",
+            model="other-model",
+            contemplation_level="high",
+            spells=["spell_x"],
+        )
+
+        agent = BaseMvge(api_key="test-key", tome_dir=tome_dir)
+        agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
+        agent._provider_registry.resolve = MagicMock(
+            return_value=(_mock_model(), MagicMock())
+        )  # type: ignore[method-assign]
+
+        report = agent.validate_tome_compatibility(meta.id)
+        assert not report.compatible
+        assert report.model_mismatch == ("other-model", "test-model")
+        assert "spell_x" in report.missing_spells
+        assert report.contemplation_mismatch == ("high", "medium")

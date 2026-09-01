@@ -16,8 +16,13 @@ from mvgeos_runes.types import (
     SpellDefinition,
 )
 from mvgeos_tome.ledger import TomeLedger
+from mvgeos_tome.types import TomeMetadata
 
 from mvgeos_agent.agent_session import MvgeTome
+from mvgeos_agent.compatibility import (
+    SessionCompatibilityReport,
+    validate_session_compatibility,
+)
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
     DEFAULT_TOME_DIR,
@@ -45,6 +50,7 @@ from mvgeos_agent.types import (
     MvgeState,
     QueueMode,
     SummonerRequest,
+    TomeResumeError,
 )
 
 
@@ -72,6 +78,8 @@ class BaseMvge:
         runes_paths: Sequence[str] | None = None,
         compaction: CompactionSettings = DEFAULT_COMPACTION_SETTINGS,
         environment: MvgeEnvironment | None = None,
+        strict_resume: bool = False,
+        force_fork_resume: bool = False,
     ) -> None:
         self._api_key = api_key
         self._name = name
@@ -80,6 +88,9 @@ class BaseMvge:
         self._tome_resume = tome_resume
         self._provider_name = provider_name
         self._compaction_settings = compaction
+        self._strict_resume = strict_resume
+        self._force_fork_resume = force_fork_resume
+        self._resume_diagnostics: list[Diagnostic | SkillDiagnostic] = []
 
         if environment is None:
             environment = MvgeEnvironment.resolve(
@@ -158,9 +169,59 @@ class BaseMvge:
 
     @property
     def diagnostics(self) -> list[Diagnostic | SkillDiagnostic]:
+        base_diags: list[Diagnostic | SkillDiagnostic] = []
         if self._runner is not None:
-            return list(self._runner.diagnostics) + list(self._runner.skill_diagnostics)
-        return list(self._environment.diagnostics)
+            base_diags = list(self._runner.diagnostics) + list(
+                self._runner.skill_diagnostics
+            )
+        else:
+            base_diags = list(self._environment.diagnostics)
+        return base_diags + self._resume_diagnostics
+
+    def validate_tome_compatibility(
+        self,
+        tome_id_or_meta: str | TomeMetadata,
+    ) -> SessionCompatibilityReport:
+        """Inspect compatibility of a target tome against active configuration."""
+        if self._tome_ledger is None:
+            self._tome_ledger = TomeLedger(self._tome_dir)
+
+        if isinstance(tome_id_or_meta, TomeMetadata):
+            meta = tome_id_or_meta
+        else:
+            loaded_meta = self._tome_ledger.open_tome(tome_id_or_meta)
+            if loaded_meta is None:
+                raise TomeResumeError(tome_id_or_meta)
+            meta = loaded_meta
+
+        active_spells = [s.name for s in self._build_spells()]
+        if self._runner is not None:
+            active_spells.extend(
+                [s.name for s in self._runner.get_all_registered_spells()]
+            )
+        active_spells = list(dict.fromkeys(active_spells))
+
+        if self._model is not None:
+            model_id = self._model.id
+        elif self._model_id:
+            try:
+                resolved_model, _ = self._provider_registry.resolve(
+                    self._model_id, self._api_key, self._provider_name
+                )
+                model_id = resolved_model.id
+            except Exception:
+                model_id = self._model_id
+        else:
+            model_id = None
+
+        entries = self._tome_ledger.get_entries(meta.id)
+        return validate_session_compatibility(
+            meta,
+            expected_model=model_id,
+            expected_contemplation=str(self._contemplation_level),
+            expected_spells=active_spells,
+            entries=entries,
+        )
 
     def build_snapshot(self) -> RuntimeSnapshot:
         """Assemble a resolved runtime snapshot of the agent's surface."""
@@ -338,9 +399,32 @@ class BaseMvge:
         self._model, self._realm = self._provider_registry.resolve(
             self._model_id, self._api_key, self._provider_name
         )
+        active_spells = [s.name for s in self._build_spells()]
+        if self._runner is not None:
+            active_spells.extend(
+                [s.name for s in self._runner.get_all_registered_spells()]
+            )
+        active_spells = list(dict.fromkeys(active_spells))
+
+        model_id = self._model.id if self._model is not None else self._model_id
         self._agent_tome = await MvgeTome.open_or_create(
-            self._tome_ledger, self._tome_resume, runner=self._runner
+            self._tome_ledger,
+            self._tome_resume,
+            runner=self._runner,
+            model=model_id,
+            contemplation_level=str(self._contemplation_level),
+            spells=active_spells,
+            strict=self._strict_resume,
+            force_fork=self._force_fork_resume,
         )
+
+        if (
+            self._agent_tome is not None
+            and self._agent_tome.compatibility_report is not None
+        ):
+            self._resume_diagnostics = list(
+                self._agent_tome.compatibility_report.diagnostics
+            )
 
         self._wire_runtime(final_prompt)
         self._initialized = True

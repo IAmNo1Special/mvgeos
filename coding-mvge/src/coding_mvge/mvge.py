@@ -33,6 +33,8 @@ class CodingMvge(BaseMvge):
         tome_resume: str | None = None,
         provider_name: str | None = None,
         environment: MvgeEnvironment | None = None,
+        strict_resume: bool = False,
+        force_fork_resume: bool = False,
     ) -> None:
         super().__init__(
             api_key=api_key,
@@ -42,6 +44,8 @@ class CodingMvge(BaseMvge):
             tome_resume=tome_resume,
             provider_name=provider_name,
             environment=environment,
+            strict_resume=strict_resume,
+            force_fork_resume=force_fork_resume,
         )
         # Use spells from config if not explicitly provided, otherwise
         # default to all builtin spells

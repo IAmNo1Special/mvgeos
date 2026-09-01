@@ -431,6 +431,10 @@ class DiagnosticKind(StrEnum):
     LOAD_FAILURE = "load_failure"
     PARSE_WARNING = "parse_warning"
     MISSING_DEP = "missing_dep"
+    INCOMPATIBLE_SESSION = "incompatible_session"
+    MODEL_MISMATCH = "model_mismatch"
+    MISSING_SPELL = "missing_spell"
+    CONTEMPLATION_MISMATCH = "contemplation_mismatch"
 
 
 @dataclass

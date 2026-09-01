@@ -42,6 +42,9 @@ class TomeMetadata:
     active_leaf_id: str | None = None
     schema_version: str = "1.0"
     version: int = 3
+    model: str | None = None
+    contemplation_level: str | None = None
+    spells: list[str] = field(default_factory=list)
 
 
 @dataclass

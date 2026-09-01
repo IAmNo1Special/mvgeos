@@ -129,3 +129,46 @@ class TestParentIdAndBranching:
             # Newly forked tome has no LEAF entry yet, but metadata has
             # active_leaf_id=e1.id
             assert ledger.get_leaf_id(forked.id) == e1.id
+
+    def test_create_and_branched_tome_stores_and_overrides_session_config(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = _ledger(tmp)
+            tome = ledger.create_tome(
+                "/tmp",
+                model="anthropic/claude-3.5-sonnet",
+                contemplation_level="high",
+                spells=["bash", "read_file"],
+            )
+            assert tome.model == "anthropic/claude-3.5-sonnet"
+            assert tome.contemplation_level == "high"
+            assert tome.spells == ["bash", "read_file"]
+
+            # Verify persisted header
+            meta = ledger.open_tome(tome.id)
+            assert meta is not None
+            assert meta.model == "anthropic/claude-3.5-sonnet"
+            assert meta.contemplation_level == "high"
+            assert meta.spells == ["bash", "read_file"]
+
+            # Fork inheriting parent config
+            forked1 = ledger.create_branched_tome(
+                parent_tome_id=tome.id,
+                cwd="/tmp",
+            )
+            assert forked1.model == "anthropic/claude-3.5-sonnet"
+            assert forked1.contemplation_level == "high"
+            assert forked1.spells == ["bash", "read_file"]
+
+            # Fork overriding config
+            forked2 = ledger.create_branched_tome(
+                parent_tome_id=tome.id,
+                cwd="/tmp",
+                model="openai/gpt-4o",
+                contemplation_level="low",
+                spells=["bash"],
+            )
+            assert forked2.model == "openai/gpt-4o"
+            assert forked2.contemplation_level == "low"
+            assert forked2.spells == ["bash"]

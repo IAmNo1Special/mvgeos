@@ -35,6 +35,7 @@ from mvgeos_agent.types import (
     SpellUpdateCallback,
     StopReason,
     SummonerRequest,
+    TomeIncompatibleError,
     TomeResumeError,
 )
 
@@ -71,5 +72,6 @@ __all__ = [
     "SpellUpdateCallback",
     "StopReason",
     "SummonerRequest",
+    "TomeIncompatibleError",
     "TomeResumeError",
 ]

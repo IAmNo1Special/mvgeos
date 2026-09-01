@@ -424,3 +424,124 @@ async def test_mvge_tome_create_initializes_valid_tome() -> None:
         assert tome.metadata.cwd == str(Path.cwd())
         assert tome.metadata.parent_tome_id is None
         assert tome.record_custom("probe", {}) is not None
+
+
+@pytest.mark.asyncio
+async def test_session_resume_with_matching_configuration_persisted_to_disk(
+    tome_ledger: TomeLedger, runner: RuneRunner
+) -> None:
+    tome1 = await MvgeTome.create(
+        tome_ledger,
+        cwd="/workspace",
+        runner=runner,
+        model="model-v1",
+        contemplation_level="medium",
+        spells=["read", "write"],
+    )
+    tome1.record_message("user", "first question")
+    await tome1.shutdown(reason="quit")
+
+    tome2 = await MvgeTome.open(
+        tome_ledger,
+        tome1.tome_id,
+        runner=runner,
+        expected_model="model-v1",
+        expected_contemplation="medium",
+        expected_spells=["read", "write", "bash"],
+        strict=True,
+    )
+
+    assert tome2.compatibility_report is not None
+    assert tome2.compatibility_report.compatible
+    assert tome2.tome_id == tome1.tome_id
+
+
+@pytest.mark.asyncio
+async def test_session_resume_strict_raises_tome_incompatible_on_mismatched_model(
+    tome_ledger: TomeLedger, runner: RuneRunner
+) -> None:
+    from mvgeos_agent.errors import TomeIncompatibleError
+
+    tome1 = await MvgeTome.create(
+        tome_ledger,
+        cwd="/workspace",
+        runner=runner,
+        model="claude-3-opus",
+        contemplation_level="high",
+        spells=["read", "write"],
+    )
+    await tome1.shutdown(reason="quit")
+
+    with pytest.raises(TomeIncompatibleError) as exc_info:
+        await MvgeTome.open(
+            tome_ledger,
+            tome1.tome_id,
+            runner=runner,
+            expected_model="gpt-4o",
+            expected_contemplation="high",
+            expected_spells=["read", "write"],
+            strict=True,
+        )
+
+    assert exc_info.value.tome_id == tome1.tome_id
+    assert exc_info.value.model_mismatch == ("claude-3-opus", "gpt-4o")
+
+
+@pytest.mark.asyncio
+async def test_session_resume_force_fork_preserves_history_with_updated_metadata(
+    tome_ledger: TomeLedger, runner: RuneRunner
+) -> None:
+    tome1 = await MvgeTome.create(
+        tome_ledger,
+        cwd="/workspace",
+        runner=runner,
+        model="old-model",
+        contemplation_level="low",
+        spells=["deprecated_spell"],
+    )
+    e1 = tome1.record_message("user", "historic prompt")
+    assert e1 is not None
+    tome_ledger.append_leaf(tome1.tome_id, e1.id)
+    await tome1.shutdown(reason="quit")
+
+    forked_tome = await MvgeTome.open(
+        tome_ledger,
+        tome1.tome_id,
+        runner=runner,
+        expected_model="new-model",
+        expected_contemplation="high",
+        expected_spells=["new_spell"],
+        force_fork=True,
+    )
+
+    assert forked_tome.tome_id != tome1.tome_id
+    assert forked_tome.metadata.parent_tome_id == tome1.tome_id
+    assert forked_tome.metadata.model == "new-model"
+    assert forked_tome.metadata.contemplation_level == "high"
+    assert forked_tome.metadata.spells == ["new_spell"]
+
+    entries = tome_ledger.get_entries(forked_tome.tome_id)
+    assert any(e.id == e1.id for e in entries)
+
+
+@pytest.mark.asyncio
+async def test_session_resume_unconstrained_legacy_session_resumes_cleanly(
+    tome_ledger: TomeLedger, runner: RuneRunner
+) -> None:
+    # Unconstrained sessions resume cleanly without errors or warnings
+    legacy_meta = tome_ledger.create_tome("/workspace")
+    assert legacy_meta.model is None
+    assert legacy_meta.spells == []
+
+    tome = await MvgeTome.open(
+        tome_ledger,
+        legacy_meta.id,
+        runner=runner,
+        expected_model="any-model",
+        expected_spells=["any_spell"],
+        strict=True,
+    )
+
+    assert tome.compatibility_report is not None
+    assert tome.compatibility_report.compatible
+    assert len(tome.compatibility_report.diagnostics) == 0

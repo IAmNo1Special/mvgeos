@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import re
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,11 @@ from mvgeos_runes.types import SigilHook
 from mvgeos_tome.ledger import TomeLedger
 from mvgeos_tome.types import TomeEntry, TomeMetadata
 
-from mvgeos_agent.types import TomeResumeError
+from mvgeos_agent.compatibility import (
+    SessionCompatibilityReport,
+    validate_session_compatibility,
+)
+from mvgeos_agent.types import TomeIncompatibleError, TomeResumeError
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +37,19 @@ class MvgeTome:
         ledger: TomeLedger,
         tome_id: str,
         runner: RuneRunner | None = None,
+        *,
+        expected_model: str | None = None,
+        expected_contemplation: str | None = None,
+        expected_spells: Sequence[str] | None = None,
+        strict: bool = False,
+        force_fork: bool = False,
+        entries: Sequence[TomeEntry] | None = None,
     ) -> MvgeTome:
-        """Resume an existing Tome.
+        """Resume an existing Tome, validating compatibility with active config.
 
-        Raises TomeResumeError when the tome cannot be opened.
+        Raises:
+            TomeResumeError: when the tome cannot be opened.
+            TomeIncompatibleError: when strict=True and compatibility checks fail.
         """
         try:
             metadata = ledger.open_tome(tome_id)
@@ -43,7 +57,75 @@ class MvgeTome:
             raise TomeResumeError(tome_id) from e
         if metadata is None:
             raise TomeResumeError(tome_id)
+
+        if entries is None:
+            entries = ledger.get_entries(metadata.id)
+
+        report = validate_session_compatibility(
+            metadata,
+            expected_model=expected_model,
+            expected_contemplation=expected_contemplation,
+            expected_spells=expected_spells,
+            entries=entries,
+        )
+
+        if not report.compatible:
+            if force_fork:
+                logger.info(
+                    "Force-forking incompatible tome %s with active configuration",
+                    metadata.id,
+                )
+                try:
+                    fork_leaf_id = (
+                        ledger.get_leaf_id(metadata.id) or metadata.active_leaf_id
+                    )
+                    forked_metadata = ledger.create_branched_tome(
+                        parent_tome_id=metadata.id,
+                        cwd=metadata.cwd,
+                        fork_from_leaf_id=fork_leaf_id,
+                        model=expected_model or metadata.model,
+                        contemplation_level=expected_contemplation
+                        or metadata.contemplation_level,
+                        spells=expected_spells
+                        if expected_spells is not None
+                        else metadata.spells,
+                    )
+                except Exception as e:
+                    logger.exception(
+                        "Failed to force-fork incompatible tome %s: %s",
+                        metadata.id,
+                        e,
+                    )
+                    raise TomeIncompatibleError(
+                        tome_id=metadata.id,
+                        issues=[d.message for d in report.diagnostics],
+                        model_mismatch=report.model_mismatch,
+                        missing_spells=report.missing_spells,
+                        contemplation_mismatch=report.contemplation_mismatch,
+                    ) from e
+
+                tome = cls(ledger, forked_metadata, runner)
+                tome.last_compatibility_report = report
+                await tome.start(reason="fork")
+                return tome
+
+            if strict:
+                raise TomeIncompatibleError(
+                    tome_id=metadata.id,
+                    issues=[d.message for d in report.diagnostics],
+                    model_mismatch=report.model_mismatch,
+                    missing_spells=report.missing_spells,
+                    contemplation_mismatch=report.contemplation_mismatch,
+                )
+
+            logger.warning(
+                "Resuming tome %s with compatibility warnings: %s",
+                metadata.id,
+                [d.message for d in report.diagnostics],
+            )
+
         tome = cls(ledger, metadata, runner)
+        tome.last_compatibility_report = report
         await tome.start(reason="resume")
         return tome
 
@@ -53,10 +135,19 @@ class MvgeTome:
         ledger: TomeLedger,
         cwd: str | Path | None = None,
         runner: RuneRunner | None = None,
+        *,
+        model: str | None = None,
+        contemplation_level: str | None = None,
+        spells: Sequence[str] | None = None,
     ) -> MvgeTome:
         """Create and start a fresh Tome."""
         cwd_str = str(cwd) if cwd is not None else str(Path.cwd())
-        metadata = ledger.create_tome(cwd_str)
+        metadata = ledger.create_tome(
+            cwd_str,
+            model=model,
+            contemplation_level=contemplation_level,
+            spells=spells,
+        )
         tome = cls(ledger, metadata, runner)
         await tome.start(reason="startup")
         return tome
@@ -68,11 +159,33 @@ class MvgeTome:
         tome_resume: str | None = None,
         cwd: str | Path | None = None,
         runner: RuneRunner | None = None,
+        *,
+        model: str | None = None,
+        contemplation_level: str | None = None,
+        spells: Sequence[str] | None = None,
+        strict: bool = False,
+        force_fork: bool = False,
     ) -> MvgeTome:
         """Resume the given tome, or create a fresh one when no target given."""
         if tome_resume:
-            return await cls.open(ledger, tome_resume, runner)
-        return await cls.create(ledger, cwd, runner)
+            return await cls.open(
+                ledger,
+                tome_resume,
+                runner,
+                expected_model=model,
+                expected_contemplation=contemplation_level,
+                expected_spells=spells,
+                strict=strict,
+                force_fork=force_fork,
+            )
+        return await cls.create(
+            ledger,
+            cwd,
+            runner,
+            model=model,
+            contemplation_level=contemplation_level,
+            spells=spells,
+        )
 
     def __init__(
         self,
@@ -84,6 +197,7 @@ class MvgeTome:
         self._metadata = tome_metadata
         self._rune_runner = rune_runner
         self._started = False
+        self.last_compatibility_report: SessionCompatibilityReport | None = None
 
     @property
     def tome_id(self) -> str:
@@ -101,6 +215,10 @@ class MvgeTome:
     @property
     def metadata(self) -> TomeMetadata:
         return self._metadata
+
+    @property
+    def compatibility_report(self) -> SessionCompatibilityReport | None:
+        return self.last_compatibility_report
 
     @property
     def active_leaf_id(self) -> str | None:

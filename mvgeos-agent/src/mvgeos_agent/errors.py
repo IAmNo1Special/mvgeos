@@ -76,3 +76,46 @@ class SpellExecutionError(MvgeError):
             f"Spell '{spell_name}' execution failed: {cause}",
             cause,
         )
+
+
+class TomeIncompatibleError(MvgeError):
+    """Raised when resuming a tome session with incompatible configuration."""
+
+    def __init__(
+        self,
+        tome_id: str,
+        message: str | None = None,
+        *,
+        issues: list[str] | None = None,
+        model_mismatch: tuple[str | None, str | None] | None = None,
+        missing_spells: list[str] | None = None,
+        contemplation_mismatch: tuple[str | None, str | None] | None = None,
+        cause: Exception | None = None,
+    ) -> None:
+        self.tome_id = tome_id
+        self.issues = issues or []
+        self.model_mismatch = model_mismatch
+        self.missing_spells = missing_spells or []
+        self.contemplation_mismatch = contemplation_mismatch
+
+        if message is None:
+            details: list[str] = []
+            if model_mismatch:
+                m0, m1 = model_mismatch
+                details.append(f"model mismatch (session='{m0}', active='{m1}')")
+            if missing_spells:
+                details.append(f"missing spells: {', '.join(missing_spells)}")
+            if contemplation_mismatch:
+                c0, c1 = contemplation_mismatch
+                details.append(
+                    f"contemplation mismatch (session='{c0}', active='{c1}')"
+                )
+            if self.issues:
+                details.extend(self.issues)
+            detail_str = f": {'; '.join(details)}" if details else ""
+            message = (
+                f"Session '{tome_id}' is incompatible with active "
+                f"configuration{detail_str}"
+            )
+
+        super().__init__("tome_incompatible", message, cause)

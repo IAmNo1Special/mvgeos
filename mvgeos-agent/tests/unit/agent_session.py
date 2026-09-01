@@ -58,7 +58,9 @@ class TestFactories:
 
         tome = await MvgeTome.create(ledger, cwd="/proj", runner=runner)
 
-        ledger.create_tome.assert_called_once_with("/proj")
+        ledger.create_tome.assert_called_once_with(
+            "/proj", model=None, contemplation_level=None, spells=None
+        )
         ledger.open_tome.assert_not_called()
         assert isinstance(tome, MvgeTome)
         assert tome.tome_id == _metadata().id
@@ -72,19 +74,42 @@ class TestFactories:
         ]
 
     @pytest.mark.asyncio
+    async def test_create_passes_session_config(self) -> None:
+        ledger = MagicMock()
+        ledger.create_tome.return_value = _metadata()
+
+        await MvgeTome.create(
+            ledger,
+            cwd="/proj",
+            model="test-model",
+            contemplation_level="high",
+            spells=["spell1"],
+        )
+
+        ledger.create_tome.assert_called_once_with(
+            "/proj",
+            model="test-model",
+            contemplation_level="high",
+            spells=["spell1"],
+        )
+
+    @pytest.mark.asyncio
     async def test_create_default_cwd_is_process_cwd(self) -> None:
         ledger = MagicMock()
         ledger.create_tome.return_value = _metadata()
 
         await MvgeTome.create(ledger)
 
-        ledger.create_tome.assert_called_once_with(str(Path.cwd()))
+        ledger.create_tome.assert_called_once_with(
+            str(Path.cwd()), model=None, contemplation_level=None, spells=None
+        )
 
     @pytest.mark.asyncio
     async def test_open_resumes_existing_tome(self) -> None:
         resumed = _metadata("b" * 32)
         ledger = MagicMock()
         ledger.open_tome.return_value = resumed
+        ledger.get_entries.return_value = []
         runner = _mock_runner()
 
         tome = await MvgeTome.open(ledger, "b" * 32, runner=runner)
@@ -114,7 +139,9 @@ class TestFactories:
 
         tome = await MvgeTome.open_or_create(ledger, cwd="/proj", runner=runner)
 
-        ledger.create_tome.assert_called_once_with("/proj")
+        ledger.create_tome.assert_called_once_with(
+            "/proj", model=None, contemplation_level=None, spells=None
+        )
         assert tome.tome_id == _metadata().id
 
     @pytest.mark.asyncio
@@ -122,6 +149,7 @@ class TestFactories:
         resumed = _metadata("b" * 32)
         ledger = MagicMock()
         ledger.open_tome.return_value = resumed
+        ledger.get_entries.return_value = []
         runner = _mock_runner()
 
         tome = await MvgeTome.open_or_create(
@@ -297,3 +325,126 @@ class TestSwitch:
 
         assert result is None
         await _assert_source_still_running(runner, source)
+
+
+class TestCompatibility:
+    @pytest.mark.asyncio
+    async def test_open_strict_raises_when_incompatible(self) -> None:
+        from mvgeos_agent.errors import TomeIncompatibleError
+
+        meta = TomeMetadata(
+            id="a" * 32,
+            created_at="now",
+            cwd="/test",
+            model="old-model",
+            spells=["spell-1"],
+        )
+        ledger = MagicMock()
+        ledger.open_tome.return_value = meta
+        ledger.get_entries.return_value = []
+
+        with pytest.raises(TomeIncompatibleError) as exc_info:
+            await MvgeTome.open(
+                ledger,
+                "a" * 32,
+                expected_model="new-model",
+                expected_spells=["spell-2"],
+                strict=True,
+            )
+
+        assert exc_info.value.tome_id == "a" * 32
+        assert exc_info.value.model_mismatch == ("old-model", "new-model")
+        assert "spell-1" in exc_info.value.missing_spells
+
+    @pytest.mark.asyncio
+    async def test_open_non_strict_warns_and_populates_report(self) -> None:
+        meta = TomeMetadata(
+            id="a" * 32,
+            created_at="now",
+            cwd="/test",
+            model="old-model",
+            spells=["spell-1"],
+        )
+        ledger = MagicMock()
+        ledger.open_tome.return_value = meta
+        ledger.get_entries.return_value = []
+
+        tome = await MvgeTome.open(
+            ledger,
+            "a" * 32,
+            expected_model="new-model",
+            expected_spells=["spell-2"],
+            strict=False,
+        )
+
+        assert tome.compatibility_report is not None
+        assert not tome.compatibility_report.compatible
+        assert tome.compatibility_report.model_mismatch == ("old-model", "new-model")
+        assert "spell-1" in tome.compatibility_report.missing_spells
+
+    @pytest.mark.asyncio
+    async def test_open_force_fork_creates_branched_tome(self) -> None:
+        meta = TomeMetadata(
+            id="a" * 32,
+            created_at="now",
+            cwd="/test",
+            model="old-model",
+            spells=["spell-1"],
+            active_leaf_id="leaf-1",
+        )
+        forked = TomeMetadata(
+            id="f" * 32,
+            created_at="now",
+            cwd="/test",
+            parent_tome_id="a" * 32,
+            model="new-model",
+            spells=["spell-2"],
+        )
+        ledger = MagicMock()
+        ledger.open_tome.return_value = meta
+        ledger.get_entries.return_value = []
+        ledger.get_leaf_id.return_value = "leaf-1"
+        ledger.create_branched_tome.return_value = forked
+
+        tome = await MvgeTome.open(
+            ledger,
+            "a" * 32,
+            expected_model="new-model",
+            expected_spells=["spell-2"],
+            force_fork=True,
+        )
+
+        ledger.create_branched_tome.assert_called_once_with(
+            parent_tome_id="a" * 32,
+            cwd="/test",
+            fork_from_leaf_id="leaf-1",
+            model="new-model",
+            contemplation_level=None,
+            spells=["spell-2"],
+        )
+        assert tome.tome_id == "f" * 32
+
+    @pytest.mark.asyncio
+    async def test_open_compatible_has_clean_report(self) -> None:
+        meta = TomeMetadata(
+            id="a" * 32,
+            created_at="now",
+            cwd="/test",
+            model="same-model",
+            spells=["spell-1"],
+        )
+        ledger = MagicMock()
+        ledger.open_tome.return_value = meta
+        ledger.get_entries.return_value = []
+
+        tome = await MvgeTome.open(
+            ledger,
+            "a" * 32,
+            expected_model="same-model",
+            expected_spells=["spell-1", "spell-2"],
+            strict=True,
+        )
+
+        assert tome.compatibility_report is not None
+        assert tome.compatibility_report.compatible
+        assert len(tome.compatibility_report.diagnostics) == 0

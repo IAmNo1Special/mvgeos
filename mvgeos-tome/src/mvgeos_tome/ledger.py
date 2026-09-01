@@ -5,7 +5,7 @@ import json
 import logging
 import uuid
 from collections import OrderedDict
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -134,11 +134,20 @@ class TomeLedger:
         metadata_or_cwd: TomeMetadata | str,
         parent_tome_id: str | None = None,
         tome_id: str | None = None,
+        model: str | None = None,
+        contemplation_level: str | None = None,
+        spells: Sequence[str] | None = None,
     ) -> TomeMetadata:
         with self._lock:
             if isinstance(metadata_or_cwd, TomeMetadata):
                 metadata = metadata_or_cwd
                 metadata.schema_version = "1.0"
+                if model is not None:
+                    metadata.model = model
+                if contemplation_level is not None:
+                    metadata.contemplation_level = contemplation_level
+                if spells is not None:
+                    metadata.spells = list(spells)
                 tome_id = metadata.id
             else:
                 tome_id = tome_id or _generate_id()
@@ -150,6 +159,9 @@ class TomeLedger:
                     parent_tome_id=parent_tome_id,
                     active_leaf_id=None,
                     schema_version="1.0",
+                    model=model,
+                    contemplation_level=contemplation_level,
+                    spells=list(spells or []),
                 )
 
             self._tomles[tome_id] = metadata
@@ -432,6 +444,9 @@ class TomeLedger:
         cwd: str,
         fork_from_leaf_id: str | None = None,
         tome_id: str | None = None,
+        model: str | None = None,
+        contemplation_level: str | None = None,
+        spells: Sequence[str] | None = None,
     ) -> TomeMetadata:
         with self._lock:
             resolved_parent_id = self._resolve_tome_id(parent_tome_id) or parent_tome_id
@@ -449,6 +464,15 @@ class TomeLedger:
                 parent_tome_id=parent_meta.id,
                 active_leaf_id=fork_from_leaf_id,
                 schema_version="1.0",
+                model=model if model is not None else parent_meta.model,
+                contemplation_level=(
+                    contemplation_level
+                    if contemplation_level is not None
+                    else parent_meta.contemplation_level
+                ),
+                spells=(
+                    list(spells) if spells is not None else list(parent_meta.spells)
+                ),
             )
             self._tomles[new_tome_id] = metadata
 
@@ -540,6 +564,10 @@ class TomeLedger:
                     active_leaf_id=header.get("activeLeafId"),
                     schema_version=header.get("schema_version", "1.0"),
                     version=version,
+                    model=header.get("model"),
+                    contemplation_level=header.get("contemplationLevel")
+                    or header.get("contemplation_level"),
+                    spells=list(header.get("spells", []) or []),
                 )
         except TomeVersionError:
             raise
@@ -1008,6 +1036,12 @@ class TomeLedger:
             header["parentSession"] = metadata.parent_tome_id
         if metadata.active_leaf_id:
             header["activeLeafId"] = metadata.active_leaf_id
+        if metadata.model:
+            header["model"] = metadata.model
+        if metadata.contemplation_level:
+            header["contemplationLevel"] = metadata.contemplation_level
+        if metadata.spells:
+            header["spells"] = metadata.spells
 
         with tome_file.open("w", encoding="utf-8") as f:
             f.write(json.dumps(header) + "\n")
@@ -1097,9 +1131,18 @@ class TomeLedger:
         metadata_or_cwd: TomeMetadata | str,
         parent_tome_id: str | None = None,
         tome_id: str | None = None,
+        model: str | None = None,
+        contemplation_level: str | None = None,
+        spells: Sequence[str] | None = None,
     ) -> TomeMetadata:
         return await asyncio.to_thread(
-            self.create_tome, metadata_or_cwd, parent_tome_id, tome_id
+            self.create_tome,
+            metadata_or_cwd,
+            parent_tome_id,
+            tome_id,
+            model=model,
+            contemplation_level=contemplation_level,
+            spells=spells,
         )
 
     async def create_branched_tome_async(
@@ -1108,6 +1151,9 @@ class TomeLedger:
         cwd: str,
         fork_from_leaf_id: str | None = None,
         tome_id: str | None = None,
+        model: str | None = None,
+        contemplation_level: str | None = None,
+        spells: Sequence[str] | None = None,
     ) -> TomeMetadata:
         return await asyncio.to_thread(
             self.create_branched_tome,
@@ -1115,6 +1161,9 @@ class TomeLedger:
             cwd,
             fork_from_leaf_id,
             tome_id,
+            model=model,
+            contemplation_level=contemplation_level,
+            spells=spells,
         )
 
     async def get_entries_async(
