@@ -2,17 +2,13 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from mvgeos_provider.types import RealmResponse
 
 from mvgeos_agent.dispatcher import SpellDispatcher
 from mvgeos_agent.environment import PromptSource
 from mvgeos_agent.errors import AuthenticationError, RateLimitError
-
-if TYPE_CHECKING:
-    pass
-
 from mvgeos_agent.types import (
     AbortError,
     AbortSignal,
@@ -32,11 +28,6 @@ EmitSink = Callable[[MvgeEvent], Awaitable[None]]
 StreamFn = Callable[
     [list[MvgeInvocation], AbortSignal | None], AsyncIterator[RealmResponse]
 ]
-
-_TRUNCATED_SPELL_CALL = (
-    "Spell '{name}' was not cast: the response hit the output Mana limit, so its "
-    "arguments may be truncated. Re-issue the spell cast with complete arguments."
-)
 
 
 @dataclass(frozen=True)
@@ -74,11 +65,6 @@ class LoopContext:
     def get_spell(self, name: str) -> MvgeSpell | None:
         """Lookup a spell by name in O(1) time."""
         return self._spell_index.get(name)
-
-    @property
-    def spell_map(self) -> dict[str, MvgeSpell]:
-        """Dictionary mapping of spell names to MvgeSpell instances."""
-        return self._spell_index
 
 
 @dataclass

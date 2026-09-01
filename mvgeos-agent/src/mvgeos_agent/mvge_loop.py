@@ -27,11 +27,6 @@ from mvgeos_agent.types import (
     SummonerRequest,
 )
 
-_TRUNCATED_SPELL_CALL = (
-    "Spell '{name}' was not cast: the response hit the output Mana limit, so its "
-    "arguments may be truncated. Re-issue the spell cast with complete arguments."
-)
-
 
 class _RuneSpellWrapper(MvgeSpell):
     def __init__(self, spell_def: SpellDefinition) -> None:
