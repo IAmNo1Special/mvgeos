@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -37,15 +38,29 @@ class TestRuneRunnerSpells:
         assert len(spells) == 1
         assert spells[0].name == "test_spell"
 
-    def test_first_registration_wins(self) -> None:
+    def test_first_registration_wins(self, caplog: pytest.LogCaptureFixture) -> None:
         runner = RuneRunner()
         spell1 = SpellDefinition(name="dup", description="first")
         spell2 = SpellDefinition(name="dup", description="second")
-        runner.register_spell(spell1)
-        runner.register_spell(spell2)
+        assert runner.register_spell(spell1) is True
+        assert runner.register_spell(spell2) is False
         spells = runner.get_all_registered_spells()
         assert len(spells) == 1
         assert spells[0].description == "first"
+        assert "Duplicate spell registration skipped: dup" in caplog.text
+
+    def test_override_registration(self, caplog: pytest.LogCaptureFixture) -> None:
+        runner = RuneRunner()
+        spell1 = SpellDefinition(name="dup", description="first")
+        spell2 = SpellDefinition(name="dup", description="second")
+        assert runner.register_spell(spell1) is True
+        with caplog.at_level(logging.DEBUG):
+            assert runner.register_spell(spell2, override=True) is True
+        spells = runner.get_all_registered_spells()
+        assert len(spells) == 1
+        assert spells[0].description == "second"
+        assert "Overwriting existing spell registration" in caplog.text
+        assert "Duplicate spell registration skipped" not in caplog.text
 
     def test_empty_spells(self) -> None:
         runner = RuneRunner()
@@ -176,6 +191,23 @@ class TestRuneRunnerActiveSpellsComposition:
         runner.set_active_spells(["tool_search", "grep"], rune_name="seeker")
         assert set(runner.get_active_spells()) == {"tool_search", "grep"}
 
+    def test_override_spell_migrates_active_set(self) -> None:
+        runner = RuneRunner()
+        runner.register_spell(
+            SpellDefinition(name="shared", description="from A"),
+            rune_name="rune_a",
+        )
+        assert runner.get_active_spells() == ["shared"]
+        runner.register_spell(
+            SpellDefinition(name="shared", description="from B"),
+            rune_name="rune_b",
+            override=True,
+        )
+        # rune_b now owns the spell in its active set
+        # If rune_b narrows its set, rune_a's set does not keep the overridden spell
+        runner.set_active_spells([], rune_name="rune_b")
+        assert runner.get_active_spells() == []
+
 
 class TestRuneRunnerCommands:
     def test_register_and_get_commands(self) -> None:
@@ -187,29 +219,57 @@ class TestRuneRunnerCommands:
         cmd = RegisteredCommand(
             name="test_cmd", description="A command", handler=handler
         )
-        runner.register_command(cmd)
+        assert runner.register_command(cmd) is True
         commands = runner.get_commands()
         assert len(commands) == 1
         assert commands[0].name == "test_cmd"
 
-    def test_first_command_wins(self) -> None:
+    def test_first_command_wins(self, caplog: pytest.LogCaptureFixture) -> None:
         runner = RuneRunner()
-        runner.register_command(RegisteredCommand(name="dup", description="first"))
-        runner.register_command(RegisteredCommand(name="dup", description="second"))
+        assert (
+            runner.register_command(RegisteredCommand(name="dup", description="first"))
+            is True
+        )
+        assert (
+            runner.register_command(RegisteredCommand(name="dup", description="second"))
+            is False
+        )
         assert len(runner.get_commands()) == 1
         assert runner.get_commands()[0].description == "first"
+        assert "Duplicate command registration skipped: dup" in caplog.text
+
+    def test_override_command(self, caplog: pytest.LogCaptureFixture) -> None:
+        runner = RuneRunner()
+        assert (
+            runner.register_command(RegisteredCommand(name="dup", description="first"))
+            is True
+        )
+        with caplog.at_level(logging.DEBUG):
+            assert (
+                runner.register_command(
+                    RegisteredCommand(name="dup", description="second"),
+                    override=True,
+                )
+                is True
+            )
+        assert len(runner.get_commands()) == 1
+        assert runner.get_commands()[0].description == "second"
+        assert "Overwriting existing command registration" in caplog.text
+        assert "Duplicate command registration skipped" not in caplog.text
 
 
 class TestRuneRunnerShortcuts:
     def test_register_and_get_shortcuts(self) -> None:
         runner = RuneRunner()
         shortcut = RuneShortcut(key="ctrl+k", description="Test", handler=lambda: None)
-        runner.register_shortcut(shortcut)
+        assert runner.register_shortcut(shortcut) is True
         shortcuts = runner.get_shortcuts()
         assert len(shortcuts) == 1
         assert shortcuts[0].key == "ctrl+k"
 
-    def test_duplicate_shortcut_logs_warning(self, caplog) -> None:
+    def test_duplicate_shortcut_logs_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         runner = RuneRunner()
         shortcut1 = RuneShortcut(
             key="ctrl+k", description="First", handler=lambda: None
@@ -217,29 +277,58 @@ class TestRuneRunnerShortcuts:
         shortcut2 = RuneShortcut(
             key="ctrl+k", description="Second", handler=lambda: None
         )
-        runner.register_shortcut(shortcut1)
-        runner.register_shortcut(shortcut2)
+        assert runner.register_shortcut(shortcut1) is True
+        assert runner.register_shortcut(shortcut2) is False
         assert len(runner.get_shortcuts()) == 1
         assert "Duplicate shortcut registration skipped" in caplog.text
+
+    def test_override_shortcut(self, caplog: pytest.LogCaptureFixture) -> None:
+        runner = RuneRunner()
+        shortcut1 = RuneShortcut(
+            key="ctrl+k", description="First", handler=lambda: None
+        )
+        shortcut2 = RuneShortcut(
+            key="ctrl+k", description="Second", handler=lambda: None
+        )
+        assert runner.register_shortcut(shortcut1) is True
+        with caplog.at_level(logging.DEBUG):
+            assert runner.register_shortcut(shortcut2, override=True) is True
+        assert len(runner.get_shortcuts()) == 1
+        assert runner.get_shortcuts()[0].description == "Second"
+        assert "Overwriting existing shortcut registration" in caplog.text
+        assert "Duplicate shortcut registration skipped" not in caplog.text
 
 
 class TestRuneRunnerProviders:
     def test_register_provider(self) -> None:
         runner = RuneRunner()
-        runner.register_provider("test", {"api_key": "xyz"})
-        assert runner._providers["test"] == {"api_key": "xyz"}
+        assert runner.register_provider("test", {"api_key": "xyz"}) is True
+        assert runner.get_registered_providers()["test"] == {"api_key": "xyz"}
 
-    def test_first_provider_wins(self) -> None:
+    def test_first_provider_wins(self, caplog: pytest.LogCaptureFixture) -> None:
         runner = RuneRunner()
-        runner.register_provider("test", {"api_key": "first"})
-        runner.register_provider("test", {"api_key": "second"})
-        assert runner._providers["test"]["api_key"] == "first"
+        assert runner.register_provider("test", {"api_key": "first"}) is True
+        assert runner.register_provider("test", {"api_key": "second"}) is False
+        assert runner.get_registered_providers()["test"]["api_key"] == "first"
+        assert "Duplicate provider registration skipped: test" in caplog.text
+
+    def test_override_provider(self, caplog: pytest.LogCaptureFixture) -> None:
+        runner = RuneRunner()
+        assert runner.register_provider("test", {"api_key": "first"}) is True
+        with caplog.at_level(logging.DEBUG):
+            assert (
+                runner.register_provider("test", {"api_key": "second"}, override=True)
+                is True
+            )
+        assert runner.get_registered_providers()["test"]["api_key"] == "second"
+        assert "Overwriting existing provider registration" in caplog.text
+        assert "Duplicate provider registration skipped" not in caplog.text
 
     def test_get_registered_providers(self) -> None:
         runner = RuneRunner()
         assert runner.get_registered_providers() == {}
-        runner.register_provider("a", {"key": 1})
-        runner.register_provider("b", {"key": 2})
+        assert runner.register_provider("a", {"key": 1}) is True
+        assert runner.register_provider("b", {"key": 2}) is True
         providers = runner.get_registered_providers()
         assert providers["a"] == {"key": 1}
         assert providers["b"] == {"key": 2}

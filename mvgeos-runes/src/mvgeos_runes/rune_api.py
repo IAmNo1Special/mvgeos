@@ -30,17 +30,19 @@ class RuneAPI:
     def on(self, hook: SigilHook, handler: Any) -> None:
         self._runner.register_handler(hook, handler)
 
-    def register_spell(self, spell: SpellDefinition) -> None:
-        self._runner.register_spell(spell, self._rune_name)
+    def register_spell(self, spell: SpellDefinition, override: bool = False) -> bool:
+        return self._runner.register_spell(spell, self._rune_name, override=override)
 
     def register_command(
         self,
         name: str,
         description: str = "",
         handler: Any = None,
-    ) -> None:
-        self._runner.register_command(
-            RegisteredCommand(name=name, description=description, handler=handler)
+        override: bool = False,
+    ) -> bool:
+        return self._runner.register_command(
+            RegisteredCommand(name=name, description=description, handler=handler),
+            override=override,
         )
 
     def register_shortcut(
@@ -48,13 +50,20 @@ class RuneAPI:
         key: str,
         description: str = "",
         handler: Any = None,
-    ) -> None:
-        self._runner.register_shortcut(
-            RuneShortcut(key=key, description=description, handler=handler)
+        override: bool = False,
+    ) -> bool:
+        return self._runner.register_shortcut(
+            RuneShortcut(key=key, description=description, handler=handler),
+            override=override,
         )
 
-    def register_provider(self, name: str, config: dict[str, Any]) -> None:
-        self._runner.register_provider(name, config)
+    def register_provider(
+        self,
+        name: str,
+        config: dict[str, Any],
+        override: bool = False,
+    ) -> bool:
+        return self._runner.register_provider(name, config, override=override)
 
     def get_registered_providers(
         self,

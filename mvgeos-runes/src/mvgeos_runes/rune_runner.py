@@ -152,40 +152,71 @@ class RuneRunner:
         return {k: list(v) for k, v in self._sigil_handlers.items()}
 
     def register_spell(
-        self, spell: SpellDefinition, rune_name: str | None = None
-    ) -> None:
+        self,
+        spell: SpellDefinition,
+        rune_name: str | None = None,
+        override: bool = False,
+    ) -> bool:
         if rune_name is None:
             rune_name = self._current_loading_rune
-        if spell.name not in self._spells:
-            if getattr(spell, "source_rune", None) is None and rune_name is not None:
-                with contextlib.suppress(AttributeError):
-                    spell.source_rune = rune_name
-            self._spells[spell.name] = spell
-            # Seed the rune's own active set with every registered rune spell by
-            # default, unless that rune has already pinned an explicit set. Other
-            # runes' pinned sets are left untouched (composable per-rune model).
-            if rune_name not in self._pinned_runes:
-                self._active_spells_by_rune.setdefault(rune_name, set()).add(spell.name)
-        else:
-            logger.warning("Duplicate spell registration skipped: %s", spell.name)
+        if spell.name in self._spells:
+            if not override:
+                logger.warning("Duplicate spell registration skipped: %s", spell.name)
+                return False
+            logger.debug("Overwriting existing spell registration: %s", spell.name)
+            old_spell = self._spells[spell.name]
+            old_rune = getattr(old_spell, "source_rune", None)
+            if old_rune != rune_name and old_rune in self._active_spells_by_rune:
+                self._active_spells_by_rune[old_rune].discard(spell.name)
 
-    def register_command(self, command: RegisteredCommand) -> None:
-        if command.name not in self._commands:
-            self._commands[command.name] = command
-        else:
-            logger.warning("Duplicate command registration skipped: %s", command.name)
+        if getattr(spell, "source_rune", None) is None and rune_name is not None:
+            with contextlib.suppress(AttributeError):
+                spell.source_rune = rune_name
+        self._spells[spell.name] = spell
+        # Seed the rune's own active set with every registered rune spell by
+        # default, unless that rune has already pinned an explicit set. Other
+        # runes' pinned sets are left untouched (composable per-rune model).
+        if rune_name not in self._pinned_runes:
+            self._active_spells_by_rune.setdefault(rune_name, set()).add(spell.name)
+        return True
 
-    def register_shortcut(self, shortcut: RuneShortcut) -> None:
-        if shortcut.key not in self._shortcuts:
-            self._shortcuts[shortcut.key] = shortcut
-        else:
-            logger.warning("Duplicate shortcut registration skipped: %s", shortcut.key)
+    def register_command(
+        self, command: RegisteredCommand, override: bool = False
+    ) -> bool:
+        if command.name in self._commands:
+            if not override:
+                logger.warning(
+                    "Duplicate command registration skipped: %s", command.name
+                )
+                return False
+            logger.debug("Overwriting existing command registration: %s", command.name)
 
-    def register_provider(self, name: str, config: dict[str, Any]) -> None:
-        if name not in self._providers:
-            self._providers[name] = config
-        else:
-            logger.warning("Duplicate provider registration skipped: %s", name)
+        self._commands[command.name] = command
+        return True
+
+    def register_shortcut(self, shortcut: RuneShortcut, override: bool = False) -> bool:
+        if shortcut.key in self._shortcuts:
+            if not override:
+                logger.warning(
+                    "Duplicate shortcut registration skipped: %s", shortcut.key
+                )
+                return False
+            logger.debug("Overwriting existing shortcut registration: %s", shortcut.key)
+
+        self._shortcuts[shortcut.key] = shortcut
+        return True
+
+    def register_provider(
+        self, name: str, config: dict[str, Any], override: bool = False
+    ) -> bool:
+        if name in self._providers:
+            if not override:
+                logger.warning("Duplicate provider registration skipped: %s", name)
+                return False
+            logger.debug("Overwriting existing provider registration: %s", name)
+
+        self._providers[name] = config
+        return True
 
     def get_registered_providers(self) -> dict[str, dict[str, Any]]:
         return dict(self._providers)

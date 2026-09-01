@@ -55,10 +55,28 @@ class TestRuneAPIRegistration:
         assert runner.get_all_registered_spells() == [spell]
 
     def test_register_spell_first_wins(self, api: RuneAPI, runner: RuneRunner) -> None:
-        api.register_spell(SpellDefinition(name="dup", description="first"))
-        api.register_spell(SpellDefinition(name="dup", description="second"))
+        assert (
+            api.register_spell(SpellDefinition(name="dup", description="first")) is True
+        )
+        assert (
+            api.register_spell(SpellDefinition(name="dup", description="second"))
+            is False
+        )
         assert len(runner.get_all_registered_spells()) == 1
         assert runner.get_all_registered_spells()[0].description == "first"
+
+    def test_register_spell_override(self, api: RuneAPI, runner: RuneRunner) -> None:
+        assert (
+            api.register_spell(SpellDefinition(name="dup", description="first")) is True
+        )
+        assert (
+            api.register_spell(
+                SpellDefinition(name="dup", description="second"), override=True
+            )
+            is True
+        )
+        assert len(runner.get_all_registered_spells()) == 1
+        assert runner.get_all_registered_spells()[0].description == "second"
 
     def test_on_registers_handler(self, api: RuneAPI, runner: RuneRunner) -> None:
         def handler(data: dict) -> None:
@@ -89,32 +107,76 @@ class TestRuneAPIRegistration:
         def handler() -> None:
             return None
 
-        api.register_command("my_cmd", description="A command", handler=handler)
+        assert (
+            api.register_command("my_cmd", description="A command", handler=handler)
+            is True
+        )
+        assert (
+            api.register_command("my_cmd", description="Duplicate", handler=handler)
+            is False
+        )
         cmds = runner.get_commands()
         assert len(cmds) == 1
         assert cmds[0].name == "my_cmd"
+        assert cmds[0].description == "A command"
         assert cmds[0].handler is handler
+
+    def test_register_command_override(self, api: RuneAPI, runner: RuneRunner) -> None:
+        assert api.register_command("my_cmd", description="Initial") is True
+        assert (
+            api.register_command("my_cmd", description="Overridden", override=True)
+            is True
+        )
+        cmds = runner.get_commands()
+        assert len(cmds) == 1
+        assert cmds[0].description == "Overridden"
 
     def test_register_shortcut(self, api: RuneAPI, runner: RuneRunner) -> None:
         def handler() -> None:
             return None
 
-        api.register_shortcut("ctrl+k", description="Test", handler=handler)
+        assert (
+            api.register_shortcut("ctrl+k", description="Test", handler=handler) is True
+        )
+        assert (
+            api.register_shortcut("ctrl+k", description="Duplicate", handler=handler)
+            is False
+        )
         shortcuts = runner.get_shortcuts()
         assert len(shortcuts) == 1
         assert shortcuts[0].key == "ctrl+k"
+        assert shortcuts[0].description == "Test"
+
+    def test_register_shortcut_override(self, api: RuneAPI, runner: RuneRunner) -> None:
+        assert api.register_shortcut("ctrl+k", description="Initial") is True
+        assert (
+            api.register_shortcut("ctrl+k", description="Overridden", override=True)
+            is True
+        )
+        shortcuts = runner.get_shortcuts()
+        assert len(shortcuts) == 1
+        assert shortcuts[0].description == "Overridden"
 
     def test_get_shortcuts(self, api: RuneAPI, runner: RuneRunner) -> None:
-        api.register_shortcut("ctrl+k", description="Test")
-        api.register_shortcut("ctrl+r", description="Reload")
+        assert api.register_shortcut("ctrl+k", description="Test") is True
+        assert api.register_shortcut("ctrl+r", description="Reload") is True
         result = api.get_shortcuts()
         assert len(result) == 2
         assert result[0].key == "ctrl+k"
         assert result[1].key == "ctrl+r"
 
     def test_register_provider(self, api: RuneAPI, runner: RuneRunner) -> None:
-        api.register_provider("custom", {"api_key": "sekret"})
-        assert runner._providers["custom"] == {"api_key": "sekret"}
+        assert api.register_provider("custom", {"api_key": "sekret"}) is True
+        assert api.register_provider("custom", {"api_key": "other"}) is False
+        assert api.get_registered_providers()["custom"] == {"api_key": "sekret"}
+
+    def test_register_provider_override(self, api: RuneAPI, runner: RuneRunner) -> None:
+        assert api.register_provider("custom", {"api_key": "sekret"}) is True
+        assert (
+            api.register_provider("custom", {"api_key": "new_sekret"}, override=True)
+            is True
+        )
+        assert api.get_registered_providers()["custom"] == {"api_key": "new_sekret"}
 
     def test_send_message(self, api: RuneAPI, runner: RuneRunner) -> None:
         api.send_message("hello from rune")
