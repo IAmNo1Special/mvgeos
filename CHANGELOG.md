@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-09-01
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (9c67c19)
+
+- **release:** v1.10.0 (3df06e2)
+
+
+### Features
+
+- **provider:** implement pluggable RealmFactory protocol in RealmRegistry (#121) (8526f5b)
+
+
+### Refactoring
+
+- **provider:** extract generic SSE streaming realm base class (a76059d)
+
+- **agent:** isolate external wire tool formats and align internal events on spell terminology (#120) (9b47f12)
+
+
 ## [1.9.0] - 2026-09-01
 
 
