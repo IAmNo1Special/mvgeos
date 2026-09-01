@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-09-01
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (32a1151)
+
+- **release:** v1.11.0 (614e068)
+
+
+### Features
+
+- **runes:** add override flag to spell and command registrations (233c5e7)
+
+
 ## [1.10.0] - 2026-09-01
 
 
