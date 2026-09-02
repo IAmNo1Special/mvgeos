@@ -574,17 +574,27 @@ class TestMvgeToolCalls:
 
 class TestBuildSystemPrompt:
     def test_hardcoded_fallback(self) -> None:
-        env = MvgeEnvironment.resolve("test-agent", allow_unknown_agent=True)
-        prompt = env.render(spells=["bash", "read"])
-        assert "You are Mvge" in prompt
-        assert "Active spells:" in prompt
-        assert "bash" in prompt
-        assert "read" in prompt
+        with tempfile.TemporaryDirectory() as td:
+            env = MvgeEnvironment.resolve(
+                "test-agent",
+                config_dir=Path(td) / "nonexistent",
+                allow_unknown_agent=True,
+            )
+            prompt = env.render(spells=["bash", "read"])
+            assert "You are an AI assistant" in prompt
+            assert "Active spells:" in prompt
+            assert "bash" in prompt
+            assert "read" in prompt
 
     def test_config_dir_does_not_exist(self) -> None:
-        env = MvgeEnvironment.resolve("test-agent", allow_unknown_agent=True)
-        prompt = env.render(spells=["bash"])
-        assert "You are Mvge" in prompt
+        with tempfile.TemporaryDirectory() as td:
+            env = MvgeEnvironment.resolve(
+                "test-agent",
+                config_dir=Path(td) / "does-not-exist",
+                allow_unknown_agent=True,
+            )
+            prompt = env.render(spells=["bash"])
+            assert "You are an AI assistant" in prompt
 
     def test_custom_prompt_overrides_base(self) -> None:
         env = MvgeEnvironment.resolve(
