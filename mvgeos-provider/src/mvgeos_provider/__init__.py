@@ -1,6 +1,6 @@
 from mvgeos_provider.base import Realm, RealmFactory
 from mvgeos_provider.model_registry import ModelRegistry
-from mvgeos_provider.models import get_model, list_models
+from mvgeos_provider.models import list_models
 from mvgeos_provider.openrouter import OpenRouterRealm
 from mvgeos_provider.registry import (
     RealmRegistry,
@@ -25,7 +25,6 @@ __all__ = [
     "SSEStreamingRealm",
     "get_default_realm_registry",
     "get_flat_model_ids",
-    "get_model",
     "get_model_options",
     "list_models",
     "refresh_models",

@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from mvgeos_agent.types import AbortController, AbortError, AbortSignal
+from mvgeos_agent.types import AbortController, AbortError
 
 
 class TestAbortSignal:
@@ -34,17 +34,6 @@ class TestAbortSignal:
         controller.abort()
         with pytest.raises(AbortError):
             controller.signal.raise_if_aborted()
-
-    def test_signal_none_abort(self) -> None:
-        signal = AbortSignal._none()
-        assert signal.aborted is False
-        signal.raise_if_aborted()
-
-    def test_signal_none_abort_always_unaborted(self) -> None:
-        signal = AbortSignal._none()
-        controller = AbortController()
-        controller.abort()
-        assert signal.aborted is False
 
 
 class TestAbortController:

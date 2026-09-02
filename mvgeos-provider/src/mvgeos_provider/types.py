@@ -84,33 +84,6 @@ class AbortSignal:
             if _set_result in self._callbacks:
                 self._callbacks.remove(_set_result)
 
-    @classmethod
-    def _none(cls) -> AbortSignal:
-        """Return a signal that is never aborted and has no controller."""
-        return _NullAbortSignal()
-
-
-class _NullAbortSignal(AbortSignal):
-    """Null object pattern for a never-aborted signal."""
-
-    def __init__(self) -> None:
-        # Bypass parent init - this signal is never aborted
-        pass
-
-    @property
-    def aborted(self) -> bool:
-        return False
-
-    def on_abort(self, callback: Callable[[], None]) -> None:
-        pass  # Never fires
-
-    def raise_if_aborted(self) -> None:
-        pass  # Never raises
-
-    async def wait(self) -> None:
-        # Wait forever (or until cancelled)
-        await asyncio.Event().wait()
-
 
 class AbortController:
     """Controller that owns an :class:`AbortSignal` and can abort it.
