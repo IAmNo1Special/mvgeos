@@ -11,12 +11,12 @@ def test_tome_entry_has_required_fields() -> None:
     entry = TomeEntry(
         id="entry-1",
         parent_id=None,
-        type=TomeEntryType.INVOCATION,
+        type=TomeEntryType.MESSAGE,
         timestamp=0.0,
         payload={},
     )
     assert entry.id == "entry-1"
-    assert entry.type == TomeEntryType.INVOCATION
+    assert entry.type == TomeEntryType.MESSAGE
 
 
 def test_tome_metadata_has_required_fields() -> None:

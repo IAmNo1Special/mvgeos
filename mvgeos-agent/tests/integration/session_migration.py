@@ -199,7 +199,7 @@ async def test_resume_legacy_v2_session_with_hook_messages_and_compaction() -> N
         entries = ledger.get_entries("legacy-v2-tome")
         assert len(entries) == 3
         assert entries[0].type == TomeEntryType.MESSAGE
-        assert entries[1].type == TomeEntryType.INVOCATION
+        assert entries[1].type == TomeEntryType.MESSAGE
         assert entries[2].type == TomeEntryType.CUSTOM
 
         # Run follow-up turn

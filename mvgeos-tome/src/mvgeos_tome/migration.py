@@ -108,8 +108,8 @@ def _migrate_v2_to_v3(
 
         if entry_type in ("hookMessage", "customMessage"):
             migrated_entry["type"] = "custom"
-        elif entry_type == "spellResult":
-            migrated_entry["type"] = "invocation"
+        elif entry_type in ("spellResult", "invocation"):
+            migrated_entry["type"] = "message"
         elif entry_type in (
             "modelChange",
             "contemplationLevelChange",

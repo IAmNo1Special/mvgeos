@@ -322,37 +322,6 @@ class MvgeTome:
                             spell_cast_id=str(payload.get("spell_cast_id") or ""),
                         )
                     )
-            elif entry.type == TomeEntryType.INVOCATION:
-                role = payload.get("role", "spellResult")
-                content = payload.get("content")
-                if isinstance(content, list):
-                    content_blocks = content
-                elif isinstance(content, str):
-                    content_blocks = [{"type": ContentType.TEXT, "text": content}]
-                else:
-                    content_blocks = [{"type": ContentType.TEXT, "text": str(content)}]
-                if role in ("spellResult", "tool"):
-                    invocations.append(
-                        SpellResultMessage(
-                            role="spellResult",
-                            content=content_blocks,
-                            spell_name=str(payload.get("spell_name") or ""),
-                            spell_cast_id=str(payload.get("spell_cast_id") or ""),
-                        )
-                    )
-                elif role == "assistant":
-                    invocations.append(
-                        MvgeResponse(
-                            role="assistant",
-                            content=content_blocks,
-                            stop_reason=StopReason.STOP,
-                        )
-                    )
-                elif role == "user":
-                    user_content = content if isinstance(content, str) else str(content)
-                    invocations.append(
-                        SummonerRequest(role="user", content=user_content)
-                    )
             elif entry.type == TomeEntryType.COMPACTION:
                 summary = payload.get("summary", "")
                 invocations.append(

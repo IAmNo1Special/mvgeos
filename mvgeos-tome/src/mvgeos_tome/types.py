@@ -6,7 +6,6 @@ from typing import Any
 
 
 class TomeEntryType(StrEnum):
-    INVOCATION = "invocation"
     MESSAGE = "message"
     LABEL = "label"
     COMPACTION = "compaction"

@@ -29,7 +29,7 @@ def test_ledger_append_and_get_entries() -> None:
         entry = TomeEntry(
             id="entry-1",
             parent_id=None,
-            type=TomeEntryType.INVOCATION,
+            type=TomeEntryType.MESSAGE,
             timestamp=0.0,
             payload={"text": "hello"},
         )

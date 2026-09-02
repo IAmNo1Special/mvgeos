@@ -72,7 +72,7 @@ class TestTomeCommands:
     @patch("mvgeos_cli.commands.tome.TomeLedger")
     def test_tome_list_empty(self, mock_ledger: MagicMock, mock_cwd: MagicMock) -> None:
         mock_ledger_instance = MagicMock()
-        mock_ledger_instance._tomles = {}
+        mock_ledger_instance._tomes = {}
         mock_ledger.return_value = mock_ledger_instance
         mock_cwd.return_value = Path("/test")
 
@@ -123,7 +123,7 @@ class TestTomeCommands:
         mock_meta.active_leaf_id = "leaf_123"
 
         mock_entry = MagicMock()
-        mock_entry.type.value = "invocation"
+        mock_entry.type.value = "message"
         mock_entry.timestamp = 1786553222.331
         mock_entry.payload = {"key": "value"}
 
@@ -152,7 +152,7 @@ class TestTomeCommands:
         mock_meta.schema_version = "1.0"
 
         mock_entry = MagicMock()
-        mock_entry.type.value = "invocation"
+        mock_entry.type.value = "message"
         mock_entry.timestamp = 1786553222.331
         mock_entry.payload = {"key": "value"}
 
@@ -189,7 +189,7 @@ class TestTomeCommands:
         mock_entry = MagicMock()
         mock_entry.id = "entry_123"
         mock_entry.parent_id = None
-        mock_entry.type.value = "invocation"
+        mock_entry.type.value = "message"
         mock_entry.timestamp = 1786553222.331
         mock_entry.payload = {"key": "value"}
 
@@ -239,7 +239,7 @@ class TestTomeCommands:
         mock_entry = MagicMock()
         mock_entry.id = "entry_123"
         mock_entry.parent_id = None
-        mock_entry.type.value = "invocation"
+        mock_entry.type.value = "message"
         mock_entry.timestamp = 123.456
         mock_entry.payload = {"key": "value"}
 
@@ -267,7 +267,7 @@ class TestTomeCommands:
         mock_meta.schema_version = "1.0"
 
         mock_entry = MagicMock()
-        mock_entry.type.value = "invocation"
+        mock_entry.type.value = "message"
         mock_entry.timestamp = 123.456
         mock_entry.payload = {"key": "value"}
 

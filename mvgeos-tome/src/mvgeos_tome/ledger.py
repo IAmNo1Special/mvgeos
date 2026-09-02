@@ -48,6 +48,9 @@ def _timestamp_iso() -> str:
 
 def _parse_tome_entry(raw: dict[str, Any]) -> TomeEntry:
     entry_type_str = raw["type"]
+    # Legacy "invocation" entries are treated as MESSAGE for backward compat.
+    if entry_type_str == "invocation":
+        entry_type_str = TomeEntryType.MESSAGE.value
     return TomeEntry(
         id=raw["id"],
         parent_id=raw.get("parentId"),
@@ -66,7 +69,7 @@ class TomeLedger:
 
     def __init__(self, tome_dir: Path) -> None:
         self._tome_dir = tome_dir
-        self._tomles: dict[str, TomeMetadata] = {}
+        self._tomes: dict[str, TomeMetadata] = {}
         self._entries_cache: OrderedDict[str, list[TomeEntry]] = OrderedDict()
         self._cleanup_stale_locks()
         self._lock = FileLock(tome_dir / ".lock", timeout=30.0)
@@ -104,13 +107,13 @@ class TomeLedger:
     def _resolve_tome_id(self, tome_id: str) -> str | None:
         if not tome_id:
             return None
-        if tome_id in self._tomles:
+        if tome_id in self._tomes:
             return tome_id
-        exact_matches = [k for k in self._tomles if k.lower() == tome_id.lower()]
+        exact_matches = [k for k in self._tomes if k.lower() == tome_id.lower()]
         if len(exact_matches) == 1:
             return exact_matches[0]
         prefix_matches = [
-            k for k in self._tomles if k.lower().startswith(tome_id.lower())
+            k for k in self._tomes if k.lower().startswith(tome_id.lower())
         ]
         if len(prefix_matches) == 1:
             return prefix_matches[0]
@@ -127,7 +130,7 @@ class TomeLedger:
 
     def list_tomes(self) -> list[TomeMetadata]:
         with self._lock:
-            return list(self._tomles.values())
+            return list(self._tomes.values())
 
     def create_tome(
         self,
@@ -164,27 +167,27 @@ class TomeLedger:
                     spells=list(spells or []),
                 )
 
-            self._tomles[tome_id] = metadata
+            self._tomes[tome_id] = metadata
             self._write_tome_file(metadata, [])
             return metadata
 
     def open_tome(self, tome_id: str) -> TomeMetadata | None:
         with self._lock:
-            meta = self._tomles.get(tome_id)
+            meta = self._tomes.get(tome_id)
             if meta is None and Path(tome_id).is_file():
                 meta = self._load_tome_metadata(Path(tome_id))
                 if meta:
-                    self._tomles[meta.id] = meta
+                    self._tomes[meta.id] = meta
             if meta is None:
                 meta = self._load_tome_metadata(tome_id)
                 if meta:
-                    self._tomles[meta.id] = meta
+                    self._tomes[meta.id] = meta
             if meta is None:
                 resolved_id = self._resolve_tome_id(tome_id) or self._resolve_tome_id(
                     Path(tome_id).stem
                 )
                 if resolved_id:
-                    meta = self._tomles.get(resolved_id)
+                    meta = self._tomes.get(resolved_id)
             return meta
 
     def open_recent(self, cwd: str) -> TomeMetadata | None:
@@ -209,7 +212,7 @@ class TomeLedger:
     def append(self, tome_id: str, entry: TomeEntry) -> None:
         with self._lock:
             resolved_id = self._resolve_tome_id(tome_id) or tome_id
-            metadata = self._tomles.get(resolved_id)
+            metadata = self._tomes.get(resolved_id)
             if metadata is None:
                 metadata = self._load_tome_metadata(resolved_id)
                 if metadata is None:
@@ -257,7 +260,7 @@ class TomeLedger:
         self.append(tome_id, entry)
         with self._lock:
             resolved_id = self._resolve_tome_id(tome_id) or tome_id
-            metadata = self._tomles[resolved_id]
+            metadata = self._tomes[resolved_id]
             metadata.active_leaf_id = target_id
             self._write_tome_file(metadata, self._read_tome_entries(resolved_id))
         return entry
@@ -406,9 +409,7 @@ class TomeLedger:
             resolved_id = self._resolve_tome_id(tome_id) or tome_id
             if resolved_id in self._entries_cache:
                 return self._entries_cache[resolved_id][-limit:]
-            meta = self._tomles.get(resolved_id) or self._load_tome_metadata(
-                resolved_id
-            )
+            meta = self._tomes.get(resolved_id) or self._load_tome_metadata(resolved_id)
             if meta and meta.version < CURRENT_SESSION_VERSION:
                 return self._read_tome_entries(resolved_id)[-limit:]
             return self._read_last_n_entries_from_disk(resolved_id, limit)
@@ -431,9 +432,7 @@ class TomeLedger:
                 if entry.type == TomeEntryType.LEAF:
                     target = entry.payload.get("targetId")
                     return str(target) if target is not None else None
-            meta = self._tomles.get(resolved_id) or self._load_tome_metadata(
-                resolved_id
-            )
+            meta = self._tomes.get(resolved_id) or self._load_tome_metadata(resolved_id)
             if meta and meta.active_leaf_id:
                 return meta.active_leaf_id
             return None
@@ -450,7 +449,7 @@ class TomeLedger:
     ) -> TomeMetadata:
         with self._lock:
             resolved_parent_id = self._resolve_tome_id(parent_tome_id) or parent_tome_id
-            parent_meta = self._tomles.get(
+            parent_meta = self._tomes.get(
                 resolved_parent_id
             ) or self._load_tome_metadata(resolved_parent_id)
             if parent_meta is None:
@@ -474,7 +473,7 @@ class TomeLedger:
                     list(spells) if spells is not None else list(parent_meta.spells)
                 ),
             )
-            self._tomles[new_tome_id] = metadata
+            self._tomes[new_tome_id] = metadata
 
             parent_entries = self._read_tome_entries(parent_meta.id)
             if fork_from_leaf_id:
@@ -526,7 +525,7 @@ class TomeLedger:
             try:
                 meta = self._load_tome_metadata(f.stem)
                 if meta:
-                    self._tomles[meta.id] = meta
+                    self._tomes[meta.id] = meta
             except (
                 json.JSONDecodeError,
                 KeyError,
@@ -636,8 +635,8 @@ class TomeLedger:
                     header, raw_entries
                 )
 
-                if tome_id in self._tomles:
-                    meta = self._tomles[tome_id]
+                if tome_id in self._tomes:
+                    meta = self._tomes[tome_id]
                     meta.version = migrated_hdr.get("version", CURRENT_SESSION_VERSION)
                     if migrated_hdr.get("activeLeafId") and not meta.active_leaf_id:
                         meta.active_leaf_id = migrated_hdr["activeLeafId"]
@@ -946,20 +945,24 @@ class TomeLedger:
                             )
                             has_entry_issue = True
                         else:
-                            try:
-                                TomeEntryType(entry_type_raw)
-                            except ValueError:
-                                issues.append(
-                                    TomeIntegrityIssue(
-                                        line_number=idx,
-                                        message=(
-                                            f"Malformed entry: invalid entry type "
-                                            f"'{entry_type_raw}'"
-                                        ),
-                                        raw_line=line,
+                            # Legacy "invocation" entries are valid for backward compat.
+                            if entry_type_raw == "invocation":
+                                pass
+                            else:
+                                try:
+                                    TomeEntryType(entry_type_raw)
+                                except ValueError:
+                                    issues.append(
+                                        TomeIntegrityIssue(
+                                            line_number=idx,
+                                            message=(
+                                                f"Malformed entry: invalid entry type "
+                                                f"'{entry_type_raw}'"
+                                            ),
+                                            raw_line=line,
+                                        )
                                     )
-                                )
-                                has_entry_issue = True
+                                    has_entry_issue = True
 
                         ts = entry_raw.get("timestamp")
                         if (

@@ -178,7 +178,7 @@ class TestMigrationTransformations:
         migrated_hdr, migrated_entries = TomeLedger._migrate_v2_to_v3(header, entries)
 
         assert migrated_hdr["version"] == 3
-        assert migrated_entries[0]["type"] == "invocation"
+        assert migrated_entries[0]["type"] == "message"
         assert migrated_entries[1]["type"] == "custom"
 
     def test_migrate_session_data_pipeline_full_upgrade(self) -> None:

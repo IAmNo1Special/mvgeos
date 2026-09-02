@@ -1,4 +1,3 @@
-from mvgeos_tome.index import Index
 from mvgeos_tome.ledger import TomeLedger
 from mvgeos_tome.locking import FileLock, LockMetadata, is_process_alive
 from mvgeos_tome.migration import CURRENT_SESSION_VERSION, migrate_session_data
@@ -14,7 +13,6 @@ from mvgeos_tome.types import (
 __all__ = [
     "CURRENT_SESSION_VERSION",
     "FileLock",
-    "Index",
     "LockMetadata",
     "TomeEntry",
     "TomeEntryType",

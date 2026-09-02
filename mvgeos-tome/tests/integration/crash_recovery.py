@@ -88,7 +88,7 @@ def test_subprocess_crash_recovery() -> None:
             entry = TomeEntry(
                 id="entry-1",
                 parent_id=None,
-                type=TomeEntryType.INVOCATION,
+                type=TomeEntryType.MESSAGE,
                 timestamp=time.time(),
                 payload={"text": "recovered"},
             )

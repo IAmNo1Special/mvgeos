@@ -503,10 +503,10 @@ class TestMigrationAndReconstruction:
             TomeEntry(
                 id="e3",
                 parent_id="e2",
-                type=TomeEntryType.INVOCATION,
+                type=TomeEntryType.MESSAGE,
                 timestamp=1002.0,
                 payload={
-                    "role": "tool",
+                    "role": "spellResult",
                     "content": [{"type": "text", "text": "tool output"}],
                     "spell_name": "bash",
                     "spell_cast_id": "c1",

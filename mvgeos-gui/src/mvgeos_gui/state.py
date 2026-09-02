@@ -399,7 +399,7 @@ class AppState:
 
         reconstructed: list[ChatMessage] = []
         for entry in entries:
-            if entry.type in (TomeEntryType.MESSAGE, TomeEntryType.INVOCATION):
+            if entry.type == TomeEntryType.MESSAGE:
                 payload = entry.payload
                 role = str(payload.get("role", "assistant"))
                 if role in ("user", "assistant"):
