@@ -11,6 +11,7 @@ from mvgeos_tome.ledger import TomeLedger
 from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.types import MvgeSpell, TomeResumeError
 
+
 def _mock_model() -> Model:
     return Model(
         id="test-model",
