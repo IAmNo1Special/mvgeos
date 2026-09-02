@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from mvgeos_agent.base_mvge import BaseMvge
+from mvgeos_agent import Mvge
 from mvgeos_agent.config_manager import ConfigManager
 from mvgeos_agent.constants import DEFAULT_MODEL
 from mvgeos_agent.environment import MvgeEnvironment, PromptSource
@@ -26,7 +26,8 @@ from mvgeos_runes.types import (
     SpellDefinition,
 )
 
-from coding_mvge.mvge import DEFAULT_SPELL_MAP, CodingMvge
+from coding_mvge import root_mvge
+from coding_mvge.spells import bash, read
 
 
 def _make_runner() -> RuneRunner:
@@ -39,7 +40,7 @@ def _make_runner() -> RuneRunner:
 
 class TestBuildSnapshotNoRunes:
     def test_builtin_spells_only(self, tmp_path: Path) -> None:
-        agent = CodingMvge(api_key="key", name="test-agent", spells=["bash", "read"])
+        agent = Mvge(api_key="key", name="test-agent", spells=[bash, read])
         snap = agent.build_snapshot()
 
         assert snap.agent_name == "test-agent"
@@ -49,7 +50,7 @@ class TestBuildSnapshotNoRunes:
         assert {s.name for s in snap.spells} == {"bash", "read"}
 
     def test_no_runner_empty_collections(self, tmp_path: Path) -> None:
-        agent = CodingMvge(api_key="key", name="test-agent", spells=[])
+        agent = Mvge(api_key="key", name="test-agent", spells=[])
         snap = agent.build_snapshot()
 
         assert snap.runes == []
@@ -57,11 +58,10 @@ class TestBuildSnapshotNoRunes:
         assert snap.diagnostics == []
 
     def test_default_spells(self) -> None:
-        agent = CodingMvge(api_key="key", name="test-agent")
-        snap = agent.build_snapshot()
-        assert len(snap.spells) == len(DEFAULT_SPELL_MAP)
+        snap = root_mvge.build_snapshot()
+        assert len(snap.spells) == 7
         names = {s.name for s in snap.spells}
-        assert names == set(DEFAULT_SPELL_MAP.keys())
+        assert names == {"bash", "read", "write", "edit", "find", "list_files", "grep"}
 
 
 class TestBuildSnapshotWithRunner:
@@ -69,12 +69,12 @@ class TestBuildSnapshotWithRunner:
     async def test_runes_and_spells_with_provenance(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(BaseMvge, "config_dir", property(lambda self: tmp_path))
+        monkeypatch.setattr(Mvge, "config_dir", property(lambda self: tmp_path))
 
-        agent = CodingMvge(
+        agent = Mvge(
             api_key="key",
             name="test-agent",
-            spells=["bash"],
+            spells=[bash],
         )
         runner = _make_runner()
 
@@ -133,8 +133,8 @@ class TestBuildSnapshotWithRunner:
     async def test_skills_included(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(BaseMvge, "config_dir", property(lambda self: tmp_path))
-        agent = CodingMvge(api_key="key", name="test-agent", spells=[])
+        monkeypatch.setattr(Mvge, "config_dir", property(lambda self: tmp_path))
+        agent = Mvge(api_key="key", name="test-agent", spells=[])
         runner = _make_runner()
 
         skill = SkillManifest(
@@ -165,8 +165,8 @@ class TestBuildSnapshotWithRunner:
     async def test_diagnostics_included(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(BaseMvge, "config_dir", property(lambda self: tmp_path))
-        agent = CodingMvge(api_key="key", name="test-agent", spells=[])
+        monkeypatch.setattr(Mvge, "config_dir", property(lambda self: tmp_path))
+        agent = Mvge(api_key="key", name="test-agent", spells=[])
         runner = _make_runner()
 
         rune_diag = Diagnostic(
@@ -210,7 +210,7 @@ class TestBuildSnapshotWithConfig:
     def test_config_values_with_provenance(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(BaseMvge, "config_dir", property(lambda self: tmp_path))
+        monkeypatch.setattr(Mvge, "config_dir", property(lambda self: tmp_path))
 
         config_mgr = ConfigManager(
             agent_name="test-agent",
@@ -220,7 +220,7 @@ class TestBuildSnapshotWithConfig:
         config_mgr.set("model", "custom-model")
 
         env = MvgeEnvironment.resolve("test-agent", config_manager=config_mgr)
-        agent = CodingMvge(
+        agent = Mvge(
             api_key="key",
             name="test-agent",
             environment=env,
@@ -239,9 +239,9 @@ class TestBuildSnapshotWithConfig:
     def test_no_config_manager_empty_config(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(BaseMvge, "config_dir", property(lambda self: tmp_path))
+        monkeypatch.setattr(Mvge, "config_dir", property(lambda self: tmp_path))
         env = MvgeEnvironment.resolve("test-agent", has_config_manager=False)
-        agent = CodingMvge(
+        agent = Mvge(
             api_key="key",
             name="test-agent",
             spells=[],
@@ -255,13 +255,13 @@ class TestBuildSnapshotPrompt:
     def test_prompt_resolved_from_config_dir(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(BaseMvge, "config_dir", property(lambda self: tmp_path))
+        monkeypatch.setattr(Mvge, "config_dir", property(lambda self: tmp_path))
         (tmp_path / "SYSTEM.md").write_text("Custom system from file", encoding="utf-8")
         (tmp_path / "GUIDELINES.md").write_text(
             "- Be concise\n- Write tests\n", encoding="utf-8"
         )
 
-        agent = CodingMvge(api_key="key", name="test-agent", spells=[])
+        agent = Mvge(api_key="key", name="test-agent", spells=[])
         snap = agent.build_snapshot()
 
         assert snap.prompt.text == "Custom system from file"
@@ -271,8 +271,8 @@ class TestBuildSnapshotPrompt:
     def test_prompt_builtin_when_no_files(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(BaseMvge, "config_dir", property(lambda self: tmp_path))
-        agent = CodingMvge(api_key="key", name="test-agent", spells=[])
+        monkeypatch.setattr(Mvge, "config_dir", property(lambda self: tmp_path))
+        agent = Mvge(api_key="key", name="test-agent", spells=[])
         snap = agent.build_snapshot()
         assert snap.prompt.source == PromptSource.BUILTIN.value
 
@@ -281,11 +281,11 @@ class TestBuildSnapshotSerialisation:
     def test_to_json_round_trip(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(BaseMvge, "config_dir", property(lambda self: tmp_path))
-        agent = CodingMvge(
+        monkeypatch.setattr(Mvge, "config_dir", property(lambda self: tmp_path))
+        agent = Mvge(
             api_key="key",
             name="test-agent",
-            spells=["bash", "read"],
+            spells=[bash, read],
         )
         snap = agent.build_snapshot()
 
@@ -300,8 +300,8 @@ class TestBuildSnapshotSerialisation:
     def test_to_dict_returns_serialisable(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(BaseMvge, "config_dir", property(lambda self: tmp_path))
-        agent = CodingMvge(api_key="key", name="test-agent", spells=["bash"])
+        monkeypatch.setattr(Mvge, "config_dir", property(lambda self: tmp_path))
+        agent = Mvge(api_key="key", name="test-agent", spells=[bash])
         snap = agent.build_snapshot()
 
         d = snap.to_dict()
@@ -313,8 +313,8 @@ class TestBuildSnapshotSerialisation:
     async def test_to_json_with_runes_and_diagnostics(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(BaseMvge, "config_dir", property(lambda self: tmp_path))
-        agent = CodingMvge(api_key="key", name="test-agent", spells=[])
+        monkeypatch.setattr(Mvge, "config_dir", property(lambda self: tmp_path))
+        agent = Mvge(api_key="key", name="test-agent", spells=[])
         runner = _make_runner()
 
         manifest = RuneManifest(

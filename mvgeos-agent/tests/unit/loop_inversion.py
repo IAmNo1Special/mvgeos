@@ -561,31 +561,31 @@ class TestQueueMode:
         assert drained_items == ["steer one", "steer two"]
 
 
-class TestBaseMvgeNoLongerOwnsTurnLoop:
+class TestMvgeNoLongerOwnsTurnLoop:
     def test_make_stream_removed(self) -> None:
-        from mvgeos_agent.base_mvge import BaseMvge
+        from mvgeos_agent.mvge import Mvge
 
-        assert not hasattr(BaseMvge, "_make_stream")
+        assert not hasattr(Mvge, "_make_stream")
 
 
-class TestBaseMvgeQueueMode:
+class TestMvgeQueueMode:
     def test_default_queue_mode_is_one_at_a_time(self) -> None:
-        from mvgeos_agent.base_mvge import BaseMvge
+        from mvgeos_agent.mvge import Mvge
 
-        agent = BaseMvge(api_key="test-key")
+        agent = Mvge(api_key="test-key")
         assert agent.queue_mode == QueueMode.ONE_AT_A_TIME
 
     def test_queue_mode_can_be_set_to_all(self) -> None:
-        from mvgeos_agent.base_mvge import BaseMvge
+        from mvgeos_agent.mvge import Mvge
 
-        agent = BaseMvge(api_key="test-key")
+        agent = Mvge(api_key="test-key")
         agent.queue_mode = QueueMode.ALL
         assert agent.queue_mode == QueueMode.ALL
 
     def test_queue_mode_accepts_string(self) -> None:
-        from mvgeos_agent.base_mvge import BaseMvge
+        from mvgeos_agent.mvge import Mvge
 
-        agent = BaseMvge(api_key="test-key")
+        agent = Mvge(api_key="test-key")
         agent.queue_mode = "one-at-a-time"
         assert agent.queue_mode == QueueMode.ONE_AT_A_TIME
         agent.queue_mode = "all"

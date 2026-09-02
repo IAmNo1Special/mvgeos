@@ -15,7 +15,6 @@ from mvgeos_runes.types import (
     SigilHook,
 )
 
-from mvgeos_agent.base_mvge import BaseMvge
 from mvgeos_agent.config_manager import ConfigLayer, ConfigManager, ConfigValue
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
@@ -24,6 +23,7 @@ from mvgeos_agent.constants import (
 )
 from mvgeos_agent.environment import (
     DEFAULT_GUIDELINES,
+    DEFAULT_GUIDELINES_MD,
     DEFAULT_SYSTEM_PROMPT,
     AgentConfig,
     MvgeEnvironment,
@@ -38,6 +38,7 @@ from mvgeos_agent.environment import (
     resolve_guidelines,
     resolve_system_prompt,
 )
+from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.snapshot import RuntimeSnapshot
 from mvgeos_agent.types import QueueMode
 
@@ -296,6 +297,22 @@ class TestPromptDiscoveryPrecedence:
         assert resolved.source == PromptSource.AGENT_MD
         assert resolved.path == agent_dir / "SYSTEM.md"
 
+    def test_caller_system_prompt_dir(self, tmp_path: Path) -> None:
+        caller_dir = tmp_path / "caller_pkg"
+        sys_prompt_dir = caller_dir / "system_prompt"
+        sys_prompt_dir.mkdir(parents=True)
+        (sys_prompt_dir / "SYSTEM.md").write_text(
+            "System prompt from subdir", encoding="utf-8"
+        )
+
+        resolved = resolve_system_prompt(
+            agent_name="test",
+            caller_dir=caller_dir,
+        )
+        assert resolved.text == "System prompt from subdir"
+        assert resolved.source == PromptSource.AGENT_MD
+        assert resolved.path == sys_prompt_dir / "SYSTEM.md"
+
     def test_builtin_when_nothing_exists(self, tmp_path: Path) -> None:
         resolved = resolve_system_prompt(
             agent_name="test",
@@ -338,6 +355,22 @@ class TestGuidelinesDiscoveryPrecedence:
         )
         assert resolved.guidelines == ["Agent rule"]
         assert resolved.source == PromptSource.AGENT_MD
+
+    def test_caller_guidelines_system_prompt_dir(self, tmp_path: Path) -> None:
+        caller_dir = tmp_path / "caller_pkg"
+        sys_prompt_dir = caller_dir / "system_prompt"
+        sys_prompt_dir.mkdir(parents=True)
+        (sys_prompt_dir / "GUIDELINES.md").write_text(
+            "- Subdir rule 1\n- Subdir rule 2\n", encoding="utf-8"
+        )
+
+        resolved = resolve_guidelines(
+            agent_name="test",
+            caller_dir=caller_dir,
+        )
+        assert resolved.guidelines == ["Subdir rule 1", "Subdir rule 2"]
+        assert resolved.source == PromptSource.AGENT_MD
+        assert resolved.path == sys_prompt_dir / "GUIDELINES.md"
 
     def test_builtin_when_nothing_exists(self, tmp_path: Path) -> None:
         resolved = resolve_guidelines(
@@ -402,9 +435,9 @@ class TestConfigDirAndSeeding:
         assert (config_dir / "GUIDELINES.md").exists()
 
         system_text = (config_dir / "SYSTEM.md").read_text(encoding="utf-8")
-        assert "You are Mvge" in system_text
+        assert DEFAULT_SYSTEM_PROMPT in system_text
         guidelines_text = (config_dir / "GUIDELINES.md").read_text(encoding="utf-8")
-        assert "Be concise" in guidelines_text
+        assert guidelines_text == DEFAULT_GUIDELINES_MD
 
     def test_ensure_config_files_never_overwrites(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -672,7 +705,7 @@ class TestMvgeEnvironmentSnapshot:
                 return_value=([], []),
             ),
         ):
-            agent = BaseMvge(api_key="test-key")
+            agent = Mvge(api_key="test-key")
             await agent._load_runes()
 
             assert len(agent.diagnostics) == 1
@@ -702,7 +735,7 @@ class TestMvgeEnvironmentSnapshot:
             project_dir=tmp_path,
             config_manager=mgr,
         )
-        agent = BaseMvge(api_key="test-key", environment=env)
+        agent = Mvge(api_key="test-key", environment=env)
 
         assert isinstance(env.agent_config, AgentConfig)
         assert agent._model_id == env.model_id

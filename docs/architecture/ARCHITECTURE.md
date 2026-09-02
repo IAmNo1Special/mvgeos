@@ -101,14 +101,15 @@ mvgeos-cli, mvgeos-provider, mvgeos-runes, mvgeos-tome
 
 ### coding-mvge
 
-Coding agent package implementing `BaseMvge`. Provides `CodingMvge`
-class with built-in spells (bash, read, write, edit, find, list, grep)
-and system prompt configuration.
+Pre-configured coding agent package providing `root_mvge = Mvge(name="coding_mvge")`.
+Decomposes built-in development spells (`bash`, `read`, `write`, `edit`, `find`,
+`list_files`, `grep`) into modular files within `coding_mvge/spells/` and colocates
+`SYSTEM.md`, `GUIDELINES.md`, and authoring guides (`AGENTS.md`) for autonomous
+self-modification and zero-boilerplate instantiation.
 
-**Entry point**: `CodingMvge(api_key).run(prompt)`
+**Entry point**: `from coding_mvge import root_mvge` → `root_mvge.run(prompt)`
 
-**Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-tome,
-mvgeos-runes
+**Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-tome, mvgeos-runes
 
 ## Data Flow
 

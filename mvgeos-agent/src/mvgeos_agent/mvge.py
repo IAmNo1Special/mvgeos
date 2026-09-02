@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import dataclasses
+import inspect
+import logging
+import os
 from collections.abc import AsyncIterator, Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
+from dotenv import load_dotenv
 from mvgeos_provider.base import Realm
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
@@ -29,7 +33,13 @@ from mvgeos_agent.constants import (
 )
 from mvgeos_agent.core_loop import StreamFn
 from mvgeos_agent.environment import MvgeEnvironment
+from mvgeos_agent.errors import MissingApiKeyError
 from mvgeos_agent.event_bus import EventBus
+from mvgeos_agent.function_spell import (
+    SpellUnion,
+    coerce_spell,
+    discover_spells_from_dir,
+)
 from mvgeos_agent.harness import (
     DEFAULT_COMPACTION_SETTINGS,
     CompactionRunner,
@@ -53,24 +63,22 @@ from mvgeos_agent.types import (
     TomeResumeError,
 )
 
+logger = logging.getLogger(__name__)
 
-class BaseMvge:
-    """Abstract agent skeleton (Template Method pattern).
 
-    Subclasses override:
-      _build_spells()        -> list of MvgeSpell instances
-      _build_system_prompt() -> system prompt string
-      _run_impl()            -> turn-processing logic
+class Mvge:
+    """Core concrete agent implementation in MvgeOS.
 
-    The public run() method is the sealed template that calls initialize(),
-    appends the prompt, rebuilds the system prompt, and delegates to _run_impl().
+    Configured with tools (spells), prompt, model, environment, and persistence.
     """
 
     def __init__(
         self,
-        api_key: str,
+        api_key: str | None = None,
         *,
         name: str = DEFAULT_AGENT_NAME,
+        spells: Sequence[SpellUnion] | None = None,
+        custom_system_prompt: str = "",
         extension_dir: str | None = None,
         tome_dir: Path | None = None,
         tome_resume: str | None = None,
@@ -81,8 +89,41 @@ class BaseMvge:
         strict_resume: bool = False,
         force_fork_resume: bool = False,
     ) -> None:
-        self._api_key = api_key
+        caller_dir: Path | None = None
+        try:
+            caller_frame = inspect.stack()[1]
+            caller_file = caller_frame.filename
+            if caller_file:
+                caller_dir = Path(caller_file).resolve().parent
+                env_path = caller_dir / ".env"
+                if env_path.is_file():
+                    load_dotenv(env_path)
+        except Exception:
+            pass
+
+        self._api_key = (
+            api_key
+            or os.environ.get("OPENROUTER_API_KEY")
+            or os.environ.get("MVGEOS_API_KEY")
+            or ""
+        )
         self._name = name
+        self._caller_dir = caller_dir
+
+        if spells is not None:
+            self._spells: list[SpellUnion] = list(spells)
+        elif caller_dir is not None and (caller_dir / "spells").is_dir():
+            self._spells = list(discover_spells_from_dir(caller_dir / "spells"))
+        else:
+            self._spells = []
+
+        resolved_runes_paths = list(runes_paths) if runes_paths is not None else []
+        if caller_dir is not None and (caller_dir / "runes").is_dir():
+            colocated_runes = str(caller_dir / "runes")
+            if colocated_runes not in resolved_runes_paths:
+                resolved_runes_paths.append(colocated_runes)
+
+        self._custom_system_prompt = custom_system_prompt
         self._extension_dir = extension_dir
         self._tome_dir = tome_dir or DEFAULT_TOME_DIR
         self._tome_resume = tome_resume
@@ -96,9 +137,9 @@ class BaseMvge:
             environment = MvgeEnvironment.resolve(
                 name,
                 config_dir=Path(f"~/.agents/.mvgeos/{name}").expanduser(),
-                allow_unknown_agent=True,
+                caller_dir=caller_dir,
                 extension_dir=extension_dir,
-                runes_paths=runes_paths,
+                runes_paths=resolved_runes_paths if resolved_runes_paths else None,
             )
 
         self._environment = environment
@@ -112,7 +153,11 @@ class BaseMvge:
         self._exclude_contemplation = environment.exclude_contemplation
         self._queue_mode: QueueMode = environment.queue_mode
         self._spell_names = environment.spell_names
-        self._runes_paths = environment.runes_paths
+        self._runes_paths = (
+            list(resolved_runes_paths)
+            if resolved_runes_paths
+            else list(environment.runes_paths)
+        )
 
         self._provider_registry = RealmRegistry()
         self._runner: RuneRunner | None = None
@@ -159,7 +204,7 @@ class BaseMvge:
 
     @property
     def enabled_spells(self) -> list[str]:
-        return list(self._spell_names or [])
+        return [s.name for s in self._build_spells()]
 
     @property
     def registered_commands(self) -> list[str]:
@@ -178,7 +223,15 @@ class BaseMvge:
         return self._provider_registry.get_registered_providers()
 
     @property
+    def name(self) -> str:
+        return self._name
+
+    @property
     def config_dir(self) -> Path:
+        if self._config_manager is not None and getattr(
+            self._config_manager, "agent_config_path", None
+        ):
+            return self._config_manager.agent_config_path.parent
         return Path(f"~/.agents/.mvgeos/{self._name}").expanduser()
 
     @property
@@ -186,24 +239,55 @@ class BaseMvge:
         return self._environment
 
     @property
-    def runner(self) -> RuneRunner | None:
-        """Expose the active RuneRunner for runtime introspection (GUI)."""
-        return self._runner
-
-    @property
     def diagnostics(self) -> list[Diagnostic | SkillDiagnostic]:
-        base_diags: list[Diagnostic | SkillDiagnostic] = []
-        if self._runner is not None:
-            base_diags = list(self._runner.diagnostics) + list(
-                self._runner.skill_diagnostics
+        diags: list[Diagnostic | SkillDiagnostic] = list(self._resume_diagnostics)
+        if self._environment is not None and self._environment.diagnostics:
+            for d in self._environment.diagnostics:
+                if d not in diags:
+                    diags.append(d)
+        return diags
+
+    def set_environment(self, environment: MvgeEnvironment) -> None:
+        """Replace the environment and update config_manager reference."""
+        self._environment = environment
+        self._config_manager = environment.config_manager
+
+    def set_config_manager(self, config_manager: Any) -> None:
+        """Replace the config manager on both agent and environment."""
+        self._config_manager = config_manager
+        if self._environment is not None:
+            self._environment = dataclasses.replace(
+                self._environment, config_manager=config_manager
             )
-        else:
-            base_diags = list(self._environment.diagnostics)
-        return base_diags + self._resume_diagnostics
+
+    def set_runner(self, runner: RuneRunner | None) -> None:
+        """Inject an explicit RuneRunner."""
+        self._runner = runner
+        if self._rune_lifecycle is not None:
+            self._rune_lifecycle._runner = runner
 
     async def load_runes(self) -> None:
-        """Public entry point for rune loading."""
+        """Explicitly initialize runes and skills."""
         await self._load_runes()
+
+    async def _load_runes(self) -> None:
+        """Initialize the RuneLifecycle collaborator."""
+        if self._rune_lifecycle is None:
+            self._rune_lifecycle = RuneLifecycle(
+                agent_name=self._name,
+                api_key=self._api_key,
+                runes_paths=self._runes_paths,
+                environment=self._environment,
+                provider_registry=self._provider_registry,
+                runner=self._runner,
+            )
+        await self._rune_lifecycle.load()
+        await self._rune_lifecycle.start()
+        self._runner = self._rune_lifecycle.runner
+        if self._rune_lifecycle.environment is not None:
+            self._environment = self._rune_lifecycle.environment
+        if self._environment.diagnostics:
+            self._resume_diagnostics = list(self._environment.diagnostics)
 
     def validate_tome_compatibility(
         self,
@@ -299,6 +383,10 @@ class BaseMvge:
     def queue(self, text: str) -> None:
         self.steer(text)
 
+    def abort(self) -> None:
+        if self._abort_controller is not None:
+            self._abort_controller.abort()
+
     def _compose_model(self, model_id: str) -> Model:
         model, _ = self._provider_registry.resolve(
             model_id, self._api_key, self._provider_name
@@ -306,36 +394,61 @@ class BaseMvge:
         return model
 
     def _build_spells(self) -> list[MvgeSpell]:
-        """Override in subclass to provide agent-specific spells."""
-        return []
+        """Convert injected callables and rune spells to executable MvgeSpells."""
+        spells: list[MvgeSpell] = [coerce_spell(s) for s in self._spells]
+        if self._runner is not None:
+            active = set(self._runner.get_active_spells())
+            for rs in self._runner.get_all_registered_spells():
+                if rs.name in active:
+                    spells.append(cast(MvgeSpell, rs))
+        return spells
 
     def _build_system_prompt(self) -> str:
-        """Override in subclass to provide agent-specific system prompt."""
-        return "You are a helpful AI agent."
+        """Build the agent system prompt string."""
+        return self._environment.resolved_prompt.text
 
     def _render_prompt(
         self, body: str, spell_names: list[str], guidelines: list[str]
     ) -> str:
         """Render a prompt with body, spells, guidelines, and environment."""
         cwd = str(getattr(self._config_manager, "_project_dir", "") or Path.cwd())
-        return self._environment.render_prompt(body, spell_names, guidelines, cwd=cwd)
+        active_names = (
+            spell_names if spell_names else [s.name for s in self._build_spells()]
+        )
+        spells_dir = (
+            (self._caller_dir / "spells")
+            if self._caller_dir and (self._caller_dir / "spells").is_dir()
+            else None
+        )
+        skills_paths: list[Path] = []
+        if self._caller_dir and (self._caller_dir / "skills").is_dir():
+            skills_paths.append(self._caller_dir / "skills")
+        return self._environment.render_prompt(
+            body,
+            active_names,
+            guidelines,
+            cwd=cwd,
+            spells_dir=spells_dir,
+            skills_paths=skills_paths,
+            runes_paths=self._environment.runes_paths,
+            system_path=self._environment.resolved_prompt.path,
+            guidelines_path=self._environment.resolved_guidelines.path,
+        )
 
     async def _build_system_prompt_async(self) -> str:
-        """Async version that supports rune prompt injection via sigil hooks.
-        Override in subclass for async prompt building with rune injection.
-        Default delegates to sync version for backward compatibility.
-        """
+        """Async version that supports rune prompt injection via sigil hooks."""
+        active_names = [s.name for s in self._build_spells()]
         return await self._environment.assemble_system_prompt(
             runner=self._runner,
             base_prompt=self._build_system_prompt(),
             custom_prompt=getattr(self, "_custom_system_prompt", ""),
             cwd=Path.cwd(),
-            spell_names=self._spell_names,
+            spell_names=active_names,
             config_dir=self.config_dir,
         )
 
     async def _run_impl(self) -> MvgeInvocation:
-        """Default implementation using the harness."""
+        """Turn-processing logic using the harness."""
         assert self._model is not None
         assert self._realm is not None
         assert self._state is not None
@@ -370,11 +483,6 @@ class BaseMvge:
         temperature: float,
         max_tokens: int,
     ) -> StreamFn:
-        """Build the per-turn channel the loop calls to reach the Realm.
-
-        The loop owns the turn cycle, so this only channels one request. It is
-        handed the transcript for that turn rather than reading agent state.
-        """
         tools = [
             {
                 "type": "function",
@@ -410,14 +518,18 @@ class BaseMvge:
         return stream_fn
 
     async def initialize(self) -> None:
-        """Wire the lifecycle modules into a running agent.
-
-        Pure orchestration: rune loading (RuneLifecycle), tome session
-        (MvgeTome), prompt assembly (MvgeEnvironment), and model resolution
-        (RealmRegistry); config parsing happened in __init__.
-        """
+        """Wire lifecycle modules into a running agent."""
         if self._initialized:
             return
+
+        if not self._api_key:
+            self._api_key = (
+                os.environ.get("OPENROUTER_API_KEY")
+                or os.environ.get("MVGEOS_API_KEY")
+                or ""
+            )
+        if not self._api_key:
+            raise MissingApiKeyError
 
         await self._load_runes()
 
@@ -488,100 +600,81 @@ class BaseMvge:
             tome=self._agent_tome,
             realm=self._realm,
             model=self._model,
-            compaction_settings=self._compaction_settings,
+            compaction=self._compaction,
         )
         self._loop = self._harness.loop
-        self._compaction = self._harness.compaction
-
-    async def _load_runes(self) -> None:
-        """Load runes from all three levels (global, agent, project)."""
-        if self._rune_lifecycle is None:
-            self._rune_lifecycle = RuneLifecycle(
-                agent_name=self._name,
-                api_key=self._api_key,
-                runes_paths=self._runes_paths,
-                environment=self._environment,
-                provider_registry=self._provider_registry,
-                runner=self._runner,
-            )
-        self._runner = await self._rune_lifecycle.load()
-        await self._rune_lifecycle.start()
-        refreshed = self._rune_lifecycle.environment
-        if refreshed is not None:
-            self._environment = refreshed
-
-    async def switch_model(self, model_id: str) -> None:
-        """Switch the active model, preserving the current session context."""
-        if model_id == self._model_id:
-            return
-        self._model_id = model_id
-        if not self._initialized:
-            return
-
-        assert self._model is not None
-        new_model, new_realm = self._provider_registry.resolve(
-            model_id, self._api_key, self._provider_name
-        )
-        if new_model.provider != self._model.provider:
-            if self._realm is not None:
-                await self._realm.close()
-            self._realm = new_realm
-        self._model = new_model
-        assert self._state is not None
-        self._state.model = dataclasses.asdict(new_model)
-        if self._harness is not None and self._realm is not None:
-            self._harness.set_model_and_realm(new_model, self._realm)
-            self._compaction = self._harness.compaction
 
     async def run(self, prompt: str) -> MvgeInvocation:
-        """Template method. Sealed entry point for all agents."""
-        if not self._initialized:
-            await self.initialize()
-
-        assert self._model is not None
-        assert self._realm is not None
+        """Template method for processing a turn."""
+        await self.initialize()
         assert self._state is not None
-        assert self._loop is not None
 
-        self._state.invocations.append(SummonerRequest(role="user", content=prompt))
-        self._state.system_prompt = await self._build_system_prompt_async()
-        self._state.prompt_source = self._prompt_source
+        user_msg = SummonerRequest(role="user", content=prompt)
+        self._state.invocations.append(user_msg)
+
+        final_prompt = await self._build_system_prompt_async()
+        self._state.system_prompt = final_prompt
 
         return await self._run_impl()
 
-    def abort(self) -> None:
-        """Abort the currently running invocation.
+    async def switch_model(self, model_id: str) -> None:
+        """Switch the model in-flight."""
+        if self._model is not None and self._model.id == model_id:
+            return
 
-        Triggers the active AbortController (if any), which signals the loop
-        to interrupt in-flight channeling and spell execution. Mirrors Pi's
-        ``agent.abort()`` pattern.
-        """
+        self._model_id = model_id
+        if self._initialized:
+            new_model = self._compose_model(model_id)
+            self._model = new_model
+            if self._state is not None:
+                self._state.model = dataclasses.asdict(new_model)
+            if self._agent_tome is not None:
+                await self._agent_tome.record_custom_async(
+                    "model_switch", {"model": new_model.id}
+                )
+
+    async def set_contemplation_level(self, level: ContemplationLevel | str) -> None:
+        """Switch the contemplation level in-flight."""
+        if isinstance(level, str):
+            level = ContemplationLevel(level)
+        if self._contemplation_level == level:
+            return
+
+        self._contemplation_level = level
+        if self._state is not None:
+            self._state.contemplation_level = level
+        if self._agent_tome is not None:
+            await self._agent_tome.record_custom_async(
+                "contemplation_switch", {"level": level.value}
+            )
+
+    async def close(self) -> None:
+        """Teardown the agent session and release resources."""
         if self._abort_controller is not None:
             self._abort_controller.abort()
 
-    async def close(self) -> None:
-        if self._agent_tome is not None:
-            await self._agent_tome.shutdown(reason="quit")
         if self._rune_lifecycle is not None:
             await self._rune_lifecycle.shutdown()
             self._rune_lifecycle = None
+            self._runner = None
+
         if self._realm is not None:
             await self._realm.close()
             self._realm = None
-        if self._provider_registry is not None:
-            await self._provider_registry.close()
-        self._initialized = False
-        self._runner = None
-        self._agent_tome = None
-        self._tome_ledger = None
-        self._loop = None
-        self._harness = None
-        self._state = None
-        self._abort_controller = None
 
-    async def __aenter__(self) -> BaseMvge:
+        if self._agent_tome is not None:
+            await self._agent_tome.shutdown()
+
+        self._initialized = False
+
+    async def __aenter__(self) -> Mvge:
         await self.initialize()
         return self
 
-    async def __aexit__(self, *args: Any) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> None:
         await self.close()

@@ -11,7 +11,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from coding_mvge.mvge import CodingMvge
+from coding_mvge import root_mvge
+from mvgeos_agent import Mvge
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.errors import AuthenticationError, RateLimitError
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
@@ -27,8 +28,6 @@ from mvgeos_gui.models import (
 from mvgeos_gui.transcript import InvocationTranscript
 
 if TYPE_CHECKING:
-    from coding_mvge.mvge import CodingMvge
-
     from mvgeos_gui.state import AppState
 
 logger = logging.getLogger(__name__)
@@ -60,7 +59,7 @@ class AgentService:
         self._project_path = project_path
         self._api_key = resolve_api_key(api_key)
         self._agent_factory = agent_factory
-        self._agent: CodingMvge | None = None
+        self._agent: Mvge | None = None
         self._active_message: ChatMessage | None = None
         self._active_transcript: InvocationTranscript | None = None
         self._active_state: AppState | None = None
@@ -89,7 +88,7 @@ class AgentService:
         return self._is_running
 
     def get_or_create_agent(self, state: AppState) -> Any:
-        """Instantiate or retrieve the bound CodingMvge instance."""
+        """Instantiate or retrieve the bound Mvge instance."""
         if self._agent is not None:
             return self._agent
 
@@ -102,7 +101,7 @@ class AgentService:
         else:
             if not self._api_key:
                 raise RuntimeError(
-                    "Cannot instantiate CodingMvge without an API key. "
+                    "Cannot instantiate Mvge without an API key. "
                     "Set OPENROUTER_API_KEY, pass --api-key, or configure "
                     "an agent_factory."
                 )
@@ -110,8 +109,10 @@ class AgentService:
                 agent_name="coding-mvge",
                 project_dir=self._project_path,
             )
-            self._agent = CodingMvge(
+            self._agent = Mvge(
                 api_key=self._api_key,
+                name="coding-mvge",
+                spells=root_mvge._spells,
                 tome_dir=state.tome_service.tome_dir,
                 tome_resume=state.active_tome_id,
                 environment=env,

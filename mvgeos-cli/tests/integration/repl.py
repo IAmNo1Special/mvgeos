@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from coding_mvge import CodingMvge
 from mvgeos_agent.constants import DEFAULT_MODEL
+from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 from mvgeos_provider.model_registry import ModelRegistry
 
@@ -18,30 +18,30 @@ def registry() -> ModelRegistry:
 
 
 @pytest.fixture
-def agent() -> CodingMvge:
-    return CodingMvge(api_key="test-key")
+def agent() -> Mvge:
+    return Mvge(api_key="test-key")
 
 
 class TestSlashCommands:
-    def test_help(self, agent: CodingMvge, registry: ModelRegistry) -> None:
+    def test_help(self, agent: Mvge, registry: ModelRegistry) -> None:
         result = _handle_command("/help", agent, registry)
         assert result == ReplAction.CONTINUE
 
-    def test_quit(self, agent: CodingMvge, registry: ModelRegistry) -> None:
+    def test_quit(self, agent: Mvge, registry: ModelRegistry) -> None:
         result = _handle_command("/quit", agent, registry)
         assert result == ReplAction.EXIT
 
-    def test_exit(self, agent: CodingMvge, registry: ModelRegistry) -> None:
+    def test_exit(self, agent: Mvge, registry: ModelRegistry) -> None:
         result = _handle_command("/exit", agent, registry)
         assert result == ReplAction.EXIT
 
-    def test_session(self, agent: CodingMvge, registry: ModelRegistry) -> None:
+    def test_session(self, agent: Mvge, registry: ModelRegistry) -> None:
         result = _handle_command("/session", agent, registry)
         assert result == ReplAction.CONTINUE
 
     def test_model_no_args_lists_models(
         self,
-        agent: CodingMvge,
+        agent: Mvge,
         registry: ModelRegistry,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
@@ -53,42 +53,42 @@ class TestSlashCommands:
         for m in models:
             assert m.id in captured.out
 
-    def test_model_with_args(self, agent: CodingMvge, registry: ModelRegistry) -> None:
+    def test_model_with_args(self, agent: Mvge, registry: ModelRegistry) -> None:
         target = registry.list_all()[0].id
         result = _handle_command(f"/model {target}", agent, registry)
         assert result == ReplAction.SWITCH_MODEL
         assert agent._model_id == target
 
-    def test_model_invalid(self, agent: CodingMvge, registry: ModelRegistry) -> None:
+    def test_model_invalid(self, agent: Mvge, registry: ModelRegistry) -> None:
         result = _handle_command("/model unknown/model", agent, registry)
         assert result == ReplAction.CONTINUE
         assert agent._model_id == DEFAULT_MODEL
 
-    def test_spells_no_args(self, agent: CodingMvge, registry: ModelRegistry) -> None:
+    def test_spells_no_args(self, agent: Mvge, registry: ModelRegistry) -> None:
         result = _handle_command("/spells", agent, registry)
         assert result == ReplAction.CONTINUE
 
-    def test_spells_with_args(self, agent: CodingMvge, registry: ModelRegistry) -> None:
+    def test_spells_with_args(self, agent: Mvge, registry: ModelRegistry) -> None:
         result = _handle_command("/spells bash,read,write", agent, registry)
         assert result == ReplAction.CONTINUE
         assert agent._spell_names == ["bash", "read", "write"]
 
-    def test_new(self, agent: CodingMvge, registry: ModelRegistry) -> None:
+    def test_new(self, agent: Mvge, registry: ModelRegistry) -> None:
         result = _handle_command("/new", agent, registry)
         assert result == ReplAction.NEW_SESSION
 
-    def test_resume_with_args(self, agent: CodingMvge, registry: ModelRegistry) -> None:
+    def test_resume_with_args(self, agent: Mvge, registry: ModelRegistry) -> None:
         result = _handle_command(
             "/resume .agents/.mvgeos/tomes/test.jsonl", agent, registry
         )
         assert result == ReplAction.NEW_SESSION
         assert agent._tome_resume == ".agents/.mvgeos/tomes/test.jsonl"
 
-    def test_resume_no_args(self, agent: CodingMvge, registry: ModelRegistry) -> None:
+    def test_resume_no_args(self, agent: Mvge, registry: ModelRegistry) -> None:
         result = _handle_command("/resume", agent, registry)
         assert result == ReplAction.CONTINUE
 
-    def test_unknown_command(self, agent: CodingMvge, registry: ModelRegistry) -> None:
+    def test_unknown_command(self, agent: Mvge, registry: ModelRegistry) -> None:
         result = _handle_command("/unknown", agent, registry)
         assert result == ReplAction.CONTINUE
 
@@ -105,7 +105,7 @@ class TestReplHelpers:
 
     def test_models_free_filter(
         self,
-        agent: CodingMvge,
+        agent: Mvge,
         registry: ModelRegistry,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
@@ -177,7 +177,7 @@ class TestReplHelpers:
         class _State:
             mana_used = 9500
 
-        agent = CodingMvge(api_key="test-key")
+        agent = Mvge(api_key="test-key")
         agent._state = _State()  # type: ignore[attr-defined]
         info = _format_tome_info(agent, branch="main")
         parts = " ".join(text for _, text in info)
@@ -193,7 +193,7 @@ class TestReplHelpers:
         class _State:
             mana_used = 7500
 
-        agent = CodingMvge(api_key="test-key")
+        agent = Mvge(api_key="test-key")
         agent._state = _State()  # type: ignore[attr-defined]
         info = _format_tome_info(agent)
         parts = " ".join(text for _, text in info)
@@ -202,7 +202,7 @@ class TestReplHelpers:
     def test_format_tome_info_without_state(self) -> None:
         from mvgeos_cli.commands.repl import _format_tome_info
 
-        agent = CodingMvge(api_key="test-key")
+        agent = Mvge(api_key="test-key")
         info = _format_tome_info(agent)
         parts = " ".join(text for _, text in info)
         assert "mana ?" in parts

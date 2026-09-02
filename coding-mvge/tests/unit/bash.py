@@ -3,19 +3,21 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mvgeos_agent.function_spell import FunctionSpell
 from mvgeos_agent.types import SpellStatus
 
-from coding_mvge.spells import (
+from coding_mvge.spells._process_tree import (
     DEFAULT_BASH_TIMEOUT_MS,
-    cast_bash,
     kill_process_tree,
     resolve_timeout_ms,
     resolve_workspace_root,
     validate_working_directory,
 )
+from coding_mvge.spells.bash import bash
 
 
 class TestTimeoutResolution:
@@ -131,7 +133,7 @@ class TestKillProcessTree:
         kill_subproc.wait = AsyncMock()
 
         with (
-            patch("coding_mvge.spells.sys.platform", "win32"),
+            patch("coding_mvge.spells._process_tree.sys.platform", "win32"),
             patch(
                 "asyncio.create_subprocess_exec",
                 new=AsyncMock(return_value=kill_subproc),
@@ -158,11 +160,15 @@ class TestKillProcessTree:
         proc.wait = AsyncMock()
 
         with (
-            patch("coding_mvge.spells.sys.platform", "linux"),
+            patch("coding_mvge.spells._process_tree.sys.platform", "linux"),
             patch(
-                "coding_mvge.spells.os.getpgid", create=True, return_value=1234
+                "coding_mvge.spells._process_tree.os.getpgid",
+                create=True,
+                return_value=1234,
             ) as mock_getpgid,
-            patch("coding_mvge.spells.os.killpg", create=True) as mock_killpg,
+            patch(
+                "coding_mvge.spells._process_tree.os.killpg", create=True
+            ) as mock_killpg,
         ):
             await kill_process_tree(proc)
             mock_getpgid.assert_called_once_with(1234)
@@ -178,7 +184,7 @@ class TestKillProcessTree:
         proc.wait = AsyncMock()
 
         with (
-            patch("coding_mvge.spells.sys.platform", "win32"),
+            patch("coding_mvge.spells._process_tree.sys.platform", "win32"),
             patch(
                 "asyncio.create_subprocess_exec",
                 side_effect=RuntimeError("taskkill error"),
@@ -192,7 +198,7 @@ class TestKillProcessTree:
 class TestCastBash:
     @pytest.mark.asyncio
     async def test_cast_bash_success(self, tmp_path: Path) -> None:
-        result = await cast_bash(
+        result = await bash(
             command="echo hello_bash",
             workspace_root=tmp_path,
         )
@@ -205,7 +211,7 @@ class TestCastBash:
         sub.mkdir()
         (sub / "marker.txt").write_text("found_marker", encoding="utf-8")
 
-        result = await cast_bash(
+        result = await bash(
             command="dir" if os.name == "nt" else "ls",
             cwd="subdir",
             workspace_root=tmp_path,
@@ -218,7 +224,7 @@ class TestCastBash:
         workspace = tmp_path / "ws"
         workspace.mkdir()
 
-        result = await cast_bash(
+        result = await bash(
             command="echo hi",
             cwd="../outside",
             workspace_root=workspace,
@@ -228,7 +234,7 @@ class TestCastBash:
 
     @pytest.mark.asyncio
     async def test_cast_bash_cwd_not_found_returns_error(self, tmp_path: Path) -> None:
-        result = await cast_bash(
+        result = await bash(
             command="echo hi",
             cwd="does_not_exist",
             workspace_root=tmp_path,
@@ -253,9 +259,11 @@ class TestCastBash:
                 "asyncio.create_subprocess_exec",
                 new=AsyncMock(return_value=mock_proc),
             ),
-            patch("coding_mvge.spells.kill_process_tree", new=AsyncMock()) as mock_kill,
+            patch(
+                "coding_mvge.spells.bash.kill_process_tree", new=AsyncMock()
+            ) as mock_kill,
         ):
-            result = await cast_bash(
+            result = await bash(
                 command="sleep 100",
                 timeout_ms=50,
                 workspace_root=tmp_path,
@@ -266,7 +274,7 @@ class TestCastBash:
 
     @pytest.mark.asyncio
     async def test_cast_bash_nonzero_exit(self, tmp_path: Path) -> None:
-        result = await cast_bash(
+        result = await bash(
             command="exit 1" if os.name != "nt" else "cmd /c exit 1",
             workspace_root=tmp_path,
         )
@@ -289,10 +297,12 @@ class TestCastBash:
                 "asyncio.create_subprocess_exec",
                 new=AsyncMock(return_value=mock_proc),
             ),
-            patch("coding_mvge.spells.kill_process_tree", new=AsyncMock()) as mock_kill,
+            patch(
+                "coding_mvge.spells.bash.kill_process_tree", new=AsyncMock()
+            ) as mock_kill,
             pytest.raises(asyncio.CancelledError),
         ):
-            await cast_bash(
+            await bash(
                 command="sleep 100",
                 timeout_ms=50,
                 workspace_root=tmp_path,
@@ -311,7 +321,7 @@ class TestCastBash:
                 side_effect=OSError("spawn failed"),
             ),
         ):
-            result = await cast_bash(
+            result = await bash(
                 command="echo hi",
                 workspace_root=tmp_path,
             )
@@ -322,35 +332,36 @@ class TestCastBash:
 class TestBuiltinSpellBash:
     @pytest.mark.asyncio
     async def test_builtin_spell_enforces_workspace_root(self, tmp_path: Path) -> None:
-        from coding_mvge.spells import create_builtin_spells
-
         workspace = tmp_path / "workspace"
         workspace.mkdir()
         outside = tmp_path / "outside"
         outside.mkdir()
 
-        spells = create_builtin_spells(["bash"], workspace_root=workspace)
-        spell = spells[0]
+        spell = FunctionSpell(bash)
         result = await spell.execute(
             "call-1",
-            {"command": "echo hi", "cwd": "../outside"},
+            {
+                "command": "echo hi",
+                "cwd": "../outside",
+                "workspace_root": str(workspace),
+            },
         )
         assert "[error]" in result
         assert "outside authorized workspace root" in result
 
     @pytest.mark.asyncio
-    async def test_builtin_spell_default_timeout(self, tmp_path: Path) -> None:
-        from coding_mvge.spells import create_builtin_spells
+    async def test_builtin_spell_execution(self, tmp_path: Path) -> None:
+        async def mock_bash(
+            command: str,
+            cwd: str | None = None,
+            timeout_ms: int | None = None,
+            workspace_root: str | Path | None = None,
+        ) -> Any:
+            return "done"
 
-        spells = create_builtin_spells(["bash"], timeout_ms=12345)
-        spell = spells[0]
+        spell = FunctionSpell(mock_bash, name="bash")
         assert spell.name == "bash"
-        with patch("coding_mvge.spells.cast_bash") as mock_cast:
-            mock_cast.return_value = MagicMock(error_message=None, content="done")
-            await spell.execute("call-1", {"command": "echo hi"})
-            mock_cast.assert_awaited_once_with(
-                command="echo hi",
-                cwd=None,
-                timeout_ms=12345,
-                workspace_root=None,
-            )
+        result = await spell.execute(
+            "call-1", {"command": "echo hi", "timeout_ms": 12345}
+        )
+        assert result == "done"

@@ -13,7 +13,7 @@ from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 from mvgeos_tome import CURRENT_SESSION_VERSION, TomeLedger
 from mvgeos_tome.types import TomeEntryType
 
-from mvgeos_agent.base_mvge import BaseMvge
+from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.types import (
     ContentType,
     MvgeInvocation,
@@ -94,7 +94,7 @@ async def test_resume_legacy_v1_session_seamless_migration_and_execution() -> No
         _write_fixture_session(tome_dir, "legacy-v1-tome.jsonl", [header, e1, e2])
 
         # Resume agent with legacy-v1-tome
-        agent = BaseMvge(
+        agent = Mvge(
             api_key="test-key",
             tome_dir=tome_dir,
             tome_resume="legacy-v1-tome",
@@ -179,7 +179,7 @@ async def test_resume_legacy_v2_session_with_hook_messages_and_compaction() -> N
         }
         _write_fixture_session(tome_dir, "legacy-v2-tome.jsonl", [header, e1, e2, e3])
 
-        agent = BaseMvge(
+        agent = Mvge(
             api_key="test-key",
             tome_dir=tome_dir,
             tome_resume="legacy-v2-tome",
@@ -227,7 +227,7 @@ async def test_reopen_migrated_session_in_fresh_agent_instance() -> None:
         _write_fixture_session(tome_dir, "roundtrip-agent-tome.jsonl", [header, e1])
 
         # 1. First agent resumes v1 session and executes a turn
-        agent1 = BaseMvge(
+        agent1 = Mvge(
             api_key="test-key",
             tome_dir=tome_dir,
             tome_resume="roundtrip-agent-tome",
@@ -240,7 +240,7 @@ async def test_reopen_migrated_session_in_fresh_agent_instance() -> None:
         await agent1.close()
 
         # 2. Second agent opens the same session
-        agent2 = BaseMvge(
+        agent2 = Mvge(
             api_key="test-key",
             tome_dir=tome_dir,
             tome_resume="roundtrip-agent-tome",

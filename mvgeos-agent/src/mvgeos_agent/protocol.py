@@ -19,7 +19,7 @@ class MvgeAgent(Protocol):
     """Protocol defining the core interface for an Mvge agent.
 
     Decouples summoning layers (CLI, GUI, runners) from concrete agent
-    subclasses (such as CodingMvge or BaseMvge).
+    implementations (such as Mvge).
     """
 
     @property

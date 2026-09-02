@@ -4,9 +4,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from coding_mvge import CodingMvge
 
-from mvgeos_agent import BaseMvge, MvgeAgent
+from mvgeos_agent import Mvge, MvgeAgent
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.types import (
     ContemplationLevel,
@@ -17,7 +16,7 @@ from mvgeos_agent.types import (
 
 
 class DummyAgent:
-    """Mock agent implementing the MvgeAgent protocol without inheriting BaseMvge."""
+    """Mock agent implementing the MvgeAgent protocol without inheriting Mvge."""
 
     def __init__(self) -> None:
         self.queue_mode: QueueMode = QueueMode.ONE_AT_A_TIME
@@ -89,8 +88,8 @@ class DummyAgent:
 
 
 class TestMvgeAgentProtocol:
-    def test_base_mvge_conforms(self) -> None:
-        agent = BaseMvge(api_key="test-key")
+    def test_mvge_conforms(self) -> None:
+        agent = Mvge(api_key="test-key")
         assert isinstance(agent, MvgeAgent)
         assert agent.session_id == agent.tome_id
         assert agent.model_id == agent._model_id
@@ -99,11 +98,12 @@ class TestMvgeAgentProtocol:
         assert isinstance(agent.enabled_spells, list)
 
     def test_coding_mvge_conforms(self) -> None:
-        agent = CodingMvge(api_key="test-key")
-        assert isinstance(agent, MvgeAgent)
-        assert agent.session_id == agent.tome_id
-        assert agent.model_id == agent._model_id
-        assert "bash" in agent.enabled_spells
+        from coding_mvge import root_mvge
+
+        assert isinstance(root_mvge, MvgeAgent)
+        assert root_mvge.session_id == root_mvge.tome_id
+        assert root_mvge.model_id == root_mvge._model_id
+        assert "bash" in root_mvge.enabled_spells
 
     def test_dummy_agent_conforms(self) -> None:
         dummy = DummyAgent()
@@ -119,16 +119,16 @@ class TestMvgeAgentProtocol:
         assert not isinstance(IncompleteAgent(), MvgeAgent)
 
     @pytest.mark.asyncio
-    async def test_base_mvge_mana_used_with_state(self) -> None:
-        agent = BaseMvge(api_key="test-key")
+    async def test_mvge_mana_used_with_state(self) -> None:
+        agent = Mvge(api_key="test-key")
         state_mock = MagicMock()
         state_mock.mana_used = 1337
         agent._state = state_mock  # type: ignore[attr-defined]
         assert agent.mana_used == 1337
 
     @pytest.mark.asyncio
-    async def test_base_mvge_load_runes_method(self) -> None:
-        agent = BaseMvge(api_key="test-key")
+    async def test_mvge_load_runes_method(self) -> None:
+        agent = Mvge(api_key="test-key")
         agent._load_runes = AsyncMock()  # type: ignore[method-assign]
         await agent.load_runes()
         agent._load_runes.assert_awaited_once()

@@ -112,6 +112,13 @@ The deep module responsible for executing tool call batches concurrently (`async
 **MvgeEnvironment**:
 The deep module responsible for resolving agent configuration, system prompts, guidelines, and runtime snapshot introspection (`mvgeos_agent/environment.py`). Consolidates layered config loading, prompt resolution, and diagnostic collection behind a single `resolve()` seam. Mirrors Pi's `AgentSessionServices` + `ResourceLoader`.
 
+**Two-Layer Invariant Scaffolding**:
+The architecture that strictly decouples agent persona and behavioral guidelines (Layer 1: stored in colocated `SYSTEM.md` and `GUIDELINES.md`) from dynamic, engine-rendered Agent-Computer Interface scaffolding (Layer 2: `Active spells:`, `Environment:`, `Self-Modification & Customization:` on-demand reference pointers, and `<project_context>`).
+
+**Spell Auto-Discovery**:
+The engine capability in `discover_spells_from_dir` that discovers tools from a caller-adjacent `spells/` directory via 3-tier precedence (`__all__` in `__init__.py` -> function matching file stem -> single public function -> `SpellDiscoveryError`). Allows zero-boilerplate agent creation (`root_mvge = Mvge(name="...")`).
+
+
 
 ## Compaction
 

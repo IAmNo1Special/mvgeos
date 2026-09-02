@@ -24,6 +24,11 @@ class SpellNotFoundError(MvgeError):
         super().__init__("spell_not_found", f"Spell not found: {spell_name}")
 
 
+class SpellDiscoveryError(MvgeError):
+    def __init__(self, message: str) -> None:
+        super().__init__("spell_discovery_error", message)
+
+
 class RateLimitError(MvgeError):
     def __init__(self, message: str, retry_after: float | None = None) -> None:
         super().__init__("rate_limited", message)
@@ -33,6 +38,17 @@ class RateLimitError(MvgeError):
 class AuthenticationError(MvgeError):
     def __init__(self, message: str) -> None:
         super().__init__("auth_failed", message)
+
+
+class MissingApiKeyError(MvgeError):
+    def __init__(
+        self,
+        message: str = (
+            "API key not found. Set OPENROUTER_API_KEY in your environment "
+            "or in a co-located .env file."
+        ),
+    ) -> None:
+        super().__init__("missing_api_key", message)
 
 
 class SpellTimeoutError(MvgeError):

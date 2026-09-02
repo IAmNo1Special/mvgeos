@@ -8,7 +8,7 @@ import pytest
 from mvgeos_provider.types import Model
 from mvgeos_tome.ledger import TomeLedger
 
-from mvgeos_agent.base_mvge import BaseMvge
+from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.types import MvgeSpell, TomeResumeError
 
 
@@ -30,7 +30,7 @@ async def test_resume_tome_resolves_prefix_id() -> None:
         tome_dir = Path(tmp_dir)
 
         # Create agent to create initial tome
-        agent1 = BaseMvge(api_key="test-key", tome_dir=tome_dir)
+        agent1 = Mvge(api_key="test-key", tome_dir=tome_dir)
         agent1._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
         agent1._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
         with patch.object(
@@ -46,7 +46,7 @@ async def test_resume_tome_resolves_prefix_id() -> None:
 
         # Now resume using prefix ID
         prefix = actual_id[:8]
-        agent2 = BaseMvge(api_key="test-key", tome_dir=tome_dir, tome_resume=prefix)
+        agent2 = Mvge(api_key="test-key", tome_dir=tome_dir, tome_resume=prefix)
         agent2._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
         agent2._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
         with patch.object(
@@ -66,7 +66,7 @@ async def test_resume_tome_resolves_full_id() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tome_dir = Path(tmp_dir)
 
-        agent1 = BaseMvge(api_key="test-key", tome_dir=tome_dir)
+        agent1 = Mvge(api_key="test-key", tome_dir=tome_dir)
         agent1._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
         agent1._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
         with patch.object(
@@ -80,7 +80,7 @@ async def test_resume_tome_resolves_full_id() -> None:
         assert agent1._agent_tome is not None
         actual_id = agent1._agent_tome.tome_id
 
-        agent2 = BaseMvge(api_key="test-key", tome_dir=tome_dir, tome_resume=actual_id)
+        agent2 = Mvge(api_key="test-key", tome_dir=tome_dir, tome_resume=actual_id)
         agent2._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
         agent2._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
         with patch.object(
@@ -100,7 +100,7 @@ async def test_resume_tome_resolves_raw_path() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tome_dir = Path(tmp_dir)
 
-        agent1 = BaseMvge(api_key="test-key", tome_dir=tome_dir)
+        agent1 = Mvge(api_key="test-key", tome_dir=tome_dir)
         agent1._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
         agent1._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
         with patch.object(
@@ -115,9 +115,7 @@ async def test_resume_tome_resolves_raw_path() -> None:
         actual_id = agent1._agent_tome.tome_id
         raw_path = tome_dir / f"{actual_id}.jsonl"
 
-        agent2 = BaseMvge(
-            api_key="test-key", tome_dir=tome_dir, tome_resume=str(raw_path)
-        )
+        agent2 = Mvge(api_key="test-key", tome_dir=tome_dir, tome_resume=str(raw_path))
         agent2._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
         agent2._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
         with patch.object(
@@ -137,7 +135,7 @@ async def test_resume_tome_missing_id_raises_error() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tome_dir = Path(tmp_dir)
 
-        agent = BaseMvge(
+        agent = Mvge(
             api_key="test-key", tome_dir=tome_dir, tome_resume="nonexistent_id"
         )
         agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
@@ -168,7 +166,7 @@ async def test_resume_matching_config_succeeds_without_warnings() -> None:
             spells=["spell_a", "spell_b"],
         )
 
-        class SpellAgent(BaseMvge):
+        class SpellAgent(Mvge):
             def _build_spells(self) -> list[MvgeSpell]:
                 return [
                     MvgeSpell(name="spell_a", description="a", parameters={}),
@@ -211,7 +209,7 @@ async def test_resume_mismatched_model_non_strict_emits_diagnostic() -> None:
             spells=[],
         )
 
-        agent = BaseMvge(
+        agent = Mvge(
             api_key="test-key",
             tome_dir=tome_dir,
             tome_resume=meta.id,
@@ -250,7 +248,7 @@ async def test_resume_mismatched_model_strict_raises_tome_incompatible() -> None
             spells=[],
         )
 
-        agent = BaseMvge(
+        agent = Mvge(
             api_key="test-key",
             tome_dir=tome_dir,
             tome_resume=meta.id,
@@ -291,7 +289,7 @@ async def test_resume_missing_spells_strict_raises_tome_incompatible() -> None:
             spells=["required_custom_spell", "bash"],
         )
 
-        class LimitedAgent(BaseMvge):
+        class LimitedAgent(Mvge):
             def _build_spells(self) -> list[MvgeSpell]:
                 return [MvgeSpell(name="bash", description="b", parameters={})]
 
@@ -333,7 +331,7 @@ async def test_resume_missing_spells_non_strict_emits_diagnostic() -> None:
             spells=["required_custom_spell", "bash"],
         )
 
-        class LimitedAgent(BaseMvge):
+        class LimitedAgent(Mvge):
             def _build_spells(self) -> list[MvgeSpell]:
                 return [MvgeSpell(name="bash", description="b", parameters={})]
 
@@ -375,7 +373,7 @@ async def test_resume_force_fork_branches_incompatible_session() -> None:
         e1 = ledger.append_message(meta.id, "user", "turn 1")
         ledger.append_leaf(meta.id, e1.id)
 
-        class NewAgent(BaseMvge):
+        class NewAgent(Mvge):
             def _build_spells(self) -> list[MvgeSpell]:
                 return [MvgeSpell(name="new_spell", description="n", parameters={})]
 
@@ -423,7 +421,7 @@ async def test_validate_tome_compatibility_helper() -> None:
             spells=["spell_x"],
         )
 
-        agent = BaseMvge(api_key="test-key", tome_dir=tome_dir)
+        agent = Mvge(api_key="test-key", tome_dir=tome_dir)
         agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
         agent._provider_registry.resolve = MagicMock(
             return_value=(_mock_model(), MagicMock())

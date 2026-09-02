@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from mvgeos_agent import FunctionSpell, Mvge
 from mvgeos_agent.constants import DEFAULT_MODEL
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.types import (
@@ -14,19 +15,20 @@ from mvgeos_agent.types import (
     MvgeState,
     StopReason,
 )
-from mvgeos_runes.types import (
-    SpellDefinition,
-)
+from mvgeos_runes.types import SpellDefinition
 
-from coding_mvge.mvge import (
-    DEFAULT_SPELL_MAP,
-    CodingMvge,
+from coding_mvge import root_mvge
+from coding_mvge.spells import (
+    bash,
+    grep,
+    read,
+    write,
 )
 
 
 @pytest.fixture
-def agent() -> CodingMvge:
-    return CodingMvge(api_key="test-key")
+def agent() -> Mvge:
+    return Mvge(api_key="test-key")
 
 
 class _MockRealm:
@@ -41,7 +43,7 @@ def _make_mock_realm(text: str = "Hello") -> _MockRealm:
     return _MockRealm()
 
 
-def _install_mock(agent: CodingMvge, text: str = "Hello") -> _MockRealm:
+def _install_mock(agent: Mvge, text: str = "Hello") -> _MockRealm:
     from mvgeos_provider.types import Model
 
     mock_realm = _make_mock_realm(text)
@@ -102,7 +104,7 @@ class _Iter:
         return gen()
 
 
-class TestCodingMvgeInit:
+class TestMvgeInit:
     def test_stores_config(self) -> None:
         env = MvgeEnvironment.resolve(
             "test-agent",
@@ -114,45 +116,67 @@ class TestCodingMvgeInit:
             },
             custom_prompt="Custom prompt",
         )
-        agent = CodingMvge(
+        agent = Mvge(
             api_key="k",
-            spells=["bash", "read"],
+            spells=[bash, read],
             custom_system_prompt="Custom prompt",
             environment=env,
         )
         assert agent._api_key == "k"
         assert agent._model_id == "test-model"
-        assert agent._spell_names == ["bash", "read"]
+        assert len(agent._spells) == 2
         assert agent._custom_system_prompt == "Custom prompt"
         assert agent._temperature == 0.5
         assert agent._max_tokens == 2048
         assert agent._contemplation_level == "high"
 
     def test_defaults(self) -> None:
-        agent = CodingMvge(api_key="k")
+        agent = Mvge(api_key="k")
         assert agent._model_id == DEFAULT_MODEL
-        assert agent._spell_names == list(DEFAULT_SPELL_MAP)
+        assert agent._spells == []
         assert agent._custom_system_prompt == ""
         assert agent._temperature == 0.7
         assert agent._max_tokens == 4096
         assert agent._contemplation_level == "medium"
 
+    def test_coding_mvge_instance(self) -> None:
+        assert root_mvge.name == "coding_mvge"
+        assert len(root_mvge.enabled_spells) == 7
+        assert set(root_mvge.enabled_spells) == {
+            "bash",
+            "read",
+            "write",
+            "edit",
+            "find",
+            "list_files",
+            "grep",
+        }
+
     def test_default_tome_dir(self) -> None:
-        agent = CodingMvge(api_key="k")
+        agent = Mvge(api_key="k")
         assert agent._tome_dir == Path.home() / ".agents" / ".mvgeos" / "tomes"
 
 
-class TestCodingMvgeBuildSpells:
-    def test_build_spells_returns_builtin_when_no_rune_runner(
-        self, agent: CodingMvge
-    ) -> None:
-        # Without rune runner, builtin spells are returned by default (7 spells)
+class TestMvgeBuildSpells:
+    def test_build_spells_returns_coerced_spells(self) -> None:
+        agent = Mvge(api_key="k", spells=[bash, read, write])
         spells = agent._build_spells()
-        assert len(spells) == 7
+        assert len(spells) == 3
+        assert [s.name for s in spells] == ["bash", "read", "write"]
+        assert all(isinstance(s, FunctionSpell) for s in spells)
 
-    def test_build_spells_returns_active_set_spells(self, agent: CodingMvge) -> None:
-        # _build_spells is driven by the runner's active-spell set, not a
-        # hardcoded name tuple. Spells outside the active set are excluded.
+    def test_build_spells_with_raw_functions(self) -> None:
+        def custom_tool(arg: str) -> str:
+            """A test tool."""
+            return f"result: {arg}"
+
+        agent = Mvge(api_key="k", spells=[custom_tool])
+        spells = agent._build_spells()
+        assert len(spells) == 1
+        assert spells[0].name == "custom_tool"
+        assert spells[0].description == "A test tool."
+
+    def test_build_spells_with_rune_runner(self, agent: Mvge) -> None:
         mock_runner = MagicMock()
         mock_runner.get_all_registered_spells.return_value = [
             SpellDefinition(
@@ -162,74 +186,60 @@ class TestCodingMvgeBuildSpells:
                 name="skill_search", description="Search for skills", parameters={}
             ),
             SpellDefinition(
-                name="bash", description="Execute shell commands", parameters={}
+                name="inactive_tool", description="Inactive", parameters={}
             ),
         ]
-        # Only the active set is surfaced to the model.
         mock_runner.get_active_spells.return_value = ["tool_search", "skill_search"]
         agent._runner = mock_runner
         spells = agent._build_spells()
-        rune_names = {s.name for s in spells if s.name not in DEFAULT_SPELL_MAP}
-        assert rune_names == {"tool_search", "skill_search"}
-        # A registered-but-inactive rune spell is not surfaced.
-        assert "bash" not in rune_names
+        names = {s.name for s in spells}
+        assert "tool_search" in names
+        assert "skill_search" in names
+        assert "inactive_tool" not in names
 
-    def test_build_spells_excludes_inactive_rune_spells(
-        self, agent: CodingMvge
-    ) -> None:
+    def test_render_prompt_lists_active_spells(self, agent: Mvge) -> None:
         mock_runner = MagicMock()
         mock_runner.get_all_registered_spells.return_value = [
-            SpellDefinition(name="a", description="", parameters={}),
-            SpellDefinition(name="b", description="", parameters={}),
+            SpellDefinition(name="tool_search", description="", parameters={}),
+            SpellDefinition(name="skill_search", description="", parameters={}),
         ]
-        mock_runner.get_active_spells.return_value = ["a"]
-        agent._runner = mock_runner
-        spells = agent._build_spells()
-        rune_names = {s.name for s in spells if s.name not in DEFAULT_SPELL_MAP}
-        assert rune_names == {"a"}
-
-    def test_build_spells_empty(self, agent: CodingMvge) -> None:
-        agent._spell_names = []
-        spells = agent._build_spells()
-        assert len(spells) == 0
-
-    def test_render_prompt_lists_active_spells(self, agent: CodingMvge) -> None:
-        mock_runner = MagicMock()
         mock_runner.get_active_spells.return_value = ["tool_search", "skill_search"]
         agent._runner = mock_runner
-        prompt = agent._render_prompt("You are Mvge", [], [])
+        prompt = agent._render_prompt(
+            "You are Mvge", [s.name for s in agent._build_spells()], []
+        )
         assert "Active spells:" in prompt
         assert "tool_search" in prompt
         assert "skill_search" in prompt
 
 
-class TestCodingMvgeProperties:
+class TestMvgeProperties:
     def test_tome_id_none_before_init(self) -> None:
-        agent = CodingMvge(api_key="k")
+        agent = Mvge(api_key="k")
         assert agent.tome_id is None
 
     def test_enabled_spells(self) -> None:
-        agent = CodingMvge(api_key="k", spells=["bash", "grep"])
+        agent = Mvge(api_key="k", spells=[bash, grep])
         assert agent.enabled_spells == ["bash", "grep"]
 
     def test_registered_commands_empty(self) -> None:
-        agent = CodingMvge(api_key="k")
+        agent = Mvge(api_key="k")
         assert agent.registered_commands == []
 
     def test_registered_shortcuts_empty(self) -> None:
-        agent = CodingMvge(api_key="k")
+        agent = Mvge(api_key="k")
         assert agent.registered_shortcuts == []
 
     def test_registered_providers_empty(self) -> None:
-        agent = CodingMvge(api_key="k")
+        agent = Mvge(api_key="k")
         assert agent.registered_providers == []
 
 
-class TestCodingMvgeRun:
+class TestMvgeRun:
     @pytest.mark.asyncio
     async def test_initialize_then_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            agent = CodingMvge(
+            agent = Mvge(
                 api_key="test-key",
                 tome_dir=Path(tmpdir),
                 spells=[],
@@ -245,7 +255,7 @@ class TestCodingMvgeRun:
         env = MvgeEnvironment.resolve(
             "test-agent", overrides={"model": "unknown/model"}
         )
-        agent = CodingMvge(
+        agent = Mvge(
             api_key="test-key",
             spells=[],
             environment=env,
@@ -256,7 +266,7 @@ class TestCodingMvgeRun:
     @pytest.mark.asyncio
     async def test_context_manager(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            agent = CodingMvge(
+            agent = Mvge(
                 api_key="test-key",
                 tome_dir=Path(tmpdir),
                 spells=[],
@@ -270,7 +280,7 @@ class TestCodingMvgeRun:
     @pytest.mark.asyncio
     async def test_run_returns_mvge_response(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            agent = CodingMvge(
+            agent = Mvge(
                 api_key="test-key",
                 tome_dir=Path(tmpdir),
                 spells=[],
@@ -285,7 +295,7 @@ class TestCodingMvgeRun:
     @pytest.mark.asyncio
     async def test_initialize_only_once(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            agent = CodingMvge(
+            agent = Mvge(
                 api_key="test-key",
                 tome_dir=Path(tmpdir),
                 spells=[],
@@ -300,10 +310,10 @@ class TestCodingMvgeRun:
     @pytest.mark.asyncio
     async def test_run_with_spells(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            agent = CodingMvge(
+            agent = Mvge(
                 api_key="test-key",
                 tome_dir=Path(tmpdir),
-                spells=["bash", "read"],
+                spells=[bash, read],
             )
             _install_mock(agent)
 
@@ -314,7 +324,7 @@ class TestCodingMvgeRun:
     @pytest.mark.asyncio
     async def test_close_cleans_up(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            agent = CodingMvge(
+            agent = Mvge(
                 api_key="test-key",
                 tome_dir=Path(tmpdir),
             )
@@ -328,7 +338,7 @@ class TestCodingMvgeRun:
     @pytest.mark.asyncio
     async def test_multi_turn(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            agent = CodingMvge(
+            agent = Mvge(
                 api_key="test-key",
                 tome_dir=Path(tmpdir),
                 spells=[],
@@ -348,7 +358,7 @@ class TestCodingMvgeRun:
     @pytest.mark.asyncio
     async def test_multi_turn_state_persists(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            agent = CodingMvge(
+            agent = Mvge(
                 api_key="test-key",
                 tome_dir=Path(tmpdir),
                 spells=[],
@@ -366,7 +376,7 @@ class TestCodingMvgeRun:
             await agent.close()
 
 
-class TestCodingMvgeSwitchModel:
+class TestMvgeSwitchModel:
     @pytest.mark.asyncio
     async def test_switch_model_preserves_session(self) -> None:
         from mvgeos_provider.models import list_models
@@ -377,7 +387,7 @@ class TestCodingMvgeSwitchModel:
             if m.id != "nvidia/nemotron-3-ultra-550b-a55b:free"
         )
         with tempfile.TemporaryDirectory() as tmpdir:
-            agent = CodingMvge(
+            agent = Mvge(
                 api_key="test-key",
                 tome_dir=Path(tmpdir),
                 spells=[],
@@ -400,7 +410,7 @@ class TestCodingMvgeSwitchModel:
     @pytest.mark.asyncio
     async def test_switch_model_unknown_raises(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            agent = CodingMvge(
+            agent = Mvge(
                 api_key="test-key",
                 tome_dir=Path(tmpdir),
                 spells=[],
@@ -420,7 +430,7 @@ class TestCodingMvgeSwitchModel:
     @pytest.mark.asyncio
     async def test_switch_model_same_model_noop(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            agent = CodingMvge(
+            agent = Mvge(
                 api_key="test-key",
                 tome_dir=Path(tmpdir),
                 spells=[],
@@ -435,29 +445,27 @@ class TestCodingMvgeSwitchModel:
         from mvgeos_provider.models import list_models
 
         target = next(m.id for m in list_models() if m.id != DEFAULT_MODEL)
-        agent = CodingMvge(api_key="test-key")
+        agent = Mvge(api_key="test-key")
         await agent.switch_model(target)
         assert agent._model_id == target
 
 
-class TestCodingMvgeToolCalls:
+class TestMvgeToolCalls:
     @pytest.mark.asyncio
     async def test_agent_executes_spell_and_continues_turn(self) -> None:
+        from mvgeos_agent.function_spell import FunctionSpell
         from mvgeos_agent.types import SpellResultMessage, StopReason
         from mvgeos_provider.types import RealmResponse
 
-        from coding_mvge.spells import create_builtin_spells
-
         with tempfile.TemporaryDirectory() as tmpdir:
-            agent = CodingMvge(
+            agent = Mvge(
                 api_key="test-key",
                 tome_dir=Path(tmpdir),
-                spells=["bash"],
+                spells=[bash],
             )
             _install_mock(agent)
             assert agent._state is not None
-            # Manually add the bash spell to the state
-            agent._state.spells = create_builtin_spells(["bash"])
+            agent._state.spells = [FunctionSpell(bash)]
 
             class FakeRealm:
                 def __init__(self) -> None:
@@ -516,18 +524,17 @@ class TestCodingMvgeToolCalls:
 
     @pytest.mark.asyncio
     async def test_make_stream_sends_tools_schema(self) -> None:
-        from coding_mvge.spells import create_builtin_spells
+        from mvgeos_agent.function_spell import FunctionSpell
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            agent = CodingMvge(
+            agent = Mvge(
                 api_key="test-key",
                 tome_dir=Path(tmpdir),
-                spells=["bash", "read"],
+                spells=[bash, read],
             )
             _install_mock(agent)
             assert agent._state is not None
-            # Manually add spell
-            agent._state.spells = create_builtin_spells(["bash", "read"])
+            agent._state.spells = [FunctionSpell(bash), FunctionSpell(read)]
 
             captured: dict[str, Any] = {}
 
@@ -564,18 +571,6 @@ class TestCodingMvgeToolCalls:
             props = captured["tools"][0]["function"]["parameters"]["properties"]
             assert "command" in props
 
-    @pytest.mark.asyncio
-    async def test_builtin_spell_executes_real_function(self) -> None:
-        from coding_mvge.spells import create_builtin_spells
-
-        bash_spell = create_builtin_spells(["bash"])[0]
-        assert bash_spell.parameters.get("properties", {}).get("command")
-
-        result = await bash_spell.execute(
-            "call-1", {"command": "echo hi", "timeout_ms": 15000}
-        )
-        assert "hi" in result
-
 
 class TestBuildSystemPrompt:
     def test_hardcoded_fallback(self) -> None:
@@ -602,8 +597,6 @@ class TestBuildSystemPrompt:
         assert "You are Mvge" not in prompt
 
     def test_system_md_loads(self) -> None:
-        import tempfile
-
         with tempfile.TemporaryDirectory() as td:
             config_dir = Path(td)
             (config_dir / "SYSTEM.md").write_text("Loaded from file.", encoding="utf-8")
@@ -615,8 +608,6 @@ class TestBuildSystemPrompt:
             assert "You are Mvge" not in prompt
 
     def test_guidelines_md_loads(self) -> None:
-        import tempfile
-
         with tempfile.TemporaryDirectory() as td:
             config_dir = Path(td)
             (config_dir / "GUIDELINES.md").write_text(
@@ -631,8 +622,6 @@ class TestBuildSystemPrompt:
             assert "Be concise" not in prompt
 
     def test_both_files_load(self) -> None:
-        import tempfile
-
         with tempfile.TemporaryDirectory() as td:
             config_dir = Path(td)
             (config_dir / "SYSTEM.md").write_text("File-based agent.", encoding="utf-8")
@@ -648,15 +637,15 @@ class TestBuildSystemPrompt:
             assert "Be concise" not in prompt
 
 
-class TestCodingMvgeConfig:
+class TestMvgeConfig:
     def test_default_name(self) -> None:
-        agent = CodingMvge(api_key="k")
+        agent = Mvge(api_key="k")
         assert agent._name == "default-mvge"
 
     def test_custom_name(self) -> None:
-        agent = CodingMvge(api_key="k", name="my-agent")
+        agent = Mvge(api_key="k", name="my-agent")
         assert agent._name == "my-agent"
 
     def test_config_dir_uses_name(self) -> None:
-        agent = CodingMvge(api_key="k", name="custom-agent")
+        agent = Mvge(api_key="k", name="custom-agent")
         assert "custom-agent" in str(agent.config_dir)

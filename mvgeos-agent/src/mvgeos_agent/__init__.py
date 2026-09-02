@@ -1,5 +1,4 @@
 from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.base_mvge import BaseMvge
 from mvgeos_agent.environment import (
     AgentConfig,
     MvgeEnvironment,
@@ -7,7 +6,15 @@ from mvgeos_agent.environment import (
     ResolvedGuidelines,
     ResolvedPrompt,
 )
+from mvgeos_agent.errors import MissingApiKeyError, SpellDiscoveryError
+from mvgeos_agent.function_spell import (
+    FunctionSpell,
+    SpellUnion,
+    coerce_spell,
+    discover_spells_from_dir,
+)
 from mvgeos_agent.harness import MvgeHarness
+from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.protocol import AgentFactory, MvgeAgent
 from mvgeos_agent.sandbox import MvgeSandbox
 from mvgeos_agent.snapshot import (
@@ -47,8 +54,10 @@ __all__ = [
     "AbortSignal",
     "AgentConfig",
     "AgentFactory",
-    "BaseMvge",
     "ContemplationLevel",
+    "FunctionSpell",
+    "MissingApiKeyError",
+    "Mvge",
     "MvgeAgent",
     "MvgeEnvironment",
     "MvgeEvent",
@@ -71,12 +80,16 @@ __all__ = [
     "SnapshotRune",
     "SnapshotSkill",
     "SnapshotSpell",
+    "SpellDiscoveryError",
     "SpellExecutionMode",
     "SpellSignal",
     "SpellSource",
+    "SpellUnion",
     "SpellUpdateCallback",
     "StopReason",
     "SummonerRequest",
     "TomeIncompatibleError",
     "TomeResumeError",
+    "coerce_spell",
+    "discover_spells_from_dir",
 ]

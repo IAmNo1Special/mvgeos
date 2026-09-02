@@ -2,6 +2,7 @@
 
 | # | Title | Status | Date |
 | --- | ------- | -------- | ------ |
+| 0009 | [Two-Layer Invariant Scaffolding & Colocated Zero-Config Agent Architecture](0009-two-layer-invariant-scaffolding-and-colocated-agent-architecture.md) | Accepted | 2026-09-02 |
 | 0008 | [NiceGUI Desktop Application Architecture (1:1 Antigravity UI)](0008-nicegui-desktop-application.md) | Accepted | 2026-08-22 |
 | 0007 | [Unified Tome Session System on Pi-Compatible JSONL Format](0007-unified-tome-session-system.md) | Accepted | 2026-08-03 |
 | 0006 | [Extension Interoperability at Data Level](0006-extension-interoperability.md) | Accepted | 2026-07-28 |

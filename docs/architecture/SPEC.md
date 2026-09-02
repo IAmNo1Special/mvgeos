@@ -47,8 +47,8 @@ mvgeos/
 | mvgeos-gui | `state.py` | Reactive AppState UI state container |
 | mvgeos-gui | `agent_service.py` | In-process agent execution bridge |
 | mvgeos-gui | `components/` | Antigravity 1:1 UI components |
-| coding-mvge | `mvge.py` | CodingMvge - concrete coding agent (BaseMvge subclass) |
-| coding-mvge | `spells.py` | Built-in spell implementations and factory |
+| coding-mvge | `mvge.py` | `root_mvge` instance with zero-config auto-discovery |
+| coding-mvge | `spells/` | Modular built-in spells (`bash`, `read`, `write`, `edit`, `find`, `list_files`, `grep`) |
 
 ## Core Types
 

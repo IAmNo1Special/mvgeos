@@ -88,7 +88,7 @@ def test_get_or_create_agent_with_factory(app_state: AppState) -> None:
     assert factory.call_count == 1
 
 
-@patch("mvgeos_gui.agent_service.CodingMvge")
+@patch("mvgeos_gui.agent_service.Mvge")
 def test_get_or_create_agent_default(
     mock_coding_mvge: MagicMock, app_state: AppState
 ) -> None:
@@ -102,7 +102,7 @@ def test_get_or_create_agent_default(
     mock_coding_mvge.assert_called_once()
 
 
-@patch("mvgeos_gui.agent_service.CodingMvge")
+@patch("mvgeos_gui.agent_service.Mvge")
 def test_reset_agent_clears_cached_instance(
     mock_coding_mvge: MagicMock, app_state: AppState
 ) -> None:

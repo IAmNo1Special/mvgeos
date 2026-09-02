@@ -322,10 +322,10 @@ class TestConfigManagerValidation:
         )
 
 
-class TestBaseMvgeConfigResilience:
+class TestMvgeConfigResilience:
     def test_agent_startup_handles_invalid_config_types(self, tmp_path: Path) -> None:
-        from mvgeos_agent.base_mvge import BaseMvge
         from mvgeos_agent.environment import MvgeEnvironment
+        from mvgeos_agent.mvge import Mvge
 
         custom_defaults = {
             "temperature": "invalid",
@@ -344,7 +344,7 @@ class TestBaseMvgeConfigResilience:
             project_dir=tmp_path,
             config_manager=mgr,
         )
-        agent = BaseMvge(api_key="test-key", environment=env)
+        agent = Mvge(api_key="test-key", environment=env)
         assert agent._temperature == 0.7
         assert agent._max_tokens == 4096
         assert agent._contemplation_level == "medium"

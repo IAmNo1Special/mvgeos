@@ -345,7 +345,7 @@ class TestBuildCommand:
 
 class TestAssemble:
     @patch("mvgeos_cli.commands.build.MvgeEnvironment")
-    @patch("mvgeos_cli.commands.build.BaseMvge")
+    @patch("mvgeos_cli.commands.build.Mvge")
     def test_assemble_creates_environment(
         self,
         mock_agent_cls: MagicMock,
@@ -371,7 +371,7 @@ class TestAssemble:
         assert isinstance(result, RuntimeSnapshot)
 
     @patch("mvgeos_cli.commands.build.MvgeEnvironment")
-    @patch("mvgeos_cli.commands.build.BaseMvge")
+    @patch("mvgeos_cli.commands.build.Mvge")
     def test_assemble_loads_runes_and_builds_snapshot(
         self,
         mock_agent_cls: MagicMock,
@@ -391,7 +391,7 @@ class TestAssemble:
         assert result is snapshot
 
     @patch("mvgeos_cli.commands.build.MvgeEnvironment")
-    @patch("mvgeos_cli.commands.build.BaseMvge")
+    @patch("mvgeos_cli.commands.build.Mvge")
     def test_assemble_passes_extension_dir(
         self,
         mock_agent_cls: MagicMock,

@@ -202,11 +202,11 @@ class TestTranscriptControl:
 
 class TestHandleCommandOut:
     def test_out_routes_output(self) -> None:
-        from coding_mvge import CodingMvge
+        from mvgeos_agent import Mvge
 
         from mvgeos_cli.commands.repl import ReplAction
 
-        agent = CodingMvge(api_key="test-key")
+        agent = Mvge(api_key="test-key")
         captured: list[str] = []
         action = _handle_command("/help", agent, object(), out=captured.append)
         assert action == ReplAction.CONTINUE

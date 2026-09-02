@@ -1,6 +1,6 @@
-# coding-Mvge — Agent Instructions
+# coding-mvge — Agent Instructions
 
-This package implements the concrete coding agent: `CodingMvge` extends `BaseMvge` with coding-specific spells (bash, read, edit, write, grep, find, list), system prompt configuration, and multi-turn loop with steering/followup queues.
+This package implements the concrete coding agent: `root_mvge = Mvge(name="coding_mvge")` with zero-config auto-discovery of modular built-in coding spells (`bash`, `read`, `edit`, `write`, `grep`, `find`, `list_files`), colocated `SYSTEM.md` / `GUIDELINES.md`, and self-modification authoring contracts.
 
 ## Package-Specific Conventions
 
@@ -21,36 +21,49 @@ uv run python -m pytest coding-mvge/tests/ --cov
 
 Test paths follow pattern: `coding-mvge/tests/unit/<module>.py` and `coding-mvge/tests/integration/<module>.py`
 
-## Key Types
+## Structure
 
-| Type | Purpose |
-| --- | --- |
-| `CodingMvge(BaseMvge)` | Concrete coding agent with spell selection and system prompt |
-| `BUILTIN_SPELL_MAP` / `DEFAULT_SPELL_MAP` | Name → `cast_*` function map |
+```text
+coding-mvge/src/coding_mvge/
+├── __init__.py         # Re-exports root_mvge
+├── mvge.py             # Instantiates root_mvge = Mvge(name="coding_mvge")
+├── system_prompt/      # Layer 1 persona instructions and guidelines
+│   ├── SYSTEM.md       # Identity and core persona instructions
+│   ├── GUIDELINES.md   # Behavioral guidelines
+│   └── AGENTS.md       # Authoring guide for system prompt customization
+├── spells/             # Modular Python spell files (one file per spell)
+│   ├── __init__.py     # Re-exports all spells & defines __all__
+│   ├── AGENTS.md       # Spell authoring guide for autonomous self-modification
+│   ├── bash.py
+│   ├── read.py
+│   ├── write.py
+│   ├── edit.py
+│   ├── find.py
+│   ├── list_files.py
+│   ├── grep.py
+│   └── _process_tree.py
+├── skills/             # On-demand agent skills
+│   └── AGENTS.md       # Skill authoring guide
+└── runes/              # Local agent extensions
+    └── AGENTS.md       # Rune authoring guide
+```
 
 ## Built-in Spells
 
-| Spell | Function | Purpose |
+| Spell | Module | Purpose |
 | --- | --- | --- |
-| `bash` | `cast_bash` | Execute shell commands |
-| `read` | `cast_read` | Read files |
-| `edit` | `cast_edit` | Edit files using diff-based replacement |
-| `write` | `cast_write` | Write files |
-| `grep` | `cast_grep` | Search file contents |
-| `find` | `cast_find` | Find files by glob |
-| `list` | `cast_list` | List directory contents |
+| `bash` | `spells/bash.py` | Execute shell commands |
+| `read` | `spells/read.py` | Read files |
+| `edit` | `spells/edit.py` | Edit files using exact string replacement |
+| `write` | `spells/write.py` | Write complete file contents |
+| `grep` | `spells/grep.py` | Search file contents with regex |
+| `find` | `spells/find.py` | Find files by glob pattern |
+| `list_files` | `spells/list_files.py` | List directory contents |
 
 ## Dependencies
 
-- `mvgeos-agent` — core agent loop and types
+- `mvgeos-agent` — core agent loop, prompt engine, and auto-discovery
 - `mvgeos-provider` — Realm protocol and providers
 - `mvgeos-tome` — Tome persistence
-- `mvgeos-runes` — Rune system
+- `mvgeos-runes` — Rune extension system
 
-## Architecture
-
-- `CodingMvge._build_spells()` returns the list of active rune spells and enabled built-in spells
-- System prompt and guidelines resolution is handled via `MvgeEnvironment`
-- `BaseMvge._run_impl()` delegates to `MvgeLoop.run()` (turn cycle with steering/follow-up handling)
-- `MvgeHarness` owns session lifecycle, compaction, `should_stop_after_turn`, and `prepare_next_turn`
-- Spell schemas are generated from type hints via `generate_spell_schema()` (from `mvgeos_agent.spell_schema`)

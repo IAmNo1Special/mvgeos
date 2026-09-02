@@ -13,7 +13,7 @@ from mvgeos_runes.loader import (
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import RuneContext, RuneScope
 
-from mvgeos_agent.base_mvge import BaseMvge
+from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.rune_lifecycle import RuneLifecycle
 
 _RUNE_PY = """
@@ -168,7 +168,7 @@ async def test_lifecycle_matches_reference_inline_semantics(runes_dir: Path) -> 
 
 @pytest.mark.asyncio
 async def test_base_mvge_load_matches_standalone_lifecycle(runes_dir: Path) -> None:
-    agent = BaseMvge(api_key="key-2", runes_paths=[str(runes_dir)])
+    agent = Mvge(api_key="key-2", runes_paths=[str(runes_dir)])
     lifecycle = RuneLifecycle(
         agent_name=agent.environment.agent_name,
         api_key="key-2",
@@ -178,8 +178,8 @@ async def test_base_mvge_load_matches_standalone_lifecycle(runes_dir: Path) -> N
     try:
         await agent._load_runes()
 
-        assert agent.runner is not None
-        assert _runner_state(agent.runner) == _runner_state(standalone)
+        assert agent._runner is not None
+        assert _runner_state(agent._runner) == _runner_state(standalone)
         assert agent._rune_lifecycle is not None
         assert agent.environment.diagnostics == agent.diagnostics
         assert len(lifecycle.watchers) == 0
@@ -192,7 +192,7 @@ async def test_base_mvge_load_matches_standalone_lifecycle(runes_dir: Path) -> N
 
 @pytest.mark.asyncio
 async def test_base_mvge_close_stops_watchers(runes_dir: Path) -> None:
-    agent = BaseMvge(api_key="key-3", runes_paths=[str(runes_dir)])
+    agent = Mvge(api_key="key-3", runes_paths=[str(runes_dir)])
     await agent._load_runes()
 
     lifecycle = agent._rune_lifecycle
@@ -203,7 +203,7 @@ async def test_base_mvge_close_stops_watchers(runes_dir: Path) -> None:
 
     assert lifecycle.watchers == []
     assert agent._rune_lifecycle is None
-    assert agent.runner is None
+    assert agent._runner is None
 
 
 @pytest.mark.asyncio

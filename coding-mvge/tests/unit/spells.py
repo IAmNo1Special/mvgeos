@@ -8,12 +8,12 @@ import pytest
 from mvgeos_agent.types import SpellResult, SpellStatus
 
 from coding_mvge.spells import (
-    cast_edit,
-    cast_find,
-    cast_grep,
-    cast_list,
-    cast_read,
-    cast_write,
+    edit,
+    find,
+    grep,
+    list_files,
+    read,
+    write,
 )
 
 
@@ -22,20 +22,20 @@ class TestReadSpell:
     async def test_read_success(self, tmp_path: Path) -> None:
         file = tmp_path / "hello.txt"
         file.write_text("hello world", encoding="utf-8")
-        result = await cast_read(str(file))
+        result = await read(str(file))
         assert result.status == SpellStatus.SUCCESS
         assert result.content == "hello world"
 
     @pytest.mark.asyncio
     async def test_read_not_found(self, tmp_path: Path) -> None:
-        result = await cast_read(str(tmp_path / "missing.txt"))
+        result = await read(str(tmp_path / "missing.txt"))
         assert result.status == SpellStatus.ERROR
         assert "File not found" in result.error_message
 
     @pytest.mark.asyncio
     async def test_read_exception(self) -> None:
         with patch.object(Path, "exists", side_effect=PermissionError("denied")):
-            result = await cast_read("any.txt")
+            result = await read("any.txt")
             assert result.status == SpellStatus.ERROR
             assert "denied" in result.error_message
 
@@ -44,14 +44,14 @@ class TestWriteSpell:
     @pytest.mark.asyncio
     async def test_write_success(self, tmp_path: Path) -> None:
         file = tmp_path / "out.txt"
-        result = await cast_write(str(file), "new content")
+        result = await write(str(file), "new content")
         assert result.status == SpellStatus.SUCCESS
         assert file.read_text(encoding="utf-8") == "new content"
 
     @pytest.mark.asyncio
     async def test_write_exception(self) -> None:
         with patch.object(Path, "write_text", side_effect=PermissionError("denied")):
-            result = await cast_write("out.txt", "data")
+            result = await write("out.txt", "data")
             assert result.status == SpellStatus.ERROR
             assert "denied" in result.error_message
 
@@ -61,13 +61,13 @@ class TestEditSpell:
     async def test_edit_success(self, tmp_path: Path) -> None:
         file = tmp_path / "doc.txt"
         file.write_text("foo bar baz", encoding="utf-8")
-        result = await cast_edit(str(file), "bar", "qux")
+        result = await edit(str(file), "bar", "qux")
         assert result.status == SpellStatus.SUCCESS
         assert file.read_text(encoding="utf-8") == "foo qux baz"
 
     @pytest.mark.asyncio
     async def test_edit_file_not_found(self, tmp_path: Path) -> None:
-        result = await cast_edit(str(tmp_path / "nope.txt"), "a", "b")
+        result = await edit(str(tmp_path / "nope.txt"), "a", "b")
         assert result.status == SpellStatus.ERROR
         assert "File not found" in result.error_message
 
@@ -75,14 +75,14 @@ class TestEditSpell:
     async def test_edit_old_string_not_found(self, tmp_path: Path) -> None:
         file = tmp_path / "doc.txt"
         file.write_text("foo bar baz", encoding="utf-8")
-        result = await cast_edit(str(file), "missing", "replacement")
+        result = await edit(str(file), "missing", "replacement")
         assert result.status == SpellStatus.ERROR
         assert "Old string not found" in result.error_message
 
     @pytest.mark.asyncio
     async def test_edit_exception(self) -> None:
         with patch.object(Path, "exists", side_effect=PermissionError("denied")):
-            result = await cast_edit("any.txt", "a", "b")
+            result = await edit("any.txt", "a", "b")
             assert result.status == SpellStatus.ERROR
             assert "denied" in result.error_message
 
@@ -95,21 +95,21 @@ class TestFindSpell:
         (tmp_path / "sub").mkdir()
         (tmp_path / "sub" / "test3.py").touch()
 
-        result = await cast_find("*.py", str(tmp_path))
+        result = await find("*.py", str(tmp_path))
         assert result.status == SpellStatus.SUCCESS
         assert "test1.py" in result.content
         assert "test3.py" in result.content
 
     @pytest.mark.asyncio
     async def test_find_not_found(self, tmp_path: Path) -> None:
-        result = await cast_find("*.py", str(tmp_path / "missing"))
+        result = await find("*.py", str(tmp_path / "missing"))
         assert result.status == SpellStatus.ERROR
         assert "Path not found" in result.error_message
 
     @pytest.mark.asyncio
     async def test_find_exception(self) -> None:
         with patch.object(Path, "exists", side_effect=PermissionError("denied")):
-            result = await cast_find("*.py", "any")
+            result = await find("*.py", "any")
             assert result.status == SpellStatus.ERROR
             assert "denied" in result.error_message
 
@@ -120,17 +120,17 @@ class TestGrepSpell:
         file1 = tmp_path / "a.txt"
         file1.write_text("hello world\nline two", encoding="utf-8")
 
-        result = await cast_grep("hello", str(file1))
+        result = await grep("hello", str(file1))
         assert result.status == SpellStatus.SUCCESS
         assert "hello world" in result.content
 
-        result_lines = await cast_grep("hello", str(file1), output_mode="lines")
+        result_lines = await grep("hello", str(file1), output_mode="lines")
         assert result_lines.status == SpellStatus.SUCCESS
         assert result_lines.content == "1"
 
     @pytest.mark.asyncio
     async def test_grep_not_found(self, tmp_path: Path) -> None:
-        result = await cast_grep("hello", str(tmp_path / "missing.txt"))
+        result = await grep("hello", str(tmp_path / "missing.txt"))
         assert result.status == SpellStatus.ERROR
         assert "Path not found" in result.error_message
 
@@ -138,21 +138,21 @@ class TestGrepSpell:
     async def test_grep_invalid_regex(self, tmp_path: Path) -> None:
         file1 = tmp_path / "a.txt"
         file1.write_text("hello", encoding="utf-8")
-        result = await cast_grep("[invalid", str(file1))
+        result = await grep("[invalid", str(file1))
         assert result.status == SpellStatus.ERROR
         assert "unterminated character set" in result.error_message
 
     @pytest.mark.asyncio
     async def test_grep_exception(self) -> None:
         with patch.object(Path, "exists", side_effect=PermissionError("denied")):
-            result = await cast_grep("hello", "any")
+            result = await grep("hello", "any")
             assert result.status == SpellStatus.ERROR
             assert "denied" in result.error_message
 
     @pytest.mark.asyncio
     async def test_grep_directory_returns_empty(self, tmp_path: Path) -> None:
         (tmp_path / "a.txt").write_text("hello", encoding="utf-8")
-        result = await cast_grep("hello", str(tmp_path))
+        result = await grep("hello", str(tmp_path))
         assert result.status == SpellStatus.SUCCESS
         assert result.content == ""
 
@@ -165,18 +165,18 @@ class TestSpellConcurrency:
             f.write_text("seed", encoding="utf-8")
 
         async def roundtrip(f: Path) -> tuple[SpellResult, SpellResult, SpellResult]:
-            read = await cast_read(str(f))
-            write = await cast_write(str(f), "updated")
-            reread = await cast_read(str(f))
-            return read, write, reread
+            r1 = await read(str(f))
+            w1 = await write(str(f), "updated")
+            r2 = await read(str(f))
+            return r1, w1, r2
 
         results = await asyncio.gather(*(roundtrip(f) for f in files))
-        for read, write, reread in results:
-            assert read.status == SpellStatus.SUCCESS
-            assert read.content == "seed"
-            assert write.status == SpellStatus.SUCCESS
-            assert reread.status == SpellStatus.SUCCESS
-            assert reread.content == "updated"
+        for r1, w1, r2 in results:
+            assert r1.status == SpellStatus.SUCCESS
+            assert r1.content == "seed"
+            assert w1.status == SpellStatus.SUCCESS
+            assert r2.status == SpellStatus.SUCCESS
+            assert r2.content == "updated"
 
 
 class TestListSpell:
@@ -185,20 +185,20 @@ class TestListSpell:
         (tmp_path / "file1.txt").touch()
         (tmp_path / "dir1").mkdir()
 
-        result = await cast_list(str(tmp_path))
+        result = await list_files(str(tmp_path))
         assert result.status == SpellStatus.SUCCESS
         assert "file1.txt" in result.content
         assert "dir1" in result.content
 
     @pytest.mark.asyncio
     async def test_list_not_found(self, tmp_path: Path) -> None:
-        result = await cast_list(str(tmp_path / "missing"))
+        result = await list_files(str(tmp_path / "missing"))
         assert result.status == SpellStatus.ERROR
         assert "Path not found" in result.error_message
 
     @pytest.mark.asyncio
     async def test_list_exception(self) -> None:
         with patch.object(Path, "exists", side_effect=PermissionError("denied")):
-            result = await cast_list("any")
+            result = await list_files("any")
             assert result.status == SpellStatus.ERROR
             assert "denied" in result.error_message

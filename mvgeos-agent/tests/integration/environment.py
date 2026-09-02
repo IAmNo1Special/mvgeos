@@ -10,7 +10,7 @@ from mvgeos_provider.types import Model
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import SigilHook
 
-from mvgeos_agent.base_mvge import BaseMvge
+from mvgeos_agent.mvge import Mvge
 
 
 def _mock_model() -> Model:
@@ -25,8 +25,8 @@ def _mock_model() -> Model:
     )
 
 
-def _agent(tome_dir: Path) -> BaseMvge:
-    agent = BaseMvge(api_key="test-key", tome_dir=tome_dir)
+def _agent(tome_dir: Path) -> Mvge:
+    agent = Mvge(api_key="test-key", tome_dir=tome_dir)
     agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
     agent._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
     return agent
@@ -58,10 +58,15 @@ async def test_system_prompt_matches_environment_assemble() -> None:
 async def test_render_prompt_matches_environment_render() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         agent = _agent(Path(tmp))
-
         cwd = str(getattr(agent._config_manager, "_project_dir", "") or Path.cwd())
         expected = agent._environment.render_prompt(
-            "You are Mvge", ["bash"], ["Be concise."], cwd=cwd
+            "You are Mvge",
+            ["bash"],
+            ["Be concise."],
+            cwd=cwd,
+            runes_paths=agent._environment.runes_paths,
+            system_path=agent._environment.resolved_prompt.path,
+            guidelines_path=agent._environment.resolved_guidelines.path,
         )
 
         assert agent._render_prompt("You are Mvge", ["bash"], ["Be concise."]) == (

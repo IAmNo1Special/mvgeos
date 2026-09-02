@@ -6,6 +6,7 @@ import platform
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -83,42 +84,23 @@ class AgentConfig:
 
 
 _SYSTEM_PROMPT_BODY = (
-    "You are Mvge, a concise AI coding agent. "
-    "You have access to spells (tools) to read files, write code, "
-    "edit files, run shell commands, search code, and navigate the filesystem."
+    "You are an AI assistant equipped with spells(tools) to assist your "
+    "Summoner(user). Be direct, concise, and technical."
 )
 
 DEFAULT_SYSTEM_PROMPT = _SYSTEM_PROMPT_BODY
 
-DEFAULT_GUIDELINES = [
-    "Be concise. Give short answers unless asked for detail.",
-    "Do not speculate or predict the future. "
-    "If you don't know something or lack a capability, say so in one "
-    "sentence and suggest how you could be equipped to help "
-    "(e.g. a web search tool, a new spell, a skill, etc.).",
-    "Do not add fluff, filler, or cheerful commentary.",
-    "Show file paths when working with files.",
-    "When executing shell commands, explain what they do briefly.",
-    "Use spells when you need filesystem or command access.",
-    "If the user asks a coding question, write working code.",
-    "If the user asks a non-coding question, answer briefly or suggest "
-    "how you could be equipped to help.",
-]
+DEFAULT_GUIDELINES: list[str] = []
 
 SYSTEM_MD_FILENAME = "SYSTEM.md"
 GUIDELINES_MD_FILENAME = "GUIDELINES.md"
 
-# Seed content written when a Summoner has no config yet. Both files are meant
-# to be edited: they are the configuration surface, not internal defaults.
 DEFAULT_SYSTEM_MD = _SYSTEM_PROMPT_BODY + "\n"
-
-DEFAULT_GUIDELINES_MD = (
-    "\n".join(f"- {guideline}" for guideline in DEFAULT_GUIDELINES) + "\n"
-)
+DEFAULT_GUIDELINES_MD = ""
 
 
 def get_environment_info(cwd: str | Path | None = None) -> list[str]:
-    """Return OS and default terminal environment details (without date/time)."""
+    """Return OS, terminal environment, working directory, and UTC timestamp."""
     os_name = platform.system()
     os_release = platform.release()
     arch = platform.machine()
@@ -141,6 +123,9 @@ def get_environment_info(cwd: str | Path | None = None) -> list[str]:
     effective_cwd = str(cwd) if cwd else str(Path.cwd())
     lines.append(f"- Working Directory: {effective_cwd}")
 
+    now_utc = datetime.now(UTC).strftime("%A, %B %d, %Y, %I:%M %p UTC")
+    lines.append(f"- Current Date & Time: {now_utc}")
+
     return lines
 
 
@@ -150,9 +135,22 @@ def render_prompt(
     guidelines: Sequence[str] = (),
     cwd: str | Path | None = None,
     append_text: str = "",
+    *,
+    spells_dir: Path | None = None,
+    skills_paths: Sequence[Path] = (),
+    runes_paths: Sequence[Path] = (),
+    system_path: Path | None = None,
+    guidelines_path: Path | None = None,
 ) -> str:
     """The single rendering every entry point goes through."""
-    parts = [body]
+    parts: list[str] = []
+    if body:
+        parts.append(body)
+
+    guidelines_list = list(guidelines)
+    if guidelines_list:
+        parts.append("\nGuidelines:")
+        parts.extend(f"- {guideline}" for guideline in guidelines_list)
 
     spells_list = list(spells)
     spell_list_str = (
@@ -160,13 +158,59 @@ def render_prompt(
     )
     parts.append(f"\nActive spells:\n{spell_list_str}")
 
-    guidelines_list = list(guidelines)
-    if guidelines_list:
-        parts.append("\nGuidelines:")
-        parts.extend(f"- {guideline}" for guideline in guidelines_list)
-
     parts.append("\nEnvironment:")
     parts.extend(get_environment_info(cwd))
+
+    # Self-Modification & Customization section (on-demand AGENTS.md reference pattern)
+    effective_cwd_path = Path(cwd) if cwd else Path.cwd()
+    project_agents_file = effective_cwd_path / "AGENTS.md"
+
+    self_mod_lines = [
+        "\nSelf-Modification & Customization:",
+        "You can extend and self-modify your capabilities by editing files with "
+        "your spells (changes are watched and hot-reloaded automatically). "
+        "Before creating or modifying, read the AGENTS.md in that directory for "
+        "exact syntax, rules, and contracts:",
+    ]
+    has_self_mod = False
+    if spells_dir is not None and spells_dir.is_dir():
+        self_mod_lines.append(f"- Spells: {spells_dir.as_posix()}/AGENTS.md")
+        has_self_mod = True
+    if skills_paths:
+        for sp in skills_paths:
+            self_mod_lines.append(f"- Skills: {sp.as_posix()}/AGENTS.md")
+            has_self_mod = True
+    if runes_paths:
+        for rp in runes_paths:
+            self_mod_lines.append(f"- Runes: {rp.as_posix()}/AGENTS.md")
+            has_self_mod = True
+    if project_agents_file.is_file():
+        self_mod_lines.append(f"- Project Rules: {project_agents_file.as_posix()}")
+        has_self_mod = True
+    if guidelines_path is not None and guidelines_path.is_file():
+        self_mod_lines.append(f"- Guidelines: {guidelines_path.as_posix()}")
+        has_self_mod = True
+    if system_path is not None and system_path.is_file():
+        self_mod_lines.append(f"- System Instructions: {system_path.as_posix()}")
+        has_self_mod = True
+
+    if has_self_mod:
+        parts.extend(self_mod_lines)
+
+    # Workspace AGENTS.md context injection
+    if project_agents_file.is_file():
+        content = _read_text(project_agents_file)
+        if content:
+            proj_instr = (
+                f'<project_instructions path="AGENTS.md">\n'
+                f"{content}\n"
+                f"</project_instructions>\n"
+            )
+            parts.append(
+                "\n<project_context>\n"
+                "Project-specific instructions and guidelines:\n\n"
+                f"{proj_instr}</project_context>"
+            )
 
     if append_text:
         parts.append(f"\n{append_text}")
@@ -237,11 +281,12 @@ def resolve_system_prompt(
     custom: str = "",
     config_dir: Path | None = None,
     project_dir: Path | None = None,
+    caller_dir: Path | None = None,
     default: str = DEFAULT_SYSTEM_PROMPT,
     filename: str = SYSTEM_MD_FILENAME,
 ) -> ResolvedPrompt:
     """Resolve the system prompt from the discovery chain:
-    custom literal-or-path -> project SYSTEM.md -> agent-scope SYSTEM.md -> default
+    custom -> caller SYSTEM.md -> project SYSTEM.md -> agent-scope SYSTEM.md -> default
     """
     if custom:
         custom_path = Path(custom).expanduser()
@@ -252,6 +297,22 @@ def resolve_system_prompt(
                 path=custom_path,
             )
         return ResolvedPrompt(text=custom, source=PromptSource.CUSTOM_LITERAL)
+
+    if caller_dir is not None:
+        caller_sys_dir = caller_dir / "system_prompt" / filename
+        if caller_sys_dir.is_file():
+            text = _read_text(caller_sys_dir)
+            if text:
+                return ResolvedPrompt(
+                    text=text, source=PromptSource.AGENT_MD, path=caller_sys_dir
+                )
+        caller_file = caller_dir / filename
+        if caller_file.is_file():
+            text = _read_text(caller_file)
+            if text:
+                return ResolvedPrompt(
+                    text=text, source=PromptSource.AGENT_MD, path=caller_file
+                )
 
     proj_base = project_dir if project_dir is not None else Path.cwd()
     project_file = proj_base / ".agents" / ".mvgeos" / filename
@@ -279,12 +340,34 @@ def resolve_guidelines(
     *,
     config_dir: Path | None = None,
     project_dir: Path | None = None,
+    caller_dir: Path | None = None,
     default: Sequence[str] = DEFAULT_GUIDELINES,
     filename: str = GUIDELINES_MD_FILENAME,
 ) -> ResolvedGuidelines:
     """Resolve guidelines from the discovery chain:
-    project GUIDELINES.md -> agent-scope GUIDELINES.md -> default
+    caller system_prompt/GUIDELINES.md -> project GUIDELINES.md ->
+    agent-scope GUIDELINES.md -> default.
     """
+    if caller_dir is not None:
+        caller_sys_dir = caller_dir / "system_prompt" / filename
+        if caller_sys_dir.is_file():
+            parsed = _parse_guidelines(caller_sys_dir)
+            if parsed:
+                return ResolvedGuidelines(
+                    guidelines=parsed,
+                    source=PromptSource.AGENT_MD,
+                    path=caller_sys_dir,
+                )
+        caller_file = caller_dir / filename
+        if caller_file.is_file():
+            parsed = _parse_guidelines(caller_file)
+            if parsed:
+                return ResolvedGuidelines(
+                    guidelines=parsed,
+                    source=PromptSource.AGENT_MD,
+                    path=caller_file,
+                )
+
     proj_base = project_dir if project_dir is not None else Path.cwd()
     project_file = proj_base / ".agents" / ".mvgeos" / filename
     if project_file.is_file():
@@ -467,6 +550,7 @@ class MvgeEnvironment:
         config_manager: ConfigManager | None = None,
         has_config_manager: bool = True,
         allow_unknown_agent: bool = False,
+        caller_dir: Path | None = None,
         extension_dir: str | None = None,
         runes_paths: Sequence[str] | None = None,
     ) -> MvgeEnvironment:
@@ -498,12 +582,14 @@ class MvgeEnvironment:
             custom=custom_prompt,
             config_dir=config_dir,
             project_dir=project_dir,
+            caller_dir=caller_dir,
             default=DEFAULT_SYSTEM_PROMPT,
         )
         resolved_guidelines = resolve_guidelines(
             agent_name=agent_name,
             config_dir=config_dir,
             project_dir=project_dir,
+            caller_dir=caller_dir,
             default=DEFAULT_GUIDELINES,
         )
 
@@ -593,6 +679,12 @@ class MvgeEnvironment:
         guidelines: Sequence[str] = (),
         cwd: str | Path | None = None,
         append_text: str = "",
+        *,
+        spells_dir: Path | None = None,
+        skills_paths: Sequence[Path] = (),
+        runes_paths: Sequence[Path] = (),
+        system_path: Path | None = None,
+        guidelines_path: Path | None = None,
     ) -> str:
         """Render a prompt with body, spells, guidelines, and environment."""
         return render_prompt(
@@ -601,6 +693,11 @@ class MvgeEnvironment:
             guidelines=guidelines,
             cwd=cwd,
             append_text=append_text,
+            spells_dir=spells_dir,
+            skills_paths=skills_paths,
+            runes_paths=runes_paths,
+            system_path=system_path,
+            guidelines_path=guidelines_path,
         )
 
     def render(

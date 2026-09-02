@@ -101,7 +101,11 @@ MvgeOS is a monorepo with uv workspaces:
 Config follows dotagents protocol at `~/.agents/.mvgeos/`.
 Rune/Extension manifest at `~/.agents/.mvgeos/runes/manifest.json`.
 
-**`_build_spells()` interface**: must use `self._runner` (not `self._state.rune_runner`) and return all spell types (rune spells from enabled runes only + builtin spells). **Watcher cleanup**: watchers are owned by `RuneLifecycle` — stop them via `lifecycle.shutdown()` (BaseMvge.close() does this; never reference a singular `_watcher`).
+**Prompt & Agent Architecture**:
+Follows the Two-Layer Invariant Scaffolding Pattern (ADR 0009). Layer 1 (persona and guidelines) is defined in colocated `system_prompt/` (`SYSTEM.md` and `GUIDELINES.md`). Layer 2 (spells, environment, UTC date/time, PowerShell rules, `<project_context>`, and self-modification pointers) is dynamically rendered by `MvgeEnvironment`.
+Agents use zero-config auto-discovery: `root_mvge = Mvge(name="coding_mvge")` auto-discovers spells from `spells/`, `.env`, and colocated assets (`system_prompt/`, `skills/`, `runes/`).
+
+**`_build_spells()` interface**: must use `self._runner` (not `self._state.rune_runner`) and return all spell types (rune spells from enabled runes only + builtin/discovered spells). **Watcher cleanup**: watchers are owned by `RuneLifecycle` — stop them via `lifecycle.shutdown()` (BaseMvge.close() does this; never reference a singular `_watcher`).
 
 **Terminology updates**: `ProviderRegistry` → `RealmRegistry` (Realm = provider abstraction). `Model.provider` field removed — provider derived from model ID prefix (e.g., `nvidia/nemotron` → provider = "nvidia").
 

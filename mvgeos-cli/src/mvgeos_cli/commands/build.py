@@ -4,9 +4,9 @@ import asyncio
 from pathlib import Path
 
 import typer
-from mvgeos_agent.base_mvge import BaseMvge
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_agent.environment import MvgeEnvironment
+from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.protocol import AgentFactory, MvgeAgent
 from mvgeos_agent.snapshot import RuntimeSnapshot
 
@@ -96,7 +96,7 @@ async def _assemble(
     or realm is required — this is a static introspection path.
     """
     env = MvgeEnvironment.resolve(agent_name=agent_name)
-    agent: MvgeAgent | BaseMvge
+    agent: MvgeAgent | Mvge
     if agent_factory is not None:
         agent = agent_factory(
             api_key="",
@@ -105,7 +105,7 @@ async def _assemble(
             environment=env,
         )
     else:
-        agent = BaseMvge(
+        agent = Mvge(
             api_key="",
             name=agent_name,
             extension_dir=extension_dir,
