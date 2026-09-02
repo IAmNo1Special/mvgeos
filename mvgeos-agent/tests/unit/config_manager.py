@@ -197,10 +197,6 @@ class TestConfigManagerConfigFileLocations:
             tmp_path / ".agents" / ".mvgeos" / "config.json"
         )
 
-    def test_project_config_path_alias(self, tmp_path: Path) -> None:
-        mgr = _make_mgr(tmp_path)
-        assert mgr.project_config_path == mgr.legacy_config_path
-
 
 class TestConfigManagerProjectScope:
     def test_set_project_writes_to_project_file(self, tmp_path: Path) -> None:

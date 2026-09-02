@@ -86,10 +86,6 @@ class MvgeAgent(Protocol):
         """Queue follow-up request after current turn completes."""
         ...
 
-    def queue(self, text: str) -> None:
-        """Queue a request (steer by default)."""
-        ...
-
     def abort(self) -> None:
         """Abort active channeling / tool execution."""
         ...

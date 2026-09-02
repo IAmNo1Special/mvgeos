@@ -198,6 +198,8 @@ class TestMvgeBuildSpells:
         assert "inactive_tool" not in names
 
     def test_render_prompt_lists_active_spells(self, agent: Mvge) -> None:
+        from mvgeos_agent.environment import render_prompt as env_render_prompt
+
         mock_runner = MagicMock()
         mock_runner.get_all_registered_spells.return_value = [
             SpellDefinition(name="tool_search", description="", parameters={}),
@@ -205,7 +207,7 @@ class TestMvgeBuildSpells:
         ]
         mock_runner.get_active_spells.return_value = ["tool_search", "skill_search"]
         agent._runner = mock_runner
-        prompt = agent._render_prompt(
+        prompt = env_render_prompt(
             "You are Mvge", [s.name for s in agent._build_spells()], []
         )
         assert "Active spells:" in prompt
@@ -580,7 +582,11 @@ class TestBuildSystemPrompt:
                 config_dir=Path(td) / "nonexistent",
                 allow_unknown_agent=True,
             )
-            prompt = env.render(spells=["bash", "read"])
+            prompt = MvgeEnvironment.render_prompt(
+                env.resolved_prompt.text,
+                spells=["bash", "read"],
+                guidelines=env.resolved_guidelines.guidelines,
+            )
             assert "You are an AI assistant" in prompt
             assert "Active spells:" in prompt
             assert "bash" in prompt
@@ -593,7 +599,11 @@ class TestBuildSystemPrompt:
                 config_dir=Path(td) / "does-not-exist",
                 allow_unknown_agent=True,
             )
-            prompt = env.render(spells=["bash"])
+            prompt = MvgeEnvironment.render_prompt(
+                env.resolved_prompt.text,
+                spells=["bash"],
+                guidelines=env.resolved_guidelines.guidelines,
+            )
             assert "You are an AI assistant" in prompt
 
     def test_custom_prompt_overrides_base(self) -> None:
@@ -602,7 +612,11 @@ class TestBuildSystemPrompt:
             custom_prompt="Custom agent prompt here.",
             allow_unknown_agent=True,
         )
-        prompt = env.render()
+        prompt = MvgeEnvironment.render_prompt(
+            env.resolved_prompt.text,
+            spells=env.spell_names or [],
+            guidelines=env.resolved_guidelines.guidelines,
+        )
         assert "Custom agent prompt here." in prompt
         assert "You are Mvge" not in prompt
 
@@ -613,7 +627,11 @@ class TestBuildSystemPrompt:
             env = MvgeEnvironment.resolve(
                 "test-agent", config_dir=config_dir, allow_unknown_agent=True
             )
-            prompt = env.render()
+            prompt = MvgeEnvironment.render_prompt(
+                env.resolved_prompt.text,
+                spells=env.spell_names or [],
+                guidelines=env.resolved_guidelines.guidelines,
+            )
             assert "Loaded from file." in prompt
             assert "You are Mvge" not in prompt
 
@@ -626,7 +644,11 @@ class TestBuildSystemPrompt:
             env = MvgeEnvironment.resolve(
                 "test-agent", config_dir=config_dir, allow_unknown_agent=True
             )
-            prompt = env.render()
+            prompt = MvgeEnvironment.render_prompt(
+                env.resolved_prompt.text,
+                spells=env.spell_names or [],
+                guidelines=env.resolved_guidelines.guidelines,
+            )
             assert "Rule one" in prompt
             assert "Rule two" in prompt
             assert "Be concise" not in prompt
@@ -641,7 +663,11 @@ class TestBuildSystemPrompt:
             env = MvgeEnvironment.resolve(
                 "test-agent", config_dir=config_dir, allow_unknown_agent=True
             )
-            prompt = env.render()
+            prompt = MvgeEnvironment.render_prompt(
+                env.resolved_prompt.text,
+                spells=env.spell_names or [],
+                guidelines=env.resolved_guidelines.guidelines,
+            )
             assert "File-based agent." in prompt
             assert "Custom rule" in prompt
             assert "Be concise" not in prompt

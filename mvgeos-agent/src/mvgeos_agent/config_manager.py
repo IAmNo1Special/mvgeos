@@ -151,11 +151,6 @@ class ConfigManager:
         """Path to the legacy project config file."""
         return self._project_dir / ".agents" / ".mvgeos" / "config.json"
 
-    @property
-    def project_config_path(self) -> Path:
-        """Path to the project-scope config file."""
-        return self.legacy_config_path
-
     def with_overrides(self, **kwargs: Any) -> ConfigManager:
         """Return a new manager with constructor-level overrides applied.
 

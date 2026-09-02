@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from mvgeos_agent.errors import (
     AuthenticationError,
-    ManaExhaustedError,
     MaxTurnsExceededError,
     MvgeError,
     RateLimitError,
-    SpellExecutionError,
     SpellNotFoundError,
     SpellTimeoutError,
     TomeResumeError,
@@ -87,15 +85,6 @@ def test_spell_timeout_error() -> None:
     assert err.timeout_ms == 5000
 
 
-def test_mana_exhausted_error() -> None:
-    err = ManaExhaustedError(1000, 500)
-    assert err.code == "mana_exhausted"
-    assert "1000" in str(err)
-    assert "500" in str(err)
-    assert err.used == 1000
-    assert err.budget == 500
-
-
 def test_max_turns_exceeded_error() -> None:
     err = MaxTurnsExceededError(10)
     assert err.code == "max_turns_exceeded"
@@ -115,11 +104,3 @@ def test_tome_resume_error_no_cause() -> None:
     err = TomeResumeError("/path/to/tome")
     assert err.code == "tome_resume_failed"
     assert err.__cause__ is None
-
-
-def test_spell_execution_error() -> None:
-    cause = RuntimeError("execution failed")
-    err = SpellExecutionError("bash", cause)
-    assert err.code == "spell_execution_failed"
-    assert "bash" in str(err)
-    assert err.__cause__ is cause

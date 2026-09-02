@@ -50,7 +50,6 @@ Test paths follow pattern: `mvgeos-agent/tests/unit/<module>.py` and `mvgeos-age
 ## Spell Schema
 
 - `generate_spell_schema()` in `mvgeos_agent/spell_schema.py` — generates JSON schema from function signatures
-- `validate_spell_args()` in `mvgeos_agent/spell_schema.py` — validates args against a schema
 
 ## Dependencies
 

@@ -11,7 +11,6 @@ from mvgeos_tome.ledger import TomeLedger
 from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.types import MvgeSpell, TomeResumeError
 
-
 def _mock_model() -> Model:
     return Model(
         id="test-model",
@@ -23,7 +22,6 @@ def _mock_model() -> Model:
         max_tokens=1024,
     )
 
-
 @pytest.mark.asyncio
 async def test_resume_tome_resolves_prefix_id() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -31,7 +29,9 @@ async def test_resume_tome_resolves_prefix_id() -> None:
 
         # Create agent to create initial tome
         agent1 = Mvge(api_key="test-key", tome_dir=tome_dir)
-        agent1._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
+        agent1._provider_registry.resolve = MagicMock(
+            return_value=(_mock_model(), MagicMock())
+        )  # type: ignore[method-assign]
         agent1._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
         with patch.object(
             agent1,
@@ -47,7 +47,9 @@ async def test_resume_tome_resolves_prefix_id() -> None:
         # Now resume using prefix ID
         prefix = actual_id[:8]
         agent2 = Mvge(api_key="test-key", tome_dir=tome_dir, tome_resume=prefix)
-        agent2._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
+        agent2._provider_registry.resolve = MagicMock(
+            return_value=(_mock_model(), MagicMock())
+        )  # type: ignore[method-assign]
         agent2._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
         with patch.object(
             agent2,
@@ -60,14 +62,15 @@ async def test_resume_tome_resolves_prefix_id() -> None:
         assert agent2._agent_tome is not None
         assert agent2._agent_tome.tome_id == actual_id
 
-
 @pytest.mark.asyncio
 async def test_resume_tome_resolves_full_id() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tome_dir = Path(tmp_dir)
 
         agent1 = Mvge(api_key="test-key", tome_dir=tome_dir)
-        agent1._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
+        agent1._provider_registry.resolve = MagicMock(
+            return_value=(_mock_model(), MagicMock())
+        )  # type: ignore[method-assign]
         agent1._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
         with patch.object(
             agent1,
@@ -81,7 +84,9 @@ async def test_resume_tome_resolves_full_id() -> None:
         actual_id = agent1._agent_tome.tome_id
 
         agent2 = Mvge(api_key="test-key", tome_dir=tome_dir, tome_resume=actual_id)
-        agent2._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
+        agent2._provider_registry.resolve = MagicMock(
+            return_value=(_mock_model(), MagicMock())
+        )  # type: ignore[method-assign]
         agent2._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
         with patch.object(
             agent2,
@@ -94,14 +99,15 @@ async def test_resume_tome_resolves_full_id() -> None:
         assert agent2._agent_tome is not None
         assert agent2._agent_tome.tome_id == actual_id
 
-
 @pytest.mark.asyncio
 async def test_resume_tome_resolves_raw_path() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tome_dir = Path(tmp_dir)
 
         agent1 = Mvge(api_key="test-key", tome_dir=tome_dir)
-        agent1._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
+        agent1._provider_registry.resolve = MagicMock(
+            return_value=(_mock_model(), MagicMock())
+        )  # type: ignore[method-assign]
         agent1._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
         with patch.object(
             agent1,
@@ -116,7 +122,9 @@ async def test_resume_tome_resolves_raw_path() -> None:
         raw_path = tome_dir / f"{actual_id}.jsonl"
 
         agent2 = Mvge(api_key="test-key", tome_dir=tome_dir, tome_resume=str(raw_path))
-        agent2._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
+        agent2._provider_registry.resolve = MagicMock(
+            return_value=(_mock_model(), MagicMock())
+        )  # type: ignore[method-assign]
         agent2._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
         with patch.object(
             agent2,
@@ -129,7 +137,6 @@ async def test_resume_tome_resolves_raw_path() -> None:
         assert agent2._agent_tome is not None
         assert agent2._agent_tome.tome_id == actual_id
 
-
 @pytest.mark.asyncio
 async def test_resume_tome_missing_id_raises_error() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -138,7 +145,9 @@ async def test_resume_tome_missing_id_raises_error() -> None:
         agent = Mvge(
             api_key="test-key", tome_dir=tome_dir, tome_resume="nonexistent_id"
         )
-        agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
+        agent._provider_registry.resolve = MagicMock(
+            return_value=(_mock_model(), MagicMock())
+        )  # type: ignore[method-assign]
         agent._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
         with (
             patch.object(
@@ -152,7 +161,6 @@ async def test_resume_tome_missing_id_raises_error() -> None:
             await agent.initialize()
 
         assert "nonexistent_id" in str(exc_info.value)
-
 
 @pytest.mark.asyncio
 async def test_resume_matching_config_succeeds_without_warnings() -> None:
@@ -178,7 +186,6 @@ async def test_resume_matching_config_succeeds_without_warnings() -> None:
             tome_dir=tome_dir,
             tome_resume=meta.id,
         )
-        agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
         agent._provider_registry.resolve = MagicMock(
             return_value=(_mock_model(), MagicMock())
         )  # type: ignore[method-assign]
@@ -195,7 +202,6 @@ async def test_resume_matching_config_succeeds_without_warnings() -> None:
         assert agent._agent_tome.tome_id == meta.id
         # No resume diagnostics
         assert len(agent._resume_diagnostics) == 0
-
 
 @pytest.mark.asyncio
 async def test_resume_mismatched_model_non_strict_emits_diagnostic() -> None:
@@ -215,7 +221,6 @@ async def test_resume_mismatched_model_non_strict_emits_diagnostic() -> None:
             tome_resume=meta.id,
             strict_resume=False,
         )
-        agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
         agent._provider_registry.resolve = MagicMock(
             return_value=(_mock_model(), MagicMock())
         )  # type: ignore[method-assign]
@@ -232,7 +237,6 @@ async def test_resume_mismatched_model_non_strict_emits_diagnostic() -> None:
         assert agent._agent_tome.tome_id == meta.id
         diags = agent.diagnostics
         assert any("different-model" in d.message for d in diags)
-
 
 @pytest.mark.asyncio
 async def test_resume_mismatched_model_strict_raises_tome_incompatible() -> None:
@@ -254,7 +258,6 @@ async def test_resume_mismatched_model_strict_raises_tome_incompatible() -> None
             tome_resume=meta.id,
             strict_resume=True,
         )
-        agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
         agent._provider_registry.resolve = MagicMock(
             return_value=(_mock_model(), MagicMock())
         )  # type: ignore[method-assign]
@@ -273,7 +276,6 @@ async def test_resume_mismatched_model_strict_raises_tome_incompatible() -> None
         assert "different-model" in str(exc_info.value)
         assert exc_info.value.tome_id == meta.id
         assert exc_info.value.model_mismatch == ("different-model", "test-model")
-
 
 @pytest.mark.asyncio
 async def test_resume_missing_spells_strict_raises_tome_incompatible() -> None:
@@ -299,7 +301,6 @@ async def test_resume_missing_spells_strict_raises_tome_incompatible() -> None:
             tome_resume=meta.id,
             strict_resume=True,
         )
-        agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
         agent._provider_registry.resolve = MagicMock(
             return_value=(_mock_model(), MagicMock())
         )  # type: ignore[method-assign]
@@ -317,7 +318,6 @@ async def test_resume_missing_spells_strict_raises_tome_incompatible() -> None:
 
         assert "required_custom_spell" in str(exc_info.value)
         assert "required_custom_spell" in exc_info.value.missing_spells
-
 
 @pytest.mark.asyncio
 async def test_resume_missing_spells_non_strict_emits_diagnostic() -> None:
@@ -341,7 +341,6 @@ async def test_resume_missing_spells_non_strict_emits_diagnostic() -> None:
             tome_resume=meta.id,
             strict_resume=False,
         )
-        agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
         agent._provider_registry.resolve = MagicMock(
             return_value=(_mock_model(), MagicMock())
         )  # type: ignore[method-assign]
@@ -357,7 +356,6 @@ async def test_resume_missing_spells_non_strict_emits_diagnostic() -> None:
         assert agent._agent_tome is not None
         diags = agent.diagnostics
         assert any("required_custom_spell" in d.message for d in diags)
-
 
 @pytest.mark.asyncio
 async def test_resume_force_fork_branches_incompatible_session() -> None:
@@ -383,7 +381,6 @@ async def test_resume_force_fork_branches_incompatible_session() -> None:
             tome_resume=meta.id,
             force_fork_resume=True,
         )
-        agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
         agent._provider_registry.resolve = MagicMock(
             return_value=(_mock_model(), MagicMock())
         )  # type: ignore[method-assign]
@@ -408,7 +405,6 @@ async def test_resume_force_fork_branches_incompatible_session() -> None:
         assert len(entries) >= 1
         assert entries[0].id == e1.id
 
-
 @pytest.mark.asyncio
 async def test_validate_tome_compatibility_helper() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -422,7 +418,6 @@ async def test_validate_tome_compatibility_helper() -> None:
         )
 
         agent = Mvge(api_key="test-key", tome_dir=tome_dir)
-        agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
         agent._provider_registry.resolve = MagicMock(
             return_value=(_mock_model(), MagicMock())
         )  # type: ignore[method-assign]

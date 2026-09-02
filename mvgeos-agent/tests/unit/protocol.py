@@ -65,9 +65,6 @@ class DummyAgent:
     def follow_up(self, text: str) -> None:
         pass
 
-    def queue(self, text: str) -> None:
-        pass
-
     def abort(self) -> None:
         pass
 

@@ -431,18 +431,9 @@ class Mvge:
                 SummonerRequest(role="user", content=text)
             )
 
-    def queue(self, text: str) -> None:
-        self.steer(text)
-
     def abort(self) -> None:
         if self._abort_controller is not None:
             self._abort_controller.abort()
-
-    def _compose_model(self, model_id: str) -> Model:
-        model, _ = self._provider_registry.resolve(
-            model_id, self._api_key, self._provider_name
-        )
-        return model
 
     def _build_spells(self) -> list[MvgeSpell]:
         """Convert injected callables and rune spells to executable MvgeSpells."""
@@ -501,34 +492,6 @@ class Mvge:
     def _build_system_prompt(self) -> str:
         """Build the agent system prompt string."""
         return self._environment.resolved_prompt.text
-
-    def _render_prompt(
-        self, body: str, spell_names: list[str], guidelines: list[str]
-    ) -> str:
-        """Render a prompt with body, spells, guidelines, and environment."""
-        cwd = str(getattr(self._config_manager, "_project_dir", "") or Path.cwd())
-        active_names = (
-            spell_names if spell_names else [s.name for s in self._build_spells()]
-        )
-        spells_dir = (
-            (self._caller_dir / "spells")
-            if self._caller_dir and (self._caller_dir / "spells").is_dir()
-            else None
-        )
-        skills_paths: list[Path] = []
-        if self._caller_dir and (self._caller_dir / "skills").is_dir():
-            skills_paths.append(self._caller_dir / "skills")
-        return self._environment.render_prompt(
-            body,
-            active_names,
-            guidelines,
-            cwd=cwd,
-            spells_dir=spells_dir,
-            skills_paths=skills_paths,
-            runes_paths=self._environment.runes_paths,
-            system_path=self._environment.resolved_prompt.path,
-            guidelines_path=self._environment.resolved_guidelines.path,
-        )
 
     async def _build_system_prompt_async(self) -> str:
         """Async version that supports rune prompt injection via sigil hooks."""
@@ -719,7 +682,9 @@ class Mvge:
 
         self._model_id = model_id
         if self._initialized:
-            new_model = self._compose_model(model_id)
+            new_model, _ = self._provider_registry.resolve(
+                model_id, self._api_key, self._provider_name
+            )
             self._model = new_model
             if self._state is not None:
                 self._state.model = dataclasses.asdict(new_model)

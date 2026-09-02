@@ -234,9 +234,6 @@ class FakeAgent:
     def follow_up(self, text: str) -> None:
         self.run_calls.append(f"follow_up:{text}")
 
-    def queue(self, text: str) -> None:
-        self.steer(text)
-
     async def run(self, text: str) -> None:
         self.run_calls.append(text)
         if self.error is not None:
@@ -564,7 +561,7 @@ class TestTuiApp:
         handled = app._on_accept(app._buffer)
 
         assert handled is True
-        mock_agent.queue.assert_called_once_with("follow up prompt")
+        mock_agent.steer.assert_called_once_with("follow up prompt")
         assert any(
             "follow up prompt" in (e.text.plain if e.text else "")
             for e in sink._entries

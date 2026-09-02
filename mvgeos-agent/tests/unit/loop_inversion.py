@@ -192,7 +192,9 @@ class TestMaxTurns:
         # Always asks for another spell cast, so the loop never settles.
         script = TurnScript([[_spell_call()]])
 
-        with pytest.raises(RuntimeError, match="Max turns exceeded"):
+        from mvgeos_agent.errors import MaxTurnsExceededError
+
+        with pytest.raises(MaxTurnsExceededError, match="Max turns exceeded"):
             await run_loop(context, script, Recorder(), LoopCallbacks())
 
 

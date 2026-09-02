@@ -27,8 +27,9 @@ def _mock_model() -> Model:
 
 def _agent(tome_dir: Path) -> Mvge:
     agent = Mvge(api_key="test-key", tome_dir=tome_dir)
-    agent._compose_model = MagicMock(return_value=_mock_model())  # type: ignore[method-assign]
-    agent._provider_registry.create_realm = MagicMock()  # type: ignore[method-assign]
+    agent._provider_registry.resolve = MagicMock(  # type: ignore[method-assign]
+        return_value=(_mock_model(), MagicMock())
+    )
     return agent
 
 
@@ -56,10 +57,13 @@ async def test_system_prompt_matches_environment_assemble() -> None:
 
 @pytest.mark.asyncio
 async def test_render_prompt_matches_environment_render() -> None:
+    from mvgeos_agent.environment import MvgeEnvironment as Env
+    from mvgeos_agent.environment import render_prompt as free_render
+
     with tempfile.TemporaryDirectory() as tmp:
         agent = _agent(Path(tmp))
         cwd = str(getattr(agent._config_manager, "_project_dir", "") or Path.cwd())
-        expected = agent._environment.render_prompt(
+        expected = free_render(
             "You are Mvge",
             ["bash"],
             ["Be concise."],
@@ -69,9 +73,15 @@ async def test_render_prompt_matches_environment_render() -> None:
             guidelines_path=agent._environment.resolved_guidelines.path,
         )
 
-        assert agent._render_prompt("You are Mvge", ["bash"], ["Be concise."]) == (
-            expected
-        )
+        assert Env.render_prompt(
+            "You are Mvge",
+            ["bash"],
+            ["Be concise."],
+            cwd=cwd,
+            runes_paths=agent._environment.runes_paths,
+            system_path=agent._environment.resolved_prompt.path,
+            guidelines_path=agent._environment.resolved_guidelines.path,
+        ) == expected
 
 
 @pytest.mark.asyncio

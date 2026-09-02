@@ -8,7 +8,11 @@ from mvgeos_provider.types import RealmResponse
 
 from mvgeos_agent.dispatcher import SpellDispatcher
 from mvgeos_agent.environment import PromptSource
-from mvgeos_agent.errors import AuthenticationError, RateLimitError
+from mvgeos_agent.errors import (
+    AuthenticationError,
+    MaxTurnsExceededError,
+    RateLimitError,
+)
 from mvgeos_agent.types import (
     AbortError,
     AbortSignal,
@@ -332,7 +336,7 @@ async def run_loop(
         while keep_going or pending:
             turns += 1
             if turns > context.max_turns:
-                raise RuntimeError("Max turns exceeded")
+                raise MaxTurnsExceededError(context.max_turns)
 
             if turns > 1 and callbacks.prepare_next_turn is not None:
                 context = await callbacks.prepare_next_turn(context)

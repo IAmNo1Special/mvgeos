@@ -387,7 +387,7 @@ class TuiApp:
         self.sink.write(f"> {text}\n")
         self.application.invalidate()
         if self._busy:
-            self.agent.queue(text)
+            self.agent.steer(text)
             return True
         self._task = asyncio.get_event_loop().create_task(self._run_turn(text))
         return True

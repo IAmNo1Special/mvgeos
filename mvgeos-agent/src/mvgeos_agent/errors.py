@@ -60,16 +60,6 @@ class SpellTimeoutError(MvgeError):
         self.timeout_ms = timeout_ms
 
 
-class ManaExhaustedError(MvgeError):
-    def __init__(self, used: int, budget: int) -> None:
-        super().__init__(
-            "mana_exhausted",
-            f"Mana budget exhausted: {used}/{budget}",
-        )
-        self.used = used
-        self.budget = budget
-
-
 class MaxTurnsExceededError(MvgeError):
     def __init__(self, max_turns: int) -> None:
         super().__init__("max_turns_exceeded", f"Max turns exceeded: {max_turns}")
@@ -81,15 +71,6 @@ class TomeResumeError(MvgeError):
         super().__init__(
             "tome_resume_failed",
             f"Failed to resume tome: {path}",
-            cause,
-        )
-
-
-class SpellExecutionError(MvgeError):
-    def __init__(self, spell_name: str, cause: Exception) -> None:
-        super().__init__(
-            "spell_execution_failed",
-            f"Spell '{spell_name}' execution failed: {cause}",
             cause,
         )
 

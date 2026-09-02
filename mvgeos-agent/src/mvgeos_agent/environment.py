@@ -705,39 +705,6 @@ class MvgeEnvironment:
             guidelines_path=guidelines_path,
         )
 
-    def render(
-        self,
-        body: str | None = None,
-        spells: Sequence[str] | None = None,
-        guidelines: Sequence[str] | None = None,
-        cwd: str | Path | None = None,
-        append_text: str = "",
-    ) -> str:
-        """Render prompt using environment defaults for any omitted parameters."""
-        effective_body = body if body is not None else self.resolved_prompt.text
-        effective_spells = spells if spells is not None else (self.spell_names or [])
-        effective_guidelines = (
-            guidelines
-            if guidelines is not None
-            else self.resolved_guidelines.guidelines
-        )
-        effective_cwd = (
-            cwd
-            if cwd is not None
-            else (
-                getattr(self.config_manager, "_project_dir", None)
-                if self.config_manager is not None
-                else Path.cwd()
-            )
-        )
-        return render_prompt(
-            body=effective_body,
-            spells=effective_spells,
-            guidelines=effective_guidelines,
-            cwd=effective_cwd,
-            append_text=append_text,
-        )
-
     def build_snapshot(self) -> RuntimeSnapshot:
         """Assemble a resolved runtime snapshot for introspection."""
         rune_manifests: list[RuneManifest] = (
