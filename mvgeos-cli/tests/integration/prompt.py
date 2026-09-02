@@ -30,7 +30,7 @@ class TestPromptCommand:
         env.pop("OPENROUTER_API_KEY", None)
         with (
             patch.dict(os.environ, env, clear=True),
-            patch("mvgeos_cli.main._load_api_key_from_auth", return_value=None),
+            patch("mvgeos_cli.main.load_api_key_from_auth", return_value=None),
         ):
             result = runner.invoke(app, ["--incantation", "test prompt"])
             assert result.exit_code != 0

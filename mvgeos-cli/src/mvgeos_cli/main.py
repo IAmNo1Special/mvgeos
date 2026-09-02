@@ -3,14 +3,12 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from pathlib import Path
 from typing import Any, cast
 
 import typer
 import typer._click as _click
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
-    DEFAULT_TOME_DIR,
 )
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.protocol import AgentFactory, MvgeAgent
@@ -38,7 +36,6 @@ from mvgeos_cli.console import configure_streams, format_error, get_console
 console = get_console()
 
 _create_agent = create_agent
-_load_api_key_from_auth = load_api_key_from_auth
 
 
 def _default_spells_from_config(resolved: dict[str, Any]) -> str:
@@ -174,10 +171,6 @@ async def _run_agent(
             await agent.close()
 
 
-def _get_tome_dir() -> Path:
-    return DEFAULT_TOME_DIR
-
-
 class MvgeosGroup(TyperGroup):
     def invoke(self, ctx: _click.Context) -> Any:
         if ctx._protected_args:
@@ -286,7 +279,7 @@ def _repl_callback(
     if api_key is None:
         api_key = os.environ.get("OPENROUTER_API_KEY")
     if api_key is None:
-        api_key = _load_api_key_from_auth()
+        api_key = load_api_key_from_auth()
     if api_key is None:
         if sys.stdin.isatty() and sys.stdout.isatty():
             prompted_key = prompt_api_key(console)

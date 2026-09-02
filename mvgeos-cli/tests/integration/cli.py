@@ -9,7 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from mvgeos_cli.commands.repl import _create_agent
-from mvgeos_cli.main import _get_tome_dir, _run_agent, app
+from mvgeos_cli.main import _run_agent, app
 
 runner = CliRunner()
 
@@ -18,11 +18,6 @@ def test_main_is_callable() -> None:
     from mvgeos_cli.main import main
 
     assert callable(main)
-
-
-def test_get_tome_dir() -> None:
-    path = _get_tome_dir()
-    assert path == Path.home() / ".agents" / ".mvgeos" / "tomes"
 
 
 def test_app_help() -> None:
@@ -127,7 +122,7 @@ def test_repl_callback_missing_api_key() -> None:
     env.pop("OPENROUTER_API_KEY", None)
     with (
         patch.dict(os.environ, env, clear=True),
-        patch("mvgeos_cli.main._load_api_key_from_auth", return_value=None),
+        patch("mvgeos_cli.main.load_api_key_from_auth", return_value=None),
     ):
         result = runner.invoke(app, ["--incantation", "test"])
         assert result.exit_code == 1

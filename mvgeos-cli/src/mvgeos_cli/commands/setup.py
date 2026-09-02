@@ -37,7 +37,7 @@ PACKAGE_MAP: dict[str, dict[str, list[str]]] = {
     "ripgrep": {
         "windows": ["BurntSushi.ripgrep.MSVC", "RipGrep", "rg"],
         "darwin": ["ripgrep"],
-        "linux": ["ripgrep", "ripgrep"],
+        "linux": ["ripgrep"],
     },
     "git": {
         "windows": ["Git.Git"],

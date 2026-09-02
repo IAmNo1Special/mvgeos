@@ -38,19 +38,21 @@ from mvgeos_cli.agent_factory import create_agent, validate_api_key
 from mvgeos_cli.commands.setup import install_missing_deps
 from mvgeos_cli.console import format_error
 
+
+class NoConsoleScreenBufferError(Exception):
+    """Fallback when prompt_toolkit's win32 variant is unavailable."""
+
+    pass
+
+
 if sys.platform == "win32":
     try:
         from prompt_toolkit.output.win32 import (
-            NoConsoleScreenBufferError as NoConsoleScreenBufferError,
+            NoConsoleScreenBufferError as _NoConsoleScreenBufferError,
         )
+
+        NoConsoleScreenBufferError = _NoConsoleScreenBufferError  # type: ignore[misc,assignment]
     except Exception:
-
-        class NoConsoleScreenBufferError(Exception):  # type: ignore[no-redef]
-            pass
-
-else:
-
-    class NoConsoleScreenBufferError(Exception):
         pass
 
 
