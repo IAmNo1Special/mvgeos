@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from mvgeos_runes.loader import RuneLoader, load_factory_from_manifest
+from mvgeos_runes.loader import load_factory_from_manifest, load_runes_from_paths
 from mvgeos_runes.types import Diagnostic, DiagnosticKind, RuneManifest, RuneScope
 
 
@@ -115,8 +115,8 @@ def test_preflight_multiple_missing_deps(tmp_path: Path) -> None:
     assert {d.rune_name for d in missing} == {"multi_dep"}
 
 
-def test_rune_loader_load_all_preflight(tmp_path: Path) -> None:
-    """RuneLoader.load_all surfaces missing-dep diagnostics via the manifest."""
+def test_load_runes_from_paths_preflight(tmp_path: Path) -> None:
+    """load_runes_from_paths surfaces missing-dep diagnostics via the manifest."""
     project = tmp_path / "runes"
     rune_dir = project / "needs_dep"
     _write_rune(
@@ -124,9 +124,7 @@ def test_rune_loader_load_all_preflight(tmp_path: Path) -> None:
         "import a_missing_module\n\ndef rune_factory(api):\n    pass\n",
         python_deps=["a_missing_module"],
     )
-    loader = RuneLoader(project)
-    diagnostics: list[Diagnostic] = []
-    loader.preflight(diagnostics)
+    _loads, diagnostics = load_runes_from_paths([(project, RuneScope.PROJECT)])
     assert any(d.kind == DiagnosticKind.MISSING_DEP for d in diagnostics)
 
 

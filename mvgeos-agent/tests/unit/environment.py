@@ -611,12 +611,12 @@ class TestMvgeEnvironmentAssemble:
         )
 
         payload = runner.emit_chain.await_args.args[1]
-        assert payload["base_prompt"] == "Base prompt."
-        assert payload["spell_names"] == ["bash", "read"]
-        assert payload["config_dir"] == "/cfg/test-agent"
-        assert payload["custom_prompt"] == "Custom body"
-        assert payload["agent_name"] == "test-agent"
-        assert payload["cwd"] == "/proj"
+        assert payload.base_prompt == "Base prompt."
+        assert payload.spell_names == ["bash", "read"]
+        assert payload.config_dir == "/cfg/test-agent"
+        assert payload.custom_prompt == "Custom body"
+        assert payload.agent_name == "test-agent"
+        assert payload.cwd == "/proj"
 
     @pytest.mark.asyncio
     async def test_runner_can_modify_base_prompt(self, tmp_path: Path) -> None:

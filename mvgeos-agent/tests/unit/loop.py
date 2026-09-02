@@ -679,7 +679,7 @@ class TestMvgeLoopInputHook:
 
         handler.assert_called_once()
         call_data = handler.call_args[0][0]
-        assert call_data["content"] == "my input"
+        assert call_data.content == "my input"
 
 
 class TestMvgeLoopTomeHooks:

@@ -2,9 +2,7 @@ import tempfile
 from pathlib import Path
 
 from mvgeos_runes.loader import (
-    RuneLoader,
     get_default_skill_paths,
-    load_factories,
     load_factory_from_manifest,
     load_manifests,
     load_runes_from_paths,
@@ -175,40 +173,26 @@ def test_rune_loader_load_all() -> None:
         )
         (rune2_dir / "manifest.json").write_text(rune2_data, encoding="utf-8")
 
-        loader = RuneLoader(extensions_dir)
-        manifests = loader.load_all()
+        manifests = load_manifests(extensions_dir)
 
         assert len(manifests) == 2
         names = {m.name for m in manifests}
         assert names == {"rune1", "rune2"}
 
 
-def test_rune_loader_load_all_empty_dir() -> None:
+def test_load_manifests_empty_dir() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         extensions_dir = Path(tmpdir)
 
-        loader = RuneLoader(extensions_dir)
-        manifests = loader.load_all()
+        manifests = load_manifests(extensions_dir)
 
         assert manifests == []
 
 
-def test_rune_loader_load_all_nonexistent_dir() -> None:
-    loader = RuneLoader(Path("/nonexistent/path"))
-    manifests = loader.load_all()
+def test_load_manifests_nonexistent_dir() -> None:
+    manifests = load_manifests(Path("/nonexistent/path"))
 
     assert manifests == []
-
-
-def test_load_factories_empty_dir() -> None:
-    with tempfile.TemporaryDirectory() as tmpdir:
-        factories = load_factories(Path(tmpdir))
-        assert factories == []
-
-
-def test_load_factories_nonexistent_dir() -> None:
-    factories = load_factories(Path("/nonexistent/path"))
-    assert factories == []
 
 
 def test_load_factory_from_manifest_no_entry_point() -> None:
@@ -386,35 +370,8 @@ def test_load_manifest_enabled_non_bool_defaults_true() -> None:
         manifest_file.write_text(manifest_data, encoding="utf-8")
 
         manifest = load_manifest(rune_dir)
-
         assert manifest is not None
         assert manifest.enabled is True
-
-
-def test_load_all_skips_disabled_runes() -> None:
-    with tempfile.TemporaryDirectory() as tmpdir:
-        extensions_dir = Path(tmpdir)
-
-        enabled_dir = extensions_dir / "enabled_rune"
-        enabled_dir.mkdir()
-        (enabled_dir / "manifest.json").write_text(
-            '{"name": "enabled_rune", "version": "1.0.0", "hooks": []}',
-            encoding="utf-8",
-        )
-
-        disabled_dir = extensions_dir / "disabled_rune"
-        disabled_dir.mkdir()
-        (disabled_dir / "manifest.json").write_text(
-            '{"name": "disabled_rune", "version": "1.0.0", '
-            '"hooks": [], "enabled": false}',
-            encoding="utf-8",
-        )
-
-        loader = RuneLoader(extensions_dir)
-        manifests = loader.load_all()
-
-        assert len(manifests) == 1
-        assert manifests[0].name == "enabled_rune"
 
 
 def test_load_manifests_skips_disabled_runes() -> None:
@@ -431,25 +388,6 @@ def test_load_manifests_skips_disabled_runes() -> None:
 
         manifests = load_manifests(extensions_dir)
         assert manifests == []
-
-
-def test_load_factories_skips_disabled_runes() -> None:
-    with tempfile.TemporaryDirectory() as tmpdir:
-        extensions_dir = Path(tmpdir)
-
-        disabled_dir = extensions_dir / "disabled_rune"
-        disabled_dir.mkdir()
-        (disabled_dir / "manifest.json").write_text(
-            '{"name": "disabled_rune", "version": "1.0.0", "hooks": [], '
-            '"entry_point": "rune.py", "enabled": false}',
-            encoding="utf-8",
-        )
-        (disabled_dir / "rune.py").write_text(
-            "def rune_factory(api): pass", encoding="utf-8"
-        )
-
-        factories = load_factories(extensions_dir)
-        assert factories == []
 
 
 def test_spell_definition_execute_not_implemented() -> None:

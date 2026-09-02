@@ -33,7 +33,7 @@ mvgeos/
 | mvgeos-tome | `locking.py` | FileLock - cross-process locking |
 | mvgeos-tome | `index.py` | Index - entry indexing |
 | mvgeos-tome | `types.py` | TomeEntry, TomeMetadata, TomeEntryType |
-| mvgeos-runes | `loader.py` | RuneLoader |
+| mvgeos-runes | `loader.py` | load_runes_from_paths, load_manifests |
 | mvgeos-runes | `manifest.py` | load_manifest |
 | mvgeos-runes | `rune_runner.py` | RuneRunner |
 | mvgeos-runes | `types.py` | RuneManifest, SigilHook |
@@ -330,7 +330,6 @@ class SigilHook(StrEnum):
     SESSION_SHUTDOWN = "session_shutdown"
     SESSION_BEFORE_SWITCH = "session_before_switch"
     SESSION_BEFORE_FORK = "session_before_fork"
-    SESSION_BEFORE_COMPACT = "session_before_compact"
     COMPACTION_START = "compaction_start"
     COMPACTION_END = "compaction_end"
     CONTEXT_TRANSFORM = "context_transform"

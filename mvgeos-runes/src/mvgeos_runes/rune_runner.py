@@ -7,7 +7,7 @@ import traceback
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from mvgeos_runes.rune_api import RuneAPI, RuneFactory
+from mvgeos_runes.rune_api import RuneAPI
 from mvgeos_runes.types import (
     Diagnostic,
     DiagnosticKind,
@@ -336,23 +336,6 @@ class RuneRunner:
         if rune_name is None:
             rune_name = self._current_loading_rune
         return RuneAPI(self, rune_name)
-
-    async def load_runes(
-        self,
-        factories: list[RuneFactory],
-        manifests: list[RuneManifest] | None = None,
-    ) -> None:
-        for manifest in manifests or []:
-            if manifest.name not in self._loaded_rune_names:
-                self._loaded_manifests.append(manifest)
-                self._loaded_rune_names.add(manifest.name)
-            for sc in manifest.shortcuts:
-                self.register_shortcut(sc)
-        for factory in factories:
-            api = self.create_api()
-            result = factory(api)
-            if isinstance(result, Awaitable):
-                await result
 
     async def load_rune_loads(
         self,

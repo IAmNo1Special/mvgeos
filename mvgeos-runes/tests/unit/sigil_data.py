@@ -16,7 +16,6 @@ from mvgeos_runes.types import (
     ContextTransformData,
     InputData,
     PrepareNextTurnData,
-    SessionBeforeCompactData,
     SessionBeforeForkData,
     SessionBeforeSwitchData,
     SessionShutdownData,
@@ -26,22 +25,15 @@ from mvgeos_runes.types import (
     TurnEndData,
     TurnStartData,
     create_sigil_data,
-    get_sigil_data_class,
 )
 
 
 class TestSigilDataClasses:
-    """Test that all sigil data classes can be instantiated
-    and support dict-like access."""
+    """Test that all sigil data classes can be instantiated."""
 
     def test_before_invocation_data(self) -> None:
         data = BeforeInvocationData(invocation={"role": "user", "content": "test"})
         assert data.invocation == {"role": "user", "content": "test"}
-        # Test dict-like access
-        assert data["invocation"] == {"role": "user", "content": "test"}
-        assert "invocation" in data
-        assert data.get("invocation") == {"role": "user", "content": "test"}
-        assert data.get("nonexistent", "default") == "default"
 
     def test_after_invocation_data(self) -> None:
         data = AfterInvocationData(
@@ -50,7 +42,6 @@ class TestSigilDataClasses:
         )
         assert data.invocation == {"role": "assistant", "content": "response"}
         assert data.stop_reason == "stop"
-        assert data["stop_reason"] == "stop"
 
     def test_before_spell_cast_data(self) -> None:
         data = BeforeSpellCastData(
@@ -63,8 +54,6 @@ class TestSigilDataClasses:
         )
         assert data.spell_cast["name"] == "read_file"
         assert data.spell_name == "read_file"
-        assert data["spell_name"] == "read_file"
-        assert data["spell_cast"]["id"] == "123"
 
     def test_after_spell_result_data(self) -> None:
         data = AfterSpellResultData(
@@ -118,10 +107,6 @@ class TestSigilDataClasses:
         data = SessionBeforeForkData(parent_session="parent", child_session="child")
         assert data.parent_session == "parent"
         assert data.child_session == "child"
-
-    def test_session_before_compact_data(self) -> None:
-        data = SessionBeforeCompactData(session_name="test-session")
-        assert data.session_name == "test-session"
 
     def test_compaction_start_data(self) -> None:
         data = CompactionStartData(session_name="test-session", message_count=100)
@@ -227,97 +212,3 @@ class TestCreateSigilData:
         data = "not a dict"
         result = create_sigil_data(SigilHook.AFTER_SPELL_RESULT, data)
         assert result == "not a dict"
-
-
-class TestGetSigilDataClass:
-    """Test the get_sigil_data_class function."""
-
-    def test_returns_correct_class_for_each_hook(self) -> None:
-        assert get_sigil_data_class(SigilHook.BEFORE_INVOCATION) == BeforeInvocationData
-        assert get_sigil_data_class(SigilHook.AFTER_INVOCATION) == AfterInvocationData
-        assert get_sigil_data_class(SigilHook.BEFORE_SPELL_CAST) == BeforeSpellCastData
-        assert (
-            get_sigil_data_class(SigilHook.AFTER_SPELL_RESULT) == AfterSpellResultData
-        )
-        assert (
-            get_sigil_data_class(SigilHook.BEFORE_PROVIDER_REQUEST)
-            == BeforeProviderRequestData
-        )
-        assert (
-            get_sigil_data_class(SigilHook.AFTER_PROVIDER_RESPONSE)
-            == AfterProviderResponseData
-        )
-        assert (
-            get_sigil_data_class(SigilHook.BEFORE_PROVIDER_HEADERS)
-            == BeforeProviderHeadersData
-        )
-        assert get_sigil_data_class(SigilHook.TURN_START) == TurnStartData
-        assert get_sigil_data_class(SigilHook.TURN_END) == TurnEndData
-        assert get_sigil_data_class(SigilHook.SESSION_START) == SessionStartData
-        assert get_sigil_data_class(SigilHook.SESSION_SHUTDOWN) == SessionShutdownData
-        assert (
-            get_sigil_data_class(SigilHook.SESSION_BEFORE_SWITCH)
-            == SessionBeforeSwitchData
-        )
-        assert (
-            get_sigil_data_class(SigilHook.SESSION_BEFORE_FORK) == SessionBeforeForkData
-        )
-        assert (
-            get_sigil_data_class(SigilHook.SESSION_BEFORE_COMPACT)
-            == SessionBeforeCompactData
-        )
-        assert get_sigil_data_class(SigilHook.COMPACTION_START) == CompactionStartData
-        assert get_sigil_data_class(SigilHook.COMPACTION_END) == CompactionEndData
-        assert get_sigil_data_class(SigilHook.CONTEXT_TRANSFORM) == ContextTransformData
-        assert get_sigil_data_class(SigilHook.AGENT_START) == AgentStartData
-        assert get_sigil_data_class(SigilHook.AGENT_END) == AgentEndData
-        assert get_sigil_data_class(SigilHook.BEFORE_MVGE_START) == BeforeMvgeStartData
-        assert get_sigil_data_class(SigilHook.INPUT) == InputData
-        assert (
-            get_sigil_data_class(SigilHook.SHOULD_STOP_AFTER_TURN)
-            == ShouldStopAfterTurnData
-        )
-        assert get_sigil_data_class(SigilHook.PREPARE_NEXT_TURN) == PrepareNextTurnData
-
-
-class TestSigilDataDictMethods:
-    """Test dict-like methods on sigil data classes."""
-
-    def test_keys_method(self) -> None:
-        data = BeforeSpellCastData(spell_cast={"name": "test"}, spell_name="test")
-        keys = data.keys()
-        assert "spell_cast" in keys
-        assert "spell_name" in keys
-
-    def test_items_method(self) -> None:
-        data = TurnEndData(stop_reason="stop", mana_used=100)
-        items = data.items()
-        assert ("stop_reason", "stop") in items
-        assert ("mana_used", 100) in items
-
-    def test_values_method(self) -> None:
-        data = SessionStartData(session_name="test")
-        values = data.values()
-        assert "test" in values
-
-    def test_to_dict_method(self) -> None:
-        data = AgentEndData(stop_reason="length")
-        d = data.to_dict()
-        assert d == {"stop_reason": "length"}
-
-    def test_contains_method(self) -> None:
-        data = InputData(content="test")
-        assert "content" in data
-        assert "nonexistent" not in data
-
-    def test_get_method_with_default(self) -> None:
-        data = BeforeMvgeStartData(
-            base_prompt="base",
-            spell_names=[],
-            config_dir="",
-            custom_prompt="",
-            agent_name="agent",
-            cwd="",
-        )
-        assert data.get("base_prompt") == "base"
-        assert data.get("nonexistent", "default") == "default"

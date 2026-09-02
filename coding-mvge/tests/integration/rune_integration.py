@@ -10,6 +10,7 @@ from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     RuneContext,
+    RuneLoad,
     RuneManifest,
     SigilHook,
     SpellDefinition,
@@ -168,7 +169,7 @@ def rune_factory(api):
     runner.bind_context(
         RuneContext(cwd="/tmp", mode="test", agent_name="test", api_key="")
     )
-    await runner.load_runes([], [manifest])
+    await runner.load_rune_loads([RuneLoad(manifest=manifest)])
 
 
 if __name__ == "__main__":

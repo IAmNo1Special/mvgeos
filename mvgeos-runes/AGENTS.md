@@ -26,11 +26,10 @@ Test paths follow pattern: `mvgeos-runes/tests/unit/<module>.py` and `mvgeos-run
 | Type | Purpose |
 | --- | --- |
 | `RuneManifest` | Rune metadata (name, version, description, hooks, entry_point) |
-| `RuneLoader` | Discovery and loading of runes from paths |
 | `RuneRunner` | Extension host: registers sigils/spells/commands/shortcuts/providers |
 | `RuneAPI` | Facade handed to rune factories |
 | `RuneFactory` | `Callable[[RuneAPI], None \| Awaitable[None]]` |
-| `SigilHook` | Enum of 23 lifecycle hook names |
+| `SigilHook` | Enum of 22 lifecycle hook names |
 | `RuneWatcher` | watchdog-based hot reload |
 | `SpellDefinition` | Definition of a spell provided by a rune |
 | `SkillManifest` | Parsed metadata for an agentskills.io skill |
@@ -49,7 +48,6 @@ Test paths follow pattern: `mvgeos-runes/tests/unit/<module>.py` and `mvgeos-run
 | `TURN_START` / `TURN_END` | Turn lifecycle |
 | `SESSION_START` / `SESSION_SHUTDOWN` | Session lifecycle |
 | `SESSION_BEFORE_SWITCH` / `SESSION_BEFORE_FORK` | Session switch/fork |
-| `SESSION_BEFORE_COMPACT` | Before session compaction begins |
 | `COMPACTION_START` / `COMPACTION_END` | Compaction lifecycle |
 | `CONTEXT_TRANSFORM` | Transform invocations before sending to Realm |
 | `AGENT_START` / `AGENT_END` | Agent lifecycle |
@@ -74,6 +72,7 @@ Runes are user-installed extensions (not built-in). They are loaded from three s
 ## Architecture
 
 - Each Rune is a directory containing `manifest.json` + a Python entry file exposing `rune_factory`
-- `RuneRunner.load_runes()` calls each factory with a fresh `RuneAPI`
+- `RuneRunner.load_rune_loads()` calls each factory with a fresh `RuneAPI`
 - Sigils are emitted four ways: `emit_async` (fire-all), `emit_chain` (thread value), `emit_first` (first non-None), `emit_block` (handler can veto)
 - `RuneWatcher` uses watchdog per rune directory with 0.5s debounce
+

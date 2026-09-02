@@ -84,12 +84,12 @@ async def test_initialize_fires_before_mvge_start_once() -> None:
 
         calls: list[Any] = []
 
-        def recorder(data: dict) -> None:
-            calls.append(dict(data.items()))
+        def recorder(data: Any) -> None:
+            calls.append(data)
 
         agent._runner.register_handler(SigilHook.BEFORE_MVGE_START, recorder)
 
         await agent.initialize()
 
         assert len(calls) == 1
-        assert calls[0]["agent_name"] == "default-mvge"
+        assert calls[0].agent_name == "default-mvge"

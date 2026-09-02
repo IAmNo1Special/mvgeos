@@ -452,7 +452,7 @@ class TestRuneRunnerDispatch:
 
 class TestRuneRunnerLifecycle:
     @pytest.mark.asyncio
-    async def test_load_runes_calls_factories(self) -> None:
+    async def test_load_rune_loads_calls_factories(self) -> None:
         runner = RuneRunner()
         called = False
 
@@ -460,11 +460,12 @@ class TestRuneRunnerLifecycle:
             nonlocal called
             called = True
 
-        await runner.load_runes([factory])
+        manifest = RuneManifest(name="test", version="1.0.0", description="Test")
+        await runner.load_rune_loads([RuneLoad(manifest=manifest, factory=factory)])
         assert called
 
     @pytest.mark.asyncio
-    async def test_load_runes_async_factory(self) -> None:
+    async def test_load_rune_loads_async_factory(self) -> None:
         runner = RuneRunner()
         called = False
 
@@ -472,11 +473,12 @@ class TestRuneRunnerLifecycle:
             nonlocal called
             called = True
 
-        await runner.load_runes([factory])
+        manifest = RuneManifest(name="test", version="1.0.0", description="Test")
+        await runner.load_rune_loads([RuneLoad(manifest=manifest, factory=factory)])
         assert called
 
     @pytest.mark.asyncio
-    async def test_load_runes_registers_spells(self) -> None:
+    async def test_load_rune_loads_registers_spells(self) -> None:
         runner = RuneRunner()
 
         def factory(api):
@@ -484,22 +486,24 @@ class TestRuneRunnerLifecycle:
                 SpellDefinition(name="rune_spell", description="From rune")
             )
 
-        await runner.load_runes([factory])
+        manifest = RuneManifest(name="test", version="1.0.0", description="Test")
+        await runner.load_rune_loads([RuneLoad(manifest=manifest, factory=factory)])
         assert len(runner.get_all_registered_spells()) == 1
         assert runner.get_all_registered_spells()[0].name == "rune_spell"
 
     @pytest.mark.asyncio
-    async def test_load_runes_registers_hooks(self) -> None:
+    async def test_load_rune_loads_registers_hooks(self) -> None:
         runner = RuneRunner()
 
         def factory(api):
             api.on(SigilHook.TURN_START, lambda d: None)
 
-        await runner.load_runes([factory])
+        manifest = RuneManifest(name="test", version="1.0.0", description="Test")
+        await runner.load_rune_loads([RuneLoad(manifest=manifest, factory=factory)])
         assert len(runner.get_sigil_handlers(SigilHook.TURN_START)) == 1
 
     @pytest.mark.asyncio
-    async def test_load_runes_registers_manifest_shortcuts(self) -> None:
+    async def test_load_rune_loads_registers_manifest_shortcuts(self) -> None:
         runner = RuneRunner()
         manifest = RuneManifest(
             name="test",
@@ -514,21 +518,11 @@ class TestRuneRunnerLifecycle:
         def factory(api):
             pass
 
-        await runner.load_runes([factory], [manifest])
+        await runner.load_rune_loads([RuneLoad(manifest=manifest, factory=factory)])
         shortcuts = runner.get_shortcuts()
         assert len(shortcuts) == 2
         assert shortcuts[0].key == "ctrl+k"
         assert shortcuts[1].key == "ctrl+r"
-
-    @pytest.mark.asyncio
-    async def test_load_runes_manifests_none(self) -> None:
-        runner = RuneRunner()
-
-        def factory(api):
-            pass
-
-        await runner.load_runes([factory], None)
-        assert runner.get_shortcuts() == []
 
 
 class TestRuneRunnerProvenance:

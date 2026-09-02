@@ -1,9 +1,11 @@
 from mvgeos_runes.loader import (
-    RuneLoader,
-    load_factories,
+    get_default_skill_paths,
     load_factory_from_manifest,
     load_manifests,
     load_runes_from_paths,
+    load_skill_manifest,
+    load_skill_manifests,
+    load_skills_from_paths,
 )
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_api import RuneAPI, RuneFactory
@@ -19,6 +21,11 @@ from mvgeos_runes.types import (
     RuneScope,
     RuneShortcut,
     SigilHook,
+    SkillDiagnostic,
+    SkillDiagnosticKind,
+    SkillLoad,
+    SkillManifest,
+    SkillScope,
     SpellDefinition,
 )
 from mvgeos_runes.watcher import RuneWatcher
@@ -32,17 +39,24 @@ __all__ = [
     "RuneContext",
     "RuneFactory",
     "RuneLoad",
-    "RuneLoader",
     "RuneManifest",
     "RuneRunner",
     "RuneScope",
     "RuneShortcut",
     "RuneWatcher",
     "SigilHook",
+    "SkillDiagnostic",
+    "SkillDiagnosticKind",
+    "SkillLoad",
+    "SkillManifest",
+    "SkillScope",
     "SpellDefinition",
-    "load_factories",
+    "get_default_skill_paths",
     "load_factory_from_manifest",
     "load_manifest",
     "load_manifests",
     "load_runes_from_paths",
+    "load_skill_manifest",
+    "load_skill_manifests",
+    "load_skills_from_paths",
 ]

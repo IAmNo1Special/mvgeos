@@ -663,7 +663,12 @@ class MvgeEnvironment:
             result_data = await effective_runner.emit_chain(
                 SigilHook.BEFORE_MVGE_START, prompt_data
             )
-            effective_base = str(result_data.get("base_prompt", effective_base))
+            if isinstance(result_data, BeforeMvgeStartData):
+                effective_base = result_data.base_prompt
+            elif isinstance(result_data, dict):
+                effective_base = str(result_data.get("base_prompt", effective_base))
+            elif hasattr(result_data, "base_prompt"):
+                effective_base = str(result_data.base_prompt)
 
             if not effective_runner.is_skill_catalog_suppressed():
                 skill_catalog = effective_runner.get_skill_catalog()

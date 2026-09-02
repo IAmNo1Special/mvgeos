@@ -60,11 +60,11 @@ cross-platform concurrency safety.
 ### mvgeos-runes
 
 Extension system. `RuneManifest` describes extension metadata
-and hooks. `RuneLoader` discovers and loads runes from
-`.agents/.mvgeos/runes/`. `SigilHook` defines lifecycle
+and hooks. `load_runes_from_paths` discovers and loads runes from
+configured scopes. `SigilHook` defines lifecycle
 points where runes can register Sigil callbacks.
 
-**Entry point**: `RuneLoader.load_all()` → discovers manifests
+**Entry point**: `load_runes_from_paths()` → discovers manifests
 → registers sigils → emits MvgeEvents on hooks
 
 **Dependencies**: importlib.util, watchdog
@@ -140,7 +140,7 @@ self-modification and zero-boilerplate instantiation.
 
 ### Extension Rune Flow
 
-1. `RuneLoader.load_all()` scans `.agents/.mvgeos/runes/`
+1. `load_runes_from_paths()` scans rune discovery paths
    for `manifest.json` files
 2. Each manifest registers sigils (lifecycle hooks) with the `Sigil` system
 3. During `MvgeLoop`, appropriate events are emitted to registered sigils

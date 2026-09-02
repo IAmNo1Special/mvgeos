@@ -96,13 +96,6 @@ class RuneAPI:
     def set_session_name(self, name: str) -> None:
         self._runner.set_session_name(name)
 
-    def ask(self, prompt: str = "") -> str:
-        return input(prompt)
-
-    def confirm(self, prompt: str = "") -> bool:
-        answer = input(f"{prompt} (y/N): ").strip().lower()
-        return answer in ("y", "yes")
-
     def on_event(self, channel: str, handler: Any) -> None:
         self._runner.on_event(channel, handler)
 
