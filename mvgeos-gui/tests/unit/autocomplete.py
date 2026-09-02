@@ -578,20 +578,6 @@ def test_autocomplete_get_word_range_no_word() -> None:
     assert end == -1
 
 
-def test_autocomplete_select_current_returns_insertion_text() -> None:
-    service = _make_service()
-    service.process_input("@main")
-    service.selected_index = 0
-    text = service.select_current()
-    assert text is not None
-    assert not service.is_open
-
-
-def test_autocomplete_select_current_returns_none_when_closed() -> None:
-    service = _make_service()
-    assert service.select_current() is None
-
-
 def test_autocomplete_move_down() -> None:
     service = _make_service(project_files={"a.py": "1", "b.py": "2", "c.py": "3"})
     service.process_input("@")

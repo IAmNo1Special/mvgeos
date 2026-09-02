@@ -171,7 +171,7 @@ class TestAutocompletePopup:
         assert ac.is_open
         assert ac.selected_index == 0
 
-        ac.select_next()
+        ac.move_down()
         assert ac.selected_index == 1
 
     @pytest.mark.asyncio
@@ -190,10 +190,10 @@ class TestAutocompletePopup:
         ac.process_input("@")
 
         assert ac.is_open
-        ac.select_next()
+        ac.move_down()
         assert ac.selected_index == 1
 
-        ac.select_prev()
+        ac.move_up()
         assert ac.selected_index == 0
 
 
@@ -201,17 +201,18 @@ class TestAutocompleteSelection:
     """Tests for selecting autocomplete items."""
 
     @pytest.mark.asyncio
-    async def test_select_current_returns_insertion_text(
+    async def test_get_selected_item_returns_insertion_text(
         self, state_with_project: AppState
     ) -> None:
-        """Verify select_current returns insertion text and closes popup."""
+        """Verify get_selected_item + get_insertion_text returns insertion text."""
         ac = state_with_project.get_autocomplete_service()
         ac.process_input("@main")
         assert ac.is_open
 
-        text = ac.select_current()
+        item = ac.get_selected_item()
+        assert item is not None
+        text = ac.get_insertion_text(item)
         assert text is not None
-        assert not ac.is_open
 
     @pytest.mark.asyncio
     async def test_move_down_navigates_selection(

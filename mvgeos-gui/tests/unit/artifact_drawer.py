@@ -189,29 +189,3 @@ async def test_render_artifact_drawer_returns_none_when_no_selection(
         render_artifact_drawer(state)
 
     await user.open("/test_drawer_no_selection")
-
-
-@pytest.mark.asyncio
-async def test_copy_to_clipboard_calls_javascript(user: User) -> None:
-    """Verify _copy_to_clipboard invokes clipboard JavaScript."""
-    from mvgeos_gui.components.artifact_drawer import _copy_to_clipboard
-
-    @ui.page("/test_copy_clipboard")
-    def page() -> None:
-        _copy_to_clipboard("hello world")
-
-    await user.open("/test_copy_clipboard")
-
-
-@pytest.mark.asyncio
-async def test_download_artifact_calls_javascript(user: User) -> None:
-    """Verify _download_artifact invokes download JavaScript."""
-    from mvgeos_gui.components.artifact_drawer import _download_artifact
-
-    artifact = _make_artifact()
-
-    @ui.page("/test_download_artifact")
-    def page() -> None:
-        _download_artifact(artifact)
-
-    await user.open("/test_download_artifact")

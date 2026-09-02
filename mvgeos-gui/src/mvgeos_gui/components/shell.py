@@ -12,7 +12,6 @@ from mvgeos_gui.components.packages_panel import render_packages_panel
 from mvgeos_gui.components.review_rail import render_review_rail
 from mvgeos_gui.components.sessions_panel import render_sessions_panel
 from mvgeos_gui.components.settings_modal import render_app_settings_modal
-from mvgeos_gui.components.settings_panel import render_settings_panel
 from mvgeos_gui.components.sidebar import render_sidebar
 from mvgeos_gui.components.skills_panel import render_skills_panel
 from mvgeos_gui.components.status_bar import render_status_bar
@@ -82,8 +81,6 @@ def render_shell(state: AppState) -> None:
                     current_rendered_view[0] = view
                     if view == "home":
                         render_home_screen(state)
-                    elif view == "settings":
-                        render_settings_panel(state)
                     elif view == "sessions":
                         render_sessions_panel(state)
                     elif view == "skills":

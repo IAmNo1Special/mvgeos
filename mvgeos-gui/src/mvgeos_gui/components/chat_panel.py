@@ -15,7 +15,6 @@ from mvgeos_gui.components.file_tree import render_file_tree
 from mvgeos_gui.components.message_parts import render_assistant_message
 from mvgeos_gui.components.terminal_panel import render_terminal_panel
 from mvgeos_gui.state import AppState
-from mvgeos_gui.utils import copy_to_clipboard
 
 EXAMPLE_PROMPTS = [
     "Explain this project structure",
@@ -367,7 +366,7 @@ def _render_composer(state: AppState) -> None:
                 if val is None and hasattr(e, "args"):
                     val = e.args
                 text = str(val if val is not None else (prompt_input.value or ""))
-                ac_service.on_text_change(text, len(text))
+                ac_service.process_input(text, len(text))
 
             prompt_input.on("update:model-value", handle_input_change)
 
@@ -399,11 +398,11 @@ def _render_composer(state: AppState) -> None:
 
             def handle_arrow_down(e: object) -> None:
                 if ac_service.is_open:
-                    ac_service.select_next()
+                    ac_service.move_down()
 
             def handle_arrow_up(e: object) -> None:
                 if ac_service.is_open:
-                    ac_service.select_prev()
+                    ac_service.move_up()
 
             prompt_input.on(
                 "keydown.tab.prevent",
@@ -562,11 +561,6 @@ def _toolbar_button(
         .classes(f"{btn_cls} p-0.5")
     ):
         ui.tooltip(title)
-
-
-def _copy_to_clipboard(text: str) -> None:
-    """Copy text to clipboard."""
-    copy_to_clipboard(text)
 
 
 def _scroll_to_bottom(element_id: int | None = None, force: bool = False) -> None:

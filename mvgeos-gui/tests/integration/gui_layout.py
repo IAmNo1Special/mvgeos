@@ -467,19 +467,3 @@ async def test_packages_panel_renders(user: User) -> None:
 
     await user.open("/test_packages_panel")
     await user.should_see("Packages")
-
-
-@pytest.mark.asyncio
-async def test_settings_panel_renders(user: User) -> None:
-    """Verify settings panel renders properly."""
-    state = AppState(current_view="settings")
-
-    @ui.page("/test_settings_panel")
-    def page() -> None:
-        build_page(state)
-
-    await user.open("/test_settings_panel")
-    await user.should_see("Settings")
-    await user.should_see("Behavior")
-    await user.should_see("Appearance")
-    await user.should_see("About")

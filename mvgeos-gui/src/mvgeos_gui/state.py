@@ -87,11 +87,6 @@ class AppState:
     current_view: str = "chat"
     sidebar_open: bool = True
     review_open: bool = False
-    is_streaming: bool = False
-    streaming_content: str = ""
-    streaming_thinking: str = ""
-    streaming_tool_calls: list[dict[str, Any]] = field(default_factory=list)
-    session_loading: bool = False
     mvge_status: str = "idle"
     terminal_open: bool = False
     chat_side_panel: str | None = None

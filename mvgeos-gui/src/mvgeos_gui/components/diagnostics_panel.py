@@ -2,6 +2,7 @@
 
 from nicegui import ui
 
+from mvgeos_gui import __version__
 from mvgeos_gui.state import AppState
 
 
@@ -14,7 +15,7 @@ def render_diagnostics_panel(state: AppState) -> None:
             "w-full p-4 bg-[#1e212b] border border-[#2b2f3d] rounded-xl"
         ):
             ui.label("System").classes("text-sm font-semibold text-[#e6edf3] mb-3")
-            _diag_row("App", "MvgeOS v0.1.0")
+            _diag_row("App", f"MvgeOS v{__version__}")
             _diag_row("Project", str(state.project_path))
             _diag_row("Model", state.selected_model)
             _diag_row("Mvge Status", state.mvge_status)

@@ -72,54 +72,6 @@ def render_message_parts(msg: ChatMessage, state: AppState, msg_idx: int = 0) ->
             render_artifact_card(part.artifact, state)
 
 
-def render_contemplation_section(
-    msg: ChatMessage, state: AppState | None = None, msg_idx: int = 0
-) -> ui.column:
-    """Render contemplation/reasoning cards for each thought segment."""
-    with ui.column().classes("w-full gap-1 my-1") as col:
-        for idx, thought in enumerate(msg.contemplation):
-            render_contemplation_card(
-                thought,
-                msg.is_streaming,
-                card_id=f"thought_{msg_idx}_{idx}",
-                state=state,
-            )
-    return col
-
-
-def render_steps_section(
-    msg: ChatMessage, state: AppState | None = None, msg_idx: int = 0
-) -> ui.column:
-    """Render intermediate execution steps (tool calls)."""
-    if not msg.steps:
-        return ui.column()
-    with ui.column().classes("w-full gap-1 my-1") as col:
-        for idx, step in enumerate(msg.steps):
-            render_step_card(
-                step,
-                card_id=f"step_{msg_idx}_{idx}",
-                state=state,
-            )
-    return col
-
-
-def render_message_content(msg: ChatMessage) -> ui.markdown | None:
-    """Render the main markdown response content."""
-    if not msg.content:
-        return None
-    return ui.markdown(msg.content).classes("markdown-content max-w-none w-full")
-
-
-def render_artifacts_section(msg: ChatMessage, state: AppState) -> ui.column | None:
-    """Render artifact cards."""
-    if not msg.artifacts:
-        return None
-    with ui.column().classes("w-full gap-2 my-2") as col:
-        for artifact in msg.artifacts:
-            render_artifact_card(artifact, state)
-    return col
-
-
 def render_streaming_indicator(msg: ChatMessage) -> ui.row | None:
     """Render the streaming cursor indicator."""
     if not msg.is_streaming:

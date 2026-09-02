@@ -27,16 +27,6 @@ _ARTIFACT_TYPE_COLORS: dict[ArtifactType, str] = {
 }
 
 
-def _copy_to_clipboard(text: str) -> None:
-    """Copy content to the system clipboard and display feedback toast."""
-    copy_to_clipboard(text)
-
-
-def _download_artifact(artifact: Artifact) -> None:
-    """Download artifact content as a text file."""
-    download_artifact(artifact.title, artifact.content)
-
-
 def _render_markdown_with_mermaid(content: str) -> None:
     """Render markdown content, extracting mermaid blocks for dedicated rendering."""
     mermaid_pattern = re.compile(r"```mermaid\n(.*?)\n```", re.DOTALL)
@@ -134,12 +124,12 @@ def render_artifact_drawer(state: AppState) -> None:
         ):
             ui.button(
                 icon="content_copy",
-                on_click=lambda: _copy_to_clipboard(artifact.content),
+                on_click=lambda: copy_to_clipboard(artifact.content),
             ).props("flat dense no-caps size=xs text-color=grey-5")
             ui.tooltip("Copy content")
             ui.button(
                 icon="download",
-                on_click=lambda: _download_artifact(artifact),
+                on_click=lambda: download_artifact(artifact.title, artifact.content),
             ).props("flat dense no-caps size=xs text-color=grey-5")
             ui.tooltip("Download artifact")
             if artifact.file_paths:

@@ -551,24 +551,6 @@ class AutocompleteService:
             return -1, -1
         return start, end
 
-    def select_current(self) -> str | None:
-        """Return insertion text for the selected item and close the popup."""
-        if (
-            not self.items
-            or self.selected_index < 0
-            or self.selected_index >= len(self.items)
-        ):
-            return None
-        item = self.items[self.selected_index]
-        text = self.get_insertion_text(item)
-        self.close()
-        self._notify_listeners()
-        return text
-
-    def on_text_change(self, text: str, cursor_pos: int | None = None) -> bool:
-        """Update autocomplete state on text change (alias for process_input)."""
-        return self.process_input(text, cursor_pos)
-
     def get_selected_item(self) -> object | None:
         """Return the currently selected item or None."""
         if (
@@ -578,14 +560,6 @@ class AutocompleteService:
         ):
             return None
         return self.items[self.selected_index]
-
-    def select_next(self) -> None:
-        """Move the selection cursor down by one (alias for move_down)."""
-        self.move_down()
-
-    def select_prev(self) -> None:
-        """Move the selection cursor up by one (alias for move_up)."""
-        self.move_up()
 
     def move_down(self) -> None:
         """Move the selection cursor down by one."""
