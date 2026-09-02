@@ -9,7 +9,7 @@ Based on `TECHNICAL_DEBT_BY_PACKAGE.md` and source code analysis.
 | ID | Title | Category | Priority | Effort |
 |----|-------|----------|----------|--------|
 | CODING-03 | Hardcoded `DEFAULT_SPELL_MAP` couples to spell implementations | Architecture Quirk | Medium | M |
-| CODING-05 | No validation of rune-provided spells | Gap | Medium | S-M |
+| CODING-05 | [RESOLVED] No validation of rune-provided spells | Gap | Medium | S-M |
 
 ---
 
@@ -51,9 +51,9 @@ Direct imports from `coding_mvge.spells` couple `coding-mvge` to specific builti
 
 ---
 
-## CODING-05: No Validation of Rune-Provided Spells
+## [RESOLVED] CODING-05: No Validation of Rune-Provided Spells
 
-**File**: `coding_mvge/mvge.py:108-114`
+**Status**: Resolved in `Mvge._build_spells()` (`mvge.py`, Issue #126)
 
 ### Root Cause
 ```python

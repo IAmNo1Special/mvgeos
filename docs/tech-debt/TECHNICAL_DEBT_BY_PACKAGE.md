@@ -72,7 +72,7 @@
 - **Hardcoded `DEFAULT_SPELL_MAP`**: `mvge.py:16-17` couples the agent to specific spell implementations rather than accepting a dynamic `SpellRegistry`.
 
 ### Gaps in Logic
-- **No validation of rune-provided spells**: `CodingMvge._build_spells()` in `mvge.py:108-114` appends registered rune spells without verifying their parameter schema compatibility or signature constraints.
+- [RESOLVED] **No validation of rune-provided spells**: Resolved via parameter schema validation, signature verification, and collision renaming in `Mvge._build_spells()` (`mvge.py`, Issue #126).
 
 ---
 

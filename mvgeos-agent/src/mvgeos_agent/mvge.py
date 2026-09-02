@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import dataclasses
 import inspect
 import logging
@@ -64,6 +65,56 @@ from mvgeos_agent.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_spell_parameters(parameters: Any) -> bool:
+    """Validate that parameters conform to a JSON Schema object dictionary."""
+    if not isinstance(parameters, dict):
+        return False
+    if not parameters:
+        return True
+
+    schema_type = parameters.get("type")
+    if schema_type is not None and schema_type != "object":
+        return False
+
+    properties = parameters.get("properties")
+    if properties is not None:
+        if not isinstance(properties, dict):
+            return False
+        for prop_name, prop_def in properties.items():
+            if not isinstance(prop_name, str) or not isinstance(prop_def, dict):
+                return False
+
+    required = parameters.get("required")
+    if required is not None:
+        if not isinstance(required, (list, tuple, set)):
+            return False
+        if not all(isinstance(r, str) for r in required):
+            return False
+
+    return True
+
+
+def _validate_spell_signature(spell: Any) -> bool:
+    """Validate that spell.execute matches the MvgeSpell execution contract."""
+    execute_fn = getattr(spell, "execute", None)
+    if not callable(execute_fn):
+        return False
+    try:
+        sig = inspect.signature(execute_fn)
+    except ValueError, TypeError:
+        return False
+
+    try:
+        sig.bind("dummy_id", {}, signal=None, on_update=None)
+        return True
+    except TypeError:
+        try:
+            sig.bind("dummy_id", {}, signal=None)
+            return True
+        except TypeError:
+            return False
 
 
 class Mvge:
@@ -396,11 +447,55 @@ class Mvge:
     def _build_spells(self) -> list[MvgeSpell]:
         """Convert injected callables and rune spells to executable MvgeSpells."""
         spells: list[MvgeSpell] = [coerce_spell(s) for s in self._spells]
+        seen_names: set[str] = {s.name for s in spells}
+
         if self._runner is not None:
             active = set(self._runner.get_active_spells())
             for rs in self._runner.get_all_registered_spells():
-                if rs.name in active:
-                    spells.append(cast(MvgeSpell, rs))
+                if rs.name not in active:
+                    continue
+
+                if not _validate_spell_parameters(getattr(rs, "parameters", None)):
+                    logger.warning(
+                        "Rune spell '%s' has an invalid parameter schema "
+                        "and will be skipped.",
+                        rs.name,
+                    )
+                    continue
+
+                if not _validate_spell_signature(rs):
+                    logger.warning(
+                        "Rune spell '%s' execution signature does not conform "
+                        "to the execution contract and will be skipped.",
+                        rs.name,
+                    )
+                    continue
+
+                spell_to_add: MvgeSpell = cast(MvgeSpell, rs)
+                spell_name = rs.name
+                if spell_name in seen_names:
+                    source_rune = getattr(rs, "source_rune", None) or "rune"
+                    prefixed_name = f"{source_rune}_{spell_name}"
+                    logger.warning(
+                        "Rune spell '%s' collides with existing spell; "
+                        "renaming to '%s'.",
+                        spell_name,
+                        prefixed_name,
+                    )
+                    if prefixed_name in seen_names:
+                        logger.warning(
+                            "Prefixed rune spell '%s' still collides with an "
+                            "existing spell and will be skipped.",
+                            prefixed_name,
+                        )
+                        continue
+                    spell_to_add = copy.copy(spell_to_add)
+                    spell_to_add.name = prefixed_name
+                    spell_name = prefixed_name
+
+                seen_names.add(spell_name)
+                spells.append(spell_to_add)
+
         return spells
 
     def _build_system_prompt(self) -> str:
