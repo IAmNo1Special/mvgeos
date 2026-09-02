@@ -9,6 +9,11 @@ This package implements the concrete coding agent: `root_mvge = Mvge(name="codin
 - Use `pathlib.Path` for all file path operations — never raw string concatenation
 - Mock sync methods with `MagicMock()`, async methods with `AsyncMock()` — mixing causes "coroutine never awaited" warnings
 
+## Design Philosophy & Standards
+
+- **Strict Standards Adherence**: 100% adherence to open protocols (`.agents`, `agentskills.io`, standard JSON Schema, MCP). Do not build polyfills or fallbacks for proprietary deviations (e.g. inject only `AGENTS.md`, never `CLAUDE.md`).
+- **Zero Backward Compatibility Burden**: Keep the architecture greenfield and clean without legacy shims.
+
 ## Testing
 
 ```bash

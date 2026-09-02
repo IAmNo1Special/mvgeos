@@ -1,6 +1,6 @@
-# mvgeos-Agent — Agent Instructions
+# mvgeos-agent — Agent Instructions
 
-This package implements the core BaseMvge: the `BaseMvge` class (agent), `MvgeLoop` (turn loop), `MvgeState` (mutable state), `MvgeEvent` (lifecycle events), `EventBus` (pub/sub), and `Sigil` (hook protocol).
+This package implements the core agent engine: the `Mvge` class, `MvgeLoop` (turn loop), `MvgeState` (mutable state), `MvgeEvent` (lifecycle events), `EventBus` (pub/sub), `Sigil` (hook protocol), `MvgeEnvironment` (Two-Layer Invariant Scaffolding & dynamic prompt rendering), and `FunctionSpell` (callable tool coercion & discovery).
 
 ## Package-Specific Conventions
 
@@ -9,14 +9,19 @@ This package implements the core BaseMvge: the `BaseMvge` class (agent), `MvgeLo
 - Use `pathlib.Path` for all file path operations — never raw string concatenation
 - Mock sync methods with `MagicMock()`, async methods with `AsyncMock()` — mixing causes "coroutine never awaited" warnings
 
+## Design Philosophy & Standards
+
+- **Strict Standards Adherence**: 100% adherence to open protocols (`.agents`, `agentskills.io`, standard JSON Schema, MCP). Do not build polyfills or fallbacks for proprietary deviations (e.g. inject only `AGENTS.md`, never `CLAUDE.md`).
+- **Zero Backward Compatibility Burden**: Keep the architecture greenfield and clean without legacy shims.
+
 ## Testing
 
 ```bash
 # Run this package's tests
-uv run pytest mvgeos-agent/tests/
+uv run python -m pytest mvgeos-agent/tests/
 
 # Run with coverage
-uv run pytest mvgeos-agent/tests/ --cov
+uv run python -m pytest mvgeos-agent/tests/ --cov
 ```
 
 Test paths follow pattern: `mvgeos-agent/tests/unit/<module>.py` and `mvgeos-agent/tests/integration/<module>.py`
@@ -27,16 +32,16 @@ Test paths follow pattern: `mvgeos-agent/tests/unit/<module>.py` and `mvgeos-age
 | --- | --- |
 | `MvgeState` | Mutable agent state (prompt, model, spells, invocations, mana, events, queues) |
 | `MvgeEvent` / `MvgeEventType` | Lifecycle event (type + data dict) |
-| `MvgeSpell` | Tool base class; JSON-schema → Pydantic arg validation, abstract `execute()` |
+| `MvgeSpell` / `FunctionSpell` | Tool base class and auto-coerced Python function spell |
 | `SpellResult` | Result of a spell execution (status, content, details, error) |
 | `SpellStatus` | Enum (SUCCESS, ERROR, PARTIAL) |
 | `SpellResultMessage` | Transcript message for spell results (role="spellResult") |
 | `MvgeInvocation` | Union alias: `SummonerRequest \| MvgeResponse \| SpellResultMessage` |
 | `ContemplationLevel` | Reasoning-effort enum (maps to OpenRouter `reasoning.effort`) |
-| `BaseMvge` | Template-Method agent skeleton (`run()` → `_run_impl()`) |
+| `Mvge` | Concrete agent with zero-config auto-discovery (`run()` → `_run_impl()`) |
 | `MvgeLoop` | The turn loop: channels realm responses, executes spells, emits events/sigils |
 | `MvgeHarness` | Session-aware operational owner of the agent loop, compaction, and turns |
-| `MvgeEnvironment` | Layered config loading, prompt resolution, and diagnostic introspection |
+| `MvgeEnvironment` | Two-layer invariant scaffolding, layered config, and diagnostic introspection |
 | `CompactionRunner` | Orchestrates transcript compaction and summary generation |
 | `SpellDispatcher` | Executes tool call batches concurrently or sequentially |
 | `MvgeTome` | Deep session manager over `TomeLedger`; open/create/fork/switch; emits session sigils |

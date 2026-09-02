@@ -26,6 +26,11 @@ Work as a pair programmer, not a silent code generator:
 
 Run the project's tests and linters and review your own diff for unintended scope creep.
 
+## Design Philosophy & Standards
+
+- **Strict Standards Adherence (No Proprietary Polyfills)**: MvgeOS adheres 100% to open, consensus-driven protocols and standards (e.g., the `.agents` protocol, `agentskills.io` specification, standard JSON Schema, OpenRouter APIs, MCP, standard Python typing and PEPs). Never implement proprietary fallbacks, vendor-specific shims, or polyfills for tools that diverge from standard protocols (e.g., strictly discover and inject `AGENTS.md`, never `CLAUDE.md`). External tools and ecosystems align with the open standard, not the other way around.
+- **Zero Backward Compatibility Burden**: Prioritize clean, greenfield architecture and modern standards over backward compatibility. Never retain legacy shims, deprecated code paths, or obsolete conventions.
+
 ## Development Rules
 
 MVGEOS IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https://github.com/earendil-works/pi) CHECK OUT IT'S SOURCE CODE FOR A REFRESHER ON HOW WE ARE MAKING MVGEOS
