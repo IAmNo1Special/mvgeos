@@ -23,6 +23,7 @@ def _mock_model() -> Model:
         max_tokens=1024,
     )
 
+
 @pytest.mark.asyncio
 async def test_resume_tome_resolves_prefix_id() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -63,6 +64,7 @@ async def test_resume_tome_resolves_prefix_id() -> None:
         assert agent2._agent_tome is not None
         assert agent2._agent_tome.tome_id == actual_id
 
+
 @pytest.mark.asyncio
 async def test_resume_tome_resolves_full_id() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -99,6 +101,7 @@ async def test_resume_tome_resolves_full_id() -> None:
 
         assert agent2._agent_tome is not None
         assert agent2._agent_tome.tome_id == actual_id
+
 
 @pytest.mark.asyncio
 async def test_resume_tome_resolves_raw_path() -> None:
@@ -138,6 +141,7 @@ async def test_resume_tome_resolves_raw_path() -> None:
         assert agent2._agent_tome is not None
         assert agent2._agent_tome.tome_id == actual_id
 
+
 @pytest.mark.asyncio
 async def test_resume_tome_missing_id_raises_error() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -162,6 +166,7 @@ async def test_resume_tome_missing_id_raises_error() -> None:
             await agent.initialize()
 
         assert "nonexistent_id" in str(exc_info.value)
+
 
 @pytest.mark.asyncio
 async def test_resume_matching_config_succeeds_without_warnings() -> None:
@@ -204,6 +209,7 @@ async def test_resume_matching_config_succeeds_without_warnings() -> None:
         # No resume diagnostics
         assert len(agent._resume_diagnostics) == 0
 
+
 @pytest.mark.asyncio
 async def test_resume_mismatched_model_non_strict_emits_diagnostic() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -238,6 +244,7 @@ async def test_resume_mismatched_model_non_strict_emits_diagnostic() -> None:
         assert agent._agent_tome.tome_id == meta.id
         diags = agent.diagnostics
         assert any("different-model" in d.message for d in diags)
+
 
 @pytest.mark.asyncio
 async def test_resume_mismatched_model_strict_raises_tome_incompatible() -> None:
@@ -277,6 +284,7 @@ async def test_resume_mismatched_model_strict_raises_tome_incompatible() -> None
         assert "different-model" in str(exc_info.value)
         assert exc_info.value.tome_id == meta.id
         assert exc_info.value.model_mismatch == ("different-model", "test-model")
+
 
 @pytest.mark.asyncio
 async def test_resume_missing_spells_strict_raises_tome_incompatible() -> None:
@@ -320,6 +328,7 @@ async def test_resume_missing_spells_strict_raises_tome_incompatible() -> None:
         assert "required_custom_spell" in str(exc_info.value)
         assert "required_custom_spell" in exc_info.value.missing_spells
 
+
 @pytest.mark.asyncio
 async def test_resume_missing_spells_non_strict_emits_diagnostic() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -357,6 +366,7 @@ async def test_resume_missing_spells_non_strict_emits_diagnostic() -> None:
         assert agent._agent_tome is not None
         diags = agent.diagnostics
         assert any("required_custom_spell" in d.message for d in diags)
+
 
 @pytest.mark.asyncio
 async def test_resume_force_fork_branches_incompatible_session() -> None:
@@ -405,6 +415,7 @@ async def test_resume_force_fork_branches_incompatible_session() -> None:
         entries = ledger.get_entries(agent._agent_tome.tome_id)
         assert len(entries) >= 1
         assert entries[0].id == e1.id
+
 
 @pytest.mark.asyncio
 async def test_validate_tome_compatibility_helper() -> None:
