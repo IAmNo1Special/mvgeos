@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-09-02
+
+
+### Bug Fixes
+
+- **coding-mvge:** make system prompt fallback tests hermetic (aca960a)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (2100ccf)
+
+- **release:** v1.12.0 (99ffa82)
+
+
+### Documentation
+
+- add Design Philosophy & Standards to AGENTS.md files (614e7b3)
+
+
+### Features
+
+- **agent:** implement Two-Layer Invariant Scaffolding and modular coding agent (685f807)
+
+- **mvgeos-agent:** validate rune spell schema and signature on assembly (#126) (432b45e)
+
+
+### Refactoring
+
+- **runes:** make RuneContext immutable and thread-safe (#123) (1156c54)
+
+- **cli:** decouple CLI command runners via MvgeAgent protocol and factory (9d93cc6)
+
+- **runes:** remove dead RuneLoader, legacy load_runes, and unneeded sigil helpers (d78de65)
+
+- **tome:** remove dead Index, obsolete INVOCATION, fix ledger typo (e3097ef)
+
+- **provider:** eliminate duplicate model registry loading, dead get_model export, and null abort signal (a8341bd)
+
+
 ## [1.11.0] - 2026-09-01
 
 
