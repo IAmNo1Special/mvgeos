@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
@@ -12,6 +13,7 @@ import httpx
 from mvgeos_provider.base import Realm
 from mvgeos_provider.retry import (
     ServerRetryDelayTooLongError,
+    is_retryable_realm_response,
     is_retryable_status,
     realm_request_delay_ms,
 )
@@ -27,6 +29,23 @@ from mvgeos_provider.types import (
 
 
 @dataclass
+class ParsedError:
+    """Structured error extracted from an HTTP response or SSE error chunk."""
+
+    message: str
+    error_code: str | None = None
+    retry_after: float | None = None
+    limit_source: str | None = None
+    remedy_hint: str | None = None
+    reset_at: float | None = None
+    quota_limit: int | None = None
+    quota_remaining: int | None = None
+
+    def __iter__(self) -> Any:
+        return iter((self.message, self.error_code))
+
+
+@dataclass
 class SSEChunk:
     """Parsed Server-Sent Events delta or chunk."""
 
@@ -37,38 +56,36 @@ class SSEChunk:
     usage: dict[str, Any] | None = None
 
 
-async def _sleep_with_signal(delay_seconds: float, signal: AbortSignal | None) -> None:
-    """Sleep for delay_seconds, but abort early if signal is aborted."""
+async def _sleep_with_signal(delay_s: float, signal: AbortSignal | None) -> None:
+    """Sleep for delay_s seconds, waking immediately if signal is aborted."""
     if signal is None:
-        await asyncio.sleep(delay_seconds)
+        await asyncio.sleep(delay_s)
         return
-
     if signal.aborted:
         raise AbortError("Operation aborted")
 
-    task = asyncio.ensure_future(asyncio.sleep(delay_seconds))
-
-    def _on_abort() -> None:
-        if not task.done():
-            task.cancel()
-
-    signal.on_abort(_on_abort)
-    try:
-        await task
-    except asyncio.CancelledError:
-        if signal.aborted:
-            raise AbortError("Operation aborted") from None
-        raise
+    sleep_task = asyncio.create_task(asyncio.sleep(delay_s))
+    wait_task = asyncio.create_task(signal.wait())
+    done, pending = await asyncio.wait(
+        [sleep_task, wait_task], return_when=asyncio.FIRST_COMPLETED
+    )
+    for task in pending:
+        task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await asyncio.gather(*pending)
+    if signal.aborted:
+        raise AbortError("Operation aborted")
 
 
-def _error_from_response(response: Any) -> tuple[str, str | None]:
-    """Extract human-readable error message and error code from an HTTP response."""
+def _error_from_response(response: Any) -> ParsedError:
+    """Extract error message, error code, and diagnostics from an HTTP response."""
     try:
         body = response.read()
         error_data = json.loads(body.decode("utf-8")) if body else {}
     except Exception:
         error_data = {}
-    message = error_data.get("error", {}).get("message", f"HTTP {response.status_code}")
+    err_obj = error_data.get("error", {})
+    message = err_obj.get("message", f"HTTP {response.status_code}")
     if message:
         message = message.replace("\r\n", "\n").replace("\r", "\n").strip("\n")
     if response.status_code == 429:
@@ -79,7 +96,60 @@ def _error_from_response(response: Any) -> tuple[str, str | None]:
         error_code = "auth_failed"
     else:
         error_code = None
-    return message, error_code
+
+    err_dict = err_obj if isinstance(err_obj, dict) else {}
+    metadata = err_dict.get("metadata", {}) if isinstance(err_dict, dict) else {}
+    limit_source = metadata.get("limit_source") if isinstance(metadata, dict) else None
+    remedy_hint = metadata.get("remedy_hint") if isinstance(metadata, dict) else None
+    meta_headers = metadata.get("headers", {}) if isinstance(metadata, dict) else {}
+
+    resp_headers = getattr(response, "headers", {}) or {}
+
+    def _get_h(key: str) -> str | None:
+        for k in (key, key.lower(), key.title(), key.upper()):
+            if k in resp_headers:
+                return str(resp_headers[k])
+        if meta_headers:
+            for k in (key, key.lower(), key.title(), key.upper()):
+                if k in meta_headers:
+                    return str(meta_headers[k])
+        return None
+
+    quota_limit: int | None = None
+    q_lim = _get_h("x-ratelimit-limit")
+    if q_lim is not None:
+        with contextlib.suppress(Exception):
+            quota_limit = int(float(q_lim))
+
+    quota_remaining: int | None = None
+    q_rem = _get_h("x-ratelimit-remaining")
+    if q_rem is not None:
+        with contextlib.suppress(Exception):
+            quota_remaining = int(float(q_rem))
+
+    reset_at: float | None = None
+    q_reset = _get_h("x-ratelimit-reset")
+    if q_reset is not None:
+        with contextlib.suppress(Exception):
+            val_f = float(q_reset)
+            reset_at = val_f / 1000.0 if val_f > 1e11 else val_f
+
+    retry_after: float | None = None
+    q_retry = _get_h("retry-after")
+    if q_retry is not None:
+        with contextlib.suppress(Exception):
+            retry_after = float(q_retry)
+
+    return ParsedError(
+        message=message,
+        error_code=error_code,
+        retry_after=retry_after,
+        limit_source=limit_source,
+        remedy_hint=remedy_hint,
+        reset_at=reset_at,
+        quota_limit=quota_limit,
+        quota_remaining=quota_remaining,
+    )
 
 
 class SSEStreamingRealm(Realm, ABC):
@@ -138,7 +208,7 @@ class SSEStreamingRealm(Realm, ABC):
             breakdown["contemplation"] = float(reasoning)
         return breakdown
 
-    def _parse_error(self, response: Any) -> tuple[str, str | None]:
+    def _parse_error(self, response: Any) -> ParsedError:
         """Extract error message and code from a non-200 HTTP response."""
         return _error_from_response(response)
 
@@ -168,26 +238,62 @@ class SSEStreamingRealm(Realm, ABC):
                 timeout=config.timeout_ms / 1000,
             ) as response:
                 try:
+                    retryable_chunk_error: RealmResponse | None = None
+                    parsed_err: ParsedError | None = None
                     if response.status_code == 200:
+                        streamed_any = False
                         async for item in self._consume_stream(model, response):
                             if signal is not None and signal.aborted:
                                 raise AbortError("Operation aborted")
+                            if (
+                                item.error_message
+                                and not streamed_any
+                                and is_retryable_realm_response(item)
+                                and attempt < max_attempts - 1
+                            ):
+                                retryable_chunk_error = item
+                                break
+                            streamed_any = True
                             yield item
-                        return
-
-                    message, error_code = self._parse_error(response)
-                    if not is_retryable_status(response.status_code, response.headers):
-                        yield RealmResponse(
-                            model=model, error_message=message, error_code=error_code
-                        )
-                        return
+                        if retryable_chunk_error is None:
+                            return
+                        message = retryable_chunk_error.error_message or ""
+                        error_code = retryable_chunk_error.error_code
+                    else:
+                        parsed_err = self._parse_error(response)
+                        message, error_code = parsed_err
+                        if not is_retryable_status(
+                            response.status_code, response.headers
+                        ):
+                            yield RealmResponse(
+                                model=model,
+                                error_message=message,
+                                error_code=error_code,
+                                retry_after=parsed_err.retry_after,
+                                limit_source=parsed_err.limit_source,
+                                remedy_hint=parsed_err.remedy_hint,
+                                reset_at=parsed_err.reset_at,
+                                quota_limit=parsed_err.quota_limit,
+                                quota_remaining=parsed_err.quota_remaining,
+                            )
+                            return
                 finally:
                     if signal is not None and signal.aborted:
                         await response.aclose()
 
                 if attempt >= max_attempts - 1:
                     yield RealmResponse(
-                        model=model, error_message=message, error_code=error_code
+                        model=model,
+                        error_message=message,
+                        error_code=error_code,
+                        retry_after=parsed_err.retry_after if parsed_err else None,
+                        limit_source=parsed_err.limit_source if parsed_err else None,
+                        remedy_hint=parsed_err.remedy_hint if parsed_err else None,
+                        reset_at=parsed_err.reset_at if parsed_err else None,
+                        quota_limit=parsed_err.quota_limit if parsed_err else None,
+                        quota_remaining=parsed_err.quota_remaining
+                        if parsed_err
+                        else None,
                     )
                     return
 
@@ -234,6 +340,49 @@ class SSEStreamingRealm(Realm, ABC):
                 chunk = json.loads(data)
             except json.JSONDecodeError:
                 continue
+
+            if isinstance(chunk, dict) and chunk.get("error"):
+                err = chunk["error"]
+                err_msg = (
+                    err.get("message", "Stream error")
+                    if isinstance(err, dict)
+                    else str(err)
+                )
+                err_code = err.get("code") if isinstance(err, dict) else None
+                meta = err.get("metadata", {}) if isinstance(err, dict) else {}
+                meta_hdrs = meta.get("headers", {}) if isinstance(meta, dict) else {}
+                q_lim = meta_hdrs.get("X-RateLimit-Limit")
+                q_rem = meta_hdrs.get("X-RateLimit-Remaining")
+                q_reset = meta_hdrs.get("X-RateLimit-Reset")
+                quota_limit = None
+                if q_lim is not None:
+                    with contextlib.suppress(Exception):
+                        quota_limit = int(float(q_lim))
+                quota_remaining = None
+                if q_rem is not None:
+                    with contextlib.suppress(Exception):
+                        quota_remaining = int(float(q_rem))
+                reset_at = None
+                if q_reset is not None:
+                    with contextlib.suppress(Exception):
+                        rf = float(q_reset)
+                        reset_at = rf / 1000.0 if rf > 1e11 else rf
+
+                yield RealmResponse(
+                    model=model,
+                    error_message=err_msg,
+                    error_code=str(err_code) if err_code is not None else None,
+                    limit_source=(
+                        meta.get("limit_source") if isinstance(meta, dict) else None
+                    ),
+                    remedy_hint=(
+                        meta.get("remedy_hint") if isinstance(meta, dict) else None
+                    ),
+                    quota_limit=quota_limit,
+                    quota_remaining=quota_remaining,
+                    reset_at=reset_at,
+                )
+                return
 
             parsed = self._parse_sse_chunk(chunk)
             if parsed is None:

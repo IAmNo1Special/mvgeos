@@ -196,3 +196,68 @@ class TestOpenRouterComplete:
         )
         assert asyncio.iscoroutine(coro)
         await coro
+
+    @pytest.mark.asyncio
+    async def test_prepare_request_injects_system_prompt(self) -> None:
+        realm = OpenRouterRealm(api_key="test-key")
+        model = _model()
+        config = ChannelConfig(model=model, system_prompt="You are a Mvge.")
+
+        class DummyUserMsg:
+            role = "user"
+            content = "hello"
+
+        _url, _headers, payload = realm._prepare_request(
+            model, [DummyUserMsg()], config
+        )
+        assert len(payload["messages"]) == 2
+        assert payload["messages"][0] == {
+            "role": "system",
+            "content": "You are a Mvge.",
+        }
+        assert payload["messages"][1] == {"role": "user", "content": "hello"}
+
+    @pytest.mark.asyncio
+    async def test_prepare_request_does_not_duplicate_existing_system_message(
+        self,
+    ) -> None:
+        realm = OpenRouterRealm(api_key="test-key")
+        model = _model()
+        config = ChannelConfig(model=model, system_prompt="You are a Mvge.")
+
+        class DummySysMsg:
+            role = "system"
+            content = "Existing system."
+
+        class DummyUserMsg:
+            role = "user"
+            content = "hello"
+
+        _url, _headers, payload = realm._prepare_request(
+            model, [DummySysMsg(), DummyUserMsg()], config
+        )
+        assert len(payload["messages"]) == 2
+        assert payload["messages"][0] == {
+            "role": "system",
+            "content": "Existing system.",
+        }
+        assert payload["messages"][1] == {"role": "user", "content": "hello"}
+
+    @pytest.mark.asyncio
+    async def test_complete_injects_system_prompt_when_missing(self) -> None:
+        realm = OpenRouterRealm(api_key="test-key")
+        realm._client.post = AsyncMock(return_value=_Response(payload=_completion()))
+        config = ChannelConfig(model=_model(), system_prompt="Base sys prompt.")
+
+        await realm.complete(
+            _model(),
+            [{"role": "user", "content": "hello"}],
+            config,
+        )
+
+        sent_payload = realm._client.post.call_args.kwargs["json"]
+        assert sent_payload["messages"][0] == {
+            "role": "system",
+            "content": "Base sys prompt.",
+        }
+        assert sent_payload["messages"][1] == {"role": "user", "content": "hello"}

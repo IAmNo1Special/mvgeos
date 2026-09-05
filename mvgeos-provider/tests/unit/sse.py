@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -471,3 +472,147 @@ async def test_close_realm() -> None:
 
     owned_realm = DummySSERealm()
     await owned_realm.close()
+
+
+@pytest.mark.asyncio
+async def test_stream_chunk_error_surfaces_realm_response() -> None:
+    lines = [
+        b'data: {"id":"gen-1","choices":[],"error":'
+        b'{"code":400,"message":"Invalid tool name"}}\n\n',
+    ]
+    realm = DummySSERealm(client=_make_client(lines))
+    model = _test_model()
+    config = ChannelConfig(model=model)
+
+    responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 1
+    assert responses[0].error_message == "Invalid tool name"
+    assert responses[0].error_code == "400"
+
+
+@pytest.mark.asyncio
+async def test_stream_chunk_error_retryable_recovers() -> None:
+    err_chunk = (
+        b'data: {"error":{"code":503,"message":"Upstream error from Nvidia: '
+        b'Service temporarily overloaded"}}\n\n'
+    )
+    rec_chunk = (
+        b'data: {"choices":[{"delta":{"content":"recovered"},'
+        b'"finish_reason":"stop"}]}\n\n'
+    )
+    entries = [
+        (200, {}, [err_chunk], b""),
+        (200, {}, [rec_chunk, b"data: [DONE]\n\n"], b""),
+    ]
+    client = _make_sequence_client(entries)
+    realm = DummySSERealm(client=client)
+    model = _test_model()
+    config = ChannelConfig(model=model, max_retries=2)
+
+    with patch("mvgeos_provider.sse.realm_request_delay_ms", return_value=0.0):
+        responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) > 0
+    assert any(
+        r.invocation is not None
+        and any(c.get("text") == "recovered" for c in r.invocation.content)
+        for r in responses
+    )
+
+
+@pytest.mark.asyncio
+async def test_stream_chunk_error_retryable_exhausts_retries() -> None:
+    err_chunk = (
+        b'data: {"error":{"code":503,"message":"Upstream error from Nvidia: '
+        b'Service temporarily overloaded"}}\n\n'
+    )
+    entries = [
+        (200, {}, [err_chunk], b""),
+        (200, {}, [err_chunk], b""),
+    ]
+    client = _make_sequence_client(entries)
+    realm = DummySSERealm(client=client)
+    model = _test_model()
+    config = ChannelConfig(model=model, max_retries=2)
+
+    with patch("mvgeos_provider.sse.realm_request_delay_ms", return_value=0.0):
+        responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 1
+    assert "temporarily overloaded" in (responses[0].error_message or "")
+
+
+def test_error_from_response_parses_openrouter_rate_limit_metadata() -> None:
+    from mvgeos_provider.sse import _error_from_response
+
+    class FakeResponse:
+        status_code = 429
+        headers = {
+            "x-ratelimit-limit": "50",
+            "x-ratelimit-remaining": "0",
+            "x-ratelimit-reset": "1788566400000",
+            "retry-after": "60",
+        }
+
+        def read(self) -> bytes:
+            body = {
+                "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded: free-models-per-day.",
+                    "metadata": {
+                        "limit_source": "openrouter_free_tier_daily",
+                        "remedy_hint": "Wait for daily reset or purchase credits.",
+                    },
+                }
+            }
+            return json.dumps(body).encode("utf-8")
+
+    err = _error_from_response(FakeResponse())
+    assert err.message == "Rate limit exceeded: free-models-per-day."
+    assert err.error_code == "rate_limited"
+    assert err.limit_source == "openrouter_free_tier_daily"
+    assert err.remedy_hint == "Wait for daily reset or purchase credits."
+    assert err.quota_limit == 50
+    assert err.quota_remaining == 0
+    assert err.reset_at == 1788566400.0
+    assert err.retry_after == 60.0
+
+    # Unpack as tuple
+    msg, code = err
+    assert msg == "Rate limit exceeded: free-models-per-day."
+    assert code == "rate_limited"
+
+
+@pytest.mark.asyncio
+async def test_stream_exhausts_retries_surfaces_diagnostic_fields() -> None:
+    err_body = json.dumps(
+        {
+            "error": {
+                "code": 429,
+                "message": "Rate limit exceeded: free-models-per-day.",
+                "metadata": {
+                    "limit_source": "openrouter_free_tier_daily",
+                    "remedy_hint": "Add credits",
+                },
+            }
+        }
+    ).encode("utf-8")
+
+    entries = [
+        (429, {"x-ratelimit-limit": "50", "x-ratelimit-remaining": "0"}, [], err_body),
+    ]
+    client = _make_sequence_client(entries)
+    realm = DummySSERealm(client=client)
+    model = _test_model()
+    config = ChannelConfig(model=model, max_retries=1)
+
+    responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 1
+    resp = responses[0]
+    assert resp.error_code == "rate_limited"
+    assert resp.limit_source == "openrouter_free_tier_daily"
+    assert resp.remedy_hint == "Add credits"
+    assert resp.quota_limit == 50
+    assert resp.quota_remaining == 0

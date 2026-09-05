@@ -29,7 +29,9 @@ def _supports_reasoning(model: Model) -> bool:
 def _invocations_to_messages(invocations: list[Any]) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
     for inv in invocations:
-        if hasattr(inv, "role") and inv.role == "user":
+        if hasattr(inv, "role") and inv.role == "system":
+            messages.append({"role": "system", "content": inv.content or ""})
+        elif hasattr(inv, "role") and inv.role == "user":
             messages.append({"role": "user", "content": inv.content or ""})
         elif hasattr(inv, "role") and inv.role == "assistant":
             if hasattr(inv, "content") and inv.content:
@@ -111,6 +113,10 @@ class OpenRouterRealm(SSEStreamingRealm):
         config: ChannelConfig,
     ) -> tuple[str, dict[str, str], dict[str, Any]]:
         messages = _invocations_to_messages(invocations)
+        if config.system_prompt and not any(
+            m.get("role") == "system" for m in messages
+        ):
+            messages.insert(0, {"role": "system", "content": config.system_prompt})
         url, headers = self._prepare_request_url_and_headers(model)
 
         payload: dict[str, Any] = {
@@ -121,7 +127,11 @@ class OpenRouterRealm(SSEStreamingRealm):
             "stream": True,
         }
 
-        if _supports_reasoning(model) and not config.exclude_contemplation:
+        if (
+            _supports_reasoning(model)
+            and not config.exclude_contemplation
+            and config.contemplation_level not in ("none", "off", "")
+        ):
             reasoning: dict[str, Any] = {"effort": config.contemplation_level}
             if config.contemplation_budget is not None:
                 reasoning["max_tokens"] = config.contemplation_budget
@@ -169,10 +179,17 @@ class OpenRouterRealm(SSEStreamingRealm):
         """
         if signal is not None and signal.aborted:
             raise AbortError("Operation aborted")
+        effective_messages = list(messages)
+        if config.system_prompt and not any(
+            m.get("role") == "system" for m in effective_messages
+        ):
+            effective_messages.insert(
+                0, {"role": "system", "content": config.system_prompt}
+            )
         url, headers = self._prepare_request_url_and_headers(model)
         payload: dict[str, Any] = {
             "model": model.id,
-            "messages": messages,
+            "messages": effective_messages,
             "stream": False,
             "temperature": config.temperature,
             "max_tokens": config.max_tokens,
@@ -196,9 +213,17 @@ class OpenRouterRealm(SSEStreamingRealm):
             )
 
         if response.status_code != 200:
-            message, error_code = self._parse_error(response)
+            parsed_err = self._parse_error(response)
             return RealmResponse(
-                model=model, error_message=message, error_code=error_code
+                model=model,
+                error_message=parsed_err.message,
+                error_code=parsed_err.error_code,
+                retry_after=parsed_err.retry_after,
+                limit_source=parsed_err.limit_source,
+                remedy_hint=parsed_err.remedy_hint,
+                reset_at=parsed_err.reset_at,
+                quota_limit=parsed_err.quota_limit,
+                quota_remaining=parsed_err.quota_remaining,
             )
 
         data = response.json()

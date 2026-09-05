@@ -34,3 +34,49 @@ def test_model_supported_parameters() -> None:
     )
     assert "reasoning" in model.supported_parameters
     assert "temperature" in model.supported_parameters
+
+
+def test_channel_config_system_prompt() -> None:
+    from mvgeos_provider.types import ChannelConfig
+
+    model = Model(
+        id="openrouter/test-model",
+        name="Test",
+        realm="openrouter",
+        base_url="",
+        api_key="",
+    )
+    default_config = ChannelConfig(model=model)
+    assert default_config.system_prompt == ""
+
+    custom_config = ChannelConfig(model=model, system_prompt="You are a Mvge.")
+    assert custom_config.system_prompt == "You are a Mvge."
+
+
+def test_realm_response_has_diagnostic_fields() -> None:
+    from mvgeos_provider.types import RealmResponse
+
+    model = Model(
+        id="openrouter/test-model",
+        name="Test",
+        realm="openrouter",
+        base_url="",
+        api_key="",
+    )
+    resp = RealmResponse(
+        model=model,
+        error_message="Rate limit exceeded",
+        error_code="rate_limited",
+        retry_after=15.0,
+        limit_source="openrouter_free_tier_daily",
+        remedy_hint="Add credits to unlock 1000 requests",
+        reset_at=1788566400.0,
+        quota_limit=50,
+        quota_remaining=0,
+    )
+    assert resp.retry_after == 15.0
+    assert resp.limit_source == "openrouter_free_tier_daily"
+    assert resp.remedy_hint == "Add credits to unlock 1000 requests"
+    assert resp.reset_at == 1788566400.0
+    assert resp.quota_limit == 50
+    assert resp.quota_remaining == 0

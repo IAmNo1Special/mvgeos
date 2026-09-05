@@ -142,13 +142,14 @@ class ChannelConfig:
     temperature: float = 0.7
     max_tokens: int = 4096
     max_output_mana: int | None = None
-    timeout_ms: int = 60000
+    timeout_ms: int = 120000
     max_retries: int = 3
     contemplation_level: str = "medium"
     contemplation_budget: int | None = None
     exclude_contemplation: bool = False
     tools: list[dict[str, Any]] = field(default_factory=list)
     meta_data: dict[str, Any] = field(default_factory=dict)
+    system_prompt: str = ""
 
 
 @dataclass
@@ -159,3 +160,9 @@ class RealmResponse:
     stop_reason: str = "stop"
     error_message: str | None = None
     error_code: str | None = None
+    retry_after: float | None = None
+    limit_source: str | None = None
+    remedy_hint: str | None = None
+    reset_at: float | None = None
+    quota_limit: int | None = None
+    quota_remaining: int | None = None
