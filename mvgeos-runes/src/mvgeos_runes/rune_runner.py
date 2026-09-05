@@ -5,6 +5,7 @@ import contextlib
 import logging
 import traceback
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 from mvgeos_runes.rune_api import RuneAPI
@@ -105,6 +106,7 @@ class RuneRunner:
         # only narrows/freezes its own entry; it never locks out other runes.
         self._active_spells_by_rune: dict[str | None, set[str]] = {}
         self._pinned_runes: set[str | None] = set()
+        self._rune_handlers: dict[str, dict[SigilHook, list[Handler]]] = {}
 
     @property
     def context(self) -> RuneContext:
@@ -139,10 +141,45 @@ class RuneRunner:
     def bind_context(self, context: RuneContext) -> None:
         self._context = context
 
-    def register_handler(self, hook: SigilHook, handler: Any) -> None:
+    def register_handler(
+        self, hook: SigilHook, handler: Any, rune_name: str | None = None
+    ) -> None:
         if hook not in self._sigil_handlers:
             self._sigil_handlers[hook] = []
         self._sigil_handlers[hook].append(handler)
+        if rune_name is not None:
+            self._rune_handlers.setdefault(rune_name, {}).setdefault(hook, []).append(
+                handler
+            )
+
+    def clear_rune(self, rune_name: str) -> None:
+        """Clear registrations and handlers associated with a rune before reload."""
+        to_remove_spells = [
+            k
+            for k, v in self._spells.items()
+            if getattr(v, "source_rune", None) == rune_name
+        ]
+        for k in to_remove_spells:
+            del self._spells[k]
+        if rune_name in self._active_spells_by_rune:
+            del self._active_spells_by_rune[rune_name]
+        self._pinned_runes.discard(rune_name)
+
+        to_remove_commands = [
+            k
+            for k, v in self._commands.items()
+            if getattr(v, "source_rune", None) == rune_name
+        ]
+        for k in to_remove_commands:
+            del self._commands[k]
+
+        if rune_name in self._rune_handlers:
+            for hook, handlers in self._rune_handlers[rune_name].items():
+                if hook in self._sigil_handlers:
+                    for h in handlers:
+                        if h in self._sigil_handlers[hook]:
+                            self._sigil_handlers[hook].remove(h)
+            del self._rune_handlers[rune_name]
 
     def get_sigil_handlers(self, hook: SigilHook) -> list[Handler]:
         return list(self._sigil_handlers.get(hook, []))
@@ -308,6 +345,8 @@ class RuneRunner:
             lines.append(f"### {manifest.name}")
             lines.append(f"**Description:** {manifest.description}")
             lines.append(f"**Source:** {manifest.scope.value} ({manifest.path})")
+            skill_md_path = (Path(manifest.path) / "SKILL.md").as_posix()
+            lines.append(f"**Location:** {skill_md_path}")
             if manifest.version:
                 lines.append(f"**Version:** {manifest.version}")
             lines.append("")
@@ -332,10 +371,12 @@ class RuneRunner:
     def set_session_name(self, name: str) -> None:
         self._session_name = name
 
-    def create_api(self, rune_name: str | None = None) -> RuneAPI:
+    def create_api(
+        self, rune_name: str | None = None, override: bool = False
+    ) -> RuneAPI:
         if rune_name is None:
             rune_name = self._current_loading_rune
-        return RuneAPI(self, rune_name)
+        return RuneAPI(self, rune_name, override=override)
 
     async def load_rune_loads(
         self,

@@ -19,19 +19,27 @@ RuneFactory = Callable[["RuneAPI"], None | Awaitable[None]]
 
 
 class RuneAPI:
-    def __init__(self, runner: RuneRunner, rune_name: str | None = None) -> None:
+    def __init__(
+        self,
+        runner: RuneRunner,
+        rune_name: str | None = None,
+        override: bool = False,
+    ) -> None:
         self._runner = runner
         self._rune_name = rune_name
+        self._override = override
 
     @property
     def sandbox(self) -> Sandbox:
         return self._runner.sandbox
 
     def on(self, hook: SigilHook, handler: Any) -> None:
-        self._runner.register_handler(hook, handler)
+        self._runner.register_handler(hook, handler, rune_name=self._rune_name)
 
     def register_spell(self, spell: SpellDefinition, override: bool = False) -> bool:
-        return self._runner.register_spell(spell, self._rune_name, override=override)
+        return self._runner.register_spell(
+            spell, self._rune_name, override=override or self._override
+        )
 
     def register_command(
         self,
@@ -42,7 +50,7 @@ class RuneAPI:
     ) -> bool:
         return self._runner.register_command(
             RegisteredCommand(name=name, description=description, handler=handler),
-            override=override,
+            override=override or self._override,
         )
 
     def register_shortcut(
@@ -54,7 +62,7 @@ class RuneAPI:
     ) -> bool:
         return self._runner.register_shortcut(
             RuneShortcut(key=key, description=description, handler=handler),
-            override=override,
+            override=override or self._override,
         )
 
     def register_provider(
@@ -63,7 +71,9 @@ class RuneAPI:
         config: dict[str, Any],
         override: bool = False,
     ) -> bool:
-        return self._runner.register_provider(name, config, override=override)
+        return self._runner.register_provider(
+            name, config, override=override or self._override
+        )
 
     def get_registered_providers(
         self,

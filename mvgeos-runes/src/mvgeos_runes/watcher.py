@@ -58,9 +58,14 @@ class _RuneReloadHandler(FileSystemEventHandler):
                     "No event loop available; dropping reload of %s", rune_name
                 )
                 return
+        if loop.is_closed():
+            return
         if self._debounce_future is not None and not self._debounce_future.done():
             self._debounce_future.cancel()
-        self._debounce_future = asyncio.run_coroutine_threadsafe(_debounced(), loop)
+        try:
+            self._debounce_future = asyncio.run_coroutine_threadsafe(_debounced(), loop)
+        except RuntimeError:
+            logger.debug("Event loop closed while scheduling reload of %s", rune_name)
 
     def _find_rune_dir(self, path: str) -> str | None:
         src_path = Path(path)
@@ -73,22 +78,29 @@ class _RuneReloadHandler(FileSystemEventHandler):
             return parts[0]
         return None
 
+    def _is_ignored(self, path: str) -> bool:
+        src = Path(path)
+        for part in src.parts:
+            if part == "__pycache__" or (part.startswith(".") and part != "."):
+                return True
+        return src.suffix in (".pyc", ".pyo", ".pyd", ".swp", ".tmp")
+
     def on_modified(self, event: FileSystemEvent) -> None:
-        if event.is_directory:
+        if event.is_directory or self._is_ignored(str(event.src_path)):
             return
         rune_name = self._find_rune_dir(str(event.src_path))
         if rune_name:
             self._schedule_reload(rune_name)
 
     def on_created(self, event: FileSystemEvent) -> None:
-        if event.is_directory:
+        if event.is_directory or self._is_ignored(str(event.src_path)):
             return
         rune_name = self._find_rune_dir(str(event.src_path))
         if rune_name:
             self._schedule_reload(rune_name)
 
     def on_deleted(self, event: FileSystemEvent) -> None:
-        if event.is_directory:
+        if event.is_directory or self._is_ignored(str(event.src_path)):
             return
         rune_name = self._find_rune_dir(str(event.src_path))
         if rune_name:
@@ -120,10 +132,11 @@ class RuneWatcher:
             return
 
         for sc in manifest.shortcuts:
-            self._runner.register_shortcut(sc)
+            self._runner.register_shortcut(sc, override=True)
 
         logger.info("Reloading rune: %s (%s)", rune_name, manifest.version)
-        api = self._runner.create_api(rune_name=rune_name)
+        self._runner.clear_rune(rune_name)
+        api = self._runner.create_api(rune_name=rune_name, override=True)
         result = factory(api)
         if isinstance(result, Awaitable):
             await result

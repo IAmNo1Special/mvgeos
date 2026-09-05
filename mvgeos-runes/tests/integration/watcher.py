@@ -254,6 +254,35 @@ class TestRuneReloadHandler:
             # Should not call callback for directory events
             callback.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_ignore_cache_and_bytecode_events(self) -> None:
+        from mvgeos_runes.watcher import _RuneReloadHandler
+
+        callback = AsyncMock()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            handler = _RuneReloadHandler(ext_dir, callback, debounce_seconds=0.01)
+
+            rune_dir = ext_dir / "test_rune"
+            pycache_dir = rune_dir / "__pycache__"
+            pycache_dir.mkdir(parents=True)
+
+            for path in [
+                str(pycache_dir / "module.cpython-314.pyc"),
+                str(rune_dir / "file.pyc"),
+                str(rune_dir / ".hidden_file"),
+            ]:
+                event = MagicMock()
+                event.is_directory = False
+                event.src_path = path
+
+                handler.on_modified(event)
+                handler.on_created(event)
+                handler.on_deleted(event)
+
+            await asyncio.sleep(0.05)
+            callback.assert_not_called()
+
 
 class TestRuneWatcherStartStop:
     @pytest.mark.asyncio
