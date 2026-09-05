@@ -137,6 +137,30 @@ class TestReplHelpers:
         assert "Retry in 2s..." in outputs[1]
         assert "Retry in 1s..." in outputs[2]
 
+    def test_render_live_rate_limit_daily_quota_skips_countdown(self) -> None:
+        import asyncio
+
+        from mvgeos_agent.errors import RateLimitError
+
+        from mvgeos_cli.commands.repl import _render_live_rate_limit
+
+        outputs: list[str] = []
+
+        async def dummy_sleep(sec: float) -> None:
+            raise AssertionError("sleep should not be called for daily quota")
+
+        exc = RateLimitError(
+            "Rate limit exceeded: free-models-per-day",
+            limit_source="openrouter_free_tier_daily",
+            quota_limit=50,
+            reset_at=1788566400.0,
+        )
+        asyncio.run(
+            _render_live_rate_limit(exc, out=outputs.append, sleep_fn=dummy_sleep)
+        )
+        assert len(outputs) == 1
+        assert "Daily free-model quota exhausted" in outputs[0]
+
     def test_format_error_rate_limit_with_retry_after(self) -> None:
         from mvgeos_agent.errors import RateLimitError
 

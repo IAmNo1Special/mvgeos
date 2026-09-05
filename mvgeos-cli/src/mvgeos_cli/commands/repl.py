@@ -244,6 +244,15 @@ async def _render_live_rate_limit(
     invalidate: Callable[[], None] | None = None,
     sleep_fn: Any = asyncio.sleep,
 ) -> None:
+    if exc.limit_source == "openrouter_free_tier_daily" or (
+        exc.retry_after is None and exc.limit_source
+    ):
+        markup = format_error(exc)
+        out(markup)
+        if invalidate is not None:
+            invalidate()
+        return
+
     seconds = int(exc.retry_after or 60)
     for sec in range(seconds, 0, -1):
         msg = f"[yellow]Rate limited by the provider. Retry in {sec}s...[/yellow]"
