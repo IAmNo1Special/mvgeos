@@ -1,0 +1,10 @@
+{
+  "name": "knowledge_skill",
+  "version": "0.2.0",
+  "description": "MvgeOS implementation of WikiSkill (arxiv:2608.27454) — persistent knowledge + skill evolution (pure markdown, agent-scoped raw_knowledge/knowledge/skills). Uses term 'knowledge' throughout (paper's 'wiki' -> 'knowledge').",
+  "hooks": ["after_invocation", "turn_end", "session_shutdown", "session_start"],
+  "entry_point": "rune_factory.py",
+  "python_deps": ["pydantic", "yaml"],
+  "execution_mode": "parallel",
+  "enabled": true
+}

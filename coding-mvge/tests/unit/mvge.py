@@ -130,7 +130,9 @@ class TestMvgeInit:
         assert agent._max_tokens == 2048
         assert agent._contemplation_level == "high"
 
-    def test_defaults(self) -> None:
+    def test_defaults(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
         agent = Mvge(api_key="k")
         assert agent._model_id == DEFAULT_MODEL
         assert agent._spells == []

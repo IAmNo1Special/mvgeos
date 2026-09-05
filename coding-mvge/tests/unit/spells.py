@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 from mvgeos_agent.types import SpellResult, SpellStatus
 
+import coding_mvge.spells as pkg_spells
 from coding_mvge.spells import (
     edit,
     find,
@@ -15,6 +16,21 @@ from coding_mvge.spells import (
     read,
     write,
 )
+
+
+class TestSpellsPackage:
+    def test_spells_package_exports(self) -> None:
+        import runpy
+
+        res = runpy.run_path(str(Path(pkg_spells.__file__)))
+
+        assert "read" in res["__all__"]
+        assert "write" in res["__all__"]
+        assert "edit" in res["__all__"]
+        assert "find" in res["__all__"]
+        assert "grep" in res["__all__"]
+        assert "list_files" in res["__all__"]
+        assert "bash" in res["__all__"]
 
 
 class TestReadSpell:
@@ -38,6 +54,15 @@ class TestReadSpell:
             result = await read("any.txt")
             assert result.status == SpellStatus.ERROR
             assert "denied" in result.error_message
+
+    @pytest.mark.asyncio
+    async def test_read_directory_with_skill_md(self, tmp_path: Path) -> None:
+        skill_dir = tmp_path / "my-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("# Skill Content", encoding="utf-8")
+        result = await read(str(skill_dir))
+        assert result.status == SpellStatus.SUCCESS
+        assert result.content == "# Skill Content"
 
 
 class TestWriteSpell:
