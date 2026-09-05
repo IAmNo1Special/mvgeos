@@ -59,12 +59,24 @@ The user on whose behalf a Mvge acts. A SummonerRequest is the Summoner's input 
 _Avoid_: User (as a spoken term), human, operator
 
 **Rune**:
-An extension: a packaged unit that hooks into a Mvge's lifecycle and can register Spells, commands, shortcuts, and Realms. Runes are user-installed (not built-in) and live in `~/.agents/.mvgeos/runes/`.
-_Avoid_: Extension (as a spoken term), plugin, addon
+An extension: a packaged unit that hooks into a Mvge's lifecycle and can register Spells, commands, shortcuts, and Realms. Built-in Runes live at `coding-mvge/src/coding_mvge/runes/<name>/` (e.g., `knowledge_skill`); user-installed Runes live at `~/.agents/.mvgeos/runes/` / `~/.agents/.mvgeos/{agent}/runes/` / `{cwd}/.agents/.mvgeos/runes/`. Distinct from Skill (declarative `SKILL.md`) and Spell (executable tool a Rune may register).
+_Avoid_: Extension (as a spoken term), plugin, addon, Skill
 
 **Skill**:
-A capability pack discovered and loaded per the agentskills.io specification: a directory containing `SKILL.md` with YAML frontmatter (name, description) and markdown instructions. Skills are distinct from Spells — scripts within skills may yield Spell-like executions but skills themselves are never loaded wholesale; it is disclosed progressively (catalog → full instructions → resources).
-_Avoid_: Tool, Spell, plugin
+A capability pack discovered per `agentskills.io` via `SKILL_SCOPES` (`PROJECT:.agents/skills`, `USER:~/.agents/skills`, `AGENT:~/.agents/.mvgeos/{agent}/skills`): a directory named `^[a-z0-9]+(-[a-z0-9]+)*$` (1-64 chars, must match `name` in frontmatter) containing `SKILL.md` (YAML frontmatter `name`/`description` 1-1024 chars + markdown instructions) and per WikiSkill `PURPOSE.md` (`Origin` + `Patterns Addressed` + `Evolution History`). Disclosed progressively (catalog → full instructions → resources), never executed directly. Distinct from Rune (executable extension) and Spell (executable tool).
+_Avoid_: Tool, Spell, Rune, plugin
+
+**Knowledge**:
+The persistent, compounding store that compiles `Raw Knowledge` into `knowledge/index.md` (catalog `[name](patterns/name.md): specific desc`), `knowledge/logs.md`, `knowledge/skill-impact.md` (harness-appended diff + `R_val` + `Accepted/Rejected`), and `knowledge/patterns/*.md` (10-30 lines: what, root cause, commands, workarounds) via `KnowledgeMaintainer` patch ops (`append`/`replace`/`insert_after` exact target). Renamed from `wiki` per `arxiv:2608.27454` to avoid overloaded `wiki` term; `WIKI_MAINTAINER_SYSTEM` -> `KNOWLEDGE_MAINTAINER_SYSTEM`.
+_Avoid_: Wiki (as a spoken term), memory, store
+
+**Raw Knowledge**:
+Immutable execution traces `raw_knowledge/iter_<k>/<trace>.json` (`T_train,k` per paper `§3.1`), the sole input to `KnowledgeMaintainer` alongside existing `Knowledge`. Never mutated, only appended.
+_Avoid_: Raw, traces, history
+
+**knowledge_skill Rune**:
+The built-in Rune at `coding-mvge/src/coding_mvge/runes/knowledge_skill/` that is our implementation of `WikiSkill: Compiling Agent Experience into Persistent Knowledge for Skill Evolution` (`arxiv:2608.27454`). It harvests `Raw Knowledge` via `AFTER_INVOCATION`, consolidates into `Knowledge` (`KnowledgeMaintainer` `§3.2.2`), and evolves `Skills` atomically (`propose_skill_update` `§3.2.3` with same-location saves via `SkillManifest.path`). Provides Spells `consolidate_knowledge`/`query_knowledge`/`propose_skill_update`/`list_knowledge`/`export_skill_plugin`, never mutates `.skill-lock.json` (reproducibility lock `~/.agents/.skill-lock.json` per `vercel-labs/skills`).
+_Avoid_: wiki_skill, WikiSkill (as a spoken term for the rune)
 
 **Channeling**:
 Streaming a response from a Realm — the act of receiving tokens incrementally. The protocol method is `channel()` (formerly `stream()`); the renderer is `ChannelRenderer`.
