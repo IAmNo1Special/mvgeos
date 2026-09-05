@@ -153,7 +153,15 @@ async def _run_turn(
         if response.error_message:
             error_code = getattr(response, "error_code", None)
             if error_code == "rate_limited":
-                raise RateLimitError(response.error_message)
+                raise RateLimitError(
+                    response.error_message,
+                    retry_after=getattr(response, "retry_after", None),
+                    limit_source=getattr(response, "limit_source", None),
+                    remedy_hint=getattr(response, "remedy_hint", None),
+                    reset_at=getattr(response, "reset_at", None),
+                    quota_limit=getattr(response, "quota_limit", None),
+                    quota_remaining=getattr(response, "quota_remaining", None),
+                )
             if error_code == "auth_failed":
                 raise AuthenticationError(response.error_message)
             raise RuntimeError(response.error_message)

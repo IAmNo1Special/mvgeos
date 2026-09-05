@@ -503,6 +503,38 @@ class TestRunLoopErrors:
             await run_loop(context, _stream(responses), emit, LoopCallbacks())
 
     @pytest.mark.asyncio
+    async def test_rate_limit_error_propagates_diagnostics(
+        self, context: LoopContext
+    ) -> None:
+        from mvgeos_agent.errors import RateLimitError
+
+        emit = Recorder()
+        responses = [
+            RealmResponse(
+                model=_model(),
+                error_message="Daily quota exceeded",
+                error_code="rate_limited",
+                retry_after=45.0,
+                limit_source="openrouter_free_tier_daily",
+                remedy_hint="Add credits",
+                reset_at=1788566400.0,
+                quota_limit=50,
+                quota_remaining=0,
+            )
+        ]
+
+        with pytest.raises(RateLimitError) as exc_info:
+            await run_loop(context, _stream(responses), emit, LoopCallbacks())
+
+        err = exc_info.value
+        assert err.retry_after == 45.0
+        assert err.limit_source == "openrouter_free_tier_daily"
+        assert err.remedy_hint == "Add credits"
+        assert err.reset_at == 1788566400.0
+        assert err.quota_limit == 50
+        assert err.quota_remaining == 0
+
+    @pytest.mark.asyncio
     async def test_auth_error_raised(self, context: LoopContext) -> None:
         from mvgeos_agent.errors import AuthenticationError
 

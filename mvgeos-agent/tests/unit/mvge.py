@@ -8,6 +8,7 @@ import pytest
 from mvgeos_runes.types import ExecutionMode, SpellDefinition
 
 from mvgeos_agent import Mvge
+from mvgeos_agent.mvge import _validate_spell_name
 from mvgeos_agent.types import AbortSignal
 
 
@@ -329,3 +330,74 @@ class TestMvgeBuildSpellsCollisionHandling:
             "dummy_built_in",
             "custom_rune_dummy_built_in",
         ]
+
+
+class TestMvgeBuildSpellsNameValidation:
+    def test_validate_spell_name_rules(self) -> None:
+        assert _validate_spell_name("valid_name") is True
+        assert _validate_spell_name("valid-name-123") is True
+        assert _validate_spell_name("UPPER_case") is True
+        assert _validate_spell_name("tool1") is True
+
+        assert _validate_spell_name("invalid.name") is False
+        assert _validate_spell_name("invalid name") is False
+        assert _validate_spell_name("invalid/name") is False
+        assert _validate_spell_name("") is False
+        assert _validate_spell_name(None) is False
+        assert _validate_spell_name(123) is False
+
+    def test_rune_spell_with_invalid_name_skipped(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        agent = Mvge(api_key="k", spells=[])
+        bad_spell = ValidRuneSpell(name="knowledge_skill.consolidate")
+        agent._runner = _create_mock_runner([bad_spell])
+
+        with caplog.at_level(logging.WARNING):
+            spells = agent._build_spells()
+
+        assert len(spells) == 0
+        assert (
+            "Rune spell 'knowledge_skill.consolidate' has an invalid name"
+            in caplog.text
+        )
+
+    def test_injected_spell_with_invalid_name_skipped(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        def invalid_dot_spell() -> str:
+            return "ok"
+
+        invalid_dot_spell.__name__ = "invalid.spell.name"
+
+        agent = Mvge(api_key="k", spells=[invalid_dot_spell])
+
+        with caplog.at_level(logging.WARNING):
+            spells = agent._build_spells()
+
+        assert len(spells) == 0
+        assert "Spell 'invalid.spell.name' has an invalid name" in caplog.text
+
+    def test_make_stream_fn_passes_system_prompt_to_channel_config(self) -> None:
+        from mvgeos_provider.types import Model
+
+        from mvgeos_agent.types import MvgeState
+
+        agent = Mvge(api_key="k", spells=[])
+        model = Model(id="m", name="n", realm="r", base_url="", api_key="")
+        mock_realm = MagicMock()
+        mock_realm.stream.return_value = []
+        state = MvgeState(system_prompt="Custom System Prompt with Skills")
+
+        stream_fn = agent._make_stream_fn(
+            model=model,
+            realm=mock_realm,
+            state=state,
+            temperature=0.5,
+            max_tokens=1000,
+        )
+        stream_fn([])
+
+        assert mock_realm.stream.called
+        call_config = mock_realm.stream.call_args.kwargs["config"]
+        assert call_config.system_prompt == "Custom System Prompt with Skills"

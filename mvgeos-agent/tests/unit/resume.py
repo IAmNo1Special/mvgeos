@@ -24,6 +24,12 @@ def _mock_model() -> Model:
     )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+
 @pytest.mark.asyncio
 async def test_resume_tome_resolves_prefix_id() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:

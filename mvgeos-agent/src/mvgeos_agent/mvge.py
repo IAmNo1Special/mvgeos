@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import importlib.util
 import inspect
 import logging
 import os
+import re
 from collections.abc import AsyncIterator, Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -65,6 +67,13 @@ from mvgeos_agent.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+SPELL_NAME_REGEX = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def _validate_spell_name(name: Any) -> bool:
+    """Validate spell name conforms to provider identifier standards."""
+    return isinstance(name, str) and bool(SPELL_NAME_REGEX.match(name))
 
 
 def _validate_spell_parameters(parameters: Any) -> bool:
@@ -139,18 +148,24 @@ class Mvge:
         environment: MvgeEnvironment | None = None,
         strict_resume: bool = False,
         force_fork_resume: bool = False,
+        caller_dir: Path | None = None,
     ) -> None:
-        caller_dir: Path | None = None
-        try:
-            caller_frame = inspect.stack()[1]
-            caller_file = caller_frame.filename
-            if caller_file:
-                caller_dir = Path(caller_file).resolve().parent
-                env_path = caller_dir / ".env"
-                if env_path.is_file():
-                    load_dotenv(env_path)
-        except Exception:
-            pass
+        resolved_caller_dir: Path | None = (
+            caller_dir.resolve() if caller_dir is not None else None
+        )
+        if resolved_caller_dir is None:
+            try:
+                caller_frame = inspect.stack()[1]
+                caller_file = caller_frame.filename
+                if caller_file:
+                    resolved_caller_dir = Path(caller_file).resolve().parent
+            except Exception:
+                pass
+        if resolved_caller_dir is not None:
+            env_path = resolved_caller_dir / ".env"
+            if env_path.is_file():
+                load_dotenv(env_path)
+        caller_dir = resolved_caller_dir
 
         self._api_key = (
             api_key
@@ -173,6 +188,33 @@ class Mvge:
             colocated_runes = str(caller_dir / "runes")
             if colocated_runes not in resolved_runes_paths:
                 resolved_runes_paths.append(colocated_runes)
+        # Discover built-in runes for named agent package
+        # (e.g., coding_mvge -> coding_mvge/runes)
+        # Ensures GUI/CLI `Mvge(name="coding_mvge")` from any caller_dir still finds
+        # `coding-mvge/src/coding_mvge/runes/knowledge_skill` (knowledge layer)
+        # Handles hyphen/underscore mismatch: agent "coding-mvge" vs "coding_mvge"
+        if name and name != DEFAULT_AGENT_NAME:
+            for try_name in (name, name.replace("-", "_"), name.replace("_", "-")):
+                try:
+                    spec = importlib.util.find_spec(try_name)
+                    if spec is None:
+                        continue
+                    pkg_path = None
+                    if spec.origin and spec.origin not in (None, "namespace"):
+                        pkg_path = Path(spec.origin).parent
+                    elif spec.submodule_search_locations:
+                        for loc in spec.submodule_search_locations:
+                            pkg_path = Path(loc)
+                            break
+                    if pkg_path is not None:
+                        candidate = pkg_path / "runes"
+                        if candidate.is_dir():
+                            cand_str = str(candidate)
+                            if cand_str not in resolved_runes_paths:
+                                resolved_runes_paths.append(cand_str)
+                            break
+                except Exception:
+                    continue
 
         self._custom_system_prompt = custom_system_prompt
         self._extension_dir = extension_dir
@@ -290,6 +332,14 @@ class Mvge:
         return self._environment
 
     @property
+    def spells(self) -> list[SpellUnion]:
+        return list(self._spells)
+
+    @property
+    def event_bus(self) -> EventBus:
+        return self._event_bus
+
+    @property
     def diagnostics(self) -> list[Diagnostic | SkillDiagnostic]:
         diags: list[Diagnostic | SkillDiagnostic] = list(self._resume_diagnostics)
         if self._environment is not None and self._environment.diagnostics:
@@ -314,6 +364,10 @@ class Mvge:
     def set_runner(self, runner: RuneRunner | None) -> None:
         """Inject an explicit RuneRunner."""
         self._runner = runner
+        if runner is not None:
+            runner.on_event(
+                "mvge_event", lambda ev: self._event_bus.emit(ev.type, ev.data)
+            )
         if self._rune_lifecycle is not None:
             self._rune_lifecycle._runner = runner
 
@@ -335,6 +389,10 @@ class Mvge:
         await self._rune_lifecycle.load()
         await self._rune_lifecycle.start()
         self._runner = self._rune_lifecycle.runner
+        if self._runner is not None:
+            self._runner.on_event(
+                "mvge_event", lambda ev: self._event_bus.emit(ev.type, ev.data)
+            )
         if self._rune_lifecycle.environment is not None:
             self._environment = self._rune_lifecycle.environment
         if self._environment.diagnostics:
@@ -437,13 +495,32 @@ class Mvge:
 
     def _build_spells(self) -> list[MvgeSpell]:
         """Convert injected callables and rune spells to executable MvgeSpells."""
-        spells: list[MvgeSpell] = [coerce_spell(s) for s in self._spells]
+        spells: list[MvgeSpell] = []
+        for s in self._spells:
+            spell = coerce_spell(s)
+            if not _validate_spell_name(spell.name):
+                logger.warning(
+                    "Spell '%s' has an invalid name (must match ^[a-zA-Z0-9_-]+$) "
+                    "and will be skipped.",
+                    spell.name,
+                )
+                continue
+            spells.append(spell)
+
         seen_names: set[str] = {s.name for s in spells}
 
         if self._runner is not None:
             active = set(self._runner.get_active_spells())
             for rs in self._runner.get_all_registered_spells():
                 if rs.name not in active:
+                    continue
+
+                if not _validate_spell_name(rs.name):
+                    logger.warning(
+                        "Rune spell '%s' has an invalid name "
+                        "(must match ^[a-zA-Z0-9_-]+$) and will be skipped.",
+                        rs.name,
+                    )
                     continue
 
                 if not _validate_spell_parameters(getattr(rs, "parameters", None)):
@@ -473,6 +550,13 @@ class Mvge:
                         spell_name,
                         prefixed_name,
                     )
+                    if not _validate_spell_name(prefixed_name):
+                        logger.warning(
+                            "Prefixed rune spell '%s' has an invalid name "
+                            "and will be skipped.",
+                            prefixed_name,
+                        )
+                        continue
                     if prefixed_name in seen_names:
                         logger.warning(
                             "Prefixed rune spell '%s' still collides with an "
@@ -569,6 +653,7 @@ class Mvge:
                     contemplation_budget=state.contemplation_budget,
                     exclude_contemplation=state.exclude_contemplation,
                     tools=tools,
+                    system_prompt=state.system_prompt,
                 ),
                 signal=signal,
             )

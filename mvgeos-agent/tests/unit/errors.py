@@ -71,6 +71,25 @@ def test_rate_limit_error_no_retry() -> None:
     assert err.retry_after is None
 
 
+def test_rate_limit_error_diagnostics() -> None:
+    err = RateLimitError(
+        "Rate limit exceeded: free-models-per-day",
+        retry_after=60.0,
+        limit_source="openrouter_free_tier_daily",
+        remedy_hint="Wait for daily reset",
+        reset_at=1788566400.0,
+        quota_limit=50,
+        quota_remaining=0,
+    )
+    assert err.code == "rate_limited"
+    assert err.retry_after == 60.0
+    assert err.limit_source == "openrouter_free_tier_daily"
+    assert err.remedy_hint == "Wait for daily reset"
+    assert err.reset_at == 1788566400.0
+    assert err.quota_limit == 50
+    assert err.quota_remaining == 0
+
+
 def test_authentication_error() -> None:
     err = AuthenticationError("auth failed")
     assert err.code == "auth_failed"

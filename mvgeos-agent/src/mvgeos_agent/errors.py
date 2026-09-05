@@ -30,9 +30,23 @@ class SpellDiscoveryError(MvgeError):
 
 
 class RateLimitError(MvgeError):
-    def __init__(self, message: str, retry_after: float | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        retry_after: float | None = None,
+        limit_source: str | None = None,
+        remedy_hint: str | None = None,
+        reset_at: float | None = None,
+        quota_limit: int | None = None,
+        quota_remaining: int | None = None,
+    ) -> None:
         super().__init__("rate_limited", message)
         self.retry_after = retry_after
+        self.limit_source = limit_source
+        self.remedy_hint = remedy_hint
+        self.reset_at = reset_at
+        self.quota_limit = quota_limit
+        self.quota_remaining = quota_remaining
 
 
 class AuthenticationError(MvgeError):
