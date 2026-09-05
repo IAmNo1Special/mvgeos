@@ -4,7 +4,9 @@ import argparse
 import asyncio
 import contextlib
 import ctypes
+import os
 import platform
+import secrets
 from pathlib import Path
 
 import webview
@@ -15,6 +17,33 @@ from mvgeos_gui.state import AppState
 
 DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 APP_TITLE = "MvgeOS"
+_STORAGE_SECRET_FILE = Path.home() / ".mvgeos" / ".storage_secret"
+
+
+def _get_storage_secret() -> str:
+    """Resolve the storage secret for NiceGUI signed cookies.
+
+    Priority:
+    1. ``STORAGE_SECRET`` environment variable
+    2. Persisted secret file at ``~/.mvgeos/.storage_secret``
+    3. Generate a new random secret and persist it
+    """
+    env_secret = os.environ.get("STORAGE_SECRET")
+    if env_secret:
+        return env_secret
+
+    try:
+        if _STORAGE_SECRET_FILE.exists():
+            return _STORAGE_SECRET_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
+
+    _STORAGE_SECRET_FILE.parent.mkdir(parents=True, exist_ok=True)
+    new_secret = secrets.token_urlsafe(32)
+    with contextlib.suppress(OSError):
+        _STORAGE_SECRET_FILE.write_text(new_secret, encoding="utf-8")
+
+    return new_secret
 
 
 def calculate_initial_window_geometry(
@@ -181,6 +210,7 @@ def main() -> None:
             reload=args.reload,
             dark=True,
             reconnect_timeout=60.0,
+            storage_secret=_get_storage_secret(),
         )
     state.stop_channeling()
 

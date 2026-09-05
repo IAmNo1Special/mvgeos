@@ -199,7 +199,10 @@ class ConfigService:
         return result
 
     def load_workspace_settings(self, project_dir: Path) -> WorkspaceSettings:
-        cm = ConfigManager(project_dir=project_dir)
+        cm = ConfigManager(
+            project_dir=project_dir,
+            agent_config_base=self._config_dir,
+        )
         config_values = cm.load()
 
         spells_val = config_values.get("spells_enabled")
@@ -248,7 +251,10 @@ class ConfigService:
     def save_workspace_settings(
         self, project_dir: Path, settings: WorkspaceSettings
     ) -> None:
-        cm = ConfigManager(project_dir=project_dir)
+        cm = ConfigManager(
+            project_dir=project_dir,
+            agent_config_base=self._config_dir,
+        )
         to_save: dict[str, Any] = {
             "spells_enabled": list(settings.spells_enabled),
             "contemplation_level": settings.contemplation_level,

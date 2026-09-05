@@ -20,14 +20,12 @@ from mvgeos_runes.loader import get_default_skill_paths, load_skills_from_paths
 from mvgeos_runes.types import SkillManifest
 from mvgeos_tome.types import TomeEntryType
 
-from mvgeos_gui.agent_service import AgentService
 from mvgeos_gui.autocomplete import (
     AutocompleteService,
     MentionChip,
     MentionIndex,
     SlashCommandRegistry,
 )
-from mvgeos_gui.config_service import ConfigService
 from mvgeos_gui.git_workspace import ChangedFile, get_changed_files, get_diff_for_file
 from mvgeos_gui.models import (
     Artifact,
@@ -35,8 +33,12 @@ from mvgeos_gui.models import (
     ChatMessage,
     SkillInfo,
     TaskStatus,
+    User,
 )
-from mvgeos_gui.tome_service import TomeListEntry, TomeService
+from mvgeos_gui.services.agent_service import AgentService
+from mvgeos_gui.services.auth_service import AuthService
+from mvgeos_gui.services.config_service import ConfigService
+from mvgeos_gui.services.tome_service import TomeListEntry, TomeService
 from mvgeos_gui.transcript import InvocationTranscript
 
 logger = logging.getLogger(__name__)
@@ -84,6 +86,11 @@ class AppState:
     )
     _show_app_settings: bool = False
     _show_workspace_settings: bool = False
+    _show_login: bool = False
+    _auth_service: AuthService = field(
+        default_factory=AuthService, repr=False, compare=False
+    )
+    current_user: User | None = field(default=None, repr=False, compare=False)
     current_view: str = "chat"
     sidebar_open: bool = True
     review_open: bool = False
@@ -602,8 +609,16 @@ class AppState:
         self.notify()
 
     def toggle_sidebar(self) -> None:
-        """Toggle left sidebar visibility."""
-        self.sidebar_open = not self.sidebar_open
+        """Toggle left sidebar collapsed state."""
+        try:
+            from nicegui import app as nicegui_app
+
+            nicegui_app.storage.user[
+                "sidebar-collapsed"
+            ] = not nicegui_app.storage.user.get("sidebar-collapsed", False)
+            self.sidebar_open = not nicegui_app.storage.user["sidebar-collapsed"]
+        except Exception:
+            self.sidebar_open = not self.sidebar_open
         self.notify()
 
     def toggle_review(self) -> None:
@@ -614,6 +629,16 @@ class AppState:
     def toggle_terminal(self) -> None:
         """Toggle terminal panel visibility."""
         self.terminal_open = not self.terminal_open
+        self.notify()
+
+    def show_login(self) -> None:
+        """Open the login dialog."""
+        self._show_login = True
+        self.notify()
+
+    def hide_login(self) -> None:
+        """Close the login dialog."""
+        self._show_login = False
         self.notify()
 
     def set_mvge_status(self, status: str) -> None:

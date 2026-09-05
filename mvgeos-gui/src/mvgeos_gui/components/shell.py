@@ -7,6 +7,7 @@ from mvgeos_gui.components.chat_panel import render_chat_panel
 from mvgeos_gui.components.command_palette import render_command_palette
 from mvgeos_gui.components.diagnostics_panel import render_diagnostics_panel
 from mvgeos_gui.components.home_screen import render_home_screen
+from mvgeos_gui.components.login_screen import render_login_screen
 from mvgeos_gui.components.notes_panel import render_notes_panel
 from mvgeos_gui.components.packages_panel import render_packages_panel
 from mvgeos_gui.components.review_rail import render_review_rail
@@ -45,8 +46,7 @@ def render_shell(state: AppState) -> None:
 
             @ui.refreshable
             def sidebar_container() -> None:
-                if state.sidebar_open:
-                    render_sidebar(state)
+                render_sidebar(state)
                 last_sidebar_state[0] = (
                     state.sidebar_open,
                     state.current_view,
@@ -187,6 +187,7 @@ def render_shell(state: AppState) -> None:
             getattr(state, "_selected_artifact_id", None),
             getattr(state, "_show_app_settings", False),
             getattr(state, "_show_workspace_settings", False),
+            getattr(state, "_show_login", False),
             len(state.artifacts),
         )
     ]
@@ -197,11 +198,14 @@ def render_shell(state: AppState) -> None:
         render_artifact_drawer(state)
         render_app_settings_modal(state)
         render_workspace_settings_modal(state)
+        if getattr(state, "_show_login", False):
+            render_login_screen(state)
         last_overlay_state[0] = (
             getattr(state, "_command_palette_open", False),
             getattr(state, "_selected_artifact_id", None),
             getattr(state, "_show_app_settings", False),
             getattr(state, "_show_workspace_settings", False),
+            getattr(state, "_show_login", False),
             len(state.artifacts),
         )
 
@@ -213,6 +217,7 @@ def render_shell(state: AppState) -> None:
             getattr(state, "_selected_artifact_id", None),
             getattr(state, "_show_app_settings", False),
             getattr(state, "_show_workspace_settings", False),
+            getattr(state, "_show_login", False),
             len(state.artifacts),
         )
         if cur != last_overlay_state[0]:

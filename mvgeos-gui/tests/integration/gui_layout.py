@@ -9,11 +9,21 @@ import pytest
 from mvgeos_runes.types import SkillManifest, SkillScope
 from mvgeos_tome.ledger import TomeLedger
 from nicegui import ui
-from nicegui.testing import User
 
 from mvgeos_gui.app import build_page, init_app
+from mvgeos_gui.models.user import User, UserRole
+from mvgeos_gui.services.tome_service import TomeService
 from mvgeos_gui.state import AppState
-from mvgeos_gui.tome_service import TomeService
+
+
+def _mock_user() -> User:
+    return User(
+        id="test-user",
+        username="test",
+        password_hash="mock",
+        role=UserRole.USER,
+        is_active=True,
+    )
 
 
 def _make_manifest(
@@ -64,6 +74,7 @@ def _init_git_repo(repo_path: Path, branch: str) -> None:
 async def test_full_shell_layout_rendering(user: User) -> None:
     """Verify 3-pane desktop shell elements rendered correctly."""
     state = AppState(project_path=Path("C:/demo/my-project"))
+    state.current_user = _mock_user()
 
     @ui.page("/test_shell_render")
     def page() -> None:
@@ -127,6 +138,7 @@ async def test_new_conversation_button_resets_state(user: User) -> None:
     state = AppState()
     state.active_tome_id = "tome-99"
     state.tome_title = "Existing session"
+    state.current_user = _mock_user()
 
     @ui.page("/test_new_convo_btn")
     def page() -> None:
@@ -380,6 +392,7 @@ async def test_new_conversation_resets_active_tome(user: User, tmp_path: Path) -
     state = AppState(project_path=project_path, tome_service=service)
     state.load_tomes()
     state.switch_to_tome(meta.id)
+    state.current_user = _mock_user()
 
     @ui.page("/test_new_convo_transition")
     def page() -> None:

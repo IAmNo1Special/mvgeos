@@ -13,7 +13,11 @@ from mvgeos_gui.components.settings_modal import render_app_settings_modal
 from mvgeos_gui.components.workspace_settings_modal import (
     render_workspace_settings_modal,
 )
-from mvgeos_gui.config_service import AppSettings, ConfigService, WorkspaceSettings
+from mvgeos_gui.services.config_service import (
+    AppSettings,
+    ConfigService,
+    WorkspaceSettings,
+)
 from mvgeos_gui.state import AppState
 
 

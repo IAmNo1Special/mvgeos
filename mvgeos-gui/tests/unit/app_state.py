@@ -13,8 +13,8 @@ from mvgeos_tome.ledger import TomeLedger
 
 from mvgeos_gui.autocomplete import MentionChip
 from mvgeos_gui.models import ChangedFile, ChatMessage, DiffView
+from mvgeos_gui.services.tome_service import TomeService
 from mvgeos_gui.state import AppState
-from mvgeos_gui.tome_service import TomeService
 from mvgeos_gui.transcript import InvocationTranscript
 
 

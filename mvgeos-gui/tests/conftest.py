@@ -10,7 +10,7 @@ import pytest_asyncio
 from nicegui.testing import User
 from nicegui.testing.user_simulation import user_simulation
 
-import mvgeos_gui.tome_service as _tome_svc
+import mvgeos_gui.services.tome_service as _tome_svc
 
 # Suppress RuntimeWarning from unawaited mock coroutines created by
 # asyncio.create_task in sync methods under test. This is a test-only

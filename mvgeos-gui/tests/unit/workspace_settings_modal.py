@@ -11,7 +11,7 @@ from nicegui.testing import User
 from mvgeos_gui.components.workspace_settings_modal import (
     render_workspace_settings_modal,
 )
-from mvgeos_gui.config_service import ConfigService, WorkspaceSettings
+from mvgeos_gui.services.config_service import ConfigService, WorkspaceSettings
 from mvgeos_gui.state import AppState
 
 

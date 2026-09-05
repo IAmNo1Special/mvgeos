@@ -8,6 +8,7 @@ from mvgeos_gui.components.diff_review import render_diff_modal
 from mvgeos_gui.components.settings_modal import render_app_settings_modal
 from mvgeos_gui.components.shell import render_shell
 from mvgeos_gui.components.sidebar import render_sidebar
+from mvgeos_gui.components.sidebar_hint import sidebar_hint
 from mvgeos_gui.components.step_cards import (
     render_commands_card,
     render_contemplation_card,
@@ -32,4 +33,5 @@ __all__ = [
     "render_step_card",
     "render_worked_card",
     "render_workspace_settings_modal",
+    "sidebar_hint",
 ]

@@ -9,7 +9,7 @@ from nicegui import ui
 from nicegui.testing import User
 
 from mvgeos_gui.components.settings_modal import render_app_settings_modal
-from mvgeos_gui.config_service import AppSettings, ConfigService
+from mvgeos_gui.services.config_service import AppSettings, ConfigService
 from mvgeos_gui.state import AppState
 
 

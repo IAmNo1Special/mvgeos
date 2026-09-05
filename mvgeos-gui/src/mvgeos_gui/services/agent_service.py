@@ -8,6 +8,7 @@ import logging
 import os
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -106,12 +107,12 @@ class AgentService:
                     "an agent_factory."
                 )
             env = MvgeEnvironment.resolve(
-                agent_name="coding-mvge",
+                agent_name="coding_mvge",
                 project_dir=self._project_path,
             )
             self._agent = Mvge(
                 api_key=self._api_key,
-                name="coding-mvge",
+                name="coding_mvge",
                 spells=root_mvge._spells,
                 tome_dir=state.tome_service.tome_dir,
                 tome_resume=state.active_tome_id,
@@ -156,15 +157,35 @@ class AgentService:
         data = event.data
 
         if event.type == MvgeEventType.AGENT_START:
-            self._start_time = time.monotonic()
-            target_message.is_streaming = True
-            if target_state is not None:
-                target_state.is_channeling = True
-                target_state.set_mvge_status("channeling")
-                # Seed active_skills from the agent's loaded skill manifests.
-                if self._agent is not None:
-                    self.populate_skills(self._agent, target_state)
-                target_state.notify()
+            if data.get("subagent"):
+                if target_state is not None:
+                    task_id = data.get("taskId") or data.get("parentTaskId", "")
+                    name = data.get("name", "Sub-Agent")
+                    self.register_subagent_task(
+                        target_state,
+                        task_id,
+                        name,
+                        parent_id=data.get("parentSpellCastId"),
+                    )
+            else:
+                self._start_time = time.monotonic()
+                target_message.is_streaming = True
+                if target_state is not None:
+                    target_state.is_channeling = True
+                    target_state.set_mvge_status("channeling")
+                    # Seed active_skills from the agent's loaded skill manifests.
+                    if self._agent is not None:
+                        self.populate_skills(self._agent, target_state)
+                    target_state.notify()
+
+        elif event.type == MvgeEventType.TURN_START:
+            if data.get("subagent") and target_state is not None:
+                task_id = data.get("parentTaskId") or data.get("taskId", "")
+                progress = data.get("progress")
+                if progress is not None:
+                    self.update_subagent_task(
+                        target_state, task_id, progress=float(progress)
+                    )
 
         elif event.type == MvgeEventType.MESSAGE_UPDATE:
             transcript.apply_message_update(data)
@@ -231,19 +252,47 @@ class AgentService:
                 )
 
         elif event.type in (MvgeEventType.TURN_END, MvgeEventType.AGENT_END):
-            self._pending_spell_starts.clear()
-            elapsed = (
-                max(0.0, time.monotonic() - self._start_time)
-                if self._start_time > 0
-                else None
-            )
-            transcript.finish(elapsed_seconds=elapsed)
-            if target_state is not None:
-                target_state.is_channeling = False
-                if event.type == MvgeEventType.AGENT_END:
-                    target_state.set_mvge_status("idle")
-                target_state.notify()
-            self._is_running = False
+            if data.get("subagent"):
+                if target_state is not None:
+                    task_id = data.get("parentTaskId") or data.get("taskId", "")
+                    if event.type == MvgeEventType.AGENT_END:
+                        status = (
+                            TaskStatus.ERROR
+                            if data.get("error")
+                            else TaskStatus.COMPLETE
+                        )
+                        self.update_subagent_task(
+                            target_state,
+                            task_id,
+                            status=status,
+                            progress=100.0,
+                        )
+                        task = target_state.get_background_task(task_id)
+                        if task is not None:
+                            task.result = str(data.get("result", ""))
+                            if data.get("error"):
+                                task.error = str(data.get("error"))
+                    else:
+                        progress = data.get("progress")
+                        if progress is not None:
+                            self.update_subagent_task(
+                                target_state, task_id, progress=float(progress)
+                            )
+                    target_state.notify()
+            else:
+                self._pending_spell_starts.clear()
+                elapsed = (
+                    max(0.0, time.monotonic() - self._start_time)
+                    if self._start_time > 0
+                    else None
+                )
+                transcript.finish(elapsed_seconds=elapsed)
+                if target_state is not None:
+                    target_state.is_channeling = False
+                    if event.type == MvgeEventType.AGENT_END:
+                        target_state.set_mvge_status("idle")
+                    target_state.notify()
+                self._is_running = False
 
         elif event.type == MvgeEventType.ARTIFACT_CREATED:
             artifact_data = data.get("artifact", {})
@@ -416,20 +465,69 @@ class AgentService:
             logger.warning("Rate limit exceeded: %s", exc)
             message.is_error = True
             message.error_message = str(exc)
-            retry_hint = (
-                f"\n\n*Please wait {exc.retry_after:.0f}s before retrying.*"
-                if exc.retry_after
-                else ""
-            )
-            self._active_transcript.set_text(
-                "**Rate Limit Exceeded (HTTP 429)**: The model provider is "
-                "temporarily rate-limiting requests.\n\n"
-                "- **Free tier models** (`:free`) frequently experience upstream "
-                "capacity limits and daily caps.\n"
-                "- **Suggested actions**: Try switching to another model via the "
-                "model selector below, or wait a few moments and try again."
-                f"{retry_hint}"
-            )
+
+            if exc.limit_source == "openrouter_free_tier_daily":
+                quota_str = (
+                    f" ({exc.quota_limit}/{exc.quota_limit} requests used)"
+                    if exc.quota_limit
+                    else ""
+                )
+                reset_info = ""
+                if exc.reset_at:
+                    dt = datetime.fromtimestamp(exc.reset_at, UTC)
+                    time_str = dt.strftime("%H:%M UTC")
+                    reset_info = f"\n\n- **Quota Reset Time**: Resets at `{time_str}`."
+                remedy = (
+                    f"\n- **Remedy**: {exc.remedy_hint}"
+                    if exc.remedy_hint
+                    else (
+                        "\n- **Suggested actions**: Add credits to your OpenRouter "
+                        "account to unlock 1,000 requests/day, switch to a paid "
+                        "model via the selector below, or wait for the daily reset."
+                    )
+                )
+                self._active_transcript.set_text(
+                    "**Daily Free Tier Quota Reached (HTTP 429)**: You have exhausted "
+                    f"the daily request limit for free-tier models{quota_str}."
+                    f"{reset_info}"
+                    f"{remedy}"
+                )
+            elif (
+                exc.limit_source == "upstream_rate_limit"
+                or "provider returned error" in str(exc).lower()
+            ):
+                self._active_transcript.set_text(
+                    "**Upstream Provider Overloaded (HTTP 429)**: The upstream model "
+                    "host is temporarily unable to process requests.\n\n"
+                    f"- **Details**: {exc}\n"
+                    "- **Suggested actions**: Switch to another model via the selector "
+                    "below, or wait a few moments and try again."
+                )
+            else:
+                retry_hint = (
+                    f"\n\n*Please wait {exc.retry_after:.0f}s before retrying.*"
+                    if exc.retry_after
+                    else ""
+                )
+                remedy = (
+                    f"\n- **Remedy**: {exc.remedy_hint}\n" if exc.remedy_hint else ""
+                )
+                err_detail = (
+                    f"\n- **Provider Message**: {exc}\n"
+                    if str(exc) and str(exc).lower() != "rate limited"
+                    else ""
+                )
+                self._active_transcript.set_text(
+                    "**Rate Limit Exceeded (HTTP 429)**: The model provider is "
+                    "temporarily rate-limiting requests.\n\n"
+                    "- **Free tier models** (`:free`) frequently experience upstream "
+                    "capacity limits and daily caps.\n"
+                    f"{err_detail}"
+                    f"{remedy}"
+                    "- **Suggested actions**: Try switching to another model via the "
+                    "model selector below, or wait a few moments and try again."
+                    f"{retry_hint}"
+                )
         except Exception as exc:
             logger.exception("Error executing agent prompt: %s", exc)
             message.is_error = True
@@ -497,19 +595,17 @@ class AgentService:
         """Record that a skill was invoked by reading one of its files."""
         if not path:
             return
-        normalized = str(path)
+        normalized = str(path).replace("\\", "/")
         target_state = state or self._active_state
         if target_state is None:
             return
         for skill in target_state.active_skills:
             if not skill.path:
                 continue
-            skill_root = skill.path.rstrip("/")
+            skill_root = str(skill.path).replace("\\", "/").rstrip("/")
             skill_md = f"{skill_root}/SKILL.md"
-            matched = (
-                normalized == skill.path
-                or normalized == skill_md
-                or normalized.startswith(skill_root + "/")
+            matched = normalized in (skill_root, skill_md) or normalized.startswith(
+                skill_root + "/"
             )
             if matched and skill.name not in self._invoked_skill_names:
                 self._invoked_skill_names.add(skill.name)

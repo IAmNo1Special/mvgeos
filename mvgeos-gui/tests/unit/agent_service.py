@@ -10,8 +10,8 @@ import pytest
 from mvgeos_agent.errors import AuthenticationError, RateLimitError
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 
-from mvgeos_gui.agent_service import AgentService, resolve_api_key
 from mvgeos_gui.models import ChatMessage, StepType, TaskStatus
+from mvgeos_gui.services.agent_service import AgentService, resolve_api_key
 from mvgeos_gui.state import AppState
 
 
@@ -52,7 +52,7 @@ def test_resolve_api_key_variants() -> None:
     with (
         patch.dict("os.environ", {"OPENROUTER_API_KEY": "", "MVGEOS_API_KEY": ""}),
         patch(
-            "mvgeos_gui.agent_service.load_api_key_from_auth",
+            "mvgeos_gui.services.agent_service.load_api_key_from_auth",
             return_value="sk-auth-file",
         ),
     ):
@@ -61,7 +61,10 @@ def test_resolve_api_key_variants() -> None:
     # 5. None when no source is available
     with (
         patch.dict("os.environ", {"OPENROUTER_API_KEY": "", "MVGEOS_API_KEY": ""}),
-        patch("mvgeos_gui.agent_service.load_api_key_from_auth", return_value=None),
+        patch(
+            "mvgeos_gui.services.agent_service.load_api_key_from_auth",
+            return_value=None,
+        ),
     ):
         assert resolve_api_key() is None
 
@@ -88,7 +91,7 @@ def test_get_or_create_agent_with_factory(app_state: AppState) -> None:
     assert factory.call_count == 1
 
 
-@patch("mvgeos_gui.agent_service.Mvge")
+@patch("mvgeos_gui.services.agent_service.Mvge")
 def test_get_or_create_agent_default(
     mock_coding_mvge: MagicMock, app_state: AppState
 ) -> None:
@@ -102,7 +105,7 @@ def test_get_or_create_agent_default(
     mock_coding_mvge.assert_called_once()
 
 
-@patch("mvgeos_gui.agent_service.Mvge")
+@patch("mvgeos_gui.services.agent_service.Mvge")
 def test_reset_agent_clears_cached_instance(
     mock_coding_mvge: MagicMock, app_state: AppState
 ) -> None:
@@ -734,6 +737,63 @@ async def test_run_prompt_rate_limit_error_with_retry_after(
 
 
 @pytest.mark.asyncio
+async def test_run_prompt_rate_limit_daily_quota(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify run_prompt renders daily quota details, reset time, and remedy."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(
+        side_effect=RateLimitError(
+            "Rate limit exceeded: free-models-per-day.",
+            limit_source="openrouter_free_tier_daily",
+            quota_limit=50,
+            quota_remaining=0,
+            reset_at=1788566400.0,
+            remedy_hint="Wait for the daily reset, or purchase credits.",
+        )
+    )
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.on = MagicMock()
+    agent_service._agent = mock_agent
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("Test daily quota", app_state, msg)
+    assert msg.is_error is True
+    assert "Daily Free Tier Quota Reached (HTTP 429)" in msg.content
+    assert "50/50 requests used" in msg.content
+    assert "Resets at" in msg.content
+    assert "Wait for the daily reset, or purchase credits." in msg.content
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_rate_limit_upstream_overload(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify run_prompt renders upstream provider overload information."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(
+        side_effect=RateLimitError(
+            "Provider returned error: Upstream error from Nvidia: "
+            "Service temporarily overloaded",
+            limit_source="upstream_rate_limit",
+        )
+    )
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.on = MagicMock()
+    agent_service._agent = mock_agent
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("Test upstream overload", app_state, msg)
+    assert msg.is_error is True
+    assert "Upstream Provider Overloaded (HTTP 429)" in msg.content
+    assert "Service temporarily overloaded" in msg.content
+
+
+@pytest.mark.asyncio
 async def test_run_prompt_exception_handling(
     agent_service: AgentService, app_state: AppState
 ) -> None:
@@ -876,6 +936,25 @@ def test_mark_skill_invoked_deduplicates(
     agent_service.mark_skill_invoked("/skills/review/SKILL.md", state=app_state)
     agent_service.mark_skill_invoked("/skills/review/SKILL.md", state=app_state)
 
+    assert app_state.active_skills[0].invoked is True
+
+
+def test_mark_skill_invoked_windows_backslashes(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify reading a SKILL.md with Windows backslashes marks the skill as invoked."""
+    manifest = _make_skill_manifest(path=r"C:\Users\user\.agents\skills\location")
+    mock_runner = MagicMock()
+    mock_runner.get_skills.return_value = [manifest]
+    mock_agent = MagicMock()
+    mock_agent.runner = mock_runner
+    agent_service.populate_skills(mock_agent, app_state)
+
+    assert app_state.active_skills[0].invoked is False
+
+    agent_service.mark_skill_invoked(
+        r"C:\Users\user\.agents\skills\location\SKILL.md", state=app_state
+    )
     assert app_state.active_skills[0].invoked is True
 
 
@@ -1281,3 +1360,87 @@ class TestSubmitPromptNoLoop:
         assert len(app_state.messages) == 1
         assert app_state.messages[0].role == "user"
         assert app_state.is_channeling is False
+
+
+class TestSubagentLifecycleObservability:
+    def test_subagent_events_track_in_background_tasks(
+        self, agent_service: AgentService, app_state: AppState
+    ) -> None:
+        """Verify subagent events populate background tasks without
+        ending main agent.
+        """
+        msg = ChatMessage(role="assistant", is_streaming=True)
+        app_state.messages.append(msg)
+        agent_service._is_running = True
+
+        # 1. Subagent AGENT_START
+        start_ev = MvgeEvent(
+            type=MvgeEventType.AGENT_START,
+            data={
+                "subagent": "skill_proposer",
+                "taskId": "sub-prop-1",
+                "name": "Skill Proposer Sub-Agent",
+            },
+        )
+        agent_service.handle_event(start_ev, msg, app_state)
+        task = app_state.get_background_task("sub-prop-1")
+        assert task is not None
+        assert task.name == "Skill Proposer Sub-Agent"
+        assert task.status == TaskStatus.RUNNING
+
+        # 2. Subagent TURN_START
+        turn_ev = MvgeEvent(
+            type=MvgeEventType.TURN_START,
+            data={
+                "subagent": "skill_proposer",
+                "parentTaskId": "sub-prop-1",
+                "turn": 1,
+                "progress": 25.0,
+            },
+        )
+        agent_service.handle_event(turn_ev, msg, app_state)
+        assert task.progress == 25.0
+
+        # 3. Subagent SPELL_CASTING_START & END
+        spell_start_ev = MvgeEvent(
+            type=MvgeEventType.SPELL_CASTING_START,
+            data={
+                "subagent": "skill_proposer",
+                "parentTaskId": "sub-prop-1",
+                "spellCastId": "cast-tool-1",
+                "spellName": "read_file",
+                "arguments": {"path": "knowledge/index.md"},
+            },
+        )
+        agent_service.handle_event(spell_start_ev, msg, app_state)
+        child_task = app_state.get_background_task("cast-tool-1")
+        assert child_task is not None
+        assert child_task.parent_id == "sub-prop-1"
+
+        spell_end_ev = MvgeEvent(
+            type=MvgeEventType.SPELL_CASTING_END,
+            data={
+                "subagent": "skill_proposer",
+                "parentTaskId": "sub-prop-1",
+                "spellCastId": "cast-tool-1",
+                "spellName": "read_file",
+                "result": "File content here",
+            },
+        )
+        agent_service.handle_event(spell_end_ev, msg, app_state)
+        assert child_task.status == TaskStatus.COMPLETE
+
+        # 4. Subagent AGENT_END
+        agent_end_ev = MvgeEvent(
+            type=MvgeEventType.AGENT_END,
+            data={
+                "subagent": "skill_proposer",
+                "parentTaskId": "sub-prop-1",
+                "result": {"success": True, "action": "no_action"},
+            },
+        )
+        agent_service.handle_event(agent_end_ev, msg, app_state)
+        assert task.status == TaskStatus.COMPLETE
+        assert task.progress == 100.0
+        # Main agent should still be running!
+        assert agent_service._is_running is True

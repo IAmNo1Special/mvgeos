@@ -451,6 +451,74 @@ html, body {
     font-size: 11.5px !important;
     line-height: 1.55 !important;
 }
+
+/* Sidebar collapsible transition */
+.sidebar-container {
+    transition: width 0.3s ease-in-out !important;
+}
+
+.sidebar-label {
+    transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out !important;
+    transform-origin: left center;
+    white-space: nowrap;
+    overflow: hidden;
+    display: inline-block;
+    min-width: 0;
+}
+
+.sidebar-label.collapsed {
+    opacity: 0 !important;
+    transform: translateX(-10px) !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
+.sidebar-label.expanded {
+    opacity: 1 !important;
+    transform: translateX(0) !important;
+    width: auto !important;
+    min-width: auto !important;
+}
+
+/* Active sidebar nav link */
+.nav-link-active {
+    background: var(--bg-card) !important;
+    border-radius: 2rem !important;
+    position: relative !important;
+}
+.nav-link-active::before {
+    content: '' !important;
+    position: absolute !important;
+    left: 12px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    width: 3px !important;
+    height: 60% !important;
+    border-radius: 3px !important;
+    background: var(--accent-blue) !important;
+}
+.nav-icon-active {
+    color: var(--accent-blue) !important;
+}
+
+/* Sidebar hint tooltip */
+.sidebar-hint {
+    font-size: 0.8rem !important;
+    padding: 6px 12px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16) !important;
+}
+
+/* Sidebar collapse button rotation */
+.collapse-btn-icon {
+    transition: transform 0.3s ease-in-out !important;
+}
+.collapse-btn-icon.collapsed {
+    transform: rotate(180deg) !important;
+}
 """
 
 GOOGLE_FONTS_HTML = (

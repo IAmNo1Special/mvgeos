@@ -6,7 +6,7 @@ from typing import Any
 
 from nicegui import ui
 
-from mvgeos_gui.config_service import ConfigService, WorkspaceSettings
+from mvgeos_gui.services.config_service import ConfigService, WorkspaceSettings
 from mvgeos_gui.state import AppState
 
 CONTEMPLATION_LEVELS = ["none", "low", "medium", "high"]

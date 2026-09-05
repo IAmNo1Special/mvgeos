@@ -11,7 +11,7 @@ import pytest
 from mvgeos_tome.ledger import TomeLedger
 
 from mvgeos_gui.git_workspace import resolve_git_branch
-from mvgeos_gui.tome_service import (
+from mvgeos_gui.services.tome_service import (
     TomeListEntry,
     TomeService,
     format_relative_time,

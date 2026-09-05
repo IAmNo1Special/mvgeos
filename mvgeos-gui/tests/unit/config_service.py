@@ -1,4 +1,4 @@
-"""Unit tests for mvgeos_gui.config_service."""
+"""Unit tests for mvgeos_gui.services.config_service."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from mvgeos_gui.config_service import (
+from mvgeos_gui.services.config_service import (
     AppSettings,
     ConfigService,
     WorkspaceSettings,
@@ -83,13 +83,13 @@ class TestConfigService:
     def test_save_and_load_app_settings(self, tmp_path: Path) -> None:
         service = ConfigService(config_dir=tmp_path)
         with patch(
-            "mvgeos_gui.config_service._save_api_key_to_keyring",
+            "mvgeos_gui.services.config_service._save_api_key_to_keyring",
             return_value=True,
         ) as mock_save:
             service.save_app_settings(AppSettings(api_key="sk-123", mana_limit=2048))
 
         with patch(
-            "mvgeos_gui.config_service._load_api_key_from_keyring",
+            "mvgeos_gui.services.config_service._load_api_key_from_keyring",
             return_value="sk-123",
         ):
             loaded = service.load_app_settings()
@@ -166,13 +166,13 @@ class TestConfigService:
     def test_partial_update_preserves_other_keys(self, tmp_path: Path) -> None:
         service = ConfigService(config_dir=tmp_path)
         with patch(
-            "mvgeos_gui.config_service._save_api_key_to_keyring",
+            "mvgeos_gui.services.config_service._save_api_key_to_keyring",
             return_value=True,
         ):
             service.save_app_settings(AppSettings(api_key="sk-123", mana_limit=2048))
 
         with patch(
-            "mvgeos_gui.config_service._load_api_key_from_keyring",
+            "mvgeos_gui.services.config_service._load_api_key_from_keyring",
             return_value="sk-123",
         ):
             service.save_app_settings(AppSettings(temperature=0.9))
@@ -186,7 +186,7 @@ class TestConfigService:
         """Verify the API key is never persisted to the JSON file."""
         service = ConfigService(config_dir=tmp_path)
         with patch(
-            "mvgeos_gui.config_service._save_api_key_to_keyring",
+            "mvgeos_gui.services.config_service._save_api_key_to_keyring",
             return_value=True,
         ):
             service.save_app_settings(AppSettings(api_key="secret-key"))
@@ -201,7 +201,7 @@ class TestConfigService:
         owner-only config file instead of being silently lost."""
         service = ConfigService(config_dir=tmp_path)
         with patch(
-            "mvgeos_gui.config_service._save_api_key_to_keyring",
+            "mvgeos_gui.services.config_service._save_api_key_to_keyring",
             return_value=False,
         ):
             service.save_app_settings(AppSettings(api_key="sk-fallback"))
@@ -218,14 +218,14 @@ class TestConfigService:
 
         # Save settings without keyring having the key
         with patch(
-            "mvgeos_gui.config_service._save_api_key_to_keyring",
+            "mvgeos_gui.services.config_service._save_api_key_to_keyring",
             return_value=True,
         ):
             service.save_app_settings(AppSettings(mana_limit=2048))
 
         # Now simulate keyring having the key
         with patch(
-            "mvgeos_gui.config_service._load_api_key_from_keyring",
+            "mvgeos_gui.services.config_service._load_api_key_from_keyring",
             return_value="keyring-key",
         ):
             loaded = service.load_app_settings()

@@ -7,9 +7,9 @@ from mvgeos_agent.types import MvgeEvent, MvgeEventType
 from nicegui import ui
 from nicegui.testing import User
 
-from mvgeos_gui.agent_service import AgentService
 from mvgeos_gui.app import build_page
 from mvgeos_gui.models import Artifact, ArtifactType, ChatMessage
+from mvgeos_gui.services.agent_service import AgentService
 from mvgeos_gui.state import AppState
 from mvgeos_gui.transcript import InvocationTranscript
 
