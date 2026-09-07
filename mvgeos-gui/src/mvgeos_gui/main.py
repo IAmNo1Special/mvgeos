@@ -7,6 +7,7 @@ import ctypes
 import os
 import platform
 import secrets
+import threading
 from pathlib import Path
 
 import webview
@@ -18,6 +19,19 @@ from mvgeos_gui.state import AppState
 DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 APP_TITLE = "MvgeOS"
 _STORAGE_SECRET_FILE = Path.home() / ".mvgeos" / ".storage_secret"
+
+
+def _shutdown_thread_excepthook(args: threading.ExceptHookArgs) -> None:
+    """Suppress benign shutdown exceptions in background daemon threads."""
+    if issubclass(args.exc_type, (KeyboardInterrupt, SystemExit)):
+        return
+    thread_name = getattr(args.thread, "name", "") or ""
+    if "check_shutdown" in thread_name:
+        return
+    threading.__excepthook__(args)
+
+
+threading.excepthook = _shutdown_thread_excepthook
 
 
 def _get_storage_secret() -> str:
@@ -198,7 +212,11 @@ def main() -> None:
 
             app.on_startup(_apply_dark_titlebar)
 
-    app.on_shutdown(state.stop_channeling)
+    def _cleanup() -> None:
+        state.stop_channeling()
+        state.clear_listeners()
+
+    app.on_shutdown(_cleanup)
 
     with contextlib.suppress(KeyboardInterrupt):
         ui.run(
@@ -212,7 +230,7 @@ def main() -> None:
             reconnect_timeout=60.0,
             storage_secret=_get_storage_secret(),
         )
-    state.stop_channeling()
+    _cleanup()
 
 
 if __name__ == "__main__":

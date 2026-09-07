@@ -63,3 +63,55 @@ async def test_login_screen_validation_empty(user: User) -> None:
     await user.open("/test_login_validation")
     user.find("Sign In").click()
     await user.should_see("Enter both username and password")
+
+
+@pytest.mark.asyncio
+async def test_login_screen_not_persistent(user: User) -> None:
+    state = AppState()
+    state._show_login = True
+
+    @ui.page("/test_login_not_persistent")
+    def page() -> None:
+        render_login_screen(state)
+
+    await user.open("/test_login_not_persistent")
+    dialogs = list(user.find(ui.dialog).elements)
+    assert len(dialogs) > 0
+    dialog = dialogs[0]
+    assert "persistent" not in dialog._props
+    assert "maximized" not in dialog._props
+
+
+@pytest.mark.asyncio
+async def test_login_screen_close_button(user: User) -> None:
+    state = AppState()
+    state._show_login = True
+
+    @ui.page("/test_login_close_btn")
+    def page() -> None:
+        render_login_screen(state)
+
+    await user.open("/test_login_close_btn")
+    close_btn = user.find(marker="close_login_btn")
+    close_btn.click()
+    assert state._show_login is False
+
+
+@pytest.mark.asyncio
+async def test_login_screen_successful_login(user: User) -> None:
+    state = AppState()
+    state._show_login = True
+
+    @ui.page("/test_login_success")
+    def page() -> None:
+        render_login_screen(state)
+
+    await user.open("/test_login_success")
+    inputs = sorted(user.find(ui.input).elements, key=lambda el: el.id)
+    assert len(inputs) >= 2
+    inputs[0].value = "admin"
+    inputs[1].value = "admin"
+    user.find("Sign In").click()
+    assert state.current_user is not None
+    assert state.current_user.username == "admin"
+    assert state._show_login is False

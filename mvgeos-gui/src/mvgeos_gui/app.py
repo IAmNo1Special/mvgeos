@@ -3,6 +3,7 @@
 from nicegui import ui
 
 from mvgeos_gui.components.shell import render_shell
+from mvgeos_gui.core.database import init_db
 from mvgeos_gui.state import AppState
 
 
@@ -29,6 +30,7 @@ def build_page(state: AppState | None = None) -> None:
 
 def init_app(state: AppState | None = None) -> AppState:
     """Initialize application routes and return the AppState instance."""
+    init_db()
     app_state = state or AppState()
 
     @ui.page("/")

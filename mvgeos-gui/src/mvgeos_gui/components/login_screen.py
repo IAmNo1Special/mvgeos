@@ -20,25 +20,35 @@ def render_login_screen(state: AppState) -> None:
         state._show_app_settings = False
 
     with (
-        ui.dialog()
-        .on("close", state.hide_login)
-        .props("maximized persistent") as dialog,
+        ui.dialog().on("close", state.hide_login) as dialog,
         ui.card().classes(
             "w-full max-w-sm bg-[#1e212b] border border-[#2b2f3d] rounded-xl p-8 gap-6"
         ),
     ):
-        with ui.row().classes("items-center gap-3"):
-            ui.icon("auto_awesome", size="28px").classes("text-[#3b82f6]")
-            ui.label("MvgeOS").classes(
-                "text-xl font-bold text-[#e6edf3] tracking-tight"
-            )
+
+        def _close_dialog() -> None:
+            state.hide_login()
+            dialog.close()
+
+        with ui.row().classes("items-center justify-between w-full"):
+            with ui.row().classes("items-center gap-3"):
+                ui.icon("auto_awesome", size="28px").classes("text-[#3b82f6]")
+                ui.label("MvgeOS").classes(
+                    "text-xl font-bold text-[#e6edf3] tracking-tight"
+                )
+            ui.button(
+                icon="close",
+                on_click=_close_dialog,
+            ).props("flat round dense").classes(
+                "text-[#8b949e] hover:text-white -mr-2"
+            ).mark("close_login_btn")
 
         ui.label("Sign in to continue").classes("text-sm text-[#8b949e] -mt-2")
 
         username_input = (
             ui.input("Username", placeholder="Enter username")
             .classes("w-full")
-            .props("outlined dense autogrow")
+            .props("outlined dense")
         )
 
         password_input = (
@@ -58,7 +68,11 @@ def render_login_screen(state: AppState) -> None:
             if login_limiter.is_locked(username):
                 error_label.set_text("Too many attempts. Try again later.")
                 return
-            user = auth.login(username, password)
+            try:
+                user = auth.login(username, password)
+            except Exception as exc:
+                error_label.set_text(f"Login error: {exc}")
+                return
             if user is None:
                 error_label.set_text("Invalid username or password")
                 return
@@ -76,4 +90,5 @@ def render_login_screen(state: AppState) -> None:
         )
 
         ui.label("Default: admin / admin").classes("text-xs text-center text-[#64748b]")
+
     dialog.open()

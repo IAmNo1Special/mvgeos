@@ -960,6 +960,56 @@ class TestSettingsModals:
         state.notify()
         assert len(called) == 1
 
+    def test_clear_listeners(self) -> None:
+        state = AppState()
+        called: list[int] = []
+
+        state.subscribe(lambda: called.append(1))
+        state.subscribe(lambda: called.append(2))
+        assert len(state._change_listeners) == 2
+        state.clear_listeners()
+        assert len(state._change_listeners) == 0
+        state.notify()
+        assert called == []
+
+    def test_notify_coroutine_without_running_loop_closes_coroutine(
+        self,
+    ) -> None:
+        import warnings
+
+        state = AppState()
+        executed = False
+
+        async def async_listener() -> None:
+            nonlocal executed
+            executed = True
+
+        state.subscribe(async_listener)
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            state.notify()
+            unawaited_warnings = [
+                (w.category, str(w.message))
+                for w in record
+                if issubclass(w.category, RuntimeWarning)
+                and "was never awaited" in str(w.message)
+            ]
+            assert not unawaited_warnings, f"Found unawaited: {unawaited_warnings}"
+        assert executed is False
+
+    @pytest.mark.asyncio
+    async def test_notify_coroutine_with_running_loop(self) -> None:
+        state = AppState()
+        called: list[bool] = []
+
+        async def async_listener() -> None:
+            called.append(True)
+
+        state.subscribe(async_listener)
+        state.notify()
+        await asyncio.sleep(0.01)
+        assert called == [True]
+
     def test_command_palette_toggle_and_set(self) -> None:
         state = AppState()
         assert state.command_palette_open is False
@@ -989,15 +1039,17 @@ class TestMvgeStatus:
         assert called == [True]
 
 
-@pytest.mark.asyncio
-async def test_notify_handles_awaitable_response() -> None:
-    """Verify notify schedules AwaitableResponse._fire coroutines."""
+def test_notify_does_not_call_private_fire() -> None:
+    """Verify notify does not invoke private _fire to prevent duplicate refreshes
+    and unawaited coroutines."""
     state = AppState()
-    fired: list[bool] = []
+
+    fired = False
 
     class FakeAwaitableResponse:
         async def _fire(self) -> None:
-            fired.append(True)
+            nonlocal fired
+            fired = True
 
     fake = FakeAwaitableResponse()
 
@@ -1006,8 +1058,7 @@ async def test_notify_handles_awaitable_response() -> None:
 
     state.subscribe(listener)
     state.notify()
-    await asyncio.sleep(0)
-    assert fired == [True]
+    assert fired is False
 
 
 class TestLoadMessagesForTome:

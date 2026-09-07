@@ -118,23 +118,22 @@ class AppState:
         if listener in self._change_listeners:
             self._change_listeners.remove(listener)
 
+    def clear_listeners(self) -> None:
+        """Clear all registered change listeners."""
+        self._change_listeners.clear()
+
     def notify(self) -> None:
         """Notify all change listeners."""
         for listener in list(self._change_listeners):
             with contextlib.suppress(Exception):
                 result = listener()
-                if inspect.isawaitable(result):
-                    with contextlib.suppress(RuntimeError):
-                        asyncio.get_running_loop().create_task(
-                            cast(Coroutine[Any, Any, None], result)
-                        )
-                elif hasattr(result, "_fire"):
-                    fire = result._fire()
-                    if inspect.isawaitable(fire):
-                        with contextlib.suppress(RuntimeError):
-                            asyncio.get_running_loop().create_task(
-                                cast(Coroutine[Any, Any, None], fire)
-                            )
+                if inspect.iscoroutine(result):
+                    coro = cast(Coroutine[Any, Any, None], result)
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(coro)
+                    except RuntimeError:
+                        coro.close()
 
     def get_agent_service(self) -> AgentService:
         """Retrieve or initialize the active AgentService instance."""

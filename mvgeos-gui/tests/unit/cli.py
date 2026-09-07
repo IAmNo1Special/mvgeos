@@ -1,16 +1,24 @@
 """Unit tests for mvgeos-gui CLI entry point and argument parsing."""
 
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from mvgeos_gui.main import (
+    _shutdown_thread_excepthook,
     calculate_initial_window_geometry,
     enable_windows_dark_titlebar,
     main,
     parse_args,
 )
+
+
+@pytest.fixture(autouse=True)
+def setup_cli_test_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_file = tmp_path / "cli_test.db"
+    monkeypatch.setenv("MVGEOS_DB_PATH", str(db_file))
 
 
 def test_parse_args_defaults() -> None:
@@ -159,3 +167,48 @@ def test_main_runs_web_mode(mock_ui_run: MagicMock) -> None:
 def test_enable_windows_dark_titlebar_safe() -> None:
     """Verify enable_windows_dark_titlebar runs without unhandled exceptions."""
     enable_windows_dark_titlebar("NonExistentWindow")
+
+
+def test_shutdown_thread_excepthook() -> None:
+    """Verify shutdown thread excepthook suppresses benign termination errors."""
+    # Suppresses KeyboardInterrupt
+    args_kb = threading.ExceptHookArgs(
+        (KeyboardInterrupt, KeyboardInterrupt(), None, None)
+    )
+    _shutdown_thread_excepthook(args_kb)
+
+    # Suppresses SystemExit
+    args_exit = threading.ExceptHookArgs((SystemExit, SystemExit(), None, None))
+    _shutdown_thread_excepthook(args_exit)
+
+    # Suppresses check_shutdown thread errors
+    dummy_thread = MagicMock()
+    dummy_thread.name = "Thread-2 (check_shutdown)"
+    args_check = threading.ExceptHookArgs(
+        (RuntimeError, RuntimeError("cannot interrupt"), None, dummy_thread)
+    )
+    _shutdown_thread_excepthook(args_check)
+
+    # Delegates normal errors to __excepthook__
+    with patch("threading.__excepthook__") as mock_orig:
+        normal_thread = MagicMock()
+        normal_thread.name = "WorkerThread"
+        args_normal = threading.ExceptHookArgs(
+            (ValueError, ValueError("boom"), None, normal_thread)
+        )
+        _shutdown_thread_excepthook(args_normal)
+        mock_orig.assert_called_once_with(args_normal)
+
+
+@patch("mvgeos_gui.main.ui.run")
+@patch("mvgeos_gui.main.app.on_shutdown")
+def test_main_registers_shutdown_cleanup(
+    mock_on_shutdown: MagicMock, mock_ui_run: MagicMock
+) -> None:
+    """Verify main registers cleanup on shutdown that clears listeners."""
+    with patch("sys.argv", ["mvgeos-gui", "--web"]):
+        main()
+        mock_on_shutdown.assert_called_once()
+        cleanup_cb = mock_on_shutdown.call_args[0][0]
+        # Calling cleanup callback shouldn't raise
+        cleanup_cb()

@@ -99,3 +99,15 @@ def test_auth_service_user_management() -> None:
 
     # Can delete other user
     assert service.delete_user_account(user.id) is True
+
+
+def test_auth_service_auto_initializes_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fresh_db = tmp_path / "fresh_uninitialized.db"
+    monkeypatch.setenv("MVGEOS_DB_PATH", str(fresh_db))
+    # Note: init_db is NOT called here
+    service = AuthService()
+    user = service.login("admin", "admin")
+    assert user is not None
+    assert user.username == "admin"

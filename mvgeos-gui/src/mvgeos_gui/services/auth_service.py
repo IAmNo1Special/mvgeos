@@ -11,6 +11,7 @@ from mvgeos_gui.core.database import (
     delete_session,
     delete_user,
     get_session,
+    init_db,
     list_users,
     record_login,
     update_user,
@@ -29,6 +30,7 @@ class AuthService:
     """Business logic for user accounts and session management."""
 
     def __init__(self) -> None:
+        init_db()
         self._current_session: Session | None = None
         self._current_user: User | None = None
 
