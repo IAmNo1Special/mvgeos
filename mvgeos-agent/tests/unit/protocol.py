@@ -145,7 +145,7 @@ class TestMvgeAgentProtocol:
         agent = Mvge(api_key="test-key")
         assert isinstance(agent.available_spells, list)
         agent.set_enabled_spells(["read"])
-        assert agent._spell_names == ["read"]
+        assert agent.enabled_spells == ["read"]
 
     @pytest.mark.asyncio
     async def test_mvge_reset_session(self) -> None:

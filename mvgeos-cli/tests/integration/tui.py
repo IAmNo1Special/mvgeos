@@ -9,7 +9,7 @@ import pytest
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 from rich.markup import render as render_markup
 
-from mvgeos_cli.commands.repl import StreamRenderer, _handle_command
+from mvgeos_cli.commands.repl import StreamRenderer
 from mvgeos_cli.commands.tui import TranscriptControl, TuiSink
 
 
@@ -200,16 +200,18 @@ class TestTranscriptControl:
         assert c is not a
 
 
-class TestHandleCommandOut:
-    def test_out_routes_output(self) -> None:
+class TestCommandDispatcherOut:
+    @pytest.mark.asyncio
+    async def test_out_routes_output(self) -> None:
         from mvgeos_agent import Mvge
 
-        from mvgeos_cli.commands.repl import ReplAction
+        from mvgeos_cli.commands.dispatcher import CommandDispatcher
 
         agent = Mvge(api_key="test-key")
         captured: list[str] = []
-        action = _handle_command("/help", agent, object(), out=captured.append)
-        assert action == ReplAction.CONTINUE
+        dispatcher = CommandDispatcher(agent, MagicMock(), out=captured.append)
+        should_exit = await dispatcher.dispatch("/help")
+        assert should_exit is False
         assert any("/quit" in line for line in captured)
 
 
@@ -224,6 +226,34 @@ class FakeAgent:
         self.initialize_calls = 0
         self.run_calls: list[str] = []
         self.error: Exception | None = None
+
+    @property
+    def model_id(self) -> str:
+        return self._model_id
+
+    @property
+    def contemplation_level(self) -> str:
+        return self._contemplation_level
+
+    @property
+    def enabled_spells(self) -> list[str]:
+        return ["bash", "read", "write"]
+
+    @property
+    def available_spells(self) -> list[str]:
+        return ["bash", "read", "write"]
+
+    @property
+    def registered_providers(self) -> list[str]:
+        return ["openrouter"]
+
+    def set_enabled_spells(self, spell_names: Any) -> None:
+        pass
+
+    async def reset_session(self, *, resume_tome_id: str | None = None) -> None:
+        await self.close()
+        self._initialized = False
+        await self.initialize()
 
     def on(self, name: str, cb: Any) -> Any:
         return lambda: None
@@ -301,7 +331,7 @@ class TestTuiApp:
             )
         assert app.application is not None
         with patch(
-            "mvgeos_cli.commands.tui._fit_footer",
+            "mvgeos_cli.commands.tui.fit_footer",
             side_effect=lambda items, width: items,
         ):
             footer = app._footer_text()
@@ -607,7 +637,7 @@ class TestTuiApp:
         assert len(plain_text) <= 60
 
     def test_fit_footer_dynamic_truncation_multiple_items_narrow_width(self) -> None:
-        from mvgeos_cli.commands.repl import _fit_footer
+        from mvgeos_cli.formatting import fit_footer
 
         items = [
             ("bold", " ~/mvgeos (main)"),
@@ -617,11 +647,11 @@ class TestTuiApp:
             ("", "  (working • mode: one-at-a-time)"),
         ]
         # Total length of items is 119
-        fitted_50 = _fit_footer(items, 50)
+        fitted_50 = fit_footer(items, 50)
         assert sum(len(text) for _, text in fitted_50) <= 50
 
-        fitted_30 = _fit_footer(items, 30)
+        fitted_30 = fit_footer(items, 30)
         assert sum(len(text) for _, text in fitted_30) <= 30
 
-        fitted_15 = _fit_footer(items, 15)
+        fitted_15 = fit_footer(items, 15)
         assert sum(len(text) for _, text in fitted_15) <= 15

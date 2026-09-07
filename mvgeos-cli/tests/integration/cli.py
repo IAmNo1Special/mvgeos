@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from mvgeos_cli.commands.repl import _create_agent
+from mvgeos_cli.agent_factory import create_agent
 from mvgeos_cli.main import _run_agent, app
 
 runner = CliRunner()
@@ -264,7 +264,7 @@ async def test_bug4_single_registry_and_rune_providers(tmp_path: Path) -> None:
         patch("mvgeos_runes.watcher.RuneWatcher.start", new_callable=AsyncMock),
         patch("mvgeos_runes.watcher.RuneWatcher.stop", new_callable=AsyncMock),
     ):
-        agent = await _create_agent(
+        agent = await create_agent(
             model="nvidia/nemotron-3-ultra-550b-a55b:free",
             api_key="sk-or-v1-test-key",
             spells="bash,read",

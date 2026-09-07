@@ -53,10 +53,6 @@ from mvgeos_cli.formatting import (
     render_live_rate_limit,
 )
 
-# Compatibility aliases for external callers/tests
-_fit_footer = fit_footer
-_format_tome_info = format_tome_info
-
 
 @dataclass
 class _Entry:
@@ -389,14 +385,14 @@ class TuiApp:
             self.transcript.scroll_to_bottom()
 
     def _footer_text(self) -> FormattedText:
-        items = list(_format_tome_info(self.agent, self._branch, fit=False))
+        items = list(format_tome_info(self.agent, self._branch, fit=False))
         mode = getattr(self.agent, "queue_mode", "one-at-a-time")
         if self._busy:
             items.append(("", f"  (working • mode: {mode})"))
         else:
             items.append(("", f"  (mode: {mode})"))
         width = self.application.output.get_size().columns
-        return FormattedText(_fit_footer(items, width))
+        return FormattedText(fit_footer(items, width))
 
     def _out(self, text: str) -> None:
         self.sink.write_card_line(render_markup(text), None)

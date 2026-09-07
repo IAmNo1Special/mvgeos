@@ -85,9 +85,9 @@ class CommandDispatcher:
             tid = self._agent.tome_id or "none"
             output(f"[dim]Tome ID: {tid}[/dim]")
             output(f"[dim]Model: {self._agent.model_id}[/dim]")
-            spells = getattr(self._agent, "enabled_spells", [])
+            spells = self._agent.enabled_spells
             output(f"[bold]Enabled spells:[/bold] {', '.join(spells) or 'none'}")
-            providers = getattr(self._agent, "registered_providers", [])
+            providers = self._agent.registered_providers
             output(f"[dim]Providers: {', '.join(providers) or 'none'}[/dim]")
             return False
 
@@ -117,12 +117,7 @@ class CommandDispatcher:
                 return False
 
             try:
-                if hasattr(self._agent, "switch_model") and callable(
-                    self._agent.switch_model
-                ):
-                    await self._agent.switch_model(candidate)
-                elif hasattr(self._agent, "_model_id"):
-                    object.__setattr__(self._agent, "_model_id", candidate)
+                await self._agent.switch_model(candidate)
             except Exception as e:
                 output(format_error(e))
                 return False
@@ -142,16 +137,11 @@ class CommandDispatcher:
         if cmd == "/spells":
             if args:
                 new_spells = [s.strip() for s in args.split(",") if s.strip()]
-                if hasattr(self._agent, "set_enabled_spells") and callable(
-                    self._agent.set_enabled_spells
-                ):
-                    self._agent.set_enabled_spells(new_spells)
-                elif hasattr(self._agent, "_spell_names"):
-                    object.__setattr__(self._agent, "_spell_names", new_spells)
+                self._agent.set_enabled_spells(new_spells)
                 output(f"[green]Spells set to: {', '.join(new_spells)}[/green]")
             else:
-                enabled = getattr(self._agent, "enabled_spells", [])
-                available = getattr(self._agent, "available_spells", enabled)
+                enabled = self._agent.enabled_spells
+                available = self._agent.available_spells
                 if enabled:
                     output(f"[bold]Enabled spells:[/bold] {', '.join(enabled)}")
                 other = [s for s in available if s not in enabled]
@@ -189,15 +179,7 @@ class CommandDispatcher:
         if cmd == "/new":
             output("[yellow]Starting a new session...[/yellow]")
             try:
-                if hasattr(self._agent, "reset_session") and callable(
-                    self._agent.reset_session
-                ):
-                    await self._agent.reset_session(resume_tome_id=None)
-                else:
-                    await self._agent.close()
-                    if hasattr(self._agent, "_initialized"):
-                        object.__setattr__(self._agent, "_initialized", False)
-                    await self._agent.initialize()
+                await self._agent.reset_session(resume_tome_id=None)
             except Exception as e:
                 output(format_error(e))
                 return False
@@ -209,17 +191,7 @@ class CommandDispatcher:
                 target_path = args.strip()
                 output(f"[yellow]Resuming tome {target_path}...[/yellow]")
                 try:
-                    if hasattr(self._agent, "reset_session") and callable(
-                        self._agent.reset_session
-                    ):
-                        await self._agent.reset_session(resume_tome_id=target_path)
-                    else:
-                        if hasattr(self._agent, "_tome_resume"):
-                            object.__setattr__(self._agent, "_tome_resume", target_path)
-                        await self._agent.close()
-                        if hasattr(self._agent, "_initialized"):
-                            object.__setattr__(self._agent, "_initialized", False)
-                        await self._agent.initialize()
+                    await self._agent.reset_session(resume_tome_id=target_path)
                 except Exception as e:
                     output(format_error(e))
                     return False

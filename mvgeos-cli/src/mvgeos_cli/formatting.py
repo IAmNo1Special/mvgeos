@@ -251,14 +251,3 @@ def check_and_warn_missing_deps(
             install()
     out("")
     return True
-
-
-# Backward-compatible aliases
-_format_cwd = format_cwd
-_git_branch = get_git_branch
-_mana_context = mana_context
-_fit_footer = fit_footer
-_format_tome_info = format_tome_info
-_render_live_rate_limit = render_live_rate_limit
-_check_and_warn_load_failures = check_and_warn_load_failures
-_check_and_warn_missing_deps = check_and_warn_missing_deps

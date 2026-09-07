@@ -10,16 +10,15 @@ import signal
 import sys
 import threading
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from contextlib import suppress
-from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol
 
 from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_agent.errors import RateLimitError
-from mvgeos_agent.protocol import AgentFactory, MvgeAgent
-from mvgeos_agent.types import MvgeEvent, MvgeResponse, QueueMode
+from mvgeos_agent.protocol import AgentFactory
+from mvgeos_agent.types import MvgeEvent, MvgeResponse
 from mvgeos_provider.model_registry import ModelRegistry
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
@@ -40,10 +39,8 @@ from mvgeos_cli.console import format_error
 from mvgeos_cli.formatting import (
     check_and_warn_load_failures,
     check_and_warn_missing_deps,
-    fit_footer,
-    format_cwd,
+    format_tome_info,
     get_git_branch,
-    mana_context,
     render_live_rate_limit,
 )
 
@@ -68,14 +65,6 @@ if sys.platform == "win32":
 logger = logging.getLogger(__name__)
 
 console = Console()
-
-
-class ReplAction(StrEnum):
-    CONTINUE = "continue"
-    EXIT = "exit"
-    NEW_SESSION = "new_session"
-    SWITCH_MODEL = "switch_model"
-    REFRESH_MODELS = "refresh_models"
 
 
 REPL_STYLE = Style.from_dict(
@@ -139,164 +128,6 @@ def _trim_history_file(history_path: Path, max_entries: int = 100) -> None:
             history_path.write_text("\n".join(trimmed) + "\n", encoding="utf-8")
     except OSError:
         pass
-
-
-_format_cwd = format_cwd
-_git_branch = get_git_branch
-_mana_context = mana_context
-_fit_footer = fit_footer
-_render_live_rate_limit = render_live_rate_limit
-_check_and_warn_load_failures = check_and_warn_load_failures
-_check_and_warn_missing_deps = check_and_warn_missing_deps
-
-
-def _format_tome_info(
-    agent: MvgeAgent, branch: str | None = None, fit: bool = True
-) -> list[tuple[str, str]]:
-    cwd = _format_cwd()
-    if branch:
-        cwd = f"{cwd} ({branch})"
-    items: list[tuple[str, str]] = [("bold", f" {cwd}")]
-    tid = agent.tome_id
-    if tid:
-        items.append(("dim", f"  tome {tid[:8]}"))
-    mana_style, mana_text = _mana_context(agent)
-    items.append((mana_style, f"  {mana_text}"))
-    right = getattr(agent, "model_id", getattr(agent, "_model_id", ""))
-    thinking = getattr(
-        agent, "contemplation_level", getattr(agent, "_contemplation_level", None)
-    )
-    if thinking:
-        right = f"{right} • {thinking}"
-    items.append(("", f"  {right}"))
-    if not fit:
-        return items
-    return _fit_footer(items, console.width)
-
-
-def _handle_command(
-    command: str,
-    agent: MvgeAgent,
-    registry: ModelRegistry,
-    out: Callable[[str], None] = console.print,
-) -> ReplAction:
-    parts = command.strip().split(maxsplit=1)
-    cmd = parts[0]
-    args = parts[1] if len(parts) > 1 else ""
-
-    if cmd in ("/quit", "/exit"):
-        return ReplAction.EXIT
-
-    if cmd == "/help":
-        out("[bold]Available commands:[/bold]")
-        for name, desc in SLASH_COMMANDS.items():
-            out(f"  [cyan]{name:<15}[/cyan] {desc}")
-        return ReplAction.CONTINUE
-
-    if cmd == "/tome":
-        tid = agent.tome_id or "none"
-        out(f"[dim]Tome ID: {tid}[/dim]")
-        out(f"[dim]Model: {agent.model_id}[/dim]")
-        builtin = agent.enabled_spells
-        rune_spells = []
-        state = getattr(agent, "_state", None)
-        if state is not None:
-            for spell in state.spells:
-                if spell.name not in builtin:
-                    rune_spells.append(spell.name)
-        if builtin:
-            out(f"[bold]Builtin spells:[/bold] {', '.join(builtin)}")
-        if rune_spells:
-            out(f"[bold]Rune spells:[/bold] {', '.join(rune_spells)}")
-        out(f"[dim]Providers: {', '.join(agent.registered_providers) or 'none'}[/dim]")
-        return ReplAction.CONTINUE
-
-    if cmd in ("/model", "/models"):
-        stripped = args.strip()
-        if not stripped or stripped in ("--free", "-f"):
-            out(f"[bold]Current model:[/bold] {agent.model_id}")
-            out("[bold]Available models:[/bold]")
-            all_models = registry.list_all()
-            if stripped in ("--free", "-f"):
-                all_models = [m for m in all_models if m.free]
-            for m in all_models:
-                tag = " [green](free)[/green]" if m.free else ""
-                out(f"  {m.id}{tag}")
-            out("[dim]Try /refresh-models to fetch the latest catalog[/dim]")
-            return ReplAction.CONTINUE
-        candidate = stripped
-        if registry.get(candidate) is None:
-            out(format_error(f"Unknown model: {candidate}"))
-            out("[dim]Try /refresh-models to fetch the latest catalog[/dim]")
-            return ReplAction.CONTINUE
-        if hasattr(agent, "_model_id"):
-            object.__setattr__(agent, "_model_id", candidate)
-        return ReplAction.SWITCH_MODEL
-
-    if cmd == "/refresh-models":
-        return ReplAction.REFRESH_MODELS
-
-    if cmd == "/spells":
-        if args:
-            new_spells = [s.strip() for s in args.split(",") if s.strip()]
-            if hasattr(agent, "_spell_names"):
-                object.__setattr__(agent, "_spell_names", new_spells)
-            out(f"[green]Spells set to: {', '.join(new_spells)}[/green]")
-        else:
-            # Show both builtin and rune-discovered spells
-            builtin = agent.enabled_spells
-            rune_spells = []
-            state = getattr(agent, "_state", None)
-            if state is not None:
-                for spell in state.spells:
-                    if spell.name not in builtin:
-                        rune_spells.append(spell.name)
-            if builtin:
-                out(f"[bold]Builtin spells:[/bold] {', '.join(builtin)}")
-            if rune_spells:
-                out(f"[bold]Rune spells:[/bold] {', '.join(rune_spells)}")
-            if not builtin and not rune_spells:
-                out("[dim]No spells available[/dim]")
-        return ReplAction.CONTINUE
-
-    if cmd in ("/mode", "/m"):
-        if agent.queue_mode == QueueMode.ONE_AT_A_TIME:
-            agent.queue_mode = QueueMode.ALL
-        else:
-            agent.queue_mode = QueueMode.ONE_AT_A_TIME
-        out(f"[dim]Queue mode: {agent.queue_mode}[/dim]")
-        return ReplAction.CONTINUE
-
-    if cmd in ("/steer", "/s"):
-        if args:
-            agent.steer(args.strip())
-            out(f"[dim]Steering queued: {args.strip()}[/dim]")
-        return ReplAction.CONTINUE
-
-    if cmd in ("/followup", "/f", "/follow"):
-        if args:
-            agent.follow_up(args.strip())
-            out(f"[dim]Follow-up queued: {args.strip()}[/dim]")
-        else:
-            out(f"[dim]Queue mode: {agent.queue_mode}[/dim]")
-        return ReplAction.CONTINUE
-
-    if cmd == "/new":
-        return ReplAction.NEW_SESSION
-
-    if cmd == "/resume":
-        if args:
-            target_path = args.strip()
-            if hasattr(agent, "_tome_resume"):
-                object.__setattr__(agent, "_tome_resume", target_path)
-            out(f"[green]Will resume: {target_path}[/green]")
-            return ReplAction.NEW_SESSION
-        out(format_error("Usage: /resume <path-to-tome.jsonl>"))
-        return ReplAction.CONTINUE
-
-    out(format_error(f"Unknown command: {cmd}"))
-    out("[dim]Type /help for available commands[/dim]")
-    return ReplAction.CONTINUE
 
 
 def _display_response(result: Any) -> None:
@@ -783,8 +614,8 @@ async def run_repl(
     )
     console.print()
 
-    _check_and_warn_load_failures(agent.environment.diagnostics)
-    _check_and_warn_missing_deps(
+    check_and_warn_load_failures(agent.environment.diagnostics)
+    check_and_warn_missing_deps(
         agent.environment.diagnostics,
         out=console.print,
         prompt=input if sys.stdin.isatty() else None,
@@ -812,10 +643,10 @@ async def run_repl(
             "Falling back to standard line reader.[/dim]\n"
         )
 
-    branch = _git_branch()
+    branch = get_git_branch()
 
     def get_toolbar() -> list[tuple[str, str]]:
-        return _format_tome_info(agent, branch)
+        return format_tome_info(agent, branch)
 
     renderer = StreamRenderer()
     unsubs: list[object] = [
@@ -874,7 +705,7 @@ async def run_repl(
         except Exception as exc:
             renderer.finish(error=True)
             if isinstance(exc, RateLimitError):
-                await _render_live_rate_limit(exc, out=console.print)
+                await render_live_rate_limit(exc, out=console.print)
             else:
                 markup = format_error(exc)
                 console.print(f"\n{markup}")

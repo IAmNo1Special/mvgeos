@@ -298,7 +298,12 @@ class Mvge:
 
     @property
     def enabled_spells(self) -> list[str]:
-        return [s.name for s in self._build_spells()]
+        spells = self._build_spells()
+        if spells:
+            return [s.name for s in spells]
+        if self._enabled_spells_filter is not None:
+            return list(self._spell_names or self._enabled_spells_filter)
+        return []
 
     @property
     def available_spells(self) -> list[str]:

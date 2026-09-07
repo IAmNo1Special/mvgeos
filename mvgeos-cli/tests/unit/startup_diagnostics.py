@@ -5,12 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from mvgeos_runes.types import Diagnostic, DiagnosticKind, RuneScope
 
-from mvgeos_cli.commands.repl import (
-    _check_and_warn_load_failures,
-    _check_and_warn_missing_deps,
-    run_repl,
-)
+from mvgeos_cli.commands.repl import run_repl
 from mvgeos_cli.commands.tui import run_tui
+from mvgeos_cli.formatting import (
+    check_and_warn_load_failures,
+    check_and_warn_missing_deps,
+)
 
 
 class TestStartupDiagnostics:
@@ -31,7 +31,7 @@ class TestStartupDiagnostics:
         ]
 
         messages: list[str] = []
-        _check_and_warn_load_failures(diags, out=messages.append)
+        check_and_warn_load_failures(diags, out=messages.append)
 
         assert len(messages) > 0
         output = "\n".join(messages)
@@ -50,7 +50,7 @@ class TestStartupDiagnostics:
         ]
 
         messages: list[str] = []
-        _check_and_warn_load_failures(diags, out=messages.append)
+        check_and_warn_load_failures(diags, out=messages.append)
         assert len(messages) == 0
 
     def test_check_and_warn_missing_deps_emits_alert(self) -> None:
@@ -70,7 +70,7 @@ class TestStartupDiagnostics:
         ]
 
         messages: list[str] = []
-        warned = _check_and_warn_missing_deps(diags, out=messages.append)
+        warned = check_and_warn_missing_deps(diags, out=messages.append)
 
         assert warned is True
         output = "\n".join(messages)
@@ -81,7 +81,7 @@ class TestStartupDiagnostics:
 
     def test_check_and_warn_missing_deps_none_detected(self) -> None:
         messages: list[str] = []
-        warned = _check_and_warn_missing_deps([], out=messages.append)
+        warned = check_and_warn_missing_deps([], out=messages.append)
         assert warned is False
         assert messages == []
 
@@ -96,7 +96,7 @@ class TestStartupDiagnostics:
         ]
         messages: list[str] = []
         installed: list[bool] = []
-        _check_and_warn_missing_deps(
+        check_and_warn_missing_deps(
             diags,
             out=messages.append,
             prompt=lambda _q: "y",
@@ -115,7 +115,7 @@ class TestStartupDiagnostics:
         ]
         messages: list[str] = []
         installed: list[bool] = []
-        _check_and_warn_missing_deps(
+        check_and_warn_missing_deps(
             diags,
             out=messages.append,
             prompt=lambda _q: "n",

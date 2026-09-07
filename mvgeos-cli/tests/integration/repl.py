@@ -9,7 +9,7 @@ from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 from mvgeos_provider.model_registry import ModelRegistry
 
-from mvgeos_cli.commands.repl import ReplAction, _handle_command
+from mvgeos_cli.commands.dispatcher import CommandDispatcher
 
 
 @pytest.fixture
@@ -23,74 +23,97 @@ def agent() -> Mvge:
 
 
 class TestSlashCommands:
-    def test_help(self, agent: Mvge, registry: ModelRegistry) -> None:
-        result = _handle_command("/help", agent, registry)
-        assert result == ReplAction.CONTINUE
+    @pytest.mark.asyncio
+    async def test_help(self, agent: Mvge, registry: ModelRegistry) -> None:
+        dispatcher = CommandDispatcher(agent, registry)
+        result = await dispatcher.dispatch("/help")
+        assert result is False
 
-    def test_quit(self, agent: Mvge, registry: ModelRegistry) -> None:
-        result = _handle_command("/quit", agent, registry)
-        assert result == ReplAction.EXIT
+    @pytest.mark.asyncio
+    async def test_quit(self, agent: Mvge, registry: ModelRegistry) -> None:
+        dispatcher = CommandDispatcher(agent, registry)
+        result = await dispatcher.dispatch("/quit")
+        assert result is True
 
-    def test_exit(self, agent: Mvge, registry: ModelRegistry) -> None:
-        result = _handle_command("/exit", agent, registry)
-        assert result == ReplAction.EXIT
+    @pytest.mark.asyncio
+    async def test_exit(self, agent: Mvge, registry: ModelRegistry) -> None:
+        dispatcher = CommandDispatcher(agent, registry)
+        result = await dispatcher.dispatch("/exit")
+        assert result is True
 
-    def test_session(self, agent: Mvge, registry: ModelRegistry) -> None:
-        result = _handle_command("/session", agent, registry)
-        assert result == ReplAction.CONTINUE
+    @pytest.mark.asyncio
+    async def test_session(self, agent: Mvge, registry: ModelRegistry) -> None:
+        dispatcher = CommandDispatcher(agent, registry)
+        result = await dispatcher.dispatch("/tome")
+        assert result is False
 
-    def test_model_no_args_lists_models(
+    @pytest.mark.asyncio
+    async def test_model_no_args_lists_models(
         self,
         agent: Mvge,
         registry: ModelRegistry,
-        capsys: pytest.CaptureFixture[str],
     ) -> None:
-        result = _handle_command("/model", agent, registry)
-        assert result == ReplAction.CONTINUE
-        captured = capsys.readouterr()
+        output: list[str] = []
+        dispatcher = CommandDispatcher(agent, registry, out=output.append)
+        result = await dispatcher.dispatch("/model")
+        assert result is False
+        joined = "".join(output)
         models = registry.list_all()
         assert len(models) > 0
         for m in models:
-            assert m.id in captured.out
+            assert m.id in joined
 
-    def test_model_with_args(self, agent: Mvge, registry: ModelRegistry) -> None:
+    @pytest.mark.asyncio
+    async def test_model_with_args(self, agent: Mvge, registry: ModelRegistry) -> None:
+        dispatcher = CommandDispatcher(agent, registry)
         target = registry.list_all()[0].id
-        result = _handle_command(f"/model {target}", agent, registry)
-        assert result == ReplAction.SWITCH_MODEL
-        assert agent._model_id == target
+        result = await dispatcher.dispatch(f"/model {target}")
+        assert result is False
+        assert agent.model_id == target
 
-    def test_model_invalid(self, agent: Mvge, registry: ModelRegistry) -> None:
-        result = _handle_command("/model unknown/model", agent, registry)
-        assert result == ReplAction.CONTINUE
-        assert agent._model_id == DEFAULT_MODEL
+    @pytest.mark.asyncio
+    async def test_model_invalid(self, agent: Mvge, registry: ModelRegistry) -> None:
+        dispatcher = CommandDispatcher(agent, registry)
+        result = await dispatcher.dispatch("/model unknown/model")
+        assert result is False
+        assert agent.model_id == DEFAULT_MODEL
 
-    def test_spells_no_args(self, agent: Mvge, registry: ModelRegistry) -> None:
-        result = _handle_command("/spells", agent, registry)
-        assert result == ReplAction.CONTINUE
+    @pytest.mark.asyncio
+    async def test_spells_no_args(self, agent: Mvge, registry: ModelRegistry) -> None:
+        dispatcher = CommandDispatcher(agent, registry)
+        result = await dispatcher.dispatch("/spells")
+        assert result is False
 
-    def test_spells_with_args(self, agent: Mvge, registry: ModelRegistry) -> None:
-        result = _handle_command("/spells bash,read,write", agent, registry)
-        assert result == ReplAction.CONTINUE
-        assert agent._spell_names == ["bash", "read", "write"]
+    @pytest.mark.asyncio
+    async def test_spells_with_args(self, agent: Mvge, registry: ModelRegistry) -> None:
+        dispatcher = CommandDispatcher(agent, registry)
+        result = await dispatcher.dispatch("/spells bash,read,write")
+        assert result is False
+        assert agent.enabled_spells == ["bash", "read", "write"]
 
-    def test_new(self, agent: Mvge, registry: ModelRegistry) -> None:
-        result = _handle_command("/new", agent, registry)
-        assert result == ReplAction.NEW_SESSION
+    @pytest.mark.asyncio
+    async def test_new(self, agent: Mvge, registry: ModelRegistry) -> None:
+        dispatcher = CommandDispatcher(agent, registry)
+        result = await dispatcher.dispatch("/new")
+        assert result is False
 
-    def test_resume_with_args(self, agent: Mvge, registry: ModelRegistry) -> None:
-        result = _handle_command(
-            "/resume .agents/.mvgeos/tomes/test.jsonl", agent, registry
-        )
-        assert result == ReplAction.NEW_SESSION
-        assert agent._tome_resume == ".agents/.mvgeos/tomes/test.jsonl"
+    @pytest.mark.asyncio
+    async def test_resume_with_args(self, agent: Mvge, registry: ModelRegistry) -> None:
+        dispatcher = CommandDispatcher(agent, registry)
+        result = await dispatcher.dispatch("/resume .agents/.mvgeos/tomes/test.jsonl")
+        assert result is False
 
-    def test_resume_no_args(self, agent: Mvge, registry: ModelRegistry) -> None:
-        result = _handle_command("/resume", agent, registry)
-        assert result == ReplAction.CONTINUE
+    @pytest.mark.asyncio
+    async def test_resume_no_args(self, agent: Mvge, registry: ModelRegistry) -> None:
+        dispatcher = CommandDispatcher(agent, registry)
+        result = await dispatcher.dispatch("/resume")
+        assert result is False
 
-    def test_unknown_command(self, agent: Mvge, registry: ModelRegistry) -> None:
-        result = _handle_command("/unknown", agent, registry)
-        assert result == ReplAction.CONTINUE
+    @pytest.mark.asyncio
+    async def test_unknown_command(self, agent: Mvge, registry: ModelRegistry) -> None:
+        dispatcher = CommandDispatcher(agent, registry)
+        result = await dispatcher.dispatch("/unknown")
+        assert result is False
 
 
 class TestReplHelpers:
@@ -103,25 +126,26 @@ class TestReplHelpers:
         assert "Rate limited by the provider" in markup
         assert "[yellow]" in markup
 
-    def test_models_free_filter(
+    @pytest.mark.asyncio
+    async def test_models_free_filter(
         self,
         agent: Mvge,
         registry: ModelRegistry,
-        capsys: pytest.CaptureFixture[str],
     ) -> None:
-        result = _handle_command("/models --free", agent, registry)
-        assert result == ReplAction.CONTINUE
-        captured = capsys.readouterr()
+        dispatcher = CommandDispatcher(agent, registry)
+        output: list[str] = []
+        result = await dispatcher.dispatch("/models --free", out=output.append)
+        assert result is False
+        joined = "\n".join(output)
         for m in registry.list_all():
             if m.free:
-                assert m.id in captured.out
+                assert m.id in joined
 
-    def test_render_live_rate_limit_countdown(self) -> None:
-        import asyncio
-
+    @pytest.mark.asyncio
+    async def test_render_live_rate_limit_countdown(self) -> None:
         from mvgeos_agent.errors import RateLimitError
 
-        from mvgeos_cli.commands.repl import _render_live_rate_limit
+        from mvgeos_cli.formatting import render_live_rate_limit
 
         outputs: list[str] = []
 
@@ -129,20 +153,17 @@ class TestReplHelpers:
             pass
 
         exc = RateLimitError("limited", retry_after=3)
-        asyncio.run(
-            _render_live_rate_limit(exc, out=outputs.append, sleep_fn=dummy_sleep)
-        )
+        await render_live_rate_limit(exc, out=outputs.append, sleep_fn=dummy_sleep)
         assert len(outputs) == 3
         assert "Retry in 3s..." in outputs[0]
         assert "Retry in 2s..." in outputs[1]
         assert "Retry in 1s..." in outputs[2]
 
-    def test_render_live_rate_limit_daily_quota_skips_countdown(self) -> None:
-        import asyncio
-
+    @pytest.mark.asyncio
+    async def test_render_live_rate_limit_daily_quota_skips_countdown(self) -> None:
         from mvgeos_agent.errors import RateLimitError
 
-        from mvgeos_cli.commands.repl import _render_live_rate_limit
+        from mvgeos_cli.formatting import render_live_rate_limit
 
         outputs: list[str] = []
 
@@ -155,9 +176,7 @@ class TestReplHelpers:
             quota_limit=50,
             reset_at=1788566400.0,
         )
-        asyncio.run(
-            _render_live_rate_limit(exc, out=outputs.append, sleep_fn=dummy_sleep)
-        )
+        await render_live_rate_limit(exc, out=outputs.append, sleep_fn=dummy_sleep)
         assert len(outputs) == 1
         assert "Daily free-model quota exhausted" in outputs[0]
 
@@ -193,17 +212,17 @@ class TestReplHelpers:
     def test_format_tome_info_shows_cwd_model_and_mana(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from mvgeos_cli.commands import repl as repl_mod
-        from mvgeos_cli.commands.repl import _format_tome_info
+        from mvgeos_cli import formatting as formatting_mod
+        from mvgeos_cli.formatting import format_tome_info
 
-        monkeypatch.setattr(repl_mod, "_format_cwd", lambda: "~/proj")
+        monkeypatch.setattr(formatting_mod, "format_cwd", lambda: "~/proj")
 
         class _State:
             mana_used = 9500
 
         agent = Mvge(api_key="test-key")
         agent._state = _State()  # type: ignore[attr-defined]
-        info = _format_tome_info(agent, branch="main")
+        info = format_tome_info(agent, branch="main")
         parts = " ".join(text for _, text in info)
         assert "~/proj (main)" in parts
         assert "mana 9500" in parts
@@ -212,60 +231,60 @@ class TestReplHelpers:
     def test_format_tome_info_reports_mana_used(
         self,
     ) -> None:
-        from mvgeos_cli.commands.repl import _format_tome_info
+        from mvgeos_cli.formatting import format_tome_info
 
         class _State:
             mana_used = 7500
 
         agent = Mvge(api_key="test-key")
         agent._state = _State()  # type: ignore[attr-defined]
-        info = _format_tome_info(agent)
+        info = format_tome_info(agent)
         parts = " ".join(text for _, text in info)
         assert "mana 7500" in parts
 
     def test_format_tome_info_without_state(self) -> None:
-        from mvgeos_cli.commands.repl import _format_tome_info
+        from mvgeos_cli.formatting import format_tome_info
 
         agent = Mvge(api_key="test-key")
-        info = _format_tome_info(agent)
+        info = format_tome_info(agent)
         parts = " ".join(text for _, text in info)
         assert "mana ?" in parts
 
     def test_format_cwd_replaces_home(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from mvgeos_cli.commands import repl as repl_mod
+        from mvgeos_cli.formatting import format_cwd
 
         monkeypatch.chdir(Path.home())
-        assert repl_mod._format_cwd() == "~"
+        assert format_cwd() == "~"
 
     def test_fit_footer_truncates_right_side(self) -> None:
-        from mvgeos_cli.commands.repl import _fit_footer
+        from mvgeos_cli.formatting import fit_footer
 
         items = [
             ("bold", " ~/proj (main)"),
             ("dim", "  session abc12345"),
             ("", "  nvidia/nemotron-3-ultra-550b-a55b:free • medium"),
         ]
-        fitted = _fit_footer(items, 40)
+        fitted = fit_footer(items, 40)
         plain = "".join(text for _, text in fitted)
         assert len(plain) == 40
         assert plain.endswith("…")
 
     def test_fit_footer_no_truncation_when_fits(self) -> None:
-        from mvgeos_cli.commands.repl import _fit_footer
+        from mvgeos_cli.formatting import fit_footer
 
         items = [("bold", " ~/proj"), ("", "  nvidia/nemotron-3-ultra-550b-a55b:free")]
-        fitted = _fit_footer(items, 80)
+        fitted = fit_footer(items, 80)
         assert fitted == items
 
     def test_git_branch_returns_none_outside_repo(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        from mvgeos_cli.commands import repl as repl_mod
+        from mvgeos_cli.formatting import get_git_branch
 
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("GIT_DIR", raising=False)
         monkeypatch.delenv("GIT_WORK_TREE", raising=False)
-        assert repl_mod._git_branch() is None
+        assert get_git_branch() is None
 
     def test_slash_completer(self) -> None:
         from prompt_toolkit.document import Document
@@ -299,54 +318,58 @@ class TestReplHelpers:
         )
         _display_response(response)
 
-    def test_handle_command_steer(self) -> None:
+    @pytest.mark.asyncio
+    async def test_handle_command_steer(self) -> None:
         from unittest.mock import MagicMock
 
         from mvgeos_provider.model_registry import ModelRegistry
 
-        from mvgeos_cli.commands.repl import _handle_command
-
         agent = MagicMock()
         registry = ModelRegistry()
+        dispatcher = CommandDispatcher(agent, registry)
         out_messages: list[str] = []
 
-        _handle_command("/steer msg", agent, registry, out=out_messages.append)
+        result = await dispatcher.dispatch("/steer msg", out=out_messages.append)
+        assert result is False
         agent.steer.assert_called_once_with("msg")
         assert any("Steering queued" in m for m in out_messages)
 
-    def test_handle_command_followup(self) -> None:
+    @pytest.mark.asyncio
+    async def test_handle_command_followup(self) -> None:
         from unittest.mock import MagicMock
 
         from mvgeos_provider.model_registry import ModelRegistry
 
-        from mvgeos_cli.commands.repl import _handle_command
-
         agent = MagicMock()
         registry = ModelRegistry()
+        dispatcher = CommandDispatcher(agent, registry)
         out_messages: list[str] = []
 
-        _handle_command("/followup msg", agent, registry, out=out_messages.append)
+        result = await dispatcher.dispatch("/followup msg", out=out_messages.append)
+        assert result is False
         agent.follow_up.assert_called_once_with("msg")
         assert any("Follow-up queued" in m for m in out_messages)
 
-    def test_handle_command_mode_toggle(self) -> None:
+    @pytest.mark.asyncio
+    async def test_handle_command_mode_toggle(self) -> None:
         from unittest.mock import MagicMock
 
         from mvgeos_agent.types import QueueMode
         from mvgeos_provider.model_registry import ModelRegistry
 
-        from mvgeos_cli.commands.repl import _handle_command
-
         agent = MagicMock()
         agent.queue_mode = QueueMode.ONE_AT_A_TIME
         registry = ModelRegistry()
+        dispatcher = CommandDispatcher(agent, registry)
         out_messages: list[str] = []
 
-        _handle_command("/mode", agent, registry, out=out_messages.append)
+        result = await dispatcher.dispatch("/mode", out=out_messages.append)
+        assert result is False
         assert agent.queue_mode == QueueMode.ALL
         assert any("Queue mode: all" in m for m in out_messages)
 
-        _handle_command("/m", agent, registry, out=out_messages.append)
+        result = await dispatcher.dispatch("/m", out=out_messages.append)
+        assert result is False
         assert agent.queue_mode == QueueMode.ONE_AT_A_TIME
         assert any("Queue mode: one-at-a-time" in m for m in out_messages)
 
