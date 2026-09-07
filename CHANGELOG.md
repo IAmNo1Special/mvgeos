@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.1] - 2026-09-07
+
+
+### Bug Fixes
+
+- **gui:** resolve sign-in initialization, dialog dismiss, and shutdown error (1e78ba4)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (06465dd)
+
+- **release:** v1.13.1 (fb9dc1a)
+
+
+### Refactoring
+
+- **cli:** deepen command dispatcher and enforce MvgeAgent protocol seam (5b2e3bb)
+
+- **cli:** purge legacy backward-compatibility shims and aliases (989d2b6)
+
+- **gui:** align slash commands with cli dispatcher and purge stale session references (d380ac3)
+
+
 ## [1.13.0] - 2026-09-07
 
 
