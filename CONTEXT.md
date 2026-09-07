@@ -163,4 +163,5 @@ The system-wide default model across all MvgeOS packages and test suites is `nvi
 
 - **Abort**: Implemented via `AbortController`, `AbortSignal`, and `BaseMvge.abort()`, providing cooperative cancellation across channeling and spell execution.
 - **Queue modes**: `ONE_AT_A_TIME` drains one message per turn; `ALL` drains the entire queue. Both `queue_mode` and `one-at-a-time` semantics implemented.
+- **Command Dispatcher** (`CommandDispatcher`): The deep CLI module responsible for parsing, routing, and executing interactive slash commands against the `MvgeAgent` and `ModelRegistry` interfaces, isolating side effects and rendering output across REPL and TUI clients.
 

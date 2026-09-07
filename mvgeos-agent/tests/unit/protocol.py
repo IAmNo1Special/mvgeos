@@ -49,6 +49,13 @@ class DummyAgent:
         return ["read", "write"]
 
     @property
+    def available_spells(self) -> list[str]:
+        return ["read", "write", "bash"]
+
+    def set_enabled_spells(self, spell_names: list[str]) -> None:
+        pass
+
+    @property
     def registered_providers(self) -> list[str]:
         return ["openrouter"]
 
@@ -75,6 +82,9 @@ class DummyAgent:
         return MvgeResponse(content=[{"type": "text", "text": "ok"}])
 
     async def switch_model(self, model_id: str) -> None:
+        pass
+
+    async def reset_session(self, *, resume_tome_id: str | None = None) -> None:
         pass
 
     def build_snapshot(self) -> Any:
@@ -129,3 +139,20 @@ class TestMvgeAgentProtocol:
         agent._load_runes = AsyncMock()  # type: ignore[method-assign]
         await agent.load_runes()
         agent._load_runes.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_mvge_available_spells_and_set_enabled(self) -> None:
+        agent = Mvge(api_key="test-key")
+        assert isinstance(agent.available_spells, list)
+        agent.set_enabled_spells(["read"])
+        assert agent._spell_names == ["read"]
+
+    @pytest.mark.asyncio
+    async def test_mvge_reset_session(self) -> None:
+        agent = Mvge(api_key="test-key")
+        agent.close = AsyncMock()  # type: ignore[method-assign]
+        agent.initialize = AsyncMock()  # type: ignore[method-assign]
+        await agent.reset_session(resume_tome_id="new-tome-456")
+        agent.close.assert_awaited_once()
+        assert agent._tome_resume == "new-tome-456"
+        agent.initialize.assert_awaited_once()

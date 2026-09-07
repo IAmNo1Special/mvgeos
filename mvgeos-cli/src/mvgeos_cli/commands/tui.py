@@ -35,22 +35,27 @@ from rich.text import Text
 
 from mvgeos_cli import DEFAULT_MODEL
 from mvgeos_cli.agent_factory import create_agent, validate_api_key
+from mvgeos_cli.commands.dispatcher import CommandDispatcher
 from mvgeos_cli.commands.repl import (
     NoConsoleScreenBufferError,
-    ReplAction,
     SlashCompleter,
     StreamRenderer,
-    _check_and_warn_load_failures,
-    _check_and_warn_missing_deps,
-    _fit_footer,
-    _format_tome_info,
-    _git_branch,
-    _handle_command,
-    _render_live_rate_limit,
     console,
 )
 from mvgeos_cli.commands.setup import install_missing_deps
 from mvgeos_cli.console import format_error
+from mvgeos_cli.formatting import (
+    check_and_warn_load_failures,
+    check_and_warn_missing_deps,
+    fit_footer,
+    format_tome_info,
+    get_git_branch,
+    render_live_rate_limit,
+)
+
+# Compatibility aliases for external callers/tests
+_fit_footer = fit_footer
+_format_tome_info = format_tome_info
 
 
 @dataclass
@@ -280,13 +285,14 @@ class TuiApp:
         input: Any = None,
         output: Any = None,
     ) -> None:
-        self.agent = agent
+        self._agent = agent
         self.sink = sink
-        self.registry = registry
+        self._registry = registry
         self.renderer = renderer
+        self.dispatcher = CommandDispatcher(agent, registry, out=self._out)
         self._busy = False
         self._task: asyncio.Task[Any] | None = None
-        self._branch = _git_branch()
+        self._branch = get_git_branch()
         self.transcript = TranscriptControl(sink)
 
         app_kb = KeyBindings()
@@ -337,6 +343,26 @@ class TuiApp:
             input=input,
             output=output,
         )
+
+    @property
+    def agent(self) -> MvgeAgent:
+        return self._agent
+
+    @agent.setter
+    def agent(self, value: MvgeAgent) -> None:
+        self._agent = value
+        if hasattr(self, "dispatcher"):
+            self.dispatcher.agent = value
+
+    @property
+    def registry(self) -> ModelRegistry:
+        return self._registry
+
+    @registry.setter
+    def registry(self, value: ModelRegistry) -> None:
+        self._registry = value
+        if hasattr(self, "dispatcher"):
+            self.dispatcher.registry = value
 
     def _bind_app_keys(self, kb: KeyBindings) -> None:
         @kb.add("c-c")
@@ -404,7 +430,7 @@ class TuiApp:
         except Exception as exc:
             self.renderer.finish(error=True)
             if isinstance(exc, RateLimitError):
-                await _render_live_rate_limit(
+                await render_live_rate_limit(
                     exc, out=self._out, invalidate=self.application.invalidate
                 )
             else:
@@ -418,39 +444,10 @@ class TuiApp:
             self.application.invalidate()
 
     async def _handle_slash(self, text: str) -> None:
-        action = _handle_command(text, self.agent, self.registry, out=self._out)
-        if action == ReplAction.EXIT:
+        should_exit = await self.dispatcher.dispatch(text, out=self._out)
+        if should_exit:
             self.application.exit()
             return
-        if action == ReplAction.SWITCH_MODEL:
-            target_model = getattr(
-                self.agent, "model_id", getattr(self.agent, "_model_id", "")
-            )
-            try:
-                await self.agent.switch_model(target_model)
-            except ValueError as e:
-                self._out(format_error(e))
-                return
-            self._out(f"[green]Model switched: {target_model}[/green]")
-        elif action == ReplAction.REFRESH_MODELS:
-            self._out("[yellow]Fetching latest models from OpenRouter...[/yellow]")
-            try:
-                count = await self.registry.refresh(force_refresh=True)
-            except Exception as e:
-                self._out(format_error(f"Failed to refresh models: {e}"))
-            else:
-                self._out(f"[green]Models refreshed ({count} new models).[/green]")
-        elif action == ReplAction.NEW_SESSION:
-            self._out("[yellow]Starting a new session...[/yellow]")
-            await self.agent.close()
-            if hasattr(self.agent, "_initialized"):
-                object.__setattr__(self.agent, "_initialized", False)
-            try:
-                await self.agent.initialize()
-            except ValueError as e:
-                self._out(format_error(e))
-                return
-            self._out(f"[green]New tome: {self.agent.tome_id}[/green]")
         self.application.invalidate()
 
     async def run(self) -> None:
@@ -512,8 +509,8 @@ async def run_tui(
     renderer = StreamRenderer(sink)
     app = TuiApp(agent, sink, registry, renderer)
     sink.set_redraw_cb(app.application.invalidate)
-    _check_and_warn_load_failures(agent.environment.diagnostics, out=app._out)
-    _check_and_warn_missing_deps(
+    check_and_warn_load_failures(agent.environment.diagnostics, out=app._out)
+    check_and_warn_missing_deps(
         agent.environment.diagnostics,
         out=app._out,
         install=lambda: install_missing_deps(

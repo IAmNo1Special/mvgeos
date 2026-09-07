@@ -266,6 +266,7 @@ class Mvge:
         self._state: MvgeState | None = None
         self._event_bus = EventBus()
         self._abort_controller: AbortController | None = None
+        self._enabled_spells_filter: set[str] | None = None
         self._initialized = False
 
     @property
@@ -298,6 +299,21 @@ class Mvge:
     @property
     def enabled_spells(self) -> list[str]:
         return [s.name for s in self._build_spells()]
+
+    @property
+    def available_spells(self) -> list[str]:
+        """List of all available spell names (builtin + rune-registered)."""
+        names: list[str] = [coerce_spell(s).name for s in self._spells]
+        if self._runner is not None:
+            names.extend([s.name for s in self._runner.get_all_registered_spells()])
+        return list(dict.fromkeys(names))
+
+    def set_enabled_spells(self, spell_names: Sequence[str]) -> None:
+        """Filter which spells are enabled for execution."""
+        self._enabled_spells_filter = set(spell_names)
+        self._spell_names = list(spell_names)
+        if self._state is not None:
+            self._state.spells = self._build_spells()
 
     @property
     def registered_commands(self) -> list[str]:
@@ -571,6 +587,9 @@ class Mvge:
                 seen_names.add(spell_name)
                 spells.append(spell_to_add)
 
+        if self._enabled_spells_filter is not None:
+            spells = [s for s in spells if s.name in self._enabled_spells_filter]
+
         return spells
 
     def _build_system_prompt(self) -> str:
@@ -792,6 +811,17 @@ class Mvge:
             await self._agent_tome.record_custom_async(
                 "contemplation_switch", {"level": level.value}
             )
+
+    async def reset_session(self, *, resume_tome_id: str | None = None) -> None:
+        """Reset or resume session lifecycle."""
+        await self.close()
+        self._tome_resume = resume_tome_id
+        self._state = None
+        self._agent_tome = None
+        self._loop = None
+        self._harness = None
+        self._initialized = False
+        await self.initialize()
 
     async def close(self) -> None:
         """Teardown the agent session and release resources."""

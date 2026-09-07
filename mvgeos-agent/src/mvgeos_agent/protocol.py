@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, Protocol, runtime_checkable
 
 from mvgeos_agent.environment import MvgeEnvironment
@@ -66,6 +66,15 @@ class MvgeAgent(Protocol):
         ...
 
     @property
+    def available_spells(self) -> list[str]:
+        """List of all available spell names (builtin + rune-registered)."""
+        ...
+
+    def set_enabled_spells(self, spell_names: Sequence[str]) -> None:
+        """Filter which spells are enabled for execution."""
+        ...
+
+    @property
     def environment(self) -> MvgeEnvironment:
         """The resolved environment configuration."""
         ...
@@ -100,6 +109,10 @@ class MvgeAgent(Protocol):
 
     async def switch_model(self, model_id: str) -> None:
         """Switch active model for the running agent."""
+        ...
+
+    async def reset_session(self, *, resume_tome_id: str | None = None) -> None:
+        """Reset or resume session lifecycle."""
         ...
 
     def build_snapshot(self) -> RuntimeSnapshot:

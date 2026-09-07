@@ -7,7 +7,6 @@ import logging
 import os
 import re
 import signal
-import subprocess
 import sys
 import threading
 import time
@@ -35,8 +34,18 @@ from rich.text import Text
 
 from mvgeos_cli import DEFAULT_MODEL
 from mvgeos_cli.agent_factory import create_agent, validate_api_key
+from mvgeos_cli.commands.dispatcher import SLASH_COMMANDS, CommandDispatcher
 from mvgeos_cli.commands.setup import install_missing_deps
 from mvgeos_cli.console import format_error
+from mvgeos_cli.formatting import (
+    check_and_warn_load_failures,
+    check_and_warn_missing_deps,
+    fit_footer,
+    format_cwd,
+    get_git_branch,
+    mana_context,
+    render_live_rate_limit,
+)
 
 
 class NoConsoleScreenBufferError(Exception):
@@ -68,22 +77,6 @@ class ReplAction(StrEnum):
     SWITCH_MODEL = "switch_model"
     REFRESH_MODELS = "refresh_models"
 
-
-SLASH_COMMANDS: dict[str, str] = {
-    "/help": "Show this help message",
-    "/quit": "Exit the REPL",
-    "/exit": "Exit the REPL",
-    "/model": "Switch or list models: /model [id] or /model --free",
-    "/models": "List available models: /models [--free]",
-    "/mode": "Toggle queue mode (all/one-at-a-time): /mode or /m",
-    "/new": "Start a new tome",
-    "/tome": "Show current tome info",
-    "/resume": "Resume a previous tome: /resume <path>",
-    "/spells": "List or set enabled spells: /spells [comma-separated]",
-    "/steer": "Steer agent mid-run: /steer <message>",
-    "/followup": "Queue follow-up for post-run: /followup <message>",
-    "/refresh-models": "Refresh model catalog from OpenRouter API",
-}
 
 REPL_STYLE = Style.from_dict(
     {
@@ -148,70 +141,13 @@ def _trim_history_file(history_path: Path, max_entries: int = 100) -> None:
         pass
 
 
-def _format_cwd() -> str:
-    home = Path.home()
-    try:
-        rel = Path.cwd().relative_to(home)
-    except ValueError:
-        return str(Path.cwd())
-    if str(rel) == ".":
-        return "~"
-    return f"~/{rel.as_posix()}"
-
-
-def _git_branch() -> str | None:
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-    except OSError, subprocess.SubprocessError:
-        return None
-    if result.returncode != 0:
-        return None
-    branch = result.stdout.strip()
-    return branch or None
-
-
-def _mana_context(agent: MvgeAgent) -> tuple[str, str]:
-    used = getattr(agent, "mana_used", None)
-    if used is None:
-        state = getattr(agent, "_state", None)
-        if state is not None:
-            used = getattr(state, "mana_used", None)
-    if used is None:
-        return "", "mana ?"
-    return "", f"mana {used}"
-
-
-def _fit_footer(items: list[tuple[str, str]], width: int) -> list[tuple[str, str]]:
-    if width <= 0:
-        return []
-    items = list(items)
-    while items:
-        total = sum(len(text) for _, text in items)
-        if total <= width:
-            return items
-
-        target_idx = -1
-        if len(items) >= 2 and items[-1][1].lstrip().startswith("("):
-            target_idx = -2
-
-        n = len(items)
-        norm_target = (target_idx + n) % n
-        other_total = sum(
-            len(text) for i, (_, text) in enumerate(items) if i != norm_target
-        )
-        room = width - other_total
-        if room >= 1:
-            style, text = items[norm_target]
-            items[norm_target] = (style, text[: room - 1] + "…")
-            return items
-        items.pop(norm_target)
-
-    return items
+_format_cwd = format_cwd
+_git_branch = get_git_branch
+_mana_context = mana_context
+_fit_footer = fit_footer
+_render_live_rate_limit = render_live_rate_limit
+_check_and_warn_load_failures = check_and_warn_load_failures
+_check_and_warn_missing_deps = check_and_warn_missing_deps
 
 
 def _format_tome_info(
@@ -236,102 +172,6 @@ def _format_tome_info(
     if not fit:
         return items
     return _fit_footer(items, console.width)
-
-
-async def _render_live_rate_limit(
-    exc: RateLimitError,
-    out: Callable[[str], None] = console.print,
-    invalidate: Callable[[], None] | None = None,
-    sleep_fn: Any = asyncio.sleep,
-) -> None:
-    if exc.limit_source == "openrouter_free_tier_daily" or (
-        exc.retry_after is None and exc.limit_source
-    ):
-        markup = format_error(exc)
-        out(markup)
-        if invalidate is not None:
-            invalidate()
-        return
-
-    seconds = int(exc.retry_after or 60)
-    for sec in range(seconds, 0, -1):
-        msg = f"[yellow]Rate limited by the provider. Retry in {sec}s...[/yellow]"
-        out(msg)
-        if invalidate is not None:
-            invalidate()
-        await sleep_fn(1)
-
-
-def _diag_kind(diag: Any) -> str:
-    """Return the lowercased DiagnosticKind value for a diagnostic, or ''."""
-    kind = getattr(diag, "kind", None)
-    if kind is None:
-        return ""
-    return str(getattr(kind, "value", kind))
-
-
-def _check_and_warn_load_failures(
-    diagnostics: list[Any],
-    out: Callable[[str], None] = console.print,
-) -> None:
-    """Scan diagnostics for load failures and print a prominent warning."""
-    load_failures: list[Any] = []
-    for diag in diagnostics:
-        if _diag_kind(diag) == "load_failure":
-            load_failures.append(diag)
-
-    if not load_failures:
-        return
-
-    count = len(load_failures)
-    out(f"[bold yellow]Warning: Failed to load {count} rune(s):[/bold yellow]")
-    for diag in load_failures:
-        name = (
-            getattr(diag, "rune_name", None)
-            or getattr(diag, "skill_name", None)
-            or getattr(diag, "name", "unknown")
-        )
-        msg = getattr(diag, "message", str(diag))
-        out(f"  [yellow]• {name}: {msg}[/yellow]")
-    out("[dim]Run 'mvgeos info' for detailed diagnostic information.[/dim]\n")
-
-
-def _check_and_warn_missing_deps(
-    diagnostics: list[Any],
-    out: Callable[[str], None] = console.print,
-    prompt: Callable[[str], str] | None = None,
-    install: Callable[[], Any] | None = None,
-) -> bool:
-    """Scan diagnostics for MISSING_DEP and print a recovery alert.
-
-    The Summoner is offered the choice to auto-install via ``install`` (when a
-    ``prompt`` callable returns a ``y`` confirmation) or to run
-    ``mvgeos setup install`` manually. Returns True when missing deps were
-    detected.
-    """
-    missing: list[Any] = []
-    for diag in diagnostics:
-        if _diag_kind(diag) == "missing_dep":
-            missing.append(diag)
-
-    if not missing:
-        return False
-
-    out("[bold yellow]Missing rune dependencies detected:[/bold yellow]")
-    for diag in missing:
-        name = getattr(diag, "rune_name", None) or getattr(diag, "name", "unknown")
-        msg = getattr(diag, "message", str(diag))
-        out(f"  [yellow]• {name}: {msg}[/yellow]")
-    out("[dim]Run 'mvgeos setup install' to install the missing dependencies.[/dim]")
-
-    if install is not None and prompt is not None:
-        response = (
-            prompt("Auto-install missing dependencies now? [y/N]: ").strip().lower()
-        )
-        if response == "y":
-            install()
-    out("")
-    return True
 
 
 def _handle_command(
@@ -932,6 +772,8 @@ async def run_repl(
         with contextlib.suppress(Exception):
             await registry.auto_refresh()
 
+    dispatcher = CommandDispatcher(agent, registry, out=console.print)
+
     console.print("[green]MvgeOS REPL[/green]")
     console.print(f"[dim]Model: {model}[/dim]")
     if agent.tome_id:
@@ -1016,41 +858,10 @@ async def run_repl(
             continue
 
         if text.startswith("/"):
-            action = _handle_command(text, agent, registry)
-            if action == ReplAction.EXIT:
+            should_exit = await dispatcher.dispatch(text)
+            if should_exit:
                 console.print("[dim]Goodbye.[/dim]")
                 break
-            if action == ReplAction.SWITCH_MODEL:
-                target_model = getattr(
-                    agent, "model_id", getattr(agent, "_model_id", "")
-                )
-                try:
-                    await agent.switch_model(target_model)
-                except ValueError as e:
-                    console.print(format_error(e))
-                    continue
-                console.print(f"[green]Model switched: {target_model}[/green]")
-                continue
-            if action == ReplAction.REFRESH_MODELS:
-                console.print(
-                    "[yellow]Fetching latest models from OpenRouter...[/yellow]"
-                )
-                try:
-                    count = await registry.refresh(force_refresh=True)
-                except Exception as exc:
-                    console.print(format_error(f"Failed to refresh models: {exc}"))
-                else:
-                    console.print(
-                        f"[green]Models refreshed ({count} new models).[/green]"
-                    )
-                continue
-            if action == ReplAction.NEW_SESSION:
-                console.print("[yellow]Starting a new tome...[/yellow]")
-                await agent.close()
-                if hasattr(agent, "_initialized"):
-                    object.__setattr__(agent, "_initialized", False)
-                await agent.initialize()
-                console.print(f"[green]New tome: {agent.tome_id}[/green]")
             continue
 
         renderer.reset()
