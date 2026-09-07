@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pathspec
+from mvgeos_cli.commands.dispatcher import SLASH_COMMANDS
 from mvgeos_runes.types import SkillManifest
 
 ChangeListener = Callable[[], Any]
@@ -190,21 +191,7 @@ def fuzzy_filter(
 class SlashCommandRegistry:
     """Provides slash commands from CLI defaults and rune-registered commands."""
 
-    CLI_SLASH_COMMANDS: dict[str, str] = {
-        "/help": "Show available commands",
-        "/quit": "Exit the session",
-        "/exit": "Exit the session",
-        "/model": "Switch or list models: /model [id] or /model --free",
-        "/models": "List available models: /models [--free]",
-        "/mode": "Toggle queue mode (all/one-at-a-time)",
-        "/new": "Start a new session",
-        "/session": "Show current session info",
-        "/resume": "Resume a previous session: /resume <id>",
-        "/spells": "List or set enabled spells: /spells [name, ...]",
-        "/steer": "Steer agent mid-run: /steer <message>",
-        "/followup": "Queue follow-up for post-run: /followup <message>",
-        "/refresh-models": "Refresh model catalog from OpenRouter API",
-    }
+    CLI_SLASH_COMMANDS: dict[str, str] = dict(SLASH_COMMANDS)
 
     def __init__(self, rune_commands: list[SlashCommandItem] | None = None) -> None:
         self._rune_commands = list(rune_commands or [])

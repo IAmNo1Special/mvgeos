@@ -190,6 +190,8 @@ def test_slash_command_registry_includes_cli_commands() -> None:
     assert "/help" in names
     assert "/new" in names
     assert "/quit" in names
+    assert "/tome" in names
+    assert "/session" not in names
 
 
 def test_slash_command_registry_includes_rune_commands() -> None:
