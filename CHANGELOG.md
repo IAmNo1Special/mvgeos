@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-09-07
+
+
+### Bug Fixes
+
+- **agent:** recognize coding_mvge as known agent name (0cbfa25)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (2fc74f4)
+
+- **release:** v1.13.0 (acccdb5)
+
+
+### Documentation
+
+- add ADR 0010 and update domain definitions for knowledge skill (8f5e23f)
+
+
+### Features
+
+- **provider:** add rate limit diagnostics and system prompt support (6b6fa08)
+
+- **agent:** validate spell names and forward rate limit diagnostics (e2954c9)
+
+- **runes:** support clean reload and ignore bytecode in watcher (2c1a12e)
+
+- **cli:** enhance rate limit formatting and handling in repl (bcac243)
+
+- **coding-mvge:** implement knowledge_skill rune and persistent knowledge store (9b59728)
+
+- **gui:** add unit tests and configurable paths for database, logging, and login screen (9204f50)
+
+
+### Refactoring
+
+- **agent:** remove dead errors, unused Mvge helpers, and dead spell_schema validation (0e8ad82)
+
+- **cli:** remove dead helpers, redundant aliases, and duplicate exception handlers (cfa01d5)
+
+- **gui:** remove dead message part renderers, obsolete settings panel, unused state fields, and redundant autocomplete aliases (f84dab7)
+
+- **gui:** modularize models and services and add login screen (d62dd0e)
+
+
+### Tests
+
+- **gui:** hermetically mock MvgeEnvironment in agent_service tests (3b04c13)
+
+
+### Style
+
+- fix import sorting in resume.py tests (02296bb)
+
+- fix ruff formatting in tests (ed474f8)
+
+
 ## [1.12.0] - 2026-09-02
 
 
