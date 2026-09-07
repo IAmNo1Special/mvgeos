@@ -11,6 +11,9 @@ from mvgeos_gui.state import AppState
 
 def render_login_screen(state: AppState) -> None:
     """Render the login dialog."""
+    if not getattr(state, "_show_login", False):
+        return
+
     auth = getattr(state, "_auth_service", None) or AuthService()
 
     if state._show_app_settings:
@@ -18,9 +21,8 @@ def render_login_screen(state: AppState) -> None:
 
     with (
         ui.dialog()
-        .value(state._show_login)
         .on("close", state.hide_login)
-        .props("maximized persistent"),
+        .props("maximized persistent") as dialog,
         ui.card().classes(
             "w-full max-w-sm bg-[#1e212b] border border-[#2b2f3d] rounded-xl p-8 gap-6"
         ),
@@ -74,3 +76,4 @@ def render_login_screen(state: AppState) -> None:
         )
 
         ui.label("Default: admin / admin").classes("text-xs text-center text-[#64748b]")
+    dialog.open()

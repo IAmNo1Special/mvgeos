@@ -14,6 +14,9 @@ _LEVEL_ENV = "MVGEOS_LOG_LEVEL"
 
 
 def _log_dir() -> Path:
+    env_dir = os.environ.get("MVGEOS_LOG_DIR")
+    if env_dir:
+        return Path(env_dir)
     base = Path(__file__).resolve().parent.parent.parent
     return base / _LOG_DIR
 

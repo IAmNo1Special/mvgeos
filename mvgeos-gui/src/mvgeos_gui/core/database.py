@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import time
 from datetime import UTC, datetime
@@ -21,6 +22,11 @@ _DEFAULT_SESSION_TTL = 12 * 60 * 60
 
 
 def _db_path() -> Path:
+    env_path = os.environ.get("MVGEOS_DB_PATH")
+    if env_path:
+        p = Path(env_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
     base = Path(__file__).resolve().parent.parent.parent
     data_dir = base / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
