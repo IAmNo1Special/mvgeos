@@ -192,7 +192,7 @@ class Mvge:
         # Discover built-in runes for named agent package
         # (e.g., coding_mvge -> coding_mvge/runes)
         # Ensures GUI/CLI `Mvge(name="coding_mvge")` from any caller_dir still finds
-        # `coding-mvge/src/coding_mvge/runes/knowledge_skill` (knowledge layer)
+        # `coding-mvge/src/coding_mvge/runes/skill_evolution` (evolution layer)
         # Handles hyphen/underscore mismatch: agent "coding-mvge" vs "coding_mvge"
         if name and name != DEFAULT_AGENT_NAME:
             for try_name in (name, name.replace("-", "_"), name.replace("_", "-")):

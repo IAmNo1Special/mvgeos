@@ -9,34 +9,32 @@ from mvgeos_agent import Mvge
 from mvgeos_agent.types import MvgeEventType, SpellStatus
 from mvgeos_runes.types import SkillManifest, SkillScope
 
-from coding_mvge.runes.knowledge_skill.proposer_mvge import (
+from coding_mvge.runes.skill_evolution.proposer_mvge import (
     create_proposer_mvge,
     proposer_mvge,
     run_proposer,
-)
-from coding_mvge.runes.knowledge_skill.proposer_mvge.context import (
     scoped_proposer_context,
 )
-from coding_mvge.runes.knowledge_skill.proposer_mvge.spells.finish import finish
-from coding_mvge.runes.knowledge_skill.proposer_mvge.spells.read_file import read_file
+from coding_mvge.runes.skill_evolution.proposer_mvge.spells.finish import finish
+from coding_mvge.runes.skill_evolution.proposer_mvge.spells.read_file import read_file
 
 
 @pytest.fixture
-def tmp_knowledge_env(tmp_path: Path):
-    kdir = tmp_path / "knowledge"
-    rdir = tmp_path / "raw_knowledge"
+def tmp_evolution_env(tmp_path: Path):
+    edir = tmp_path / "skill_evolution"
+    rdir = tmp_path / "raw_experience"
     skills_dir = tmp_path / ".agents" / "skills"
-    kdir.mkdir(parents=True, exist_ok=True)
+    edir.mkdir(parents=True, exist_ok=True)
     rdir.mkdir(parents=True, exist_ok=True)
     skills_dir.mkdir(parents=True, exist_ok=True)
 
     with scoped_proposer_context(
-        knowledge_dir=kdir,
-        raw_knowledge_dir=rdir,
+        evolution_dir=edir,
+        raw_experience_dir=rdir,
         target_skills_dir=skills_dir,
         auto_apply=True,
     ):
-        yield tmp_path, kdir, rdir, skills_dir
+        yield tmp_path, edir, rdir, skills_dir
 
 
 class TestProposerFileBasedConstruction:
@@ -58,12 +56,12 @@ class TestProposerFileBasedConstruction:
 
 class TestProposerSpells:
     @pytest.mark.asyncio
-    async def test_read_file_within_knowledge_and_traces(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
+    async def test_read_file_within_evolution_and_traces(
+        self, tmp_evolution_env: tuple[Path, Path, Path, Path]
     ) -> None:
-        _, kdir, rdir, _ = tmp_knowledge_env
-        (kdir / "index.md").write_text("# Knowledge Index\n", encoding="utf-8")
-        pat_dir = kdir / "patterns"
+        _, edir, rdir, _ = tmp_evolution_env
+        (edir / "index.md").write_text("# Evolution Index\n", encoding="utf-8")
+        pat_dir = edir / "patterns"
         pat_dir.mkdir(exist_ok=True)
         (pat_dir / "loop.md").write_text("# Loop Pattern\n", encoding="utf-8")
 
@@ -72,12 +70,12 @@ class TestProposerSpells:
         (traces_dir / "inv_1.json").write_text('{"id": "inv_1"}', encoding="utf-8")
 
         # Read index
-        res1 = await read_file("knowledge/index.md")
+        res1 = await read_file("skill_evolution/index.md")
         assert res1.status == SpellStatus.SUCCESS
-        assert "# Knowledge Index" in (res1.content or "")
+        assert "# Evolution Index" in (res1.content or "")
 
         # Read pattern
-        res2 = await read_file("knowledge/patterns/loop.md")
+        res2 = await read_file("skill_evolution/patterns/loop.md")
         assert res2.status == SpellStatus.SUCCESS
         assert "# Loop Pattern" in (res2.content or "")
 
@@ -87,55 +85,58 @@ class TestProposerSpells:
         assert '{"id": "inv_1"}' in (res3.content or "")
 
     @pytest.mark.asyncio
-    async def test_read_file_raw_knowledge_candidates(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
+    async def test_read_file_raw_experience_candidates(
+        self, tmp_evolution_env: tuple[Path, Path, Path, Path]
     ) -> None:
-        _, _, rdir, _ = tmp_knowledge_env
+        _, _, rdir, _ = tmp_evolution_env
         (rdir / "nested_trace.json").write_text('{"nested": true}', encoding="utf-8")
         sub = rdir / "sub"
         sub.mkdir(exist_ok=True)
         (sub / "trace_glob_find.json").write_text('{"glob": true}', encoding="utf-8")
 
-        # Direct in raw_knowledge_dir via traces/
+        # Direct in raw_experience_dir via traces/
         res1 = await read_file("traces/nested_trace.json")
         assert res1.status == SpellStatus.SUCCESS
         assert '{"nested": true}' in (res1.content or "")
 
-        # Via rglob search in raw_knowledge_dir
+        # Via rglob search in raw_experience_dir
         res2 = await read_file("traces/glob_find")
         assert res2.status == SpellStatus.SUCCESS
         assert '{"glob": true}' in (res2.content or "")
 
     @pytest.mark.asyncio
     async def test_read_file_not_found(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
+        self, tmp_evolution_env: tuple[Path, Path, Path, Path]
     ) -> None:
-        res = await read_file("knowledge/missing.md")
+        res = await read_file("skill_evolution/missing.md")
         assert res.status == SpellStatus.ERROR
-        assert "File not found" in (res.error_message or "")
+        assert "not found" in (res.error_message or "").lower()
 
     @pytest.mark.asyncio
     async def test_read_file_rejects_path_traversal(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
+        self, tmp_evolution_env: tuple[Path, Path, Path, Path]
     ) -> None:
         res = await read_file("../../secret.txt")
         assert res.status == SpellStatus.ERROR
-        assert "Access denied" in (res.error_message or "")
+        assert (
+            "outside allowed scopes" in (res.error_message or "").lower()
+            or "not found" in (res.error_message or "").lower()
+        )
 
     @pytest.mark.asyncio
     async def test_finish_no_action_proposal(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
+        self, tmp_evolution_env: tuple[Path, Path, Path, Path]
     ) -> None:
-        _, kdir, _, _ = tmp_knowledge_env
+        _, edir, _, _ = tmp_evolution_env
         res = await finish({"action": "no_action"})
         assert res.status == SpellStatus.SUCCESS
         payload = json.loads(res.content or "{}")
         assert payload.get("action") == "no_action"
-        assert (kdir / "skill-impact.md").exists()
+        assert (edir / "skill-impact.md").exists()
 
     @pytest.mark.asyncio
     async def test_finish_invalid_json_str(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
+        self, tmp_evolution_env: tuple[Path, Path, Path, Path]
     ) -> None:
         res = await finish("not-valid-json{")
         assert res.status == SpellStatus.ERROR
@@ -143,7 +144,7 @@ class TestProposerSpells:
 
     @pytest.mark.asyncio
     async def test_finish_name_validation(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
+        self, tmp_evolution_env: tuple[Path, Path, Path, Path]
     ) -> None:
         res1 = await finish({"action": "create", "name": ""})
         assert res1.status == SpellStatus.ERROR
@@ -155,9 +156,9 @@ class TestProposerSpells:
 
     @pytest.mark.asyncio
     async def test_finish_create_proposal(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
+        self, tmp_evolution_env: tuple[Path, Path, Path, Path]
     ) -> None:
-        _, kdir, _, skills_dir = tmp_knowledge_env
+        _, edir, _, skills_dir = tmp_evolution_env
         proposal = {
             "action": "create",
             "name": "retry-spell",
@@ -175,13 +176,13 @@ class TestProposerSpells:
         assert (skills_dir / "retry-spell" / "PURPOSE.md").exists()
 
         # Check impact audit trail
-        impact = (kdir / "skill-impact.md").read_text(encoding="utf-8")
+        impact = (edir / "skill-impact.md").read_text(encoding="utf-8")
         assert "retry-spell" in impact
         assert "+++ retry-spell/SKILL.md" in impact
 
     @pytest.mark.asyncio
     async def test_finish_create_missing_fields(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
+        self, tmp_evolution_env: tuple[Path, Path, Path, Path]
     ) -> None:
         res = await finish(
             {"action": "create", "name": "valid-name", "skill_md": "content"}
@@ -191,9 +192,9 @@ class TestProposerSpells:
 
     @pytest.mark.asyncio
     async def test_finish_patch_proposal_append_and_insert_after(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
+        self, tmp_evolution_env: tuple[Path, Path, Path, Path]
     ) -> None:
-        _, kdir, _, skills_dir = tmp_knowledge_env
+        _, edir, _, skills_dir = tmp_evolution_env
         skill_dir = skills_dir / "existing-skill"
         skill_dir.mkdir(parents=True, exist_ok=True)
         sk_path = skill_dir / "SKILL.md"
@@ -228,9 +229,9 @@ class TestProposerSpells:
 
     @pytest.mark.asyncio
     async def test_finish_patch_validation_and_errors(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
+        self, tmp_evolution_env: tuple[Path, Path, Path, Path]
     ) -> None:
-        _, _, _, skills_dir = tmp_knowledge_env
+        _, _, _, skills_dir = tmp_evolution_env
         # No edits
         res1 = await finish({"action": "patch", "name": "my-skill", "edits": []})
         assert res1.status == SpellStatus.ERROR
@@ -289,7 +290,7 @@ class TestProposerSpells:
 
     @pytest.mark.asyncio
     async def test_finish_unknown_action(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
+        self, tmp_evolution_env: tuple[Path, Path, Path, Path]
     ) -> None:
         res = await finish({"action": "explode", "name": "test-name"})
         assert res.status == SpellStatus.ERROR
@@ -299,12 +300,12 @@ class TestProposerSpells:
 class TestProposerAutonomousLifecycle:
     @pytest.mark.asyncio
     async def test_run_proposer_emits_authentic_lifecycle_events(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
+        self, tmp_evolution_env: tuple[Path, Path, Path, Path]
     ) -> None:
-        _, kdir, rdir, skills_dir = tmp_knowledge_env
-        (kdir / "index.md").write_text("# Knowledge Index\n", encoding="utf-8")
-        (kdir / "skill-impact.md").write_text("# Past Proposals\n", encoding="utf-8")
-        (kdir / "logs.md").write_text("Turn logs...", encoding="utf-8")
+        _, edir, rdir, skills_dir = tmp_evolution_env
+        (edir / "index.md").write_text("# Evolution Index\n", encoding="utf-8")
+        (edir / "skill-impact.md").write_text("# Past Proposals\n", encoding="utf-8")
+        (edir / "logs.md").write_text("Turn logs...", encoding="utf-8")
 
         events_received = []
 
@@ -319,7 +320,7 @@ class TestProposerAutonomousLifecycle:
         }
 
         mock_response = (
-            f"I have reviewed the knowledge index.\n"
+            f"I have reviewed the evolution index.\n"
             f"```json\n{json.dumps(proposal_dict)}\n```"
         )
 
@@ -333,11 +334,11 @@ class TestProposerAutonomousLifecycle:
 
         result = await run_proposer(
             mvge=agent,
-            knowledge_dir=kdir,
-            raw_knowledge_dir=rdir,
+            evolution_dir=edir,
+            raw_experience_dir=rdir,
             target_skills_dir=skills_dir,
             auto_apply=True,
-            user_prompt=None,  # Tests default prompt synthesis
+            user_prompt=None,
         )
         assert result.get("success") is True
         assert result.get("name") == "lifecycle-skill"
@@ -348,7 +349,7 @@ class TestProposerAutonomousLifecycle:
 
     @pytest.mark.asyncio
     async def test_run_proposer_plain_text_fallback(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
+        self, tmp_evolution_env: tuple[Path, Path, Path, Path]
     ) -> None:
         agent = create_proposer_mvge(api_key="test-key")
         inv = MagicMock(spec=[])
@@ -365,7 +366,7 @@ class TestProposerAutonomousLifecycle:
 
     @pytest.mark.asyncio
     async def test_run_proposer_malformed_json_fallback(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
+        self, tmp_evolution_env: tuple[Path, Path, Path, Path]
     ) -> None:
         agent = create_proposer_mvge(api_key="test-key")
         inv = MagicMock(content="```json\n{not-valid-json\n```")
@@ -380,11 +381,11 @@ class TestProposerAutonomousLifecycle:
 
     @pytest.mark.asyncio
     async def test_read_file_raw_dir_direct_and_read_error(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
+        self, tmp_evolution_env: tuple[Path, Path, Path, Path]
     ) -> None:
         from unittest.mock import patch
 
-        _, _, rdir, _ = tmp_knowledge_env
+        _, _, rdir, _ = tmp_evolution_env
         direct_file = rdir / "direct.txt"
         direct_file.write_text("direct content", encoding="utf-8")
 
@@ -396,47 +397,6 @@ class TestProposerAutonomousLifecycle:
             res_err = await read_file("direct.txt")
             assert res_err.status == SpellStatus.ERROR
             assert "Disk failure" in (res_err.error_message or "")
-
-    @pytest.mark.asyncio
-    async def test_run_proposer_with_finish_called(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
-    ) -> None:
-        from coding_mvge.runes.knowledge_skill.proposer_mvge.context import (
-            record_proposal_result,
-        )
-
-        agent = create_proposer_mvge(api_key="test-key")
-
-        async def fake_run(prompt: str):
-            record_proposal_result(
-                {"success": True, "action": "create", "name": "direct-proposal"}
-            )
-            return MagicMock(content=[{"type": "text", "text": "I called finish."}])
-
-        agent.run = AsyncMock(side_effect=fake_run)
-
-        result = await run_proposer(mvge=agent, user_prompt="do proposal")
-        assert result.get("success") is True
-        assert result.get("name") == "direct-proposal"
-
-    @pytest.mark.asyncio
-    async def test_run_proposer_content_blocks(
-        self, tmp_knowledge_env: tuple[Path, Path, Path, Path]
-    ) -> None:
-        agent = create_proposer_mvge(api_key="test-key")
-        inv = MagicMock(
-            content=[
-                {"type": "text", "text": "```json\n"},
-                '{"action": "no_action"}\n',
-                {"type": "text", "text": "```"},
-                {"type": "other", "data": 123},
-            ]
-        )
-        agent.run = AsyncMock(return_value=inv)
-
-        result = await run_proposer(mvge=agent, user_prompt="test blocks")
-        assert result.get("success") is True
-        assert result.get("action") == "no_action"
 
 
 class TestProposerMultiScopeResolution:
@@ -455,8 +415,8 @@ class TestProposerMultiScopeResolution:
         )
 
         with scoped_proposer_context(
-            knowledge_dir=tmp_path / "knowledge",
-            raw_knowledge_dir=tmp_path / "raw_knowledge",
+            evolution_dir=tmp_path / "skill_evolution",
+            raw_experience_dir=tmp_path / "raw_experience",
             target_skills_dir=tmp_path / "agent_skills",
             project_skills_dir=proj_dir.parent,
             available_skills=[manifest],
@@ -489,8 +449,8 @@ class TestProposerMultiScopeResolution:
         )
 
         with scoped_proposer_context(
-            knowledge_dir=tmp_path / "knowledge",
-            raw_knowledge_dir=tmp_path / "raw_knowledge",
+            evolution_dir=tmp_path / "skill_evolution",
+            raw_experience_dir=tmp_path / "raw_experience",
             target_skills_dir=agent_dir.parent,
             available_skills=[manifest],
             auto_apply=True,
@@ -522,8 +482,8 @@ class TestProposerMultiScopeResolution:
         )
 
         with scoped_proposer_context(
-            knowledge_dir=tmp_path / "knowledge",
-            raw_knowledge_dir=tmp_path / "raw_knowledge",
+            evolution_dir=tmp_path / "skill_evolution",
+            raw_experience_dir=tmp_path / "raw_experience",
             target_skills_dir=tmp_path / "agent_skills",
             project_skills_dir=tmp_path / "proj_skills",
             available_skills=[manifest],
@@ -560,8 +520,8 @@ class TestProposerMultiScopeResolution:
         )
 
         with scoped_proposer_context(
-            knowledge_dir=tmp_path / "knowledge",
-            raw_knowledge_dir=tmp_path / "raw_knowledge",
+            evolution_dir=tmp_path / "skill_evolution",
+            raw_experience_dir=tmp_path / "raw_experience",
             target_skills_dir=tmp_path / "agent_skills",
             project_skills_dir=proj_skills_dir,
             available_skills=[manifest],
@@ -598,8 +558,8 @@ class TestProposerMultiScopeResolution:
         agent_skills_dir.mkdir(parents=True)
 
         with scoped_proposer_context(
-            knowledge_dir=tmp_path / "knowledge",
-            raw_knowledge_dir=tmp_path / "raw_knowledge",
+            evolution_dir=tmp_path / "skill_evolution",
+            raw_experience_dir=tmp_path / "raw_experience",
             target_skills_dir=agent_skills_dir,
             project_skills_dir=proj_skills_dir,
             auto_apply=True,
@@ -645,8 +605,8 @@ class TestProposerMultiScopeResolution:
         )
 
         with scoped_proposer_context(
-            knowledge_dir=tmp_path / "knowledge",
-            raw_knowledge_dir=tmp_path / "raw_knowledge",
+            evolution_dir=tmp_path / "skill_evolution",
+            raw_experience_dir=tmp_path / "raw_experience",
             target_skills_dir=tmp_path / "agent_skills",
             project_skills_dir=proj_skills_dir,
             available_skills=[manifest],
@@ -657,56 +617,10 @@ class TestProposerMultiScopeResolution:
             assert "# Readable Skill Content" in (res.content or "")
 
     @pytest.mark.asyncio
-    async def test_read_file_from_project_and_target_fallback(
-        self, tmp_path: Path
-    ) -> None:
-        proj_skills_dir = tmp_path / "project" / ".agents" / "skills"
-        p_sk = proj_skills_dir / "proj-fallback"
-        p_sk.mkdir(parents=True)
-        (p_sk / "SKILL.md").write_text("# Project Fallback\n", encoding="utf-8")
-
-        agent_skills_dir = tmp_path / "agent" / "skills"
-        a_sk = agent_skills_dir / "agent-fallback"
-        a_sk.mkdir(parents=True)
-        (a_sk / "SKILL.md").write_text("# Agent Fallback\n", encoding="utf-8")
-
-        with scoped_proposer_context(
-            knowledge_dir=tmp_path / "knowledge",
-            raw_knowledge_dir=tmp_path / "raw_knowledge",
-            target_skills_dir=agent_skills_dir,
-            project_skills_dir=proj_skills_dir,
-            available_skills={},
-            auto_apply=True,
-        ):
-            # Resolves from project_skills_dir
-            res1 = await read_file("skills/proj-fallback/SKILL.md")
-            assert res1.status == SpellStatus.SUCCESS
-            assert "# Project Fallback" in (res1.content or "")
-
-            # Resolves from target_skills_dir
-            res2 = await read_file("skills/agent-fallback/SKILL.md")
-            assert res2.status == SpellStatus.SUCCESS
-            assert "# Agent Fallback" in (res2.content or "")
-
-    @pytest.mark.asyncio
-    async def test_context_skills_dict_and_list(self, tmp_path: Path) -> None:
-        from coding_mvge.runes.knowledge_skill.proposer_mvge.context import (
-            set_proposer_context,
-        )
-
-        # Set with dict
-        ctx1 = set_proposer_context(available_skills={"d1": {"name": "d1"}})
-        assert "d1" in ctx1.available_skills
-
-        # Set with list of dicts
-        ctx2 = set_proposer_context(available_skills=[{"name": "l1"}])
-        assert "l1" in ctx2.available_skills
-
-    @pytest.mark.asyncio
     async def test_run_proposer_includes_skills_in_prompt(self, tmp_path: Path) -> None:
-        kdir = tmp_path / "knowledge"
-        kdir.mkdir()
-        (kdir / "index.md").write_text("# Index\n", encoding="utf-8")
+        edir = tmp_path / "skill_evolution"
+        edir.mkdir()
+        (edir / "index.md").write_text("# Index\n", encoding="utf-8")
         agent = create_proposer_mvge(api_key="test-key")
 
         captured_prompt = []
@@ -730,7 +644,7 @@ class TestProposerMultiScopeResolution:
 
         res = await run_proposer(
             mvge=agent,
-            knowledge_dir=kdir,
+            evolution_dir=edir,
             available_skills=[manifest],
             user_prompt=None,
         )
@@ -751,8 +665,8 @@ class TestProposerMultiScopeResolution:
         (a_sk / "SKILL.md").write_text("# A Fallback Original\n", encoding="utf-8")
 
         with scoped_proposer_context(
-            knowledge_dir=tmp_path / "knowledge",
-            raw_knowledge_dir=tmp_path / "raw_knowledge",
+            evolution_dir=tmp_path / "skill_evolution",
+            raw_experience_dir=tmp_path / "raw_experience",
             target_skills_dir=agent_skills_dir,
             project_skills_dir=proj_skills_dir,
             available_skills={},

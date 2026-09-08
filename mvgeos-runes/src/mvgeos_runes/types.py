@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
     from mvgeos_agent.types import MvgeInvocation
@@ -416,6 +416,7 @@ class SpellDefinition:
         prompt_snippet: str | None = None,
         prompt_guidelines: list[str] | None = None,
         source_rune: str | None = None,
+        handler: Any | None = None,
     ) -> None:
         self.name = name
         self.description = description
@@ -424,6 +425,7 @@ class SpellDefinition:
         self.prompt_snippet = prompt_snippet
         self.prompt_guidelines = prompt_guidelines or []
         self.source_rune = source_rune
+        self._handler = handler
 
     async def execute(
         self,
@@ -432,4 +434,22 @@ class SpellDefinition:
         signal: AbortSignal | None = None,
         on_update: Any | None = None,
     ) -> dict[str, Any]:
+        if self._handler is not None:
+            import inspect
+
+            sig = inspect.signature(self._handler)
+            if len(sig.parameters) >= 2 and list(sig.parameters.keys())[0] in (
+                "spell_cast_id",
+                "id",
+            ):
+                return cast(
+                    dict[str, Any],
+                    await self._handler(
+                        spell_cast_id, params, signal=signal, on_update=on_update
+                    ),
+                )
+            return cast(
+                dict[str, Any],
+                await self._handler(params, signal=signal, on_update=on_update),
+            )
         raise NotImplementedError
