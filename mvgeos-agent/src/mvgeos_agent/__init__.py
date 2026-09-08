@@ -1,4 +1,11 @@
 from mvgeos_agent.agent_session import MvgeTome
+from mvgeos_agent.auth import load_api_key_from_auth, save_api_key_to_auth
+from mvgeos_agent.commands import (
+    SLASH_COMMANDS,
+    CommandAction,
+    CommandDispatcher,
+    CommandOutcome,
+)
 from mvgeos_agent.environment import (
     AgentConfig,
     MvgeEnvironment,
@@ -54,6 +61,9 @@ __all__ = [
     "AbortSignal",
     "AgentConfig",
     "AgentFactory",
+    "CommandAction",
+    "CommandDispatcher",
+    "CommandOutcome",
     "ContemplationLevel",
     "FunctionSpell",
     "MissingApiKeyError",
@@ -73,6 +83,7 @@ __all__ = [
     "ResolvedGuidelines",
     "ResolvedPrompt",
     "RuntimeSnapshot",
+    "SLASH_COMMANDS",
     "SandboxTimeoutError",
     "SnapshotConfigEntry",
     "SnapshotDiagnostic",
@@ -92,4 +103,6 @@ __all__ = [
     "TomeResumeError",
     "coerce_spell",
     "discover_spells_from_dir",
+    "load_api_key_from_auth",
+    "save_api_key_to_auth",
 ]

@@ -4,6 +4,7 @@ import sys
 from contextlib import suppress
 from typing import Any, TextIO
 
+import typer
 from rich.console import Console
 
 from mvgeos_cli.formatting import format_error
@@ -14,6 +15,7 @@ __all__ = [
     "format_error",
     "get_console",
     "is_utf8_stream",
+    "prompt_api_key",
 ]
 
 
@@ -58,3 +60,15 @@ def configure_streams() -> None:
         if stream is not None and hasattr(stream, "reconfigure"):
             with suppress(Exception):
                 stream.reconfigure(errors="replace")
+
+
+def prompt_api_key(console: Console | None = None) -> str | None:
+    """Prompt user interactively for OpenRouter API key."""
+    if console is None:
+        console = get_console()
+    try:
+        entered = typer.prompt("Enter OpenRouter API key", hide_input=True)
+        return entered.strip() if entered else None
+    except KeyboardInterrupt, EOFError, typer.Abort:
+        console.print("[red]Aborted.[/red]")
+        return None

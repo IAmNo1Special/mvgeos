@@ -7,6 +7,10 @@ from typing import Any, cast
 
 import typer
 import typer._click as _click
+from mvgeos_agent.auth import (
+    load_api_key_from_auth,
+    save_api_key_to_auth,
+)
 from mvgeos_agent.constants import (
     DEFAULT_AGENT_NAME,
 )
@@ -16,11 +20,6 @@ from typer._click.parser import _split_opt
 from typer.core import TyperGroup
 
 from mvgeos_cli.agent_factory import create_agent, validate_api_key
-from mvgeos_cli.auth import (
-    load_api_key_from_auth,
-    prompt_api_key,
-    save_api_key_to_auth,
-)
 from mvgeos_cli.commands.build import build_app
 from mvgeos_cli.commands.config import config_app
 from mvgeos_cli.commands.info import info_app
@@ -31,7 +30,12 @@ from mvgeos_cli.commands.repl import (
 from mvgeos_cli.commands.setup import DefaultCheckGroup, setup_app
 from mvgeos_cli.commands.tome import tome_app
 from mvgeos_cli.commands.tui import run_tui
-from mvgeos_cli.console import configure_streams, format_error, get_console
+from mvgeos_cli.console import (
+    configure_streams,
+    format_error,
+    get_console,
+    prompt_api_key,
+)
 
 console = get_console()
 

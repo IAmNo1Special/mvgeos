@@ -2,8 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from mvgeos_agent.commands import (
+    SLASH_COMMANDS,
+    CommandAction,
+    CommandOutcome,
+)
+from mvgeos_agent.commands import (
+    CommandDispatcher as AgentCommandDispatcher,
+)
 from mvgeos_agent.protocol import MvgeAgent
-from mvgeos_agent.types import QueueMode
 from mvgeos_provider.model_registry import ModelRegistry
 from rich.console import Console
 
@@ -11,56 +18,39 @@ from mvgeos_cli.formatting import format_error
 
 _console = Console()
 
-SLASH_COMMANDS: dict[str, str] = {
-    "/help": "Show this help message",
-    "/quit": "Exit the REPL",
-    "/exit": "Exit the REPL",
-    "/model": "Switch or list models: /model [id] or /model --free",
-    "/models": "List available models: /models [--free]",
-    "/mode": "Toggle queue mode (all/one-at-a-time): /mode or /m",
-    "/new": "Start a new tome",
-    "/tome": "Show current tome info",
-    "/resume": "Resume a previous tome: /resume <path>",
-    "/spells": "List or set enabled spells: /spells [comma-separated]",
-    "/steer": "Steer agent mid-run: /steer <message>",
-    "/followup": "Queue follow-up for post-run: /followup <message>",
-    "/refresh-models": "Refresh model catalog from OpenRouter API",
-}
 
-
-class CommandDispatcher:
-    """Deep module executing interactive slash commands against MvgeAgent."""
+class CliCommandDispatcher:
+    """CLI presentation adapter executing slash commands and formatting output."""
 
     def __init__(
         self,
         agent: MvgeAgent,
-        registry: ModelRegistry,
+        registry: ModelRegistry | None = None,
         out: Callable[[str], None] = _console.print,
     ) -> None:
-        self._agent = agent
-        self._registry = registry
+        self._inner = AgentCommandDispatcher(agent, registry)
         self._out = out
 
     @property
     def agent(self) -> MvgeAgent:
-        return self._agent
+        return self._inner.agent
 
     @agent.setter
     def agent(self, value: MvgeAgent) -> None:
-        self._agent = value
+        self._inner.agent = value
 
     @property
-    def registry(self) -> ModelRegistry:
-        return self._registry
+    def registry(self) -> ModelRegistry | None:
+        return self._inner.registry
 
     @registry.setter
-    def registry(self, value: ModelRegistry) -> None:
-        self._registry = value
+    def registry(self, value: ModelRegistry | None) -> None:
+        self._inner.registry = value
 
     async def dispatch(
         self, command: str, out: Callable[[str], None] | None = None
     ) -> bool:
-        """Execute a slash command.
+        """Execute a slash command and render Rich output to console.
 
         Returns:
             bool: True if the interactive session should exit, False otherwise.
@@ -69,137 +59,117 @@ class CommandDispatcher:
         parts = command.strip().split(maxsplit=1)
         if not parts:
             return False
+
         cmd = parts[0]
         args = parts[1] if len(parts) > 1 else ""
 
-        if cmd in ("/quit", "/exit"):
-            return True
-
-        if cmd == "/help":
-            output("[bold]Available commands:[/bold]")
-            for name, desc in SLASH_COMMANDS.items():
-                output(f"  [cyan]{name:<15}[/cyan] {desc}")
-            return False
-
-        if cmd == "/tome":
-            tid = self._agent.tome_id or "none"
-            output(f"[dim]Tome ID: {tid}[/dim]")
-            output(f"[dim]Model: {self._agent.model_id}[/dim]")
-            spells = self._agent.enabled_spells
-            output(f"[bold]Enabled spells:[/bold] {', '.join(spells) or 'none'}")
-            providers = self._agent.registered_providers
-            output(f"[dim]Providers: {', '.join(providers) or 'none'}[/dim]")
-            return False
-
-        if cmd in ("/model", "/models"):
-            stripped = args.strip()
-            if not stripped or stripped in ("--free", "-f"):
-                output(f"[bold]Current model:[/bold] {self._agent.model_id}")
-                output("[bold]Available models:[/bold]")
-                all_models = self._registry.list_all()
-                if stripped in ("--free", "-f"):
-                    all_models = [
-                        m
-                        for m in all_models
-                        if getattr(m, "is_free", getattr(m, "free", False))
-                    ]
-                for m in all_models:
-                    is_free = getattr(m, "is_free", getattr(m, "free", False))
-                    tag = " [green](free)[/green]" if is_free else ""
-                    output(f"  {m.id}{tag}")
-                output("[dim]Try /refresh-models to fetch the latest catalog[/dim]")
-                return False
-
-            candidate = stripped
-            if self._registry.get(candidate) is None:
-                output(format_error(f"Unknown model: {candidate}"))
-                output("[dim]Try /refresh-models to fetch the latest catalog[/dim]")
-                return False
-
-            try:
-                await self._agent.switch_model(candidate)
-            except Exception as e:
-                output(format_error(e))
-                return False
-            output(f"[green]Model switched: {candidate}[/green]")
-            return False
-
+        # Pre-execution informational messages matching CLI UX
         if cmd == "/refresh-models":
             output("[yellow]Fetching latest models from OpenRouter...[/yellow]")
-            try:
-                count = await self._registry.refresh(force_refresh=True)
-            except Exception as exc:
-                output(format_error(f"Failed to refresh models: {exc}"))
-            else:
-                output(f"[green]Models refreshed ({count} new models).[/green]")
-            return False
-
-        if cmd == "/spells":
-            if args:
-                new_spells = [s.strip() for s in args.split(",") if s.strip()]
-                self._agent.set_enabled_spells(new_spells)
-                output(f"[green]Spells set to: {', '.join(new_spells)}[/green]")
-            else:
-                enabled = self._agent.enabled_spells
-                available = self._agent.available_spells
-                if enabled:
-                    output(f"[bold]Enabled spells:[/bold] {', '.join(enabled)}")
-                other = [s for s in available if s not in enabled]
-                if other:
-                    output(f"[dim]Available inactive spells:[/dim] {', '.join(other)}")
-                if not enabled and not other:
-                    output("[dim]No spells available[/dim]")
-            return False
-
-        if cmd in ("/mode", "/m"):
-            current_mode = self._agent.queue_mode
-            new_mode = (
-                QueueMode.ALL
-                if current_mode == QueueMode.ONE_AT_A_TIME
-                else QueueMode.ONE_AT_A_TIME
-            )
-            self._agent.queue_mode = new_mode
-            output(f"[dim]Queue mode: {self._agent.queue_mode}[/dim]")
-            return False
-
-        if cmd in ("/steer", "/s"):
-            if args:
-                self._agent.steer(args.strip())
-                output(f"[dim]Steering queued: {args.strip()}[/dim]")
-            return False
-
-        if cmd in ("/followup", "/f", "/follow"):
-            if args:
-                self._agent.follow_up(args.strip())
-                output(f"[dim]Follow-up queued: {args.strip()}[/dim]")
-            else:
-                output(f"[dim]Queue mode: {self._agent.queue_mode}[/dim]")
-            return False
-
-        if cmd == "/new":
+        elif cmd == "/new":
             output("[yellow]Starting a new session...[/yellow]")
-            try:
-                await self._agent.reset_session(resume_tome_id=None)
-            except Exception as e:
-                output(format_error(e))
-                return False
-            output(f"[green]New tome: {self._agent.tome_id}[/green]")
-            return False
+        elif cmd == "/resume" and args:
+            output(f"[yellow]Resuming tome {args}...[/yellow]")
 
-        if cmd == "/resume":
-            if args:
-                target_path = args.strip()
-                output(f"[yellow]Resuming tome {target_path}...[/yellow]")
-                try:
-                    await self._agent.reset_session(resume_tome_id=target_path)
-                except Exception as e:
-                    output(format_error(e))
-                    return False
-                output(f"[green]Resumed tome: {self._agent.tome_id}[/green]")
-                return False
-            output(format_error("Usage: /resume <path-to-tome.jsonl>"))
-            return False
+        outcome = await self._inner.dispatch(command)
+        self._render_outcome(outcome, output)
+        return outcome.should_exit
 
-        output(format_error(f"Unknown command: {cmd}"))
-        output("[dim]Type /help for available commands[/dim]")
-        return False
+    def _render_outcome(
+        self, outcome: CommandOutcome, output: Callable[[str], None]
+    ) -> None:
+        if outcome.action == CommandAction.EXIT:
+            return
+
+        if outcome.action == CommandAction.HELP:
+            output("[bold]Available commands:[/bold]")
+            for name, desc in outcome.data.get("commands", {}).items():
+                output(f"  [cyan]{name:<15}[/cyan] {desc}")
+            return
+
+        if outcome.action == CommandAction.TOME_INFO:
+            tid = outcome.data.get("tome_id", "none")
+            output(f"[dim]Tome ID: {tid}[/dim]")
+            output(f"[dim]Model: {outcome.data.get('model_id')}[/dim]")
+            spells = outcome.data.get("enabled_spells", [])
+            output(f"[bold]Enabled spells:[/bold] {', '.join(spells) or 'none'}")
+            providers = outcome.data.get("providers", [])
+            output(f"[dim]Providers: {', '.join(providers) or 'none'}[/dim]")
+            return
+
+        if outcome.action == CommandAction.MODELS_LISTED:
+            output(f"[bold]Current model:[/bold] {outcome.data.get('current_model')}")
+            output("[bold]Available models:[/bold]")
+            for m in outcome.data.get("models", []):
+                is_free = getattr(m, "is_free", getattr(m, "free", False))
+                tag = " [green](free)[/green]" if is_free else ""
+                output(f"  {m.id}{tag}")
+            output("[dim]Try /refresh-models to fetch the latest catalog[/dim]")
+            return
+
+        if outcome.action == CommandAction.MODEL_SWITCHED:
+            output(f"[green]Model switched: {outcome.data.get('model_id')}[/green]")
+            return
+
+        if outcome.action == CommandAction.CATALOG_REFRESHED:
+            count = outcome.data.get("new_models_count", 0)
+            output(f"[green]Models refreshed ({count} new models).[/green]")
+            return
+
+        if outcome.action == CommandAction.SPELLS_UPDATED:
+            spells = outcome.data.get("enabled_spells", [])
+            output(f"[green]Spells set to: {', '.join(spells)}[/green]")
+            return
+
+        if outcome.action == CommandAction.SPELLS_LISTED:
+            enabled = outcome.data.get("enabled_spells", [])
+            available = outcome.data.get("available_spells", [])
+            if enabled:
+                output(f"[bold]Enabled spells:[/bold] {', '.join(enabled)}")
+            other = [s for s in available if s not in enabled]
+            if other:
+                output(f"[dim]Available inactive spells:[/dim] {', '.join(other)}")
+            if not enabled and not other:
+                output("[dim]No spells available[/dim]")
+            return
+
+        if outcome.action == CommandAction.QUEUE_MODE_CHANGED:
+            output(f"[dim]Queue mode: {outcome.data.get('queue_mode')}[/dim]")
+            return
+
+        if outcome.action == CommandAction.STEERING_QUEUED:
+            output(f"[dim]Steering queued: {outcome.data.get('message')}[/dim]")
+            return
+
+        if outcome.action == CommandAction.FOLLOWUP_QUEUED:
+            output(f"[dim]Follow-up queued: {outcome.data.get('message')}[/dim]")
+            return
+
+        if outcome.action == CommandAction.INFO:
+            output(f"[dim]Queue mode: {outcome.data.get('queue_mode')}[/dim]")
+            return
+
+        if outcome.action == CommandAction.SESSION_RESET:
+            output(f"[green]New tome: {outcome.data.get('tome_id')}[/green]")
+            return
+
+        if outcome.action == CommandAction.SESSION_RESUMED:
+            output(f"[green]Resumed tome: {outcome.data.get('tome_id')}[/green]")
+            return
+
+        if outcome.action == CommandAction.ERROR:
+            msg_lines = outcome.message.split("\n", 1)
+            output(format_error(msg_lines[0]))
+            if len(msg_lines) > 1:
+                output(f"[dim]{msg_lines[1]}[/dim]")
+            return
+
+
+# Alias for backward compatibility within CLI package consumers
+CommandDispatcher = CliCommandDispatcher
+
+__all__ = [
+    "SLASH_COMMANDS",
+    "CliCommandDispatcher",
+    "CommandDispatcher",
+]

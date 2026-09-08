@@ -5,11 +5,6 @@ import json
 import os
 from pathlib import Path
 
-import typer
-from rich.console import Console
-
-from mvgeos_cli.console import get_console
-
 AUTH_FILE_PATH = Path("~/.agents/.mvgeos/auth/openrouter.json").expanduser()
 AUTH_FILE_PERMS = 0o600
 AUTH_DIR_PERMS = 0o700
@@ -64,16 +59,15 @@ def save_api_key_to_auth(api_key: str) -> Path:
     if os.name != "nt":
         with contextlib.suppress(OSError):
             AUTH_FILE_PATH.chmod(AUTH_FILE_PERMS)
+
     return AUTH_FILE_PATH
 
 
-def prompt_api_key(console: Console | None = None) -> str | None:
-    """Prompt user interactively for OpenRouter API key."""
-    if console is None:
-        console = get_console()
-    try:
-        entered = typer.prompt("Enter OpenRouter API key", hide_input=True)
-        return entered.strip() if entered else None
-    except KeyboardInterrupt, EOFError, typer.Abort:
-        console.print("[red]Aborted.[/red]")
-        return None
+__all__ = [
+    "AUTH_DIR_PERMS",
+    "AUTH_FILE_PERMS",
+    "AUTH_FILE_PATH",
+    "enforce_file_permissions",
+    "load_api_key_from_auth",
+    "save_api_key_to_auth",
+]

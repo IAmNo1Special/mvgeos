@@ -6,7 +6,6 @@ import asyncio
 import contextlib
 import logging
 import os
-import re
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -15,12 +14,17 @@ from typing import TYPE_CHECKING, Any
 
 from coding_mvge import root_mvge
 from mvgeos_agent import Mvge
+from mvgeos_agent.auth import load_api_key_from_auth
+from mvgeos_agent.commands import (
+    SLASH_COMMANDS,
+    CommandAction,
+    CommandDispatcher,
+    CommandOutcome,
+)
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.errors import AuthenticationError, RateLimitError
 from mvgeos_agent.protocol import MvgeAgent
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
-from mvgeos_cli.auth import load_api_key_from_auth
-from mvgeos_cli.commands.dispatcher import SLASH_COMMANDS, CommandDispatcher
 from mvgeos_provider.model_registry import ModelRegistry
 
 from mvgeos_gui.models import (
@@ -36,14 +40,6 @@ if TYPE_CHECKING:
     from mvgeos_gui.state import AppState
 
 logger = logging.getLogger(__name__)
-
-
-def rich_to_markdown(text: str) -> str:
-    """Translate Rich markup from CommandDispatcher into clean Markdown."""
-    text = re.sub(r"\[/?bold\]", "**", text)
-    text = re.sub(r"\[/?dim\]", "*", text)
-    text = re.sub(r"\[/?[a-zA-Z0-9_# -]+\]", "", text)
-    return text
 
 
 def resolve_api_key(explicit_key: str | None = None) -> str | None:
@@ -413,7 +409,6 @@ class AgentService:
         self._active_transcript = InvocationTranscript.bind(message)
         self._active_state = state
 
-        output_lines: list[str] = []
         try:
             agent = self.get_or_create_agent(state)
         except Exception as e:
@@ -423,46 +418,46 @@ class AgentService:
             self._cleanup_slash_turn(state, message)
             return
 
-        dispatcher = CommandDispatcher(
-            agent, self._model_registry, out=output_lines.append
-        )
+        dispatcher = CommandDispatcher(agent, self._model_registry)
         try:
-            should_exit = await dispatcher.dispatch(prompt)
+            outcome = await dispatcher.dispatch(prompt)
         except Exception as exc:
             message.is_error = True
             message.error_message = str(exc)
-            output_lines.append(f"Command error: {exc}")
-            should_exit = False
+            outcome = CommandOutcome(
+                command=prompt,
+                action=CommandAction.ERROR,
+                message=f"Command error: {exc}",
+            )
 
-        formatted = [rich_to_markdown(line) for line in output_lines]
-        output_text = "\n".join(formatted).strip()
-        if not output_text and should_exit:
+        if outcome.action == CommandAction.ERROR:
+            message.is_error = True
+            message.error_message = outcome.message
+
+        output_text = outcome.message
+        if not output_text and outcome.should_exit:
             output_text = "*Session ended.*"
 
         self._active_transcript.set_text(output_text)
 
-        # Synchronize reactive state
-        parts = prompt.strip().split(maxsplit=1)
-        cmd_name = parts[0] if parts else ""
+        # Synchronize reactive state via structured outcome action and data
+        if outcome.action == CommandAction.MODEL_SWITCHED:
+            state.switch_model(outcome.data.get("model_id", agent.model_id))
 
-        if cmd_name in ("/model", "/models") and len(parts) > 1:
-            arg = parts[1].strip()
-            if arg not in ("--free", "-f") and agent.model_id:
-                state.switch_model(agent.model_id)
-
-        elif cmd_name == "/new":
+        elif outcome.action == CommandAction.SESSION_RESET:
             state.new_conversation()
 
-        elif cmd_name == "/resume" and len(parts) > 1:
-            if agent.tome_id:
-                state.switch_to_tome(agent.tome_id)
+        elif outcome.action == CommandAction.SESSION_RESUMED:
+            tome_id = outcome.data.get("tome_id") or agent.tome_id
+            if tome_id:
+                state.switch_to_tome(tome_id)
 
-        elif cmd_name == "/spells":
+        elif outcome.action == CommandAction.SPELLS_UPDATED:
             state.clear_skills()
             self.populate_skills(agent, state)
             state.notify()
 
-        elif cmd_name == "/refresh-models":
+        elif outcome.action == CommandAction.CATALOG_REFRESHED:
             state.notify()
 
         self._cleanup_slash_turn(state, message)

@@ -5,14 +5,11 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
-import typer
-
-from mvgeos_cli.auth import (
+from mvgeos_agent.auth import (
     AUTH_DIR_PERMS,
     AUTH_FILE_PERMS,
     enforce_file_permissions,
     load_api_key_from_auth,
-    prompt_api_key,
     save_api_key_to_auth,
 )
 
@@ -24,7 +21,7 @@ def test_auth_permission_constants() -> None:
 
 def test_load_api_key_from_auth_file_not_found(tmp_path: Path) -> None:
     fake_path = tmp_path / "openrouter.json"
-    with patch("mvgeos_cli.auth.AUTH_FILE_PATH", fake_path):
+    with patch("mvgeos_agent.auth.AUTH_FILE_PATH", fake_path):
         assert load_api_key_from_auth() is None
 
 
@@ -33,27 +30,27 @@ def test_load_api_key_from_auth_valid_key(tmp_path: Path) -> None:
     fake_path.write_text(
         json.dumps({"api_key": "sk-or-v1-valid-key"}), encoding="utf-8"
     )
-    with patch("mvgeos_cli.auth.AUTH_FILE_PATH", fake_path):
+    with patch("mvgeos_agent.auth.AUTH_FILE_PATH", fake_path):
         assert load_api_key_from_auth() == "sk-or-v1-valid-key"
 
 
 def test_load_api_key_from_auth_corrupt_json(tmp_path: Path) -> None:
     fake_path = tmp_path / "openrouter.json"
     fake_path.write_text("invalid json content {{{", encoding="utf-8")
-    with patch("mvgeos_cli.auth.AUTH_FILE_PATH", fake_path):
+    with patch("mvgeos_agent.auth.AUTH_FILE_PATH", fake_path):
         assert load_api_key_from_auth() is None
 
 
 def test_load_api_key_from_auth_non_string_key(tmp_path: Path) -> None:
     fake_path = tmp_path / "openrouter.json"
     fake_path.write_text(json.dumps({"api_key": 12345}), encoding="utf-8")
-    with patch("mvgeos_cli.auth.AUTH_FILE_PATH", fake_path):
+    with patch("mvgeos_agent.auth.AUTH_FILE_PATH", fake_path):
         assert load_api_key_from_auth() is None
 
 
 def test_save_api_key_to_auth(tmp_path: Path) -> None:
     fake_path = tmp_path / "auth" / "openrouter.json"
-    with patch("mvgeos_cli.auth.AUTH_FILE_PATH", fake_path):
+    with patch("mvgeos_agent.auth.AUTH_FILE_PATH", fake_path):
         res_path = save_api_key_to_auth("sk-or-v1-saved-key")
         assert res_path == fake_path
         assert fake_path.exists()
@@ -64,7 +61,7 @@ def test_save_api_key_to_auth(tmp_path: Path) -> None:
 def test_save_api_key_to_auth_permissions_posix(tmp_path: Path) -> None:
     fake_path = tmp_path / "auth" / "openrouter.json"
     with (
-        patch("mvgeos_cli.auth.AUTH_FILE_PATH", fake_path),
+        patch("mvgeos_agent.auth.AUTH_FILE_PATH", fake_path),
         patch("os.name", "posix"),
         patch.object(Path, "chmod") as mock_chmod,
     ):
@@ -87,7 +84,7 @@ def test_save_api_key_to_auth_uses_secure_os_open(tmp_path: Path) -> None:
         return real_open(file, flags, mode)
 
     with (
-        patch("mvgeos_cli.auth.AUTH_FILE_PATH", fake_path),
+        patch("mvgeos_agent.auth.AUTH_FILE_PATH", fake_path),
         patch("os.open", side_effect=tracking_open),
     ):
         save_api_key_to_auth("sk-or-v1-saved-key")
@@ -101,9 +98,9 @@ def test_load_api_key_from_auth_enforces_permissions_posix(tmp_path: Path) -> No
         json.dumps({"api_key": "sk-or-v1-posix-key"}), encoding="utf-8"
     )
     with (
-        patch("mvgeos_cli.auth.AUTH_FILE_PATH", fake_path),
+        patch("mvgeos_agent.auth.AUTH_FILE_PATH", fake_path),
         patch("os.name", "posix"),
-        patch("mvgeos_cli.auth.enforce_file_permissions") as mock_enforce,
+        patch("mvgeos_agent.auth.enforce_file_permissions") as mock_enforce,
     ):
         key = load_api_key_from_auth()
         assert key == "sk-or-v1-posix-key"
@@ -144,27 +141,3 @@ def test_enforce_file_permissions_suppresses_oserror(tmp_path: Path) -> None:
         patch.object(Path, "chmod", side_effect=OSError("Chmod failed")),
     ):
         enforce_file_permissions(fake_file)
-
-
-def test_prompt_api_key_success() -> None:
-    with patch("typer.prompt", return_value="  sk-or-v1-input-key  "):
-        key = prompt_api_key()
-        assert key == "sk-or-v1-input-key"
-
-
-def test_prompt_api_key_keyboard_interrupt() -> None:
-    with patch("typer.prompt", side_effect=KeyboardInterrupt):
-        key = prompt_api_key()
-        assert key is None
-
-
-def test_prompt_api_key_typer_abort() -> None:
-    with patch("typer.prompt", side_effect=typer.Abort):
-        key = prompt_api_key()
-        assert key is None
-
-
-def test_prompt_api_key_eof_error() -> None:
-    with patch("typer.prompt", side_effect=EOFError):
-        key = prompt_api_key()
-        assert key is None

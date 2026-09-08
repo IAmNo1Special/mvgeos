@@ -37,6 +37,10 @@ class DummyAgent:
         return "test/model"
 
     @property
+    def model_registry(self) -> Any:
+        return MagicMock()
+
+    @property
     def contemplation_level(self) -> ContemplationLevel | str:
         return "medium"
 

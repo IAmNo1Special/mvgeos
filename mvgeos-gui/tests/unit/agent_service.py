@@ -1456,22 +1456,25 @@ class TestSubagentLifecycleObservability:
 # ---------------------------------------------------------------------------
 
 
-def test_rich_to_markdown() -> None:
-    from mvgeos_gui.services.agent_service import rich_to_markdown
+@pytest.mark.asyncio
+async def test_dispatch_slash_command_structured_outcome(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify dispatch_slash_command handles structured CommandOutcome."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock()
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.on = MagicMock()
+    mock_agent.enabled_spells = ["read", "write"]
+    mock_agent.available_spells = ["read", "write", "bash"]
+    agent_service._agent = mock_agent
 
-    assert (
-        rich_to_markdown("[bold]Available commands:[/bold]")
-        == "**Available commands:**"
-    )
-    assert rich_to_markdown("[dim]Tome ID: none[/dim]") == "*Tome ID: none*"
-    assert (
-        rich_to_markdown("[green]Model switched: candidate[/green]")
-        == "Model switched: candidate"
-    )
-    result = rich_to_markdown("  [cyan]/help          [/cyan] Show this help message")
-    assert "/help" in result
-    assert "[cyan]" not in result
-    assert "Show this help message" in result
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("/spells", app_state, msg)
+    assert "Enabled spells: read, write" in msg.content
+    assert msg.is_streaming is False
 
 
 @pytest.mark.asyncio

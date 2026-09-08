@@ -13,6 +13,7 @@ from typing import Any, cast
 
 from dotenv import load_dotenv
 from mvgeos_provider.base import Realm
+from mvgeos_provider.model_registry import ModelRegistry
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 from mvgeos_runes.rune_runner import RuneRunner
@@ -335,6 +336,11 @@ class Mvge:
     @property
     def registered_providers(self) -> list[str]:
         return self._provider_registry.get_registered_providers()
+
+    @property
+    def model_registry(self) -> ModelRegistry:
+        """Active model registry bound to the agent's realm registry."""
+        return self._provider_registry.model_registry
 
     @property
     def name(self) -> str:

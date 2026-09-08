@@ -8,7 +8,6 @@ dependencies = [
     "coding-mvge",
     "keyring>=24.0",
     "mvgeos-agent",
-    "mvgeos-cli",
     "mvgeos-provider",
     "mvgeos-runes",
     "mvgeos-tome",
@@ -23,7 +22,6 @@ mvgeos-gui = "mvgeos_gui.main:main"
 [tool.uv.sources]
 coding-mvge = { workspace = true }
 mvgeos-agent = { workspace = true }
-mvgeos-cli = { workspace = true }
 mvgeos-provider = { workspace = true }
 mvgeos-runes = { workspace = true }
 mvgeos-tome = { workspace = true }

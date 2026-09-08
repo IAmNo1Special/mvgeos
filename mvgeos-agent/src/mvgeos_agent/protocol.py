@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any, Protocol, runtime_checkable
 
+from mvgeos_provider.model_registry import ModelRegistry
+
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.snapshot import RuntimeSnapshot
 from mvgeos_agent.types import (
@@ -35,6 +37,11 @@ class MvgeAgent(Protocol):
     @property
     def model_id(self) -> str:
         """Active model identifier."""
+        ...
+
+    @property
+    def model_registry(self) -> ModelRegistry:
+        """The model registry bound to this agent."""
         ...
 
     @property

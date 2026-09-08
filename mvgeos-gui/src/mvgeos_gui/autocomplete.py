@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pathspec
-from mvgeos_cli.commands.dispatcher import SLASH_COMMANDS
+from mvgeos_agent.commands import SLASH_COMMANDS
 from mvgeos_runes.types import SkillManifest
 
 ChangeListener = Callable[[], Any]
