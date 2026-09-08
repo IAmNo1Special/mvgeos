@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -65,6 +66,16 @@ class RealmRegistry:
     def get_shared_client(self) -> httpx.AsyncClient:
         if self._shared_client is None or self._shared_client.is_closed:
             self._shared_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(60.0),
+                limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
+            )
+        return self._shared_client
+
+    async def prewarm_client(self) -> httpx.AsyncClient:
+        """Pre-warm the shared HTTP client in a thread to avoid event-loop blocking."""
+        if self._shared_client is None or self._shared_client.is_closed:
+            self._shared_client = await asyncio.to_thread(
+                httpx.AsyncClient,
                 timeout=httpx.Timeout(60.0),
                 limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
             )

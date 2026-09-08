@@ -88,7 +88,32 @@ class AgentService:
         now = time.monotonic()
         if now - self._last_notify_time >= self._notify_interval:
             self._last_notify_time = now
-            state.notify()
+            state.notify_streaming()
+
+    async def prewarm(self, state: AppState) -> None:
+        """Pre-warm the agent and underlying provider client during startup."""
+        effective_key = (
+            self._api_key
+            or os.environ.get("OPENROUTER_API_KEY")
+            or os.environ.get("MVGEOS_API_KEY")
+            or ""
+        )
+        if not effective_key and self._agent_factory is None:
+            return
+        if not self._api_key and effective_key:
+            self._api_key = effective_key
+
+        try:
+            agent = self.get_or_create_agent(state)
+            self._ensure_listeners(agent)
+            provider_reg = getattr(agent, "_provider_registry", None)
+            if provider_reg is not None and hasattr(provider_reg, "prewarm_client"):
+                await provider_reg.prewarm_client()
+            if hasattr(agent, "initialize"):
+                await agent.initialize()
+            logger.debug("AgentService pre-warm completed successfully")
+        except Exception as e:
+            logger.debug("AgentService pre-warm skipped or failed: %s", e)
 
     @property
     def project_path(self) -> Path:
@@ -491,8 +516,6 @@ class AgentService:
         self.reset_skill_tracking()
         state.is_channeling = True
         message.is_streaming = True
-        state.set_mvge_status("channeling")
-        state.notify()
 
         if not self._api_key:
             message.is_error = True

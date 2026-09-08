@@ -2,6 +2,7 @@ import tempfile
 from pathlib import Path
 
 from mvgeos_runes.loader import (
+    clear_skill_manifest_cache,
     get_default_skill_paths,
     load_factory_from_manifest,
     load_manifests,
@@ -1003,3 +1004,48 @@ def test_load_factory_from_manifest_nested_entrypoint_with_imports() -> None:
     finally:
         sys.path.clear()
         sys.path.extend(orig_sys_path)
+
+
+def test_load_skill_manifest_caching() -> None:
+    clear_skill_manifest_cache()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        skill_dir = Path(tmpdir) / "test-skill"
+        skill_dir.mkdir()
+        skill_file = skill_dir / "SKILL.md"
+        skill_file.write_text(
+            "---\nname: test-skill\ndescription: A test skill.\n---\nBody",
+            encoding="utf-8",
+        )
+
+        # First load - cache miss
+        manifest1 = load_skill_manifest(skill_dir)
+        assert manifest1 is not None
+        assert manifest1.name == "test-skill"
+
+        # Second load - cache hit, returns independent copy
+        manifest2 = load_skill_manifest(skill_dir)
+        assert manifest2 is not None
+        assert manifest2.name == "test-skill"
+        assert manifest1 is not manifest2
+
+        # Mutate manifest2, manifest1 remains unaffected
+        manifest2.scope = SkillScope.USER
+        assert manifest1.scope == SkillScope.PROJECT
+
+        # Update file content and mtime
+        import time
+
+        time.sleep(0.01)
+        skill_file.write_text(
+            "---\nname: test-skill\ndescription: Updated description.\n---\nBody",
+            encoding="utf-8",
+        )
+        manifest3 = load_skill_manifest(skill_dir)
+        assert manifest3 is not None
+        assert manifest3.description == "Updated description."
+
+        # Clear cache test
+        clear_skill_manifest_cache()
+        manifest4 = load_skill_manifest(skill_dir)
+        assert manifest4 is not None
+        assert manifest4.description == "Updated description."

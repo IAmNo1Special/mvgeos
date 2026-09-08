@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import inspect
 import re
@@ -288,51 +289,80 @@ SKILL_SCOPES = [
 NAME_REGEX = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 
+_SKILL_MANIFEST_CACHE: dict[str, tuple[float, SkillManifest | None]] = {}
+
+
+def clear_skill_manifest_cache() -> None:
+    """Clear cached skill manifests."""
+    _SKILL_MANIFEST_CACHE.clear()
+
+
 def load_skill_manifest(path: Path) -> SkillManifest | None:
     """Load a skill manifest from a SKILL.md file with YAML frontmatter."""
     skill_md_path = path / "SKILL.md"
     if not skill_md_path.exists():
         return None
     try:
+        mtime = skill_md_path.stat().st_mtime
+    except OSError:
+        return None
+
+    cache_key = str(skill_md_path.resolve())
+    cached = _SKILL_MANIFEST_CACHE.get(cache_key)
+    if cached is not None and cached[0] == mtime:
+        return dataclasses.replace(cached[1]) if cached[1] is not None else None
+
+    try:
         content = skill_md_path.read_text(encoding="utf-8")
     except OSError:
+        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
         return None
 
     content = content.lstrip("\ufeff")
 
     if not content.startswith("---"):
+        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
         return None
 
     parts = content.split("---", 2)
     if len(parts) < 3:
+        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
         return None
 
     try:
         frontmatter = yaml.safe_load(parts[1])
     except Exception:
+        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
         return None
 
     if not isinstance(frontmatter, dict):
+        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
         return None
 
     name = frontmatter.get("name")
     if not name or not isinstance(name, str):
+        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
         return None
 
     if not (1 <= len(name) <= 64):
+        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
         return None
 
     if not NAME_REGEX.match(name):
+        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
         return None
 
     if name != path.name:
+        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
         return None
 
     description = frontmatter.get("description")
     if not description or not isinstance(description, str):
+        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
         return None
 
     if not (1 <= len(description) <= 1024):
+        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
         return None
 
     license_val = frontmatter.get("license", "")
@@ -359,7 +389,7 @@ def load_skill_manifest(path: Path) -> SkillManifest | None:
     if not isinstance(version, str):
         version = ""
 
-    return SkillManifest(
+    manifest = SkillManifest(
         name=name,
         description=description,
         scope=SkillScope.PROJECT,  # Will be set by caller
@@ -371,6 +401,8 @@ def load_skill_manifest(path: Path) -> SkillManifest | None:
         allowed_tools=allowed_tools,
         disable_model_invocation=disable_model_invocation,
     )
+    _SKILL_MANIFEST_CACHE[cache_key] = (mtime, manifest)
+    return dataclasses.replace(manifest)
 
 
 def load_skill_manifests(

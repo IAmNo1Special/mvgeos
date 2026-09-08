@@ -77,6 +77,9 @@ class AppState:
     _change_listeners: list[Callable[[], Any]] = field(
         default_factory=list, repr=False, compare=False
     )
+    _streaming_listeners: list[Callable[[], Any]] = field(
+        default_factory=list, repr=False, compare=False
+    )
     _selected_diff_path: str | None = field(default=None, repr=False, compare=False)
     changed_files: list[ChangedFile] = field(default_factory=list)
     _selected_artifact_id: str | None = field(default=None, repr=False, compare=False)
@@ -125,6 +128,40 @@ class AppState:
     def notify(self) -> None:
         """Notify all change listeners."""
         for listener in list(self._change_listeners):
+            with contextlib.suppress(Exception):
+                result = listener()
+                if inspect.iscoroutine(result):
+                    coro = cast(Coroutine[Any, Any, None], result)
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(coro)
+                    except RuntimeError:
+                        coro.close()
+
+    def subscribe_streaming(self, listener: Callable[[], Any]) -> None:
+        """Subscribe a listener callback to streaming token updates."""
+        if listener not in self._streaming_listeners:
+            self._streaming_listeners.append(listener)
+
+    def unsubscribe_streaming(self, listener: Callable[[], Any]) -> None:
+        """Unsubscribe a listener callback from streaming token updates."""
+        if listener in self._streaming_listeners:
+            self._streaming_listeners.remove(listener)
+
+    def notify_streaming(self) -> None:
+        """Notify streaming listeners of rapid token updates.
+
+        If streaming listeners are registered (e.g. active streaming bubble),
+        notify only them to prevent whole-thread DOM re-renders. If no streaming
+        listeners are registered (e.g. headless tests), fall back to general
+        change listeners.
+        """
+        targets = (
+            self._streaming_listeners
+            if self._streaming_listeners
+            else self._change_listeners
+        )
+        for listener in list(targets):
             with contextlib.suppress(Exception):
                 result = listener()
                 if inspect.iscoroutine(result):
@@ -467,6 +504,7 @@ class AppState:
         )
         self.messages.append(assistant_msg)
         self.is_channeling = True
+        self.mvge_status = "channeling"
         self.notify()
 
         # Start agent task

@@ -1104,3 +1104,49 @@ class TestCardExpansion:
         state.subscribe(lambda: called.append(True))
         state.set_card_expansion("step_1_0", True)
         assert called == []
+
+
+class TestStreamingListeners:
+    """Verify isolated streaming listener registration and dispatch."""
+
+    def test_streaming_listener_isolation(self) -> None:
+        state = AppState()
+        general_notified: list[int] = []
+        streaming_notified: list[int] = []
+
+        state.subscribe(lambda: general_notified.append(1))
+        state.subscribe_streaming(lambda: streaming_notified.append(1))
+
+        # Rapid streaming notification only notifies streaming listener
+        state.notify_streaming()
+        assert streaming_notified == [1]
+        assert general_notified == []
+
+        # Full notify triggers only general listeners
+        state.notify()
+        assert general_notified == [1]
+        assert streaming_notified == [1]
+
+    def test_streaming_fallback_when_no_streaming_listeners(self) -> None:
+        state = AppState()
+        general_notified: list[int] = []
+        state.subscribe(lambda: general_notified.append(1))
+
+        # Falls back to general listener when no streaming listeners registered
+        state.notify_streaming()
+        assert general_notified == [1]
+
+    def test_unsubscribe_streaming(self) -> None:
+        state = AppState()
+        notified: list[int] = []
+
+        def cb() -> None:
+            notified.append(1)
+
+        state.subscribe_streaming(cb)
+        state.notify_streaming()
+        assert notified == [1]
+
+        state.unsubscribe_streaming(cb)
+        state.notify_streaming()
+        assert notified == [1]

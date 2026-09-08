@@ -523,3 +523,16 @@ def test_factory_instantiation_error_handling() -> None:
         RuntimeError, match="Failed to initialize custom realm connection"
     ):
         reg.create_realm(model, api_key="key")
+
+
+@pytest.mark.asyncio
+async def test_prewarm_client() -> None:
+    reg = RealmRegistry()
+    client = await reg.prewarm_client()
+    assert client is not None
+    assert not client.is_closed
+    # Repeat call returns same client
+    client2 = await reg.prewarm_client()
+    assert client2 is client
+    assert reg.get_shared_client() is client
+    await reg.close()

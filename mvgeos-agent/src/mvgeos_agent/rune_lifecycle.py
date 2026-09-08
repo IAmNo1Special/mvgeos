@@ -8,6 +8,7 @@ view, and manages hot-reload watchers.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import logging
 from collections.abc import Sequence
@@ -110,7 +111,9 @@ class RuneLifecycle:
         active runner.
         """
         paths_with_scope = self.resolve_paths()
-        loads, diagnostics = load_runes_from_paths(paths_with_scope, self._agent_name)
+        loads, diagnostics = await asyncio.to_thread(
+            load_runes_from_paths, paths_with_scope, self._agent_name
+        )
         runner = self._ensure_runner()
 
         if loads:
@@ -123,8 +126,8 @@ class RuneLifecycle:
             runner.extend_diagnostics(diagnostics)
 
         skill_paths = get_default_skill_paths(self._agent_name)
-        skill_loads, skill_diagnostics = load_skills_from_paths(
-            skill_paths, self._agent_name
+        skill_loads, skill_diagnostics = await asyncio.to_thread(
+            load_skills_from_paths, skill_paths, self._agent_name
         )
         if skill_loads:
             runner.load_skills(skill_loads, diagnostics=skill_diagnostics)

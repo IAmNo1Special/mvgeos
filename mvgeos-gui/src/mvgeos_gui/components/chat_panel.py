@@ -137,14 +137,33 @@ def render_chat_panel(state: AppState) -> ui.column:
                 ) as messages_area:
 
                     @ui.refreshable
-                    def messages_view() -> None:
+                    def static_messages_view() -> None:
                         if not state.messages:
                             _render_empty_chat(state)
-                        else:
-                            _render_messages(state)
+                            return
+                        msgs_to_render = (
+                            state.messages[:-1]
+                            if state.is_channeling
+                            else state.messages
+                        )
+                        for idx, msg in enumerate(msgs_to_render):
+                            if msg.role == "user":
+                                _render_user_message(msg)
+                            else:
+                                render_assistant_message(msg, idx, state)
+                        _scroll_to_bottom(messages_area.id, force=False)
+
+                    @ui.refreshable
+                    def streaming_bubble_view() -> None:
+                        if state.messages and state.is_channeling:
+                            last_idx = len(state.messages) - 1
+                            render_assistant_message(
+                                state.messages[last_idx], last_idx, state
+                            )
                             _scroll_to_bottom(messages_area.id, force=False)
 
-                    messages_view()
+                    static_messages_view()
+                    streaming_bubble_view()
 
                 # Floating scroll-to-bottom button
                 with (
@@ -165,8 +184,10 @@ def render_chat_panel(state: AppState) -> ui.column:
                 ):
                     ui.tooltip("Scroll to bottom")
 
-                # Subscribe to state changes to refresh just the messages area
-                state.subscribe(messages_view.refresh)
+                # Subscribe to state changes to refresh views
+                state.subscribe(static_messages_view.refresh)
+                state.subscribe(streaming_bubble_view.refresh)
+                state.subscribe_streaming(streaming_bubble_view.refresh)
 
                 # Composer
                 _render_composer(state)
@@ -416,7 +437,7 @@ def _render_composer(state: AppState) -> None:
                 lambda e: _handle_backspace(prompt_input, state),
             )
 
-            prompt_input.on("keydown.enter.prevent", handle_enter)
+            prompt_input.on("keydown.enter.exact.prevent", handle_enter)
             prompt_input.on("keydown.escape.prevent", ac_service.close)
 
             # Autocomplete popup

@@ -785,8 +785,9 @@ class Mvge:
         user_msg = SummonerRequest(role="user", content=prompt)
         self._state.invocations.append(user_msg)
 
-        final_prompt = await self._build_system_prompt_async()
-        self._state.system_prompt = final_prompt
+        if not self._state.system_prompt:
+            final_prompt = await self._build_system_prompt_async()
+            self._state.system_prompt = final_prompt
 
         return await self._run_impl()
 

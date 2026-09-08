@@ -1,6 +1,6 @@
 """Application setup and page route definitions for mvgeos-gui."""
 
-from nicegui import ui
+from nicegui import app, ui
 
 from mvgeos_gui.components.shell import render_shell
 from mvgeos_gui.core.database import init_db
@@ -36,5 +36,15 @@ def init_app(state: AppState | None = None) -> AppState:
     @ui.page("/")
     def index_page() -> None:
         build_page(app_state)
+
+    async def _prewarm_background() -> None:
+        try:
+            service = app_state.get_agent_service()
+            await service.prewarm(app_state)
+        except Exception:
+            pass
+
+    if not getattr(app, "is_started", False):
+        app.on_startup(_prewarm_background)
 
     return app_state
