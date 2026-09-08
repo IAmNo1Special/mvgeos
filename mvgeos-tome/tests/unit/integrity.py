@@ -321,6 +321,42 @@ class TestTomeIntegrityVerification:
         assert report.tome_id == tome.id
         assert report.valid_entries_count == 1
 
+    def test_verify_integrity_header_empty_line(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "empty-hdr.jsonl"
+        file_path.write_text("\n", encoding="utf-8")
+        ledger = TomeLedger(tmp_path)
+        report = ledger.verify_integrity("empty-hdr")
+        assert report.valid is False
+        assert report.issues[0].line_number == 1
+
+    def test_verify_integrity_unsupported_version(self, tmp_path: Path) -> None:
+        header = {
+            "type": "session",
+            "version": 4,
+            "id": "unsupported-ver",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "cwd": "/tmp",
+        }
+        _write_raw_tome_file(tmp_path, "unsupported-ver.jsonl", [header])
+        ledger = TomeLedger(tmp_path)
+        report = ledger.verify_integrity("unsupported-ver")
+        assert report.valid is False
+        assert "unsupported" in report.issues[0].message.lower()
+
+    def test_verify_integrity_invalid_version_string(self, tmp_path: Path) -> None:
+        header = {
+            "type": "session",
+            "version": "bad-string",
+            "id": "invalid-ver-str",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "cwd": "/tmp",
+        }
+        _write_raw_tome_file(tmp_path, "invalid-ver-str.jsonl", [header])
+        ledger = TomeLedger(tmp_path)
+        report = ledger.verify_integrity("invalid-ver-str")
+        assert report.valid is False
+        assert "invalid" in report.issues[0].message.lower()
+
 
 class TestReadResilienceWithCorruptedLines:
     def test_read_entries_skips_damaged_records_and_logs_warning(

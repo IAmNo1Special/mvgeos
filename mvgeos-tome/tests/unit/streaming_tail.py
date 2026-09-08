@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from mvgeos_tome.ledger import TomeLedger
-from mvgeos_tome.types import TomeEntry, TomeEntryType
+from mvgeos_tome.types import TomeEntry, TomeEntryType, TomeVersionError
 
 
 def _write_raw_tome(
@@ -132,6 +132,51 @@ class TestIterTomeEntries:
 
         assert len(results) == 2
         assert [e.id for e in results] == [m1.id, m2.id]
+
+    def test_iter_tome_entries_unsupported_version_raises(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "v9.jsonl"
+        file_path.write_text(
+            '{"type": "session", "version": 9, "id": "v9", '
+            '"timestamp": "2026-01-01T00:00:00Z", "cwd": "/tmp"}\n',
+            encoding="utf-8",
+        )
+        ledger = TomeLedger(tmp_path)
+        with pytest.raises(TomeVersionError):
+            list(ledger.iter_tome_entries("v9"))
+
+    def test_iter_tome_entries_invalid_version_raises(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "bad-ver.jsonl"
+        file_path.write_text(
+            '{"type": "session", "version": "not-a-num", "id": "bad-ver", '
+            '"timestamp": "2026-01-01T00:00:00Z", "cwd": "/tmp"}\n',
+            encoding="utf-8",
+        )
+        ledger = TomeLedger(tmp_path)
+        with pytest.raises(TomeVersionError):
+            list(ledger.iter_tome_entries("bad-ver"))
+
+    def test_iter_tome_entries_header_invalid_json(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "bad-json.jsonl"
+        file_path.write_text("NOT_JSON\n", encoding="utf-8")
+        ledger = TomeLedger(tmp_path)
+        assert list(ledger.iter_tome_entries("bad-json")) == []
+
+    def test_iter_tome_entries_header_not_session(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "not-session.jsonl"
+        file_path.write_text('{"type": "other"}\n', encoding="utf-8")
+        ledger = TomeLedger(tmp_path)
+        assert list(ledger.iter_tome_entries("not-session")) == []
+
+    def test_iter_tome_entries_entry_not_object(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "entry-string.jsonl"
+        file_path.write_text(
+            '{"type": "session", "version": 3, "id": "entry-string", '
+            '"timestamp": "2026-01-01T00:00:00Z", "cwd": "/tmp"}\n'
+            '"just-a-string"\n\n',
+            encoding="utf-8",
+        )
+        ledger = TomeLedger(tmp_path)
+        assert list(ledger.iter_tome_entries("entry-string")) == []
 
 
 class TestReadLastNEntries:

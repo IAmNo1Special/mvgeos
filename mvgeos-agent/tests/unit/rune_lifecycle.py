@@ -115,6 +115,15 @@ class TestResolvePaths:
 
         assert scopes == [RuneScope.PROJECT, RuneScope.USER, RuneScope.AGENT]
 
+    def test_already_resolved_agent_path_maps_to_agent_scope(self) -> None:
+        lifecycle = RuneLifecycle(
+            agent_name="coder",
+            runes_paths=["~/.agents/.mvgeos/coder/runes"],
+        )
+        result = lifecycle.resolve_paths()
+        expected = Path("~/.agents/.mvgeos/coder/runes").expanduser()
+        assert result == [(expected, RuneScope.AGENT)]
+
 
 class TestLoad:
     @pytest.mark.asyncio

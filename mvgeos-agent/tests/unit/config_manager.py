@@ -3,10 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from mvgeos_agent.config_manager import (
     ConfigLayer,
     ConfigManager,
+    is_known_agent,
+    validate_agent_name,
 )
+from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 
 
 def _make_mgr(tmp_path: Path, agent_name: str = "test-agent") -> ConfigManager:
@@ -55,16 +60,16 @@ class TestConfigManagerProvenance:
         assert merged["model"].value == "agent-model"
         assert merged["model"].layer == ConfigLayer.AGENT
 
-    def test_provenance_legacy(self, tmp_path: Path) -> None:
+    def test_provenance_project(self, tmp_path: Path) -> None:
         mgr = _make_mgr(tmp_path)
-        legacy_dir = tmp_path / ".agents" / ".mvgeos"
-        legacy_dir.mkdir(parents=True)
-        legacy_dir.joinpath("config.json").write_text(
-            json.dumps({"model": "legacy-model"}), encoding="utf-8"
+        project_dir = tmp_path / ".agents" / ".mvgeos"
+        project_dir.mkdir(parents=True)
+        project_dir.joinpath("config.json").write_text(
+            json.dumps({"model": "project-model"}), encoding="utf-8"
         )
         merged = mgr.load()
-        assert merged["model"].value == "legacy-model"
-        assert merged["model"].layer == ConfigLayer.LEGACY
+        assert merged["model"].value == "project-model"
+        assert merged["model"].layer == ConfigLayer.PROJECT
 
     def test_provenance_constructor_overrides(self, tmp_path: Path) -> None:
         mgr = _make_mgr(tmp_path)
@@ -85,20 +90,20 @@ class TestConfigManagerPrecedence:
         assert merged["model"].value == "agent-model"
         assert merged["model"].layer == ConfigLayer.AGENT
 
-    def test_legacy_overrides_agent(self, tmp_path: Path) -> None:
+    def test_project_overrides_agent(self, tmp_path: Path) -> None:
         mgr = _make_mgr(tmp_path)
         mgr.agent_config_path.parent.mkdir(parents=True, exist_ok=True)
         mgr.agent_config_path.write_text(
             json.dumps({"model": "agent-model"}), encoding="utf-8"
         )
-        legacy_dir = tmp_path / ".agents" / ".mvgeos"
-        legacy_dir.mkdir(parents=True)
-        legacy_dir.joinpath("config.json").write_text(
-            json.dumps({"model": "legacy-model"}), encoding="utf-8"
+        project_dir = tmp_path / ".agents" / ".mvgeos"
+        project_dir.mkdir(parents=True)
+        project_dir.joinpath("config.json").write_text(
+            json.dumps({"model": "project-model"}), encoding="utf-8"
         )
         merged = mgr.load()
-        assert merged["model"].value == "legacy-model"
-        assert merged["model"].layer == ConfigLayer.LEGACY
+        assert merged["model"].value == "project-model"
+        assert merged["model"].layer == ConfigLayer.PROJECT
 
     def test_constructor_overrides_all(self, tmp_path: Path) -> None:
         mgr = _make_mgr(tmp_path)
@@ -106,10 +111,10 @@ class TestConfigManagerPrecedence:
         mgr.agent_config_path.write_text(
             json.dumps({"model": "agent-model"}), encoding="utf-8"
         )
-        legacy_dir = tmp_path / ".agents" / ".mvgeos"
-        legacy_dir.mkdir(parents=True)
-        legacy_dir.joinpath("config.json").write_text(
-            json.dumps({"model": "legacy-model"}), encoding="utf-8"
+        project_dir = tmp_path / ".agents" / ".mvgeos"
+        project_dir.mkdir(parents=True)
+        project_dir.joinpath("config.json").write_text(
+            json.dumps({"model": "project-model"}), encoding="utf-8"
         )
         mgr_with_overrides = mgr.with_overrides(model="constructor-model")
         merged = mgr_with_overrides.load()
@@ -191,9 +196,9 @@ class TestConfigManagerConfigFileLocations:
         assert "my-agent" in str(mgr.agent_config_path)
         assert str(mgr.agent_config_path).endswith("config.json")
 
-    def test_legacy_config_path_in_project(self, tmp_path: Path) -> None:
+    def test_project_config_path_in_project(self, tmp_path: Path) -> None:
         mgr = _make_mgr(tmp_path)
-        assert str(mgr.legacy_config_path) == str(
+        assert str(mgr.project_config_path) == str(
             tmp_path / ".agents" / ".mvgeos" / "config.json"
         )
 
@@ -202,8 +207,8 @@ class TestConfigManagerProjectScope:
     def test_set_project_writes_to_project_file(self, tmp_path: Path) -> None:
         mgr = _make_mgr(tmp_path)
         mgr.set_project("temperature", 0.9)
-        assert mgr.legacy_config_path.exists()
-        data = json.loads(mgr.legacy_config_path.read_text(encoding="utf-8"))
+        assert mgr.project_config_path.exists()
+        data = json.loads(mgr.project_config_path.read_text(encoding="utf-8"))
         assert data["temperature"] == 0.9
 
     def test_save_project_config_saves_multiple_keys(self, tmp_path: Path) -> None:
@@ -345,3 +350,52 @@ class TestMvgeConfigResilience:
         assert agent._max_tokens == 4096
         assert agent._contemplation_level == "medium"
         assert agent._contemplation_budget is None
+
+
+class TestAgentValidation:
+    def test_default_agent_is_known(self) -> None:
+        assert is_known_agent(DEFAULT_AGENT_NAME) is True
+
+    def test_validate_default_agent_succeeds(self) -> None:
+        validate_agent_name(DEFAULT_AGENT_NAME)
+
+    def test_invalid_agent_name_syntax_raises(self) -> None:
+        for invalid_name in ("", "   ", "../invalid", "invalid/path", "bad name!"):
+            assert is_known_agent(invalid_name) is False
+            with pytest.raises(ValueError, match="Invalid agent name"):
+                validate_agent_name(invalid_name)
+
+    def test_nonexistent_agent_raises_value_error(self, tmp_path: Path) -> None:
+        fake_base = tmp_path / "agents"
+        fake_base.mkdir()
+        assert is_known_agent("nonexistent", agent_config_base=fake_base) is False
+        with pytest.raises(ValueError, match="Unknown agent 'nonexistent'"):
+            validate_agent_name("nonexistent", agent_config_base=fake_base)
+
+    def test_existing_agent_directory_is_known(self, tmp_path: Path) -> None:
+        fake_base = tmp_path / "agents"
+        fake_base.mkdir()
+        custom_agent_dir = fake_base / "custom-agent"
+        custom_agent_dir.mkdir()
+        assert is_known_agent("custom-agent", agent_config_base=fake_base) is True
+        validate_agent_name("custom-agent", agent_config_base=fake_base)
+
+    def test_existing_agent_config_file_is_known(self, tmp_path: Path) -> None:
+        fake_base = tmp_path / "agents"
+        custom_agent_dir = fake_base / "custom-agent-2"
+        custom_agent_dir.mkdir(parents=True)
+        (custom_agent_dir / "config.json").write_text("{}", encoding="utf-8")
+        assert is_known_agent("custom-agent-2", agent_config_base=fake_base) is True
+        validate_agent_name("custom-agent-2", agent_config_base=fake_base)
+
+    def test_is_known_agent_with_project_dir(self, tmp_path: Path) -> None:
+        agent_dir = tmp_path / ".agents" / ".mvgeos" / "my-agent"
+        agent_dir.mkdir(parents=True)
+        assert is_known_agent("my-agent", project_dir=tmp_path) is True
+        assert is_known_agent("unknown", project_dir=tmp_path) is False
+
+    def test_allow_create_skips_existence_check(self, tmp_path: Path) -> None:
+        fake_base = tmp_path / "agents"
+        fake_base.mkdir()
+        validate_agent_name("new-agent", agent_config_base=fake_base, allow_create=True)
+        validate_agent_name("valid_agent-123", allow_create=True)

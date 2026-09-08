@@ -383,7 +383,7 @@ class TestMvgeRun:
 class TestMvgeSwitchModel:
     @pytest.mark.asyncio
     async def test_switch_model_preserves_session(self) -> None:
-        from mvgeos_provider.models import list_models
+        from mvgeos_provider import list_models
 
         target = next(
             m.id
@@ -446,7 +446,7 @@ class TestMvgeSwitchModel:
 
     @pytest.mark.asyncio
     async def test_switch_model_before_init(self) -> None:
-        from mvgeos_provider.models import list_models
+        from mvgeos_provider import list_models
 
         target = next(m.id for m in list_models() if m.id != DEFAULT_MODEL)
         agent = Mvge(api_key="test-key")

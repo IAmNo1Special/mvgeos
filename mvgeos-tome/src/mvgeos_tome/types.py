@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+CURRENT_SESSION_VERSION: int = 3
+
 
 class TomeEntryType(StrEnum):
     MESSAGE = "message"
@@ -21,6 +23,15 @@ class TomeEntry:
     type: TomeEntryType
     timestamp: float
     payload: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "parentId": self.parent_id,
+            "type": self.type.value,
+            "timestamp": self.timestamp,
+            "payload": self.payload,
+        }
 
 
 class TomeVersionError(Exception):

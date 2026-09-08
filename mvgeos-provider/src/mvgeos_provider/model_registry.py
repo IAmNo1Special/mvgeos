@@ -18,45 +18,58 @@ CACHE_TTL_SECONDS = 86400
 _MODELS_PATH = Path(__file__).parent / "models.json"
 
 
+def _create_openrouter_model(
+    id: str,
+    name: str,
+    context_window: int = 4096,
+    supported_parameters: list[str] | None = None,
+    is_free: bool = False,
+) -> Model:
+    return Model(
+        id=id,
+        name=name,
+        realm="openrouter",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="",
+        max_completion_mana=0,
+        context_window=context_window,
+        max_tokens=4096,
+        supported_parameters=supported_parameters or [],
+        is_free=is_free,
+    )
+
+
 def _load_models_json() -> list[tuple[str, str, int, list[str], bool]]:
     try:
         data = json.loads(_MODELS_PATH.read_text(encoding="utf-8"))
-        free_entries = data.get("free", [])
-        paid_entries = data.get("paid", [])
         result: list[tuple[str, str, int, list[str], bool]] = []
-        for entry in free_entries:
-            mid = entry[0]
-            name = entry[1]
-            ctx = entry[2]
-            params = entry[3] if len(entry) > 3 else []
-            result.append((mid, name, ctx, params, True))
-        for entry in paid_entries:
-            mid = entry[0]
-            name = entry[1]
-            ctx = entry[2]
-            params = entry[3] if len(entry) > 3 else []
-            result.append((mid, name, ctx, params, False))
+        for is_free, key in ((True, "free"), (False, "paid")):
+            for entry in data.get(key, []):
+                mid = entry[0]
+                name = entry[1]
+                ctx = entry[2]
+                params = entry[3] if len(entry) > 3 else []
+                result.append((mid, name, ctx, params, is_free))
         return result
     except json.JSONDecodeError, OSError:
         return []
 
 
 def _load_baseline_models() -> dict[str, Model]:
-    models: dict[str, Model] = {}
-    for mid, name, ctx, params, is_free in _load_models_json():
-        models[mid] = Model(
+    return {
+        mid: _create_openrouter_model(
             id=mid,
             name=name,
-            realm="openrouter",
-            base_url="https://openrouter.ai/api/v1",
-            api_key="",
-            max_completion_mana=0,
             context_window=ctx,
-            max_tokens=4096,
             supported_parameters=params,
             is_free=is_free,
         )
-    return models
+        for mid, name, ctx, params, is_free in _load_models_json()
+    }
+
+
+def list_models() -> list[Model]:
+    return list(_load_baseline_models().values())
 
 
 def _default_cache_path() -> Path:
@@ -132,15 +145,10 @@ class ModelRegistry:
             return False
         for entry in data.get("models", []):
             mid = entry["id"]
-            self._models[mid] = Model(
+            self._models[mid] = _create_openrouter_model(
                 id=mid,
                 name=entry.get("name", mid),
-                realm="openrouter",
-                base_url="https://openrouter.ai/api/v1",
-                api_key="",
-                max_completion_mana=0,
                 context_window=entry.get("context_length", 4096),
-                max_tokens=4096,
                 supported_parameters=entry.get("supported_parameters", []),
                 is_free=entry.get("is_free", False),
             )
@@ -174,21 +182,16 @@ class ModelRegistry:
         try:
             if client is not None:
                 response = await client.get(OPENROUTER_MODELS_URL, timeout=30)
-                if response.status_code != 200:
-                    logger.warning(
-                        "OpenRouter models API returned %d",
-                        response.status_code,
-                    )
-                res_json = response.json()
             else:
                 async with httpx.AsyncClient() as http_client:
                     response = await http_client.get(OPENROUTER_MODELS_URL, timeout=30)
-                    if response.status_code != 200:
-                        logger.warning(
-                            "OpenRouter models API returned %d",
-                            response.status_code,
-                        )
-                    res_json = response.json()
+
+            if response.status_code != 200:
+                logger.warning(
+                    "OpenRouter models API returned %d",
+                    response.status_code,
+                )
+            res_json = response.json()
 
             if isinstance(res_json, dict):
                 api_data: list[dict[str, Any]] = res_json.get("data", [])
@@ -204,29 +207,12 @@ class ModelRegistry:
             mid = entry.get("id", "")
             if not mid:
                 continue
-            pricing = entry.get("pricing", {})
-            try:
-                prompt_cost = float(pricing.get("prompt", "1"))
-                completion_cost = float(pricing.get("completion", "1"))
-            except ValueError, TypeError:
-                prompt_cost = 1.0
-                completion_cost = 1.0
-            is_free = (
-                (prompt_cost == 0 and completion_cost == 0)
-                or mid.endswith(":free")
-                or mid == "openrouter/free"
-            )
-            self._models[mid] = Model(
+            self._models[mid] = _create_openrouter_model(
                 id=mid,
                 name=entry.get("name", mid),
-                realm="openrouter",
-                base_url="https://openrouter.ai/api/v1",
-                api_key="",
-                max_completion_mana=0,
                 context_window=entry.get("context_length", 4096),
-                max_tokens=4096,
                 supported_parameters=entry.get("supported_parameters", []),
-                is_free=is_free,
+                is_free=_is_free_entry(entry),
             )
             count += 1
 

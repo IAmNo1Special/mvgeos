@@ -11,14 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from mvgeos_tome.locking import FileLock
-from mvgeos_tome.migration import (
-    CURRENT_SESSION_VERSION,
-    _migrate_v1_to_v2,
-    _migrate_v2_to_v3,
-    extract_session_version,
-    migrate_session_data,
-)
 from mvgeos_tome.types import (
+    CURRENT_SESSION_VERSION,
     TomeEntry,
     TomeEntryType,
     TomeIntegrityIssue,
@@ -47,14 +41,10 @@ def _timestamp_iso() -> str:
 
 
 def _parse_tome_entry(raw: dict[str, Any]) -> TomeEntry:
-    entry_type_str = raw["type"]
-    # Legacy "invocation" entries are treated as MESSAGE for backward compat.
-    if entry_type_str == "invocation":
-        entry_type_str = TomeEntryType.MESSAGE.value
     return TomeEntry(
         id=raw["id"],
         parent_id=raw.get("parentId"),
-        type=TomeEntryType(entry_type_str),
+        type=TomeEntryType(raw["type"]),
         timestamp=float(raw["timestamp"]),
         payload=raw.get("payload", {}),
     )
@@ -62,10 +52,6 @@ def _parse_tome_entry(raw: dict[str, Any]) -> TomeEntry:
 
 class TomeLedger:
     _MAX_CACHE_SIZE = 32
-
-    _migrate_v1_to_v2 = staticmethod(_migrate_v1_to_v2)
-    _migrate_v2_to_v3 = staticmethod(_migrate_v2_to_v3)
-    migrate_session_data = staticmethod(migrate_session_data)
 
     def __init__(self, tome_dir: Path) -> None:
         self._tome_dir = tome_dir
@@ -125,8 +111,7 @@ class TomeLedger:
 
     def tome_file(self, tome_id: str) -> Path:
         with self._lock:
-            resolved_id = self._resolve_tome_id(tome_id) or tome_id
-            return self._tome_dir / f"{resolved_id}.jsonl"
+            return self._tome_file_path(tome_id)
 
     def list_tomes(self) -> list[TomeMetadata]:
         with self._lock:
@@ -173,21 +158,16 @@ class TomeLedger:
 
     def open_tome(self, tome_id: str) -> TomeMetadata | None:
         with self._lock:
-            meta = self._tomes.get(tome_id)
-            if meta is None and Path(tome_id).is_file():
-                meta = self._load_tome_metadata(Path(tome_id))
-                if meta:
-                    self._tomes[meta.id] = meta
-            if meta is None:
-                meta = self._load_tome_metadata(tome_id)
-                if meta:
-                    self._tomes[meta.id] = meta
-            if meta is None:
-                resolved_id = self._resolve_tome_id(tome_id) or self._resolve_tome_id(
-                    Path(tome_id).stem
-                )
-                if resolved_id:
-                    meta = self._tomes.get(resolved_id)
+            resolved_id = self._resolve_tome_id(tome_id) or (
+                self._resolve_tome_id(Path(tome_id).stem)
+                if Path(tome_id).is_file()
+                else None
+            )
+            if resolved_id and resolved_id in self._tomes:
+                return self._tomes[resolved_id]
+            meta = self._load_tome_metadata(tome_id)
+            if meta:
+                self._tomes[meta.id] = meta
             return meta
 
     def open_recent(self, cwd: str) -> TomeMetadata | None:
@@ -257,12 +237,18 @@ class TomeLedger:
             timestamp=_timestamp_now(),
             payload={"targetId": target_id},
         )
-        self.append(tome_id, entry)
         with self._lock:
             resolved_id = self._resolve_tome_id(tome_id) or tome_id
-            metadata = self._tomes[resolved_id]
+            metadata = self._tomes.get(resolved_id)
+            if metadata is None:
+                metadata = self._load_tome_metadata(resolved_id)
+                if metadata is None:
+                    raise ValueError(f"Tome not found: {tome_id}")
+
             metadata.active_leaf_id = target_id
-            self._write_tome_file(metadata, self._read_tome_entries(resolved_id))
+            entries = self._read_tome_entries(resolved_id)
+            entries.append(entry)
+            self._write_tome_file(metadata, entries)
         return entry
 
     def append_custom(
@@ -360,13 +346,18 @@ class TomeLedger:
                 if not isinstance(header, dict) or header.get("type") != "session":
                     return
 
-                version = extract_session_version(header)
-
-                # For legacy sessions (v1 or v2), run full migration to establish chain
-                if version < CURRENT_SESSION_VERSION:
-                    entries = self._read_tome_entries(resolved_id)
-                    yield from entries
-                    return
+                version_raw = header.get("version", CURRENT_SESSION_VERSION)
+                try:
+                    version = int(version_raw)
+                except (ValueError, TypeError) as e:
+                    raise TomeVersionError(
+                        version_raw, f"Invalid session version: {version_raw}"
+                    ) from e
+                if version != CURRENT_SESSION_VERSION:
+                    raise TomeVersionError(
+                        version,
+                        f"Unsupported session version: {version}",
+                    )
 
                 for idx, raw_line in enumerate(f, start=2):
                     line = raw_line.strip()
@@ -409,9 +400,6 @@ class TomeLedger:
             resolved_id = self._resolve_tome_id(tome_id) or tome_id
             if resolved_id in self._entries_cache:
                 return self._entries_cache[resolved_id][-limit:]
-            meta = self._tomes.get(resolved_id) or self._load_tome_metadata(resolved_id)
-            if meta and meta.version < CURRENT_SESSION_VERSION:
-                return self._read_tome_entries(resolved_id)[-limit:]
             return self._read_last_n_entries_from_disk(resolved_id, limit)
 
     def get_entry(self, tome_id: str, entry_id: str) -> TomeEntry | None:
@@ -459,7 +447,7 @@ class TomeLedger:
             metadata = TomeMetadata(
                 id=new_tome_id,
                 created_at=_timestamp_iso(),
-                cwd=parent_meta.cwd,
+                cwd=cwd or parent_meta.cwd,
                 parent_tome_id=parent_meta.id,
                 active_leaf_id=fork_from_leaf_id,
                 schema_version="1.0",
@@ -506,15 +494,7 @@ class TomeLedger:
 
     def _append_entry_to_file(self, tome_id: str, entry: TomeEntry) -> None:
         tome_file = self._tome_file_path(tome_id)
-        line = json.dumps(
-            {
-                "id": entry.id,
-                "parentId": entry.parent_id,
-                "type": entry.type.value,
-                "timestamp": entry.timestamp,
-                "payload": entry.payload,
-            }
-        )
+        line = json.dumps(entry.to_dict())
         with tome_file.open("a", encoding="utf-8") as f:
             f.write(line + "\n")
 
@@ -553,7 +533,18 @@ class TomeLedger:
                 if not isinstance(header, dict) or header.get("type") != "session":
                     return None
 
-                version = extract_session_version(header)
+                version_raw = header.get("version", CURRENT_SESSION_VERSION)
+                try:
+                    version = int(version_raw)
+                except (ValueError, TypeError) as e:
+                    raise TomeVersionError(
+                        version_raw, f"Invalid session version: {version_raw}"
+                    ) from e
+                if version != CURRENT_SESSION_VERSION:
+                    raise TomeVersionError(
+                        version,
+                        f"Unsupported session version: {version}",
+                    )
 
                 return TomeMetadata(
                     id=header["id"],
@@ -564,8 +555,7 @@ class TomeLedger:
                     schema_version=header.get("schema_version", "1.0"),
                     version=version,
                     model=header.get("model"),
-                    contemplation_level=header.get("contemplationLevel")
-                    or header.get("contemplation_level"),
+                    contemplation_level=header.get("contemplationLevel"),
                     spells=list(header.get("spells", []) or []),
                 )
         except TomeVersionError:
@@ -589,64 +579,7 @@ class TomeLedger:
         tome_file = self._tome_file_path(tome_id)
         if not tome_file.exists():
             return []
-        try:
-            with tome_file.open("r", encoding="utf-8") as f:
-                first_line = f.readline()
-                if not first_line:
-                    return []
-                try:
-                    header = json.loads(first_line)
-                except json.JSONDecodeError:
-                    return []
-                if not isinstance(header, dict) or header.get("type") != "session":
-                    return []
-
-                raw_entries: list[dict[str, Any]] = []
-                for idx, raw_line in enumerate(f, start=2):
-                    line = raw_line.strip()
-                    if not line:
-                        continue
-                    try:
-                        raw = json.loads(line)
-                        if not isinstance(raw, dict):
-                            logger.warning(
-                                "Malformed entry in tome %s at line %d: "
-                                "expected JSON object",
-                                tome_id,
-                                idx,
-                            )
-                            continue
-                        raw_entries.append(raw)
-                    except (
-                        json.JSONDecodeError,
-                        KeyError,
-                        ValueError,
-                        TypeError,
-                    ) as e:
-                        logger.warning(
-                            "Damaged entry in tome %s at line %d: %s",
-                            tome_id,
-                            idx,
-                            e,
-                        )
-                        continue
-
-                migrated_hdr, migrated_entries = self.migrate_session_data(
-                    header, raw_entries
-                )
-
-                if tome_id in self._tomes:
-                    meta = self._tomes[tome_id]
-                    meta.version = migrated_hdr.get("version", CURRENT_SESSION_VERSION)
-                    if migrated_hdr.get("activeLeafId") and not meta.active_leaf_id:
-                        meta.active_leaf_id = migrated_hdr["activeLeafId"]
-
-                return [_parse_tome_entry(e) for e in migrated_entries]
-        except TomeVersionError:
-            raise
-        except Exception as e:
-            logger.warning("Failed to read tome file %s: %s", tome_file, e)
-            return []
+        return list(self.iter_tome_entries(tome_id))
 
     def _read_last_n_entries_from_disk(
         self, tome_id: str, limit: int
@@ -857,13 +790,30 @@ class TomeLedger:
                                         )
                                     )
 
+                                version_raw = header.get(
+                                    "version", CURRENT_SESSION_VERSION
+                                )
                                 try:
-                                    extract_session_version(header)
-                                except TomeVersionError as e:
+                                    version = int(version_raw)
+                                    if version != CURRENT_SESSION_VERSION:
+                                        issues.append(
+                                            TomeIntegrityIssue(
+                                                line_number=1,
+                                                message=(
+                                                    f"Unsupported session version: "
+                                                    f"{version}"
+                                                ),
+                                                raw_line=header_raw,
+                                            )
+                                        )
+                                except ValueError, TypeError:
                                     issues.append(
                                         TomeIntegrityIssue(
                                             line_number=1,
-                                            message=str(e),
+                                            message=(
+                                                f"Invalid session version: "
+                                                f"{version_raw}"
+                                            ),
                                             raw_line=header_raw,
                                         )
                                     )
@@ -945,24 +895,20 @@ class TomeLedger:
                             )
                             has_entry_issue = True
                         else:
-                            # Legacy "invocation" entries are valid for backward compat.
-                            if entry_type_raw == "invocation":
-                                pass
-                            else:
-                                try:
-                                    TomeEntryType(entry_type_raw)
-                                except ValueError:
-                                    issues.append(
-                                        TomeIntegrityIssue(
-                                            line_number=idx,
-                                            message=(
-                                                f"Malformed entry: invalid entry type "
-                                                f"'{entry_type_raw}'"
-                                            ),
-                                            raw_line=line,
-                                        )
+                            try:
+                                TomeEntryType(entry_type_raw)
+                            except ValueError:
+                                issues.append(
+                                    TomeIntegrityIssue(
+                                        line_number=idx,
+                                        message=(
+                                            f"Malformed entry: invalid entry type "
+                                            f"'{entry_type_raw}'"
+                                        ),
+                                        raw_line=line,
                                     )
-                                    has_entry_issue = True
+                                )
+                                has_entry_issue = True
 
                         ts = entry_raw.get("timestamp")
                         if (
@@ -1049,16 +995,7 @@ class TomeLedger:
         with tome_file.open("w", encoding="utf-8") as f:
             f.write(json.dumps(header) + "\n")
             for entry in entries:
-                line = json.dumps(
-                    {
-                        "id": entry.id,
-                        "parentId": entry.parent_id,
-                        "type": entry.type.value,
-                        "timestamp": entry.timestamp,
-                        "payload": entry.payload,
-                    }
-                )
-                f.write(line + "\n")
+                f.write(json.dumps(entry.to_dict()) + "\n")
 
     def _filter_entries_to_leaf(
         self, entries: list[TomeEntry], leaf_id: str

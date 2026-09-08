@@ -74,6 +74,23 @@ async def _safe_call_handler_async(
         raise
 
 
+def _register_item(
+    registry: dict[str, Any],
+    key: str,
+    item: Any,
+    item_type: str,
+    override: bool = False,
+) -> bool:
+    if key in registry:
+        if not override:
+            logger.warning("Duplicate %s registration skipped: %s", item_type, key)
+            return False
+        logger.debug("Overwriting existing %s registration: %s", item_type, key)
+
+    registry[key] = item
+    return True
+
+
 Handler = Callable[..., Any | None | Awaitable[Any | None]]
 
 
@@ -220,40 +237,19 @@ class RuneRunner:
     def register_command(
         self, command: RegisteredCommand, override: bool = False
     ) -> bool:
-        if command.name in self._commands:
-            if not override:
-                logger.warning(
-                    "Duplicate command registration skipped: %s", command.name
-                )
-                return False
-            logger.debug("Overwriting existing command registration: %s", command.name)
-
-        self._commands[command.name] = command
-        return True
+        return _register_item(
+            self._commands, command.name, command, "command", override
+        )
 
     def register_shortcut(self, shortcut: RuneShortcut, override: bool = False) -> bool:
-        if shortcut.key in self._shortcuts:
-            if not override:
-                logger.warning(
-                    "Duplicate shortcut registration skipped: %s", shortcut.key
-                )
-                return False
-            logger.debug("Overwriting existing shortcut registration: %s", shortcut.key)
-
-        self._shortcuts[shortcut.key] = shortcut
-        return True
+        return _register_item(
+            self._shortcuts, shortcut.key, shortcut, "shortcut", override
+        )
 
     def register_provider(
         self, name: str, config: dict[str, Any], override: bool = False
     ) -> bool:
-        if name in self._providers:
-            if not override:
-                logger.warning("Duplicate provider registration skipped: %s", name)
-                return False
-            logger.debug("Overwriting existing provider registration: %s", name)
-
-        self._providers[name] = config
-        return True
+        return _register_item(self._providers, name, config, "provider", override)
 
     def get_registered_providers(self) -> dict[str, dict[str, Any]]:
         return dict(self._providers)
@@ -390,11 +386,10 @@ class RuneRunner:
         if diagnostics is not None:
             self._diagnostics.extend(diagnostics)
         for load in loads:
-            if load.manifest.name not in self._loaded_rune_names:
-                self._loaded_manifests.append(load.manifest)
-                self._loaded_rune_names.add(load.manifest.name)
-            else:
+            if load.manifest.name in self._loaded_rune_names:
                 continue
+            self._loaded_manifests.append(load.manifest)
+            self._loaded_rune_names.add(load.manifest.name)
             for sc in load.manifest.shortcuts:
                 self.register_shortcut(sc)
             if load.factory is not None:

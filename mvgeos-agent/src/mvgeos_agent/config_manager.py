@@ -93,12 +93,12 @@ class ConfigLayer(Enum):
     """Indicates which layer a resolved config value came from.
 
     Precedence from lowest to highest:
-    DEFAULTS < AGENT < LEGACY < CONSTRUCTOR
+    DEFAULTS < AGENT < PROJECT < CONSTRUCTOR
     """
 
     DEFAULTS = "defaults"
     AGENT = "agent"
-    LEGACY = "legacy"
+    PROJECT = "project"
     CONSTRUCTOR = "constructor"
 
 
@@ -114,7 +114,7 @@ class ConfigManager:
 
     Precedence (highest to lowest):
     1. Constructor overrides (via ``with_overrides()``)
-    2. Legacy project config (``.agents/.mvgeos/config.json``)
+    2. Project config (``.agents/.mvgeos/config.json``)
     3. Agent-scope file (``~/.agents/.mvgeos/{name}/config.json``)
     4. Defaults
 
@@ -152,8 +152,8 @@ class ConfigManager:
         return self._agent_config_base / self._agent_name / "config.json"
 
     @property
-    def legacy_config_path(self) -> Path:
-        """Path to the legacy project config file."""
+    def project_config_path(self) -> Path:
+        """Path to the project config file."""
         return self._project_dir / ".agents" / ".mvgeos" / "config.json"
 
     def with_overrides(self, **kwargs: Any) -> ConfigManager:
@@ -185,11 +185,11 @@ class ConfigManager:
         for key in agent_data:
             layers[key] = ConfigLayer.AGENT
 
-        # Layer 3: Legacy project config
-        legacy_data = self._load_json(self.legacy_config_path)
-        merged = self._deep_merge(merged, legacy_data)
-        for key in legacy_data:
-            layers[key] = ConfigLayer.LEGACY
+        # Layer 3: Project config
+        project_data = self._load_json(self.project_config_path)
+        merged = self._deep_merge(merged, project_data)
+        for key in project_data:
+            layers[key] = ConfigLayer.PROJECT
 
         # Layer 4: Constructor overrides (highest precedence)
         merged = self._deep_merge(merged, self._constructor_overrides)
@@ -347,22 +347,26 @@ class ConfigManager:
     def set_project(self, key: str, value: Any) -> None:
         """Set a value in the project-scope config file."""
         validated_value = self.validate_value(key, value)
-        self.legacy_config_path.parent.mkdir(parents=True, exist_ok=True)
-        data = self._load_json(self.legacy_config_path)
+        self.project_config_path.parent.mkdir(parents=True, exist_ok=True)
+        data = self._load_json(self.project_config_path)
         data[key] = validated_value
-        self.legacy_config_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        self.project_config_path.write_text(
+            json.dumps(data, indent=2), encoding="utf-8"
+        )
 
     def save_project_config(self, values: dict[str, Any]) -> None:
         """Save multiple validated values to the project-scope config file."""
-        self.legacy_config_path.parent.mkdir(parents=True, exist_ok=True)
-        data = self._load_json(self.legacy_config_path)
+        self.project_config_path.parent.mkdir(parents=True, exist_ok=True)
+        data = self._load_json(self.project_config_path)
         for key, value in values.items():
             data[key] = self.validate_value(key, value)
-        self.legacy_config_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        self.project_config_path.write_text(
+            json.dumps(data, indent=2), encoding="utf-8"
+        )
 
     def load_project_config(self) -> dict[str, Any]:
         """Load the raw project-scope config dictionary."""
-        return self._load_json(self.legacy_config_path)
+        return self._load_json(self.project_config_path)
 
     def reset(self) -> None:
         """Reset agent-scope config to defaults."""

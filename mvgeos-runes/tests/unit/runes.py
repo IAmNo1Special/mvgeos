@@ -1,5 +1,9 @@
+import sys
 import tempfile
+import time
 from pathlib import Path
+
+import pytest
 
 from mvgeos_runes.loader import (
     clear_skill_manifest_cache,
@@ -14,11 +18,13 @@ from mvgeos_runes.loader import (
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.types import (
     DiagnosticKind,
+    ExecutionMode,
     RuneManifest,
     RuneScope,
     SigilHook,
     SkillDiagnosticKind,
     SkillScope,
+    SpellDefinition,
 )
 
 
@@ -118,7 +124,7 @@ def test_load_manifest_with_shortcuts_strings() -> None:
         assert manifest.shortcuts[1].key == "ctrl+r"
 
 
-def test_load_manifest_without_shortcuts() -> None:
+def test_load_manifest_defaults() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         rune_dir = Path(tmpdir) / "test_rune"
         rune_dir.mkdir()
@@ -133,6 +139,9 @@ def test_load_manifest_without_shortcuts() -> None:
 
         assert manifest is not None
         assert manifest.shortcuts == []
+        assert manifest.system_deps == []
+        assert manifest.python_deps == []
+        assert manifest.enabled is True
 
 
 def test_load_manifests_with_shortcuts() -> None:
@@ -237,23 +246,6 @@ def test_load_manifest_with_system_deps() -> None:
         assert manifest.system_deps == ["ripgrep", "git"]
 
 
-def test_load_manifest_without_system_deps() -> None:
-    with tempfile.TemporaryDirectory() as tmpdir:
-        rune_dir = Path(tmpdir) / "test_rune"
-        rune_dir.mkdir()
-        manifest_file = rune_dir / "manifest.json"
-        manifest_data = (
-            '{"name": "test_rune", "version": "1.0.0", '
-            '"description": "Test rune", "hooks": []}'
-        )
-        manifest_file.write_text(manifest_data, encoding="utf-8")
-
-        manifest = load_manifest(rune_dir)
-
-        assert manifest is not None
-        assert manifest.system_deps == []
-
-
 def test_load_manifest_system_deps_non_list_defaults_to_empty() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         rune_dir = Path(tmpdir) / "test_rune"
@@ -308,40 +300,6 @@ def test_load_manifest_with_python_deps() -> None:
         assert manifest.python_deps == ["heal_my_goap", "aiohttp"]
 
 
-def test_load_manifest_without_python_deps() -> None:
-    with tempfile.TemporaryDirectory() as tmpdir:
-        rune_dir = Path(tmpdir) / "test_rune"
-        rune_dir.mkdir()
-        manifest_file = rune_dir / "manifest.json"
-        manifest_data = (
-            '{"name": "test_rune", "version": "1.0.0", '
-            '"description": "Test rune", "hooks": []}'
-        )
-        manifest_file.write_text(manifest_data, encoding="utf-8")
-
-        manifest = load_manifest(rune_dir)
-
-        assert manifest is not None
-        assert manifest.python_deps == []
-
-
-def test_load_manifest_enabled_defaults_true() -> None:
-    with tempfile.TemporaryDirectory() as tmpdir:
-        rune_dir = Path(tmpdir) / "test_rune"
-        rune_dir.mkdir()
-        manifest_file = rune_dir / "manifest.json"
-        manifest_data = (
-            '{"name": "test_rune", "version": "1.0.0", '
-            '"description": "Test rune", "hooks": []}'
-        )
-        manifest_file.write_text(manifest_data, encoding="utf-8")
-
-        manifest = load_manifest(rune_dir)
-
-        assert manifest is not None
-        assert manifest.enabled is True
-
-
 def test_load_manifest_enabled_false() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         rune_dir = Path(tmpdir) / "test_rune"
@@ -391,22 +349,35 @@ def test_load_manifests_skips_disabled_runes() -> None:
         assert manifests == []
 
 
-def test_spell_definition_execute_not_implemented() -> None:
-    from mvgeos_runes.types import ExecutionMode, SpellDefinition
-
+@pytest.mark.asyncio
+async def test_spell_definition_execute_not_implemented() -> None:
     spell = SpellDefinition(
         name="test",
         description="test",
         parameters={},
         execution_mode=ExecutionMode.PARALLEL,
     )
-
-    import asyncio
-
-    import pytest
-
     with pytest.raises(NotImplementedError):
-        asyncio.run(spell.execute("cast-1", {}))
+        await spell.execute("cast-1", {})
+
+
+@pytest.mark.asyncio
+async def test_spell_definition_execute_with_handler() -> None:
+    async def handler_with_id(spell_cast_id: str, params: dict, **kwargs) -> dict:
+        return {"id": spell_cast_id, "params": params}
+
+    spell1 = SpellDefinition(name="test1", description="test", handler=handler_with_id)
+    result1 = await spell1.execute("cast-1", {"key": "val"})
+    assert result1 == {"id": "cast-1", "params": {"key": "val"}}
+
+    async def handler_params_only(params: dict, **kwargs) -> dict:
+        return {"params": params}
+
+    spell2 = SpellDefinition(
+        name="test2", description="test", handler=handler_params_only
+    )
+    result2 = await spell2.execute("cast-2", {"num": 42})
+    assert result2 == {"params": {"num": 42}}
 
 
 class TestLoadRunesFromPaths:
@@ -900,25 +871,6 @@ Content""",
             names = {load.manifest.name for load in loads}
             assert names == {"skill-a", "skill-b"}
 
-    def test_legacy_scope_included(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            skill_dir = Path(tmpdir) / "legacy-skill"
-            skill_dir.mkdir()
-            (skill_dir / "SKILL.md").write_text(
-                """---
-name: legacy-skill
-description: Legacy skill
----
-Content""",
-                encoding="utf-8",
-            )
-
-            loads, diagnostics = load_skills_from_paths(
-                [(Path(tmpdir), SkillScope.LEGACY)]
-            )
-            assert len(loads) == 1
-            assert loads[0].manifest.scope == SkillScope.LEGACY
-
 
 class TestGetDefaultSkillPaths:
     def test_get_default_skill_paths_order(self) -> None:
@@ -935,8 +887,6 @@ class TestGetDefaultSkillPaths:
 
 
 def test_load_factory_from_manifest_with_local_import() -> None:
-    import sys
-
     orig_sys_path = list(sys.path)
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -966,8 +916,6 @@ def test_load_factory_from_manifest_with_local_import() -> None:
 
 
 def test_load_factory_from_manifest_nested_entrypoint_with_imports() -> None:
-    import sys
-
     orig_sys_path = list(sys.path)
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1033,8 +981,6 @@ def test_load_skill_manifest_caching() -> None:
         assert manifest1.scope == SkillScope.PROJECT
 
         # Update file content and mtime
-        import time
-
         time.sleep(0.01)
         skill_file.write_text(
             "---\nname: test-skill\ndescription: Updated description.\n---\nBody",

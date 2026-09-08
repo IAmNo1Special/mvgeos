@@ -478,7 +478,7 @@ class TestAssembleSnapshot:
             config_values=config_values,
             config_source_files={
                 ConfigLayer.AGENT: Path("/agent/config.json"),
-                ConfigLayer.LEGACY: Path("/legacy/config.json"),
+                ConfigLayer.PROJECT: Path("/project/config.json"),
             },
             resolved_prompt=resolved_prompt,
             resolved_guidelines=resolved_guidelines,

@@ -1,15 +1,29 @@
-from __future__ import annotations
-
+import asyncio
+import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import SigilHook
-from mvgeos_tome.types import TomeMetadata
+from mvgeos_tome.ledger import TomeLedger
+from mvgeos_tome.types import TomeEntryType, TomeMetadata
 
 from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.types import TomeResumeError
+from mvgeos_agent.types import (
+    MvgeResponse,
+    StopReason,
+    SummonerRequest,
+    TomeResumeError,
+)
+
+
+def _temp_tome(tmp: str) -> tuple[MvgeTome, TomeLedger]:
+    ledger = TomeLedger(Path(tmp))
+    meta = ledger.create_tome("/tmp")
+    tome = MvgeTome(ledger, meta)
+    tome._started = True
+    return tome, ledger
 
 
 def _metadata(tome_id: str = "a" * 32, cwd: str = "/test") -> TomeMetadata:
@@ -581,3 +595,262 @@ class TestMigrationAndReconstruction:
         assert "Compacted conversation" in invocations[0].content
         assert isinstance(invocations[1], SummonerRequest)
         assert invocations[1].content == "tail question"
+
+
+class TestMvgeTomeParentId:
+    def test_record_message_defaults_parent_id_to_active_leaf(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, _ledger = _temp_tome(tmp)
+
+            assert tome.active_leaf_id is None
+
+            # First message has parent_id = None
+            e1 = tome.record_message(role="user", content="msg 1")
+            assert e1 is not None
+            assert e1.parent_id is None
+            assert tome.active_leaf_id == e1.id
+
+            # Second message automatically receives e1.id as parent_id
+            e2 = tome.record_message(role="assistant", content="msg 2")
+            assert e2 is not None
+            assert e2.parent_id == e1.id
+            assert tome.active_leaf_id == e2.id
+
+            # Third message automatically receives e2.id as parent_id
+            e3 = tome.record_message(role="user", content="msg 3")
+            assert e3 is not None
+            assert e3.parent_id == e2.id
+            assert tome.active_leaf_id == e3.id
+
+
+class TestLeafAdvances:
+    def test_leaf_advances_on_recorded_message(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, ledger = _temp_tome(tmp)
+
+            entry = tome.record_message(role="user", content="hello")
+
+            assert entry is not None
+            assert ledger.get_leaf_id(tome.tome_id) == entry.id
+
+    def test_leaf_tracks_the_most_recent_message(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, ledger = _temp_tome(tmp)
+
+            tome.record_message(role="user", content="one")
+            second = tome.record_message(role="assistant", content="two")
+
+            assert second is not None
+            assert ledger.get_leaf_id(tome.tome_id) == second.id
+
+    def test_metadata_active_leaf_id_is_populated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, _ = _temp_tome(tmp)
+
+            entry = tome.record_message(role="user", content="hello")
+
+            assert entry is not None
+            assert tome.metadata.active_leaf_id == entry.id
+
+    def test_no_leaf_recorded_when_tome_not_started(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = TomeLedger(Path(tmp))
+            meta = ledger.create_tome("/tmp")
+            tome = MvgeTome(ledger, meta)
+
+            tome.record_message(role="user", content="dropped")
+
+            assert ledger.get_leaf_id(tome.tome_id) is None
+
+    def test_leaf_survives_reload_from_disk(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, _ = _temp_tome(tmp)
+            entry = tome.record_message(role="user", content="hello")
+            assert entry is not None
+
+            reopened = TomeLedger(Path(tmp))
+
+            assert reopened.get_leaf_id(tome.tome_id) == entry.id
+
+
+class TestRecordCompaction:
+    def test_appends_compaction_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, ledger = _temp_tome(tmp)
+
+            tome.record_compaction(
+                summary="## Goal\nShip it.",
+                mana_before=5000,
+                retained_tail=[SummonerRequest(role="user", content="keep me")],
+            )
+
+            entries = ledger.get_entries(tome.tome_id, TomeEntryType.COMPACTION)
+            assert len(entries) == 1
+
+    def test_payload_carries_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, ledger = _temp_tome(tmp)
+
+            tome.record_compaction(
+                summary="## Goal\nShip it.",
+                mana_before=5000,
+                retained_tail=[SummonerRequest(role="user", content="keep me")],
+            )
+
+            entry = ledger.get_entries(tome.tome_id, TomeEntryType.COMPACTION)[0]
+            assert entry.payload["summary"] == "## Goal\nShip it."
+            assert entry.payload["manaBefore"] == 5000
+            assert entry.payload["retainedTail"]
+
+    def test_retained_tail_is_serialisable(self) -> None:
+        import json
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, ledger = _temp_tome(tmp)
+
+            tome.record_compaction(
+                summary="s",
+                mana_before=1,
+                retained_tail=[SummonerRequest(role="user", content="keep me")],
+            )
+
+            entry = ledger.get_entries(tome.tome_id, TomeEntryType.COMPACTION)[0]
+            assert json.loads(json.dumps(entry.payload))
+
+    def test_dropped_when_tome_not_started(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = TomeLedger(Path(tmp))
+            meta = ledger.create_tome("/tmp")
+            tome = MvgeTome(ledger, meta)
+
+            result = tome.record_compaction(
+                summary="s", mana_before=1, retained_tail=[]
+            )
+
+            assert result is None
+            assert ledger.get_entries(tome.tome_id, TomeEntryType.COMPACTION) == []
+
+    def test_records_first_kept_entry_id_when_given(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, ledger = _temp_tome(tmp)
+
+            tome.record_compaction(
+                summary="s",
+                mana_before=1,
+                retained_tail=[],
+                first_kept_entry_id="abc123",
+            )
+
+            entry = ledger.get_entries(tome.tome_id, TomeEntryType.COMPACTION)[0]
+            assert entry.payload["firstKeptEntryId"] == "abc123"
+
+    def test_serialises_mvge_response_tail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, ledger = _temp_tome(tmp)
+
+            tome.record_compaction(
+                summary="s",
+                mana_before=1,
+                retained_tail=[
+                    MvgeResponse(
+                        role="assistant",
+                        content=[{"type": "text", "text": "hi"}],
+                        stop_reason=StopReason.STOP,
+                    )
+                ],
+            )
+
+            entry = ledger.get_entries(tome.tome_id, TomeEntryType.COMPACTION)[0]
+            tail = entry.payload["retainedTail"]
+            assert tail[0]["role"] == "assistant"
+
+
+class TestTomeAsync:
+    @pytest.mark.asyncio
+    async def test_record_message_async_defaults_parent_to_active_leaf(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, _ = _temp_tome(tmp)
+
+            e1 = await tome.record_message_async(role="user", content="msg 1")
+            assert e1 is not None
+            assert e1.parent_id is None
+            assert await tome.active_leaf_id_async() == e1.id
+
+            e2 = await tome.record_message_async(role="assistant", content="msg 2")
+            assert e2 is not None
+            assert e2.parent_id == e1.id
+            assert await tome.active_leaf_id_async() == e2.id
+
+    @pytest.mark.asyncio
+    async def test_record_compaction_and_custom_async_persist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, ledger = _temp_tome(tmp)
+
+            comp = await tome.record_compaction_async(
+                summary="s", mana_before=10, retained_tail=[]
+            )
+            assert comp is not None
+            custom = await tome.record_custom_async("note", {"k": "v"})
+            assert custom is not None
+
+            entries = await ledger.get_entries_async(tome.tome_id)
+            types = {e.type for e in entries}
+            assert TomeEntryType.COMPACTION in types
+            assert TomeEntryType.CUSTOM in types
+
+    @pytest.mark.asyncio
+    async def test_record_compaction_async_keeps_first_kept_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, ledger = _temp_tome(tmp)
+            comp = await tome.record_compaction_async(
+                summary="s",
+                mana_before=0,
+                retained_tail=[],
+                first_kept_entry_id="keep-1",
+            )
+            assert comp is not None
+            entry = await ledger.get_entry_async(tome.tome_id, comp.id)
+            assert entry is not None
+            assert entry.payload["firstKeptEntryId"] == "keep-1"
+
+    @pytest.mark.asyncio
+    async def test_advance_leaf_async_swallows_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, ledger = _temp_tome(tmp)
+            entry = await tome.record_message_async(role="user", content="x")
+            assert entry is not None
+            # Force the leaf-advance to fail; recording must not raise.
+            original = ledger.append_leaf_async
+            ledger.append_leaf_async = AsyncMock(side_effect=RuntimeError("boom"))
+            try:
+                await tome._advance_leaf_async(entry)
+            finally:
+                ledger.append_leaf_async = original
+
+    @pytest.mark.asyncio
+    async def test_recording_async_dropped_when_not_started(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, _ledger = _temp_tome(tmp)
+            tome._started = False
+
+            assert await tome.record_message_async(role="user", content="x") is None
+            assert (
+                await tome.record_compaction_async(
+                    summary="s", mana_before=0, retained_tail=[]
+                )
+                is None
+            )
+            assert await tome.record_custom_async("note") is None
+
+    @pytest.mark.asyncio
+    async def test_concurrent_async_recording_no_loss(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, ledger = _temp_tome(tmp)
+
+            async def record(i: int) -> None:
+                await tome.record_message_async(role="user", content=f"msg {i}")
+
+            await asyncio.gather(*(record(i) for i in range(30)))
+
+            entries = await ledger.get_entries_async(tome.tome_id)
+            assert len([e for e in entries if e.payload.get("role") == "user"]) == 30

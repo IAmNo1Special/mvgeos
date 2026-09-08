@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
@@ -290,17 +291,14 @@ def create_sigil_data(hook: SigilHook, data: dict[str, Any] | Any) -> Any:
     return data
 
 
-class RuneScope(StrEnum):
+class Scope(StrEnum):
     PROJECT = "project"
     USER = "user"
     AGENT = "agent"
 
 
-class SkillScope(StrEnum):
-    PROJECT = "project"
-    USER = "user"
-    AGENT = "agent"
-    LEGACY = "legacy"
+RuneScope = Scope
+SkillScope = Scope
 
 
 @dataclass
@@ -435,8 +433,6 @@ class SpellDefinition:
         on_update: Any | None = None,
     ) -> dict[str, Any]:
         if self._handler is not None:
-            import inspect
-
             sig = inspect.signature(self._handler)
             if len(sig.parameters) >= 2 and list(sig.parameters.keys())[0] in (
                 "spell_cast_id",

@@ -8,7 +8,7 @@ from mvgeos_agent.types import QueueMode
 from mvgeos_provider.model_registry import ModelRegistry
 from mvgeos_provider.types import Model
 
-from mvgeos_cli.commands.dispatcher import CommandDispatcher
+from mvgeos_cli.commands.dispatcher import CliCommandDispatcher
 
 
 @pytest.fixture
@@ -54,7 +54,7 @@ def mock_registry() -> MagicMock:
 @pytest.mark.asyncio
 async def test_help_command(mock_agent: MagicMock, mock_registry: MagicMock) -> None:
     output: list[str] = []
-    dispatcher = CommandDispatcher(mock_agent, mock_registry, out=output.append)
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
 
     should_exit = await dispatcher.dispatch("/help")
     assert should_exit is False
@@ -63,7 +63,7 @@ async def test_help_command(mock_agent: MagicMock, mock_registry: MagicMock) -> 
 
 @pytest.mark.asyncio
 async def test_quit_command(mock_agent: MagicMock, mock_registry: MagicMock) -> None:
-    dispatcher = CommandDispatcher(mock_agent, mock_registry)
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry)
     assert await dispatcher.dispatch("/quit") is True
     assert await dispatcher.dispatch("/exit") is True
 
@@ -71,7 +71,7 @@ async def test_quit_command(mock_agent: MagicMock, mock_registry: MagicMock) -> 
 @pytest.mark.asyncio
 async def test_model_list(mock_agent: MagicMock, mock_registry: MagicMock) -> None:
     output: list[str] = []
-    dispatcher = CommandDispatcher(mock_agent, mock_registry, out=output.append)
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
 
     should_exit = await dispatcher.dispatch("/model")
     assert should_exit is False
@@ -83,7 +83,7 @@ async def test_model_switch_success(
     mock_agent: MagicMock, mock_registry: MagicMock
 ) -> None:
     output: list[str] = []
-    dispatcher = CommandDispatcher(mock_agent, mock_registry, out=output.append)
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
 
     should_exit = await dispatcher.dispatch("/model nvidia/nemotron")
     assert should_exit is False
@@ -96,7 +96,7 @@ async def test_model_switch_unknown(
     mock_agent: MagicMock, mock_registry: MagicMock
 ) -> None:
     output: list[str] = []
-    dispatcher = CommandDispatcher(mock_agent, mock_registry, out=output.append)
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
 
     should_exit = await dispatcher.dispatch("/model unknown/model")
     assert should_exit is False
@@ -107,7 +107,7 @@ async def test_model_switch_unknown(
 @pytest.mark.asyncio
 async def test_refresh_models(mock_agent: MagicMock, mock_registry: MagicMock) -> None:
     output: list[str] = []
-    dispatcher = CommandDispatcher(mock_agent, mock_registry, out=output.append)
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
 
     should_exit = await dispatcher.dispatch("/refresh-models")
     assert should_exit is False
@@ -118,7 +118,7 @@ async def test_refresh_models(mock_agent: MagicMock, mock_registry: MagicMock) -
 @pytest.mark.asyncio
 async def test_new_session(mock_agent: MagicMock, mock_registry: MagicMock) -> None:
     output: list[str] = []
-    dispatcher = CommandDispatcher(mock_agent, mock_registry, out=output.append)
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
 
     should_exit = await dispatcher.dispatch("/new")
     assert should_exit is False
@@ -129,7 +129,7 @@ async def test_new_session(mock_agent: MagicMock, mock_registry: MagicMock) -> N
 @pytest.mark.asyncio
 async def test_resume_session(mock_agent: MagicMock, mock_registry: MagicMock) -> None:
     output: list[str] = []
-    dispatcher = CommandDispatcher(mock_agent, mock_registry, out=output.append)
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
 
     should_exit = await dispatcher.dispatch("/resume some/path.jsonl")
     assert should_exit is False
@@ -139,7 +139,7 @@ async def test_resume_session(mock_agent: MagicMock, mock_registry: MagicMock) -
 @pytest.mark.asyncio
 async def test_spells_list(mock_agent: MagicMock, mock_registry: MagicMock) -> None:
     output: list[str] = []
-    dispatcher = CommandDispatcher(mock_agent, mock_registry, out=output.append)
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
 
     should_exit = await dispatcher.dispatch("/spells")
     assert should_exit is False
@@ -149,7 +149,7 @@ async def test_spells_list(mock_agent: MagicMock, mock_registry: MagicMock) -> N
 @pytest.mark.asyncio
 async def test_spells_set(mock_agent: MagicMock, mock_registry: MagicMock) -> None:
     output: list[str] = []
-    dispatcher = CommandDispatcher(mock_agent, mock_registry, out=output.append)
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
 
     should_exit = await dispatcher.dispatch("/spells bash,read")
     assert should_exit is False
@@ -159,7 +159,7 @@ async def test_spells_set(mock_agent: MagicMock, mock_registry: MagicMock) -> No
 
 @pytest.mark.asyncio
 async def test_mode_toggle(mock_agent: MagicMock, mock_registry: MagicMock) -> None:
-    dispatcher = CommandDispatcher(mock_agent, mock_registry)
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry)
 
     mock_agent.queue_mode = QueueMode.ONE_AT_A_TIME
     await dispatcher.dispatch("/mode")
@@ -173,7 +173,7 @@ async def test_mode_toggle(mock_agent: MagicMock, mock_registry: MagicMock) -> N
 async def test_steer_and_followup(
     mock_agent: MagicMock, mock_registry: MagicMock
 ) -> None:
-    dispatcher = CommandDispatcher(mock_agent, mock_registry)
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry)
 
     await dispatcher.dispatch("/steer focus on bug")
     mock_agent.steer.assert_called_once_with("focus on bug")
@@ -185,7 +185,7 @@ async def test_steer_and_followup(
 @pytest.mark.asyncio
 async def test_unknown_command(mock_agent: MagicMock, mock_registry: MagicMock) -> None:
     output: list[str] = []
-    dispatcher = CommandDispatcher(mock_agent, mock_registry, out=output.append)
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
 
     should_exit = await dispatcher.dispatch("/unknown")
     assert should_exit is False

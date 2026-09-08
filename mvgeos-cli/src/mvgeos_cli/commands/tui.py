@@ -35,7 +35,7 @@ from rich.text import Text
 
 from mvgeos_cli import DEFAULT_MODEL
 from mvgeos_cli.agent_factory import create_agent, validate_api_key
-from mvgeos_cli.commands.dispatcher import CommandDispatcher
+from mvgeos_cli.commands.dispatcher import CliCommandDispatcher
 from mvgeos_cli.commands.repl import (
     NoConsoleScreenBufferError,
     SlashCompleter,
@@ -285,7 +285,7 @@ class TuiApp:
         self.sink = sink
         self._registry = registry
         self.renderer = renderer
-        self.dispatcher = CommandDispatcher(agent, registry, out=self._out)
+        self.dispatcher = CliCommandDispatcher(agent, registry, out=self._out)
         self._busy = False
         self._task: asyncio.Task[Any] | None = None
         self._branch = get_git_branch()

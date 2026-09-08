@@ -3,7 +3,10 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from mvgeos_tome.ledger import TomeLedger
+from mvgeos_tome.types import TomeVersionError
 
 
 def _ledger(tmp: str) -> TomeLedger:
@@ -173,3 +176,115 @@ class TestOpenTomePrefixLookup:
                 "098b2ee4", "/tmp", fork_from_leaf_id=msg.id
             )
             assert forked.parent_tome_id == tome.id
+
+
+class TestLedgerVersionHandling:
+    def test_open_tome_unsupported_version_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = _ledger(tmp)
+            tome_file = Path(tmp) / "future-5.jsonl"
+            tome_file.write_text(
+                '{"type":"session","version":5,"id":"future-5","timestamp":"2026-01-01T00:00:00Z","cwd":"/tmp"}\n',
+                encoding="utf-8",
+            )
+            with pytest.raises(TomeVersionError) as exc_info:
+                ledger.open_tome("future-5")
+            assert exc_info.value.version == 5
+
+    def test_load_tome_headers_ignores_unsupported_versions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            valid_file = Path(tmp) / "valid-3.jsonl"
+            valid_file.write_text(
+                '{"type":"session","version":3,"id":"valid-3","timestamp":"2026-01-01T00:00:00Z","cwd":"/tmp"}\n',
+                encoding="utf-8",
+            )
+            future_file = Path(tmp) / "future-99.jsonl"
+            future_file.write_text(
+                '{"type":"session","version":99,"id":"future-99","timestamp":"2026-01-01T00:00:00Z","cwd":"/tmp"}\n',
+                encoding="utf-8",
+            )
+            ledger = _ledger(tmp)
+            tomes = ledger.list_tomes()
+            assert len(tomes) == 1
+            assert tomes[0].id == "valid-3"
+
+    def test_open_recent_skips_incompatible_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            future_file = Path(tmp) / "future-recent.jsonl"
+            future_file.write_text(
+                '{"type":"session","version":4,"id":"future-recent","timestamp":"2026-01-01T00:00:00Z","cwd":"/workspace/target"}\n',
+                encoding="utf-8",
+            )
+            valid_file = Path(tmp) / "valid-recent.jsonl"
+            valid_file.write_text(
+                '{"type":"session","version":3,"id":"valid-recent","timestamp":"2026-01-01T00:00:00Z","cwd":"/workspace/target"}\n',
+                encoding="utf-8",
+            )
+            ledger = _ledger(tmp)
+            recent = ledger.open_recent("/workspace/target")
+            assert recent is not None
+            assert recent.id == "valid-recent"
+
+    def test_load_tome_metadata_invalid_version_string(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bad_file = Path(tmp) / "bad-version.jsonl"
+            bad_file.write_text(
+                '{"type":"session","version":"not-int","id":"bad-version",'
+                '"timestamp":"2026-01-01T00:00:00Z","cwd":"/tmp"}\n',
+                encoding="utf-8",
+            )
+            ledger = _ledger(tmp)
+            with pytest.raises(TomeVersionError):
+                ledger._load_tome_metadata("bad-version")
+
+    def test_create_tome_from_metadata_with_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = _ledger(tmp)
+            from mvgeos_tome.types import TomeMetadata
+
+            base_meta = TomeMetadata(
+                id="custom-meta",
+                created_at="2026-01-01T00:00:00Z",
+                cwd="/tmp",
+            )
+            created = ledger.create_tome(
+                base_meta,
+                model="new-model",
+                contemplation_level="high",
+                spells=["spell1"],
+            )
+            assert created.model == "new-model"
+            assert created.contemplation_level == "high"
+            assert created.spells == ["spell1"]
+
+    def test_append_nonexistent_tome_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = _ledger(tmp)
+            from mvgeos_tome.types import TomeEntry, TomeEntryType
+
+            entry = TomeEntry(
+                id="e1",
+                parent_id=None,
+                type=TomeEntryType.MESSAGE,
+                timestamp=100.0,
+                payload={},
+            )
+            with pytest.raises(ValueError, match="Tome not found"):
+                ledger.append("nonexistent", entry)
+
+    def test_append_leaf_nonexistent_tome_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = _ledger(tmp)
+            with pytest.raises(ValueError, match="Tome not found"):
+                ledger.append_leaf("nonexistent", "target-id")
+
+    def test_get_entries_for_context_max_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = _ledger(tmp)
+            tome = ledger.create_tome("/tmp")
+            for i in range(5):
+                ledger.append_message(tome.id, "user", f"msg-{i}")
+            ctx_entries = ledger.get_entries_for_context(tome.id, max_entries=2)
+            assert len(ctx_entries) == 2
+            assert ctx_entries[0].payload["content"] == "msg-3"
+            assert ctx_entries[1].payload["content"] == "msg-4"

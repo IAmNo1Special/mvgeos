@@ -34,7 +34,6 @@ class RealmRegistry:
             )
         )
         self._realm_factories["openrouter"] = self._default_realm_factory
-        self._builtin_providers = self._realm_factories
 
     @property
     def cache_ttl_seconds(self) -> int:
@@ -118,46 +117,36 @@ class RealmRegistry:
         return list(self._realm_factories.keys())
 
     def has_provider(self, name: str) -> bool:
-        return (
-            name in self._extension_providers
-            or name in self._realm_factories
-            or name in self._builtin_providers
-        )
+        return name in self._extension_providers or name in self._realm_factories
+
+    def _candidate_keys(
+        self, model: Model, provider_name: str | None = None
+    ) -> list[str]:
+        candidates: list[str] = []
+        if provider_name:
+            candidates.append(provider_name)
+        if model.realm and model.realm not in candidates:
+            candidates.append(model.realm)
+        if model.provider and model.provider not in candidates:
+            candidates.append(model.provider)
+        for part in model.id.split("/"):
+            if part and part not in candidates:
+                candidates.append(part)
+        return candidates
 
     def _get_extension_config(
         self, model: Model, provider_name: str | None = None
     ) -> dict[str, Any] | None:
-        if provider_name and provider_name in self._extension_providers:
-            return self._extension_providers[provider_name]
-        if model.realm in self._extension_providers:
-            return self._extension_providers[model.realm]
-        if model.provider in self._extension_providers:
-            return self._extension_providers[model.provider]
-        for part in model.id.split("/"):
-            if part in self._extension_providers:
-                return self._extension_providers[part]
+        for candidate in self._candidate_keys(model, provider_name):
+            if candidate in self._extension_providers:
+                return self._extension_providers[candidate]
         return None
 
     def _find_realm_factory(
         self, model: Model, provider_name: str | None = None
     ) -> RealmFactory | None:
-        candidates: list[str] = []
-        if provider_name:
-            candidates.append(provider_name)
-        if (
-            model.provider
-            and model.provider != "openrouter"
-            and model.provider not in candidates
-        ):
-            candidates.append(model.provider)
-        for part in model.id.split("/"):
-            if part and part != "openrouter" and part not in candidates:
-                candidates.append(part)
-        if model.realm and model.realm not in candidates:
-            candidates.append(model.realm)
-
-        for candidate in candidates:
-            if candidate in self._realm_factories:
+        for candidate in self._candidate_keys(model, provider_name):
+            if candidate != "openrouter" and candidate in self._realm_factories:
                 return self._realm_factories[candidate]
         return None
 

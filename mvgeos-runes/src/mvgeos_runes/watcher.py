@@ -85,26 +85,21 @@ class _RuneReloadHandler(FileSystemEventHandler):
                 return True
         return src.suffix in (".pyc", ".pyo", ".pyd", ".swp", ".tmp")
 
-    def on_modified(self, event: FileSystemEvent) -> None:
+    def _handle_file_event(self, event: FileSystemEvent) -> None:
         if event.is_directory or self._is_ignored(str(event.src_path)):
             return
         rune_name = self._find_rune_dir(str(event.src_path))
         if rune_name:
             self._schedule_reload(rune_name)
+
+    def on_modified(self, event: FileSystemEvent) -> None:
+        self._handle_file_event(event)
 
     def on_created(self, event: FileSystemEvent) -> None:
-        if event.is_directory or self._is_ignored(str(event.src_path)):
-            return
-        rune_name = self._find_rune_dir(str(event.src_path))
-        if rune_name:
-            self._schedule_reload(rune_name)
+        self._handle_file_event(event)
 
     def on_deleted(self, event: FileSystemEvent) -> None:
-        if event.is_directory or self._is_ignored(str(event.src_path)):
-            return
-        rune_name = self._find_rune_dir(str(event.src_path))
-        if rune_name:
-            self._schedule_reload(rune_name)
+        self._handle_file_event(event)
 
 
 class RuneWatcher:

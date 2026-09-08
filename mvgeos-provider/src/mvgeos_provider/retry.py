@@ -292,17 +292,10 @@ def _headers_of(error: Exception) -> _HeaderLike | None:
 
 def _is_retryable_request_error(error: Exception) -> bool:
     headers = _headers_of(error)
-    if headers is not None:
-        should_retry = headers.get("x-should-retry")
-        if should_retry == "true":
-            return True
-        if should_retry == "false":
-            return False
-
     status = _status_of(error)
     if status is None:
-        return False
-    return is_retryable_status(status)
+        return bool(headers and headers.get("x-should-retry") == "true")
+    return is_retryable_status(status, headers)
 
 
 async def retry_realm_request[T](
@@ -333,12 +326,7 @@ async def retry_realm_request[T](
             await _sleep_ms(delay_ms, signal)
 
 
-class _EmptyHeaders:
-    def get(self, key: str, default: Any = None) -> Any:
-        return default
-
-
-_EMPTY_HEADERS = _EmptyHeaders()
+_EMPTY_HEADERS: dict[str, Any] = {}
 
 
 __all__ = [

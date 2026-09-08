@@ -9,7 +9,7 @@ from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 from mvgeos_provider.model_registry import ModelRegistry
 
-from mvgeos_cli.commands.dispatcher import CommandDispatcher
+from mvgeos_cli.commands.dispatcher import CliCommandDispatcher
 
 
 @pytest.fixture
@@ -25,25 +25,25 @@ def agent() -> Mvge:
 class TestSlashCommands:
     @pytest.mark.asyncio
     async def test_help(self, agent: Mvge, registry: ModelRegistry) -> None:
-        dispatcher = CommandDispatcher(agent, registry)
+        dispatcher = CliCommandDispatcher(agent, registry)
         result = await dispatcher.dispatch("/help")
         assert result is False
 
     @pytest.mark.asyncio
     async def test_quit(self, agent: Mvge, registry: ModelRegistry) -> None:
-        dispatcher = CommandDispatcher(agent, registry)
+        dispatcher = CliCommandDispatcher(agent, registry)
         result = await dispatcher.dispatch("/quit")
         assert result is True
 
     @pytest.mark.asyncio
     async def test_exit(self, agent: Mvge, registry: ModelRegistry) -> None:
-        dispatcher = CommandDispatcher(agent, registry)
+        dispatcher = CliCommandDispatcher(agent, registry)
         result = await dispatcher.dispatch("/exit")
         assert result is True
 
     @pytest.mark.asyncio
     async def test_session(self, agent: Mvge, registry: ModelRegistry) -> None:
-        dispatcher = CommandDispatcher(agent, registry)
+        dispatcher = CliCommandDispatcher(agent, registry)
         result = await dispatcher.dispatch("/tome")
         assert result is False
 
@@ -54,7 +54,7 @@ class TestSlashCommands:
         registry: ModelRegistry,
     ) -> None:
         output: list[str] = []
-        dispatcher = CommandDispatcher(agent, registry, out=output.append)
+        dispatcher = CliCommandDispatcher(agent, registry, out=output.append)
         result = await dispatcher.dispatch("/model")
         assert result is False
         joined = "".join(output)
@@ -65,7 +65,7 @@ class TestSlashCommands:
 
     @pytest.mark.asyncio
     async def test_model_with_args(self, agent: Mvge, registry: ModelRegistry) -> None:
-        dispatcher = CommandDispatcher(agent, registry)
+        dispatcher = CliCommandDispatcher(agent, registry)
         target = registry.list_all()[0].id
         result = await dispatcher.dispatch(f"/model {target}")
         assert result is False
@@ -73,45 +73,45 @@ class TestSlashCommands:
 
     @pytest.mark.asyncio
     async def test_model_invalid(self, agent: Mvge, registry: ModelRegistry) -> None:
-        dispatcher = CommandDispatcher(agent, registry)
+        dispatcher = CliCommandDispatcher(agent, registry)
         result = await dispatcher.dispatch("/model unknown/model")
         assert result is False
         assert agent.model_id == DEFAULT_MODEL
 
     @pytest.mark.asyncio
     async def test_spells_no_args(self, agent: Mvge, registry: ModelRegistry) -> None:
-        dispatcher = CommandDispatcher(agent, registry)
+        dispatcher = CliCommandDispatcher(agent, registry)
         result = await dispatcher.dispatch("/spells")
         assert result is False
 
     @pytest.mark.asyncio
     async def test_spells_with_args(self, agent: Mvge, registry: ModelRegistry) -> None:
-        dispatcher = CommandDispatcher(agent, registry)
+        dispatcher = CliCommandDispatcher(agent, registry)
         result = await dispatcher.dispatch("/spells bash,read,write")
         assert result is False
         assert agent.enabled_spells == ["bash", "read", "write"]
 
     @pytest.mark.asyncio
     async def test_new(self, agent: Mvge, registry: ModelRegistry) -> None:
-        dispatcher = CommandDispatcher(agent, registry)
+        dispatcher = CliCommandDispatcher(agent, registry)
         result = await dispatcher.dispatch("/new")
         assert result is False
 
     @pytest.mark.asyncio
     async def test_resume_with_args(self, agent: Mvge, registry: ModelRegistry) -> None:
-        dispatcher = CommandDispatcher(agent, registry)
+        dispatcher = CliCommandDispatcher(agent, registry)
         result = await dispatcher.dispatch("/resume .agents/.mvgeos/tomes/test.jsonl")
         assert result is False
 
     @pytest.mark.asyncio
     async def test_resume_no_args(self, agent: Mvge, registry: ModelRegistry) -> None:
-        dispatcher = CommandDispatcher(agent, registry)
+        dispatcher = CliCommandDispatcher(agent, registry)
         result = await dispatcher.dispatch("/resume")
         assert result is False
 
     @pytest.mark.asyncio
     async def test_unknown_command(self, agent: Mvge, registry: ModelRegistry) -> None:
-        dispatcher = CommandDispatcher(agent, registry)
+        dispatcher = CliCommandDispatcher(agent, registry)
         result = await dispatcher.dispatch("/unknown")
         assert result is False
 
@@ -132,7 +132,7 @@ class TestReplHelpers:
         agent: Mvge,
         registry: ModelRegistry,
     ) -> None:
-        dispatcher = CommandDispatcher(agent, registry)
+        dispatcher = CliCommandDispatcher(agent, registry)
         output: list[str] = []
         result = await dispatcher.dispatch("/models --free", out=output.append)
         assert result is False
@@ -326,7 +326,7 @@ class TestReplHelpers:
 
         agent = MagicMock()
         registry = ModelRegistry()
-        dispatcher = CommandDispatcher(agent, registry)
+        dispatcher = CliCommandDispatcher(agent, registry)
         out_messages: list[str] = []
 
         result = await dispatcher.dispatch("/steer msg", out=out_messages.append)
@@ -342,7 +342,7 @@ class TestReplHelpers:
 
         agent = MagicMock()
         registry = ModelRegistry()
-        dispatcher = CommandDispatcher(agent, registry)
+        dispatcher = CliCommandDispatcher(agent, registry)
         out_messages: list[str] = []
 
         result = await dispatcher.dispatch("/followup msg", out=out_messages.append)
@@ -360,7 +360,7 @@ class TestReplHelpers:
         agent = MagicMock()
         agent.queue_mode = QueueMode.ONE_AT_A_TIME
         registry = ModelRegistry()
-        dispatcher = CommandDispatcher(agent, registry)
+        dispatcher = CliCommandDispatcher(agent, registry)
         out_messages: list[str] = []
 
         result = await dispatcher.dispatch("/mode", out=out_messages.append)

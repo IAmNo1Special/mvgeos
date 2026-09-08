@@ -9,7 +9,7 @@ from mvgeos_runes.types import ExecutionMode, SpellDefinition
 
 from mvgeos_agent import Mvge
 from mvgeos_agent.mvge import _validate_spell_name
-from mvgeos_agent.types import AbortSignal
+from mvgeos_agent.types import AbortSignal, QueueMode
 
 
 def dummy_built_in(command: str) -> str:
@@ -401,3 +401,26 @@ class TestMvgeBuildSpellsNameValidation:
         assert mock_realm.stream.called
         call_config = mock_realm.stream.call_args.kwargs["config"]
         assert call_config.system_prompt == "Custom System Prompt with Skills"
+
+
+class TestMvgeNoLongerOwnsTurnLoop:
+    def test_make_stream_removed(self) -> None:
+        assert not hasattr(Mvge, "_make_stream")
+
+
+class TestMvgeQueueMode:
+    def test_default_queue_mode_is_one_at_a_time(self) -> None:
+        agent = Mvge(api_key="test-key")
+        assert agent.queue_mode == QueueMode.ONE_AT_A_TIME
+
+    def test_queue_mode_can_be_set_to_all(self) -> None:
+        agent = Mvge(api_key="test-key")
+        agent.queue_mode = QueueMode.ALL
+        assert agent.queue_mode == QueueMode.ALL
+
+    def test_queue_mode_accepts_string(self) -> None:
+        agent = Mvge(api_key="test-key")
+        agent.queue_mode = "one-at-a-time"
+        assert agent.queue_mode == QueueMode.ONE_AT_A_TIME
+        agent.queue_mode = "all"
+        assert agent.queue_mode == QueueMode.ALL

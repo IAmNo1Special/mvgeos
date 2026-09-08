@@ -1,10 +1,16 @@
 from mvgeos_tome.types import (
+    CURRENT_SESSION_VERSION,
     TomeEntry,
     TomeEntryType,
     TomeIntegrityIssue,
     TomeIntegrityReport,
     TomeMetadata,
+    TomeVersionError,
 )
+
+
+def test_current_session_version() -> None:
+    assert CURRENT_SESSION_VERSION == 3
 
 
 def test_tome_entry_has_required_fields() -> None:
@@ -13,10 +19,27 @@ def test_tome_entry_has_required_fields() -> None:
         parent_id=None,
         type=TomeEntryType.MESSAGE,
         timestamp=0.0,
-        payload={},
+        payload={"text": "hello"},
     )
     assert entry.id == "entry-1"
     assert entry.type == TomeEntryType.MESSAGE
+    assert entry.to_dict() == {
+        "id": "entry-1",
+        "parentId": None,
+        "type": "message",
+        "timestamp": 0.0,
+        "payload": {"text": "hello"},
+    }
+
+
+def test_tome_version_error_properties() -> None:
+    err = TomeVersionError(4)
+    assert err.version == 4
+    assert "4" in str(err)
+
+    err_custom = TomeVersionError("future", "Custom version error")
+    assert err_custom.version == "future"
+    assert str(err_custom) == "Custom version error"
 
 
 def test_tome_metadata_has_required_fields() -> None:

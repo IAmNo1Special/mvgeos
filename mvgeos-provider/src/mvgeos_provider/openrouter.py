@@ -75,6 +75,14 @@ def _invocations_to_messages(invocations: list[Any]) -> list[dict[str, Any]]:
     return messages
 
 
+def _with_system_prompt(
+    messages: list[dict[str, Any]], system_prompt: str
+) -> list[dict[str, Any]]:
+    if system_prompt and not any(m.get("role") == "system" for m in messages):
+        return [{"role": "system", "content": system_prompt}, *messages]
+    return messages
+
+
 class OpenRouterRealm(SSEStreamingRealm):
     realm_name: str = "openrouter"
 
@@ -112,11 +120,9 @@ class OpenRouterRealm(SSEStreamingRealm):
         invocations: list[Any],
         config: ChannelConfig,
     ) -> tuple[str, dict[str, str], dict[str, Any]]:
-        messages = _invocations_to_messages(invocations)
-        if config.system_prompt and not any(
-            m.get("role") == "system" for m in messages
-        ):
-            messages.insert(0, {"role": "system", "content": config.system_prompt})
+        messages = _with_system_prompt(
+            _invocations_to_messages(invocations), config.system_prompt
+        )
         url, headers = self._prepare_request_url_and_headers(model)
 
         payload: dict[str, Any] = {
@@ -179,13 +185,7 @@ class OpenRouterRealm(SSEStreamingRealm):
         """
         if signal is not None and signal.aborted:
             raise AbortError("Operation aborted")
-        effective_messages = list(messages)
-        if config.system_prompt and not any(
-            m.get("role") == "system" for m in effective_messages
-        ):
-            effective_messages.insert(
-                0, {"role": "system", "content": config.system_prompt}
-            )
+        effective_messages = _with_system_prompt(list(messages), config.system_prompt)
         url, headers = self._prepare_request_url_and_headers(model)
         payload: dict[str, Any] = {
             "model": model.id,
@@ -203,28 +203,12 @@ class OpenRouterRealm(SSEStreamingRealm):
                 timeout=config.timeout_ms / 1000,
             )
 
-        if signal is None:
-            response = await retry_realm_request(
-                do_request, max_retries=config.max_retries
-            )
-        else:
-            response = await retry_realm_request(
-                do_request, max_retries=config.max_retries, signal=signal
-            )
+        response = await retry_realm_request(
+            do_request, max_retries=config.max_retries, signal=signal
+        )
 
         if response.status_code != 200:
-            parsed_err = self._parse_error(response)
-            return RealmResponse(
-                model=model,
-                error_message=parsed_err.message,
-                error_code=parsed_err.error_code,
-                retry_after=parsed_err.retry_after,
-                limit_source=parsed_err.limit_source,
-                remedy_hint=parsed_err.remedy_hint,
-                reset_at=parsed_err.reset_at,
-                quota_limit=parsed_err.quota_limit,
-                quota_remaining=parsed_err.quota_remaining,
-            )
+            return self._parse_error(response).to_response(model)
 
         data = response.json()
         choices = data.get("choices") or []

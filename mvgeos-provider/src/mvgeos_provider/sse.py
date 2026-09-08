@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import json
 from abc import ABC, abstractmethod
@@ -13,6 +12,7 @@ import httpx
 from mvgeos_provider.base import Realm
 from mvgeos_provider.retry import (
     ServerRetryDelayTooLongError,
+    _sleep_ms,
     is_retryable_realm_response,
     is_retryable_status,
     realm_request_delay_ms,
@@ -44,6 +44,19 @@ class ParsedError:
     def __iter__(self) -> Any:
         return iter((self.message, self.error_code))
 
+    def to_response(self, model: Model) -> RealmResponse:
+        return RealmResponse(
+            model=model,
+            error_message=self.message,
+            error_code=self.error_code,
+            retry_after=self.retry_after,
+            limit_source=self.limit_source,
+            remedy_hint=self.remedy_hint,
+            reset_at=self.reset_at,
+            quota_limit=self.quota_limit,
+            quota_remaining=self.quota_remaining,
+        )
+
 
 @dataclass
 class SSEChunk:
@@ -56,25 +69,46 @@ class SSEChunk:
     usage: dict[str, Any] | None = None
 
 
-async def _sleep_with_signal(delay_s: float, signal: AbortSignal | None) -> None:
-    """Sleep for delay_s seconds, waking immediately if signal is aborted."""
-    if signal is None:
-        await asyncio.sleep(delay_s)
-        return
-    if signal.aborted:
-        raise AbortError("Operation aborted")
+def _get_header(
+    headers: dict[str, Any] | Any,
+    key: str,
+    fallback: dict[str, Any] | None = None,
+) -> str | None:
+    for k in (key, key.lower(), key.title(), key.upper()):
+        if headers and k in headers:
+            return str(headers[k])
+    if fallback:
+        for k in (key, key.lower(), key.title(), key.upper()):
+            if k in fallback:
+                return str(fallback[k])
+    return None
 
-    sleep_task = asyncio.create_task(asyncio.sleep(delay_s))
-    wait_task = asyncio.create_task(signal.wait())
-    done, pending = await asyncio.wait(
-        [sleep_task, wait_task], return_when=asyncio.FIRST_COMPLETED
-    )
-    for task in pending:
-        task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await asyncio.gather(*pending)
-    if signal.aborted:
-        raise AbortError("Operation aborted")
+
+def _parse_rate_limits(
+    headers: dict[str, Any] | Any,
+    fallback_headers: dict[str, Any] | None = None,
+) -> tuple[int | None, int | None, float | None]:
+    quota_limit: int | None = None
+    quota_remaining: int | None = None
+    reset_at: float | None = None
+
+    q_lim = _get_header(headers, "x-ratelimit-limit", fallback_headers)
+    if q_lim is not None:
+        with contextlib.suppress(Exception):
+            quota_limit = int(float(q_lim))
+
+    q_rem = _get_header(headers, "x-ratelimit-remaining", fallback_headers)
+    if q_rem is not None:
+        with contextlib.suppress(Exception):
+            quota_remaining = int(float(q_rem))
+
+    q_reset = _get_header(headers, "x-ratelimit-reset", fallback_headers)
+    if q_reset is not None:
+        with contextlib.suppress(Exception):
+            val_f = float(q_reset)
+            reset_at = val_f / 1000.0 if val_f > 1e11 else val_f
+
+    return quota_limit, quota_remaining, reset_at
 
 
 def _error_from_response(response: Any) -> ParsedError:
@@ -102,40 +136,14 @@ def _error_from_response(response: Any) -> ParsedError:
     limit_source = metadata.get("limit_source") if isinstance(metadata, dict) else None
     remedy_hint = metadata.get("remedy_hint") if isinstance(metadata, dict) else None
     meta_headers = metadata.get("headers", {}) if isinstance(metadata, dict) else {}
-
     resp_headers = getattr(response, "headers", {}) or {}
 
-    def _get_h(key: str) -> str | None:
-        for k in (key, key.lower(), key.title(), key.upper()):
-            if k in resp_headers:
-                return str(resp_headers[k])
-        if meta_headers:
-            for k in (key, key.lower(), key.title(), key.upper()):
-                if k in meta_headers:
-                    return str(meta_headers[k])
-        return None
-
-    quota_limit: int | None = None
-    q_lim = _get_h("x-ratelimit-limit")
-    if q_lim is not None:
-        with contextlib.suppress(Exception):
-            quota_limit = int(float(q_lim))
-
-    quota_remaining: int | None = None
-    q_rem = _get_h("x-ratelimit-remaining")
-    if q_rem is not None:
-        with contextlib.suppress(Exception):
-            quota_remaining = int(float(q_rem))
-
-    reset_at: float | None = None
-    q_reset = _get_h("x-ratelimit-reset")
-    if q_reset is not None:
-        with contextlib.suppress(Exception):
-            val_f = float(q_reset)
-            reset_at = val_f / 1000.0 if val_f > 1e11 else val_f
+    quota_limit, quota_remaining, reset_at = _parse_rate_limits(
+        resp_headers, meta_headers
+    )
 
     retry_after: float | None = None
-    q_retry = _get_h("retry-after")
+    q_retry = _get_header(resp_headers, "retry-after", meta_headers)
     if q_retry is not None:
         with contextlib.suppress(Exception):
             retry_after = float(q_retry)
@@ -265,36 +273,21 @@ class SSEStreamingRealm(Realm, ABC):
                         if not is_retryable_status(
                             response.status_code, response.headers
                         ):
-                            yield RealmResponse(
-                                model=model,
-                                error_message=message,
-                                error_code=error_code,
-                                retry_after=parsed_err.retry_after,
-                                limit_source=parsed_err.limit_source,
-                                remedy_hint=parsed_err.remedy_hint,
-                                reset_at=parsed_err.reset_at,
-                                quota_limit=parsed_err.quota_limit,
-                                quota_remaining=parsed_err.quota_remaining,
-                            )
+                            yield parsed_err.to_response(model)
                             return
                 finally:
                     if signal is not None and signal.aborted:
                         await response.aclose()
 
                 if attempt >= max_attempts - 1:
-                    yield RealmResponse(
-                        model=model,
-                        error_message=message,
-                        error_code=error_code,
-                        retry_after=parsed_err.retry_after if parsed_err else None,
-                        limit_source=parsed_err.limit_source if parsed_err else None,
-                        remedy_hint=parsed_err.remedy_hint if parsed_err else None,
-                        reset_at=parsed_err.reset_at if parsed_err else None,
-                        quota_limit=parsed_err.quota_limit if parsed_err else None,
-                        quota_remaining=parsed_err.quota_remaining
-                        if parsed_err
-                        else None,
-                    )
+                    if parsed_err is not None:
+                        yield parsed_err.to_response(model)
+                    else:
+                        yield RealmResponse(
+                            model=model,
+                            error_message=message,
+                            error_code=error_code,
+                        )
                     return
 
                 try:
@@ -307,14 +300,7 @@ class SSEStreamingRealm(Realm, ABC):
                     )
                     return
 
-            try:
-                await _sleep_with_signal(delay_ms / 1000, signal)
-            except AbortError:
-                raise
-            except asyncio.CancelledError:
-                if signal is not None and signal.aborted:
-                    raise AbortError("Operation aborted") from None
-                raise
+            await _sleep_ms(delay_ms, signal)
 
     async def _consume_stream(
         self,
@@ -351,22 +337,7 @@ class SSEStreamingRealm(Realm, ABC):
                 err_code = err.get("code") if isinstance(err, dict) else None
                 meta = err.get("metadata", {}) if isinstance(err, dict) else {}
                 meta_hdrs = meta.get("headers", {}) if isinstance(meta, dict) else {}
-                q_lim = meta_hdrs.get("X-RateLimit-Limit")
-                q_rem = meta_hdrs.get("X-RateLimit-Remaining")
-                q_reset = meta_hdrs.get("X-RateLimit-Reset")
-                quota_limit = None
-                if q_lim is not None:
-                    with contextlib.suppress(Exception):
-                        quota_limit = int(float(q_lim))
-                quota_remaining = None
-                if q_rem is not None:
-                    with contextlib.suppress(Exception):
-                        quota_remaining = int(float(q_rem))
-                reset_at = None
-                if q_reset is not None:
-                    with contextlib.suppress(Exception):
-                        rf = float(q_reset)
-                        reset_at = rf / 1000.0 if rf > 1e11 else rf
+                quota_limit, quota_remaining, reset_at = _parse_rate_limits(meta_hdrs)
 
                 yield RealmResponse(
                     model=model,

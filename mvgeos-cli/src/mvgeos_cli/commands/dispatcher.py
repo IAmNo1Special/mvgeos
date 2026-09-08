@@ -165,11 +165,7 @@ class CliCommandDispatcher:
             return
 
 
-# Alias for backward compatibility within CLI package consumers
-CommandDispatcher = CliCommandDispatcher
-
 __all__ = [
     "SLASH_COMMANDS",
     "CliCommandDispatcher",
-    "CommandDispatcher",
 ]

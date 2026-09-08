@@ -3,8 +3,16 @@ from __future__ import annotations
 import contextlib
 import json
 from pathlib import Path
+from typing import Any
 
 from mvgeos_runes.types import ExecutionMode, RuneManifest, RuneShortcut, SigilHook
+
+
+def _extract_string_list(data: dict[str, Any], key: str) -> list[str]:
+    raw = data.get(key, [])
+    if not isinstance(raw, list):
+        return []
+    return [dep for dep in raw if isinstance(dep, str)]
 
 
 def load_manifest(path: Path) -> RuneManifest | None:
@@ -37,15 +45,8 @@ def load_manifest(path: Path) -> RuneManifest | None:
                 )
             )
 
-    system_deps = data.get("system_deps", [])
-    if not isinstance(system_deps, list):
-        system_deps = []
-    system_deps = [str(dep) for dep in system_deps if isinstance(dep, str)]
-
-    python_deps = data.get("python_deps", [])
-    if not isinstance(python_deps, list):
-        python_deps = []
-    python_deps = [str(dep) for dep in python_deps if isinstance(dep, str)]
+    system_deps = _extract_string_list(data, "system_deps")
+    python_deps = _extract_string_list(data, "python_deps")
 
     exec_mode_str = data.get("execution_mode", "parallel")
     try:

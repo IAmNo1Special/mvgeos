@@ -19,22 +19,6 @@ from mvgeos_provider.types import (
 )
 
 
-class AsyncLineIterator:
-    def __init__(self, lines: list[bytes]) -> None:
-        self._lines = lines
-        self._index = 0
-
-    def __aiter__(self) -> AsyncLineIterator:
-        return self
-
-    async def __anext__(self) -> bytes:
-        if self._index >= len(self._lines):
-            raise StopAsyncIteration
-        line = self._lines[self._index]
-        self._index += 1
-        return line
-
-
 class MockStreamResponse:
     def __init__(
         self,
@@ -50,7 +34,7 @@ class MockStreamResponse:
         self.aclose = AsyncMock()
 
     async def aiter_lines(self) -> AsyncIterator[bytes]:
-        async for line in AsyncLineIterator(self._lines):
+        for line in self._lines:
             yield line
 
     def read(self) -> bytes:

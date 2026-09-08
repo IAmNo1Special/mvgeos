@@ -33,7 +33,7 @@ from rich.text import Text
 
 from mvgeos_cli import DEFAULT_MODEL
 from mvgeos_cli.agent_factory import create_agent, validate_api_key
-from mvgeos_cli.commands.dispatcher import SLASH_COMMANDS, CommandDispatcher
+from mvgeos_cli.commands.dispatcher import SLASH_COMMANDS, CliCommandDispatcher
 from mvgeos_cli.commands.setup import install_missing_deps
 from mvgeos_cli.console import format_error
 from mvgeos_cli.formatting import (
@@ -603,7 +603,7 @@ async def run_repl(
         with contextlib.suppress(Exception):
             await registry.auto_refresh()
 
-    dispatcher = CommandDispatcher(agent, registry, out=console.print)
+    dispatcher = CliCommandDispatcher(agent, registry, out=console.print)
 
     console.print("[green]MvgeOS REPL[/green]")
     console.print(f"[dim]Model: {model}[/dim]")

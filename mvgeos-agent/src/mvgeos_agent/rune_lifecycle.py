@@ -83,19 +83,23 @@ class RuneLifecycle:
     def resolve_paths(self) -> list[tuple[Path, RuneScope]]:
         """Resolve configured rune paths to (path, scope) pairs.
 
-        Paths containing ``{agent_name}`` are agent-scoped (with the
-        placeholder substituted); ``.mvgeos/runes`` directories without a
-        placeholder are user-scoped; everything else is project-scoped.
+        Paths containing ``{agent_name}`` or pointing to ``.mvgeos/{agent_name}/runes``
+        are agent-scoped; ``.mvgeos/runes`` directories are user-scoped;
+        everything else is project-scoped.
         """
         result: list[tuple[Path, RuneScope]] = []
         for path in self._runes_paths:
+            path_str = str(path)
             resolved = Path(
-                str(path).replace("{agent_name}", self._agent_name)
+                path_str.replace("{agent_name}", self._agent_name)
             ).expanduser()
-            if ".mvgeos/runes" in str(path) and "{agent_name}" not in str(path):
-                scope = RuneScope.USER
-            elif "{agent_name}" in str(path):
+            posix_path = resolved.as_posix()
+            if "{agent_name}" in path_str or (
+                self._agent_name and f".mvgeos/{self._agent_name}/runes" in posix_path
+            ):
                 scope = RuneScope.AGENT
+            elif ".mvgeos/runes" in posix_path:
+                scope = RuneScope.USER
             else:
                 scope = RuneScope.PROJECT
             result.append((resolved, scope))

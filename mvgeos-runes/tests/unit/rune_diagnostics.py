@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 from pathlib import Path
 
 import pytest
@@ -68,12 +67,3 @@ def test_load_factory_from_manifest_signature_validation(tmp_path: Path) -> None
     assert factory is None
     assert len(diagnostics) == 1
     assert "expects at least 1 argument" in diagnostics[0].message
-
-
-def test_load_factory_from_manifest_async_coroutine_function(tmp_path: Path) -> None:
-    """Verify inspect.iscoroutinefunction is recognized for async factories."""
-
-    async def async_factory(_api: float) -> None:
-        pass
-
-    assert inspect.iscoroutinefunction(async_factory)

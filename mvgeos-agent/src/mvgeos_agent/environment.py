@@ -748,7 +748,7 @@ class MvgeEnvironment:
         if self.config_manager is not None:
             config_source_files = {
                 ConfigLayer.AGENT: self.config_manager.agent_config_path,
-                ConfigLayer.LEGACY: self.config_manager.legacy_config_path,
+                ConfigLayer.PROJECT: self.config_manager.project_config_path,
             }
 
         return assemble_snapshot(

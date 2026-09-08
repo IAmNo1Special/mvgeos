@@ -1,6 +1,7 @@
 """Unit tests for chat panel rendering and scroll behavior."""
 
 import asyncio
+from unittest.mock import MagicMock
 
 import pytest
 from nicegui import ui
@@ -203,3 +204,31 @@ async def test_chat_panel_preserves_card_expansion_during_streaming(
     # The old thought card must still be expanded and visible
     await user.should_see("Deep reasoning about code")
     assert state.is_card_expanded("thought_0_0") is True
+
+
+@pytest.mark.asyncio
+async def test_chat_panel_shows_files_side_panel(user: User, tmp_path) -> None:
+    state = AppState(project_path=tmp_path)
+    state.chat_side_panel = "files"
+
+    @ui.page("/test_chat_files")
+    def page() -> None:
+        render_chat_panel(state)
+
+    await user.open("/test_chat_files")
+    await user.should_see("Files")
+
+
+@pytest.mark.asyncio
+async def test_chat_panel_shows_diff_side_panel(user: User, tmp_path) -> None:
+    state = AppState(project_path=tmp_path)
+    state.chat_side_panel = "diff"
+    # mock diff view
+    state.get_selected_diff_view = MagicMock(return_value=None)
+
+    @ui.page("/test_chat_diff")
+    def page() -> None:
+        render_chat_panel(state)
+
+    await user.open("/test_chat_diff")
+    await user.should_see("Diff")

@@ -1,6 +1,5 @@
 from mvgeos_provider.base import Realm, RealmFactory
-from mvgeos_provider.model_registry import ModelRegistry
-from mvgeos_provider.models import list_models
+from mvgeos_provider.model_registry import ModelRegistry, list_models
 from mvgeos_provider.openrouter import OpenRouterRealm
 from mvgeos_provider.registry import (
     RealmRegistry,

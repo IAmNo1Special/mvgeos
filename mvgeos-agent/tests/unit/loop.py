@@ -13,8 +13,13 @@ from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import SigilHook
 
 from mvgeos_agent.environment import PromptSource
+from mvgeos_agent.event_bus import EventBus
+from mvgeos_agent.mvge_loop import MvgeLoop
 from mvgeos_agent.types import (
     ContemplationLevel,
+    ContentType,
+    MvgeEvent,
+    MvgeEventType,
     MvgeResponse,
     MvgeSpell,
     MvgeState,
@@ -884,10 +889,6 @@ async def _make_stream(
 
 @pytest.mark.asyncio
 async def test_loop_streaming_deduplication_and_contemplation() -> None:
-    from mvgeos_agent.event_bus import EventBus
-    from mvgeos_agent.mvge_loop import MvgeLoop
-    from mvgeos_agent.types import ContentType, MvgeEvent, MvgeEventType
-
     event_bus = EventBus()
     emitted_updates: list[dict[str, Any]] = []
 
@@ -1034,6 +1035,89 @@ async def test_record_invocation_spell_result_serializes_structured_json() -> No
                 assert parsed["payload"]["content"] == [
                     {"type": "text", "text": "file content here"}
                 ]
+
+
+class TestMvgeLoopRecordInvocationParentId:
+    @pytest.mark.asyncio
+    async def test_record_invocation_supplies_active_leaf_id(self) -> None:
+        from mvgeos_tome.ledger import TomeLedger
+
+        from mvgeos_agent.agent_session import MvgeTome
+        from mvgeos_agent.mvge_loop import MvgeLoop
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = TomeLedger(Path(tmp))
+            meta = ledger.create_tome("/tmp")
+            tome = MvgeTome(ledger, meta)
+            tome._started = True
+
+            state = MvgeState(
+                system_prompt="test",
+                prompt_source="system",
+                model={"id": "openrouter/meta-llama/llama-3"},
+                contemplation_level=ContemplationLevel.OFF,
+                spells=[],
+                invocations=[],
+                agent_tome=tome,
+            )
+            loop = MvgeLoop(state)
+
+            # Record SummonerRequest
+            req = SummonerRequest(role="user", content="hello")
+            event1 = MvgeEvent(
+                type=MvgeEventType.MESSAGE_END,
+                data={"invocation": req},
+            )
+            await loop._record_invocation(event1)
+
+            e1_id = tome.active_leaf_id
+            assert e1_id is not None
+            entry1 = ledger.get_entry(tome.tome_id, e1_id)
+            assert entry1 is not None
+            assert entry1.parent_id is None
+
+            # Record MvgeResponse
+            resp = MvgeResponse(
+                role="assistant",
+                content=[{"type": ContentType.TEXT, "text": "calling tool"}],
+                stop_reason=StopReason.SPELL_USE,
+            )
+            event2 = MvgeEvent(
+                type=MvgeEventType.MESSAGE_END,
+                data={"invocation": resp},
+            )
+            await loop._record_invocation(event2)
+
+            e2_id = tome.active_leaf_id
+            assert e2_id is not None
+            assert e2_id != e1_id
+            entry2 = ledger.get_entry(tome.tome_id, e2_id)
+            assert entry2 is not None
+            assert entry2.parent_id == e1_id
+
+            # Record SpellResultMessage
+            result = SpellResultMessage(
+                role="spellResult",
+                spell_name="bash",
+                spell_cast_id="call_1",
+                content=[{"type": ContentType.TEXT, "text": "tool output"}],
+            )
+            event3 = MvgeEvent(
+                type=MvgeEventType.MESSAGE_END,
+                data={"invocation": result},
+            )
+            await loop._record_invocation(event3)
+
+            e3_id = tome.active_leaf_id
+            assert e3_id is not None
+            assert e3_id != e2_id
+            entry3 = ledger.get_entry(tome.tome_id, e3_id)
+            assert entry3 is not None
+            assert entry3.parent_id == e2_id
+
+            # Context lookup from e3_id should reconstruct [entry1, entry2, entry3]
+            context = ledger.get_entries_for_context(tome.tome_id, leaf_id=e3_id)
+            assert [e.id for e in context] == [e1_id, e2_id, e3_id]
 
 
 class TestMvgeLoopQueueMode:

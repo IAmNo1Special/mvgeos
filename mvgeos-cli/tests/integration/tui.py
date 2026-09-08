@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
@@ -205,11 +205,11 @@ class TestCommandDispatcherOut:
     async def test_out_routes_output(self) -> None:
         from mvgeos_agent import Mvge
 
-        from mvgeos_cli.commands.dispatcher import CommandDispatcher
+        from mvgeos_cli.commands.dispatcher import CliCommandDispatcher
 
         agent = Mvge(api_key="test-key")
         captured: list[str] = []
-        dispatcher = CommandDispatcher(agent, MagicMock(), out=captured.append)
+        dispatcher = CliCommandDispatcher(agent, MagicMock(), out=captured.append)
         should_exit = await dispatcher.dispatch("/help")
         assert should_exit is False
         assert any("/quit" in line for line in captured)
@@ -655,3 +655,29 @@ class TestTuiApp:
 
         fitted_15 = fit_footer(items, 15)
         assert sum(len(text) for _, text in fitted_15) <= 15
+
+
+@pytest.mark.asyncio
+@patch("mvgeos_cli.commands.tui._create_agent")
+@patch("mvgeos_cli.commands.tui.TuiApp")
+async def test_run_tui_no_console_buffer(
+    mock_tui_app_cls: MagicMock,
+    mock_create_agent: MagicMock,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mvgeos_cli.commands.repl import NoConsoleScreenBufferError
+    from mvgeos_cli.commands.tui import run_tui
+
+    mock_agent = AsyncMock()
+    mock_agent.on = MagicMock(return_value=lambda: None)
+    mock_create_agent.return_value = mock_agent
+
+    mock_app = MagicMock()
+    mock_app.run = AsyncMock(side_effect=NoConsoleScreenBufferError())
+    mock_tui_app_cls.return_value = mock_app
+
+    await run_tui(api_key="sk-or-test-key")
+
+    captured = capsys.readouterr()
+    assert "TUI mode requires a Win32 console screen buffer" in captured.out
+    mock_agent.close.assert_awaited_once()

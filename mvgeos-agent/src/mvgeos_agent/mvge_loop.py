@@ -146,8 +146,9 @@ class MvgeLoop:
         if runner is None:
             return spells
         known = {spell.name for spell in spells}
+        active = set(runner.get_active_spells())
         for rune_spell in runner.get_all_registered_spells():
-            if rune_spell.name not in known:
+            if rune_spell.name not in known and rune_spell.name in active:
                 spells.append(_RuneSpellWrapper(rune_spell))
         return spells
 

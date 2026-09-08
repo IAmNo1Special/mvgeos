@@ -226,6 +226,12 @@ def load_manifests(
     return manifests
 
 
+def _resolve_search_path(path_str: str | Path, agent_name: str | None = None) -> Path:
+    """Expand ~ and replace {agent_name} placeholder in a search path."""
+    expanded = str(path_str).replace("{agent_name}", agent_name or "")
+    return Path(expanded).expanduser()
+
+
 def load_runes_from_paths(
     paths: Sequence[tuple[str | Path, RuneScope]],
     agent_name: str | None = None,
@@ -246,8 +252,7 @@ def load_runes_from_paths(
     seen_names: dict[str, tuple[RuneScope, str]] = {}
 
     for path_str, scope in paths:
-        expanded = str(path_str).replace("{agent_name}", agent_name or "")
-        path = Path(expanded).expanduser()
+        path = _resolve_search_path(path_str, agent_name)
         if not path.exists():
             continue
         manifests = load_manifests(path, scope=scope, diagnostics=diagnostics)
@@ -297,6 +302,66 @@ def clear_skill_manifest_cache() -> None:
     _SKILL_MANIFEST_CACHE.clear()
 
 
+def _parse_skill_manifest(path: Path) -> SkillManifest | None:
+    skill_md_path = path / "SKILL.md"
+    try:
+        content = skill_md_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    content = content.lstrip("\ufeff")
+    if not content.startswith("---"):
+        return None
+
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        return None
+
+    try:
+        frontmatter = yaml.safe_load(parts[1])
+    except Exception:
+        return None
+
+    if not isinstance(frontmatter, dict):
+        return None
+
+    name = frontmatter.get("name")
+    if not isinstance(name, str) or not (1 <= len(name) <= 64):
+        return None
+
+    if not NAME_REGEX.match(name) or name != path.name:
+        return None
+
+    description = frontmatter.get("description")
+    if not isinstance(description, str) or not (1 <= len(description) <= 1024):
+        return None
+
+    def _get_str(key: str) -> str:
+        val = frontmatter.get(key, "")
+        return val if isinstance(val, str) else ""
+
+    metadata = frontmatter.get("metadata", {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    disable_model_invocation = frontmatter.get("disable-model-invocation", False)
+    if not isinstance(disable_model_invocation, bool):
+        disable_model_invocation = False
+
+    return SkillManifest(
+        name=name,
+        description=description,
+        scope=SkillScope.PROJECT,  # Will be set by caller
+        path=str(path),
+        version=_get_str("version"),
+        license=_get_str("license"),
+        compatibility=_get_str("compatibility"),
+        metadata=metadata,
+        allowed_tools=_get_str("allowed-tools"),
+        disable_model_invocation=disable_model_invocation,
+    )
+
+
 def load_skill_manifest(path: Path) -> SkillManifest | None:
     """Load a skill manifest from a SKILL.md file with YAML frontmatter."""
     skill_md_path = path / "SKILL.md"
@@ -312,97 +377,9 @@ def load_skill_manifest(path: Path) -> SkillManifest | None:
     if cached is not None and cached[0] == mtime:
         return dataclasses.replace(cached[1]) if cached[1] is not None else None
 
-    try:
-        content = skill_md_path.read_text(encoding="utf-8")
-    except OSError:
-        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
-        return None
-
-    content = content.lstrip("\ufeff")
-
-    if not content.startswith("---"):
-        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
-        return None
-
-    parts = content.split("---", 2)
-    if len(parts) < 3:
-        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
-        return None
-
-    try:
-        frontmatter = yaml.safe_load(parts[1])
-    except Exception:
-        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
-        return None
-
-    if not isinstance(frontmatter, dict):
-        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
-        return None
-
-    name = frontmatter.get("name")
-    if not name or not isinstance(name, str):
-        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
-        return None
-
-    if not (1 <= len(name) <= 64):
-        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
-        return None
-
-    if not NAME_REGEX.match(name):
-        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
-        return None
-
-    if name != path.name:
-        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
-        return None
-
-    description = frontmatter.get("description")
-    if not description or not isinstance(description, str):
-        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
-        return None
-
-    if not (1 <= len(description) <= 1024):
-        _SKILL_MANIFEST_CACHE[cache_key] = (mtime, None)
-        return None
-
-    license_val = frontmatter.get("license", "")
-    if not isinstance(license_val, str):
-        license_val = ""
-
-    compatibility = frontmatter.get("compatibility", "")
-    if not isinstance(compatibility, str):
-        compatibility = ""
-
-    metadata = frontmatter.get("metadata", {})
-    if not isinstance(metadata, dict):
-        metadata = {}
-
-    allowed_tools = frontmatter.get("allowed-tools", "")
-    if not isinstance(allowed_tools, str):
-        allowed_tools = ""
-
-    disable_model_invocation = frontmatter.get("disable-model-invocation", False)
-    if not isinstance(disable_model_invocation, bool):
-        disable_model_invocation = False
-
-    version = frontmatter.get("version", "")
-    if not isinstance(version, str):
-        version = ""
-
-    manifest = SkillManifest(
-        name=name,
-        description=description,
-        scope=SkillScope.PROJECT,  # Will be set by caller
-        path=str(path),
-        version=version,
-        license=license_val,
-        compatibility=compatibility,
-        metadata=metadata,
-        allowed_tools=allowed_tools,
-        disable_model_invocation=disable_model_invocation,
-    )
+    manifest = _parse_skill_manifest(path)
     _SKILL_MANIFEST_CACHE[cache_key] = (mtime, manifest)
-    return dataclasses.replace(manifest)
+    return dataclasses.replace(manifest) if manifest is not None else None
 
 
 def load_skill_manifests(
@@ -458,8 +435,7 @@ def load_skills_from_paths(
     seen_names: dict[str, tuple[SkillScope, str]] = {}
 
     for path_str, scope in paths:
-        expanded = str(path_str).replace("{agent_name}", agent_name or "")
-        path = Path(expanded).expanduser()
+        path = _resolve_search_path(path_str, agent_name)
         if not path.exists():
             continue
         manifests = load_skill_manifests(path, scope=scope, diagnostics=diagnostics)
@@ -490,7 +466,6 @@ def get_default_skill_paths(agent_name: str) -> list[tuple[Path, SkillScope]]:
     """Get the default skill discovery paths in precedence order (highest first)."""
     result: list[tuple[Path, SkillScope]] = []
     for scope, path_template in SKILL_SCOPES:
-        path_str = str(path_template).replace("{agent_name}", agent_name)
-        path = Path(path_str).expanduser()
+        path = _resolve_search_path(path_template, agent_name)
         result.append((path, scope))
     return result

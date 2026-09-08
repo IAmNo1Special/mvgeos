@@ -3,23 +3,12 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from mvgeos_provider.openrouter import OpenRouterRealm
-from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
+from mvgeos_provider.types import ChannelConfig, Model
 
 
-class AsyncIterator:
-    def __init__(self, items):
-        self._items = items
-        self._index = 0
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        if self._index >= len(self._items):
-            raise StopAsyncIteration
-        item = self._items[self._index]
-        self._index += 1
-        return item
+async def _async_iter(items):
+    for item in items:
+        yield item
 
 
 async def collect_responses(iterator):
@@ -75,22 +64,6 @@ def test_error_from_response_preserves_internal_newlines() -> None:
     )
     message, code = _error_from_response(resp)
     assert message == "first\nsecond"
-
-
-def test_openrouter_realm_has_stream_method() -> None:
-    realm = OpenRouterRealm(api_key="test-key")
-    assert hasattr(realm, "stream")
-
-
-def test_model_has_realm_field() -> None:
-    model = Model(
-        id="openrouter/test-model",
-        name="Test Model",
-        realm="openrouter",
-        base_url="https://openrouter.ai/api/v1",
-        api_key="test-key",
-    )
-    assert model.realm == "openrouter"
 
 
 def test_openrouter_realm_stream_builds_correct_messages() -> None:
@@ -195,7 +168,7 @@ def test_openrouter_realm_stream_handles_tool_calls() -> None:
     ]
 
     mock_response = MagicMock()
-    mock_response.aiter_lines.return_value = AsyncIterator(
+    mock_response.aiter_lines.return_value = _async_iter(
         [
             (
                 b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123",'
@@ -473,16 +446,14 @@ def _make_capture_stream(captured_payload: dict[str, Any]) -> type:
         headers: dict[str, str] = {}
 
         def __init__(self) -> None:
-            self._lines = AsyncIterator(
-                [
-                    b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
-                    b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
-                    b"data: [DONE]\n\n",
-                ]
-            )
+            self._lines = [
+                b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
+                b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+                b"data: [DONE]\n\n",
+            ]
 
         async def aiter_lines(self):
-            async for line in self._lines:
+            for line in self._lines:
                 yield line
 
     class MockStreamCM:
@@ -616,18 +587,6 @@ def test_reasoning_sent_for_model_with_supported_parameters() -> None:
 
     assert "reasoning" in captured_payload
     assert captured_payload["reasoning"]["effort"] == "high"
-
-
-def test_realm_response_has_mana_used() -> None:
-    model = Model(
-        id="test",
-        name="Test",
-        realm="test",
-        base_url="http://test",
-        api_key="test",
-    )
-    response = RealmResponse(model=model, mana_used=100)
-    assert response.mana_used == 100
 
 
 class _StreamRecorder:

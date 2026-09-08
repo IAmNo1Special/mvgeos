@@ -2,25 +2,26 @@ from __future__ import annotations
 
 import asyncio
 import tempfile
+import threading
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from mvgeos_runes.rune_runner import RuneRunner
+from mvgeos_runes.watcher import RuneWatcher, _RuneReloadHandler
 
 
 class TestRuneWatcher:
     def test_create_watcher(self) -> None:
         runner = RuneRunner()
         with tempfile.TemporaryDirectory() as tmpdir:
-            from mvgeos_runes.watcher import RuneWatcher
-
             watcher = RuneWatcher(Path(tmpdir), runner)
             assert watcher._extensions_dir == Path(tmpdir)
             assert watcher._runner is runner
 
-    def test_reload_rune_with_shortcuts(self) -> None:
+    @pytest.mark.asyncio
+    async def test_reload_rune_with_shortcuts(self) -> None:
         runner = RuneRunner()
         with tempfile.TemporaryDirectory() as tmpdir:
             ext_dir = Path(tmpdir)
@@ -39,15 +40,8 @@ class TestRuneWatcher:
                 "    api.register_shortcut('ctrl+r', 'Reload')\n"
             )
 
-            from mvgeos_runes.watcher import RuneWatcher
-
             watcher = RuneWatcher(ext_dir, runner)
-
-            import asyncio
-
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(watcher._reload_rune("test_rune"))
-            loop.close()
+            await watcher._reload_rune("test_rune")
 
             shortcuts = runner.get_shortcuts()
             assert len(shortcuts) >= 1
@@ -59,9 +53,6 @@ class TestRuneWatcher:
         runner = RuneRunner()
         with tempfile.TemporaryDirectory() as tmpdir:
             ext_dir = Path(tmpdir)
-
-            from mvgeos_runes.watcher import RuneWatcher
-
             watcher = RuneWatcher(ext_dir, runner)
             await watcher._reload_rune("nonexistent")
 
@@ -78,8 +69,6 @@ class TestRuneWatcher:
                 '"description": "Test", "hooks": []}'
             )
             (rune_dir / "manifest.json").write_text(manifest_data, encoding="utf-8")
-
-            from mvgeos_runes.watcher import RuneWatcher
 
             watcher = RuneWatcher(ext_dir, runner)
             await watcher._reload_rune("test_rune")
@@ -105,8 +94,6 @@ class TestRuneWatcher:
                 "SpellDefinition('hot_reload_spell', 'Hot reloaded'))\n"
             )
 
-            from mvgeos_runes.watcher import RuneWatcher
-
             watcher = RuneWatcher(ext_dir, runner)
             await watcher._reload_rune("test_rune")
 
@@ -119,8 +106,6 @@ class TestRuneReloadHandler:
     @pytest.mark.asyncio
     async def test_schedule_reload_debounce(self) -> None:
         """Test that _schedule_reload debounces multiple calls."""
-        from mvgeos_runes.watcher import _RuneReloadHandler
-
         callback = AsyncMock()
         with tempfile.TemporaryDirectory() as tmpdir:
             ext_dir = Path(tmpdir)
@@ -143,8 +128,6 @@ class TestRuneReloadHandler:
             assert "rune2" in called_names
 
     def test_find_rune_dir(self) -> None:
-        from mvgeos_runes.watcher import _RuneReloadHandler
-
         with tempfile.TemporaryDirectory() as tmpdir:
             ext_dir = Path(tmpdir)
             handler = _RuneReloadHandler(ext_dir, AsyncMock())
@@ -160,8 +143,6 @@ class TestRuneReloadHandler:
             assert found == "my_rune"
 
     def test_find_rune_dir_outside_extensions(self) -> None:
-        from mvgeos_runes.watcher import _RuneReloadHandler
-
         with tempfile.TemporaryDirectory() as tmpdir:
             ext_dir = Path(tmpdir)
             handler = _RuneReloadHandler(ext_dir, AsyncMock())
@@ -173,8 +154,6 @@ class TestRuneReloadHandler:
 
     @pytest.mark.asyncio
     async def test_on_modified(self) -> None:
-        from mvgeos_runes.watcher import _RuneReloadHandler
-
         callback = AsyncMock()
         with tempfile.TemporaryDirectory() as tmpdir:
             ext_dir = Path(tmpdir)
@@ -195,8 +174,6 @@ class TestRuneReloadHandler:
 
     @pytest.mark.asyncio
     async def test_on_created(self) -> None:
-        from mvgeos_runes.watcher import _RuneReloadHandler
-
         callback = AsyncMock()
         with tempfile.TemporaryDirectory() as tmpdir:
             ext_dir = Path(tmpdir)
@@ -216,8 +193,6 @@ class TestRuneReloadHandler:
 
     @pytest.mark.asyncio
     async def test_on_deleted(self) -> None:
-        from mvgeos_runes.watcher import _RuneReloadHandler
-
         callback = AsyncMock()
         with tempfile.TemporaryDirectory() as tmpdir:
             ext_dir = Path(tmpdir)
@@ -236,8 +211,6 @@ class TestRuneReloadHandler:
             callback.assert_called_once_with("test_rune")
 
     def test_ignore_directory_events(self) -> None:
-        from mvgeos_runes.watcher import _RuneReloadHandler
-
         callback = AsyncMock()
         with tempfile.TemporaryDirectory() as tmpdir:
             ext_dir = Path(tmpdir)
@@ -256,8 +229,6 @@ class TestRuneReloadHandler:
 
     @pytest.mark.asyncio
     async def test_ignore_cache_and_bytecode_events(self) -> None:
-        from mvgeos_runes.watcher import _RuneReloadHandler
-
         callback = AsyncMock()
         with tempfile.TemporaryDirectory() as tmpdir:
             ext_dir = Path(tmpdir)
@@ -288,10 +259,6 @@ class TestRuneWatcherStartStop:
     @pytest.mark.asyncio
     async def test_event_on_foreign_thread_schedules_reload(self) -> None:
         """Watchdog dispatches events on its own thread; scheduling must work there."""
-        import threading
-
-        from mvgeos_runes.watcher import RuneWatcher
-
         callback_hit = threading.Event()
 
         async def callback(name: str) -> None:
@@ -342,8 +309,6 @@ class TestRuneWatcherStartStop:
         with tempfile.TemporaryDirectory() as tmpdir:
             ext_dir = Path(tmpdir)
 
-            from mvgeos_runes.watcher import RuneWatcher
-
             watcher = RuneWatcher(ext_dir, runner)
             await watcher.start()
 
@@ -357,8 +322,6 @@ class TestRuneWatcherStartStop:
         with tempfile.TemporaryDirectory() as tmpdir:
             ext_dir = Path(tmpdir)
 
-            from mvgeos_runes.watcher import RuneWatcher
-
             watcher = RuneWatcher(ext_dir, runner)
             await watcher.start()
             first_observer = watcher._observer
@@ -371,8 +334,6 @@ class TestRuneWatcherStartStop:
         runner = RuneRunner()
         with tempfile.TemporaryDirectory() as tmpdir:
             ext_dir = Path(tmpdir)
-
-            from mvgeos_runes.watcher import RuneWatcher
 
             watcher = RuneWatcher(ext_dir, runner)
             await watcher.start()

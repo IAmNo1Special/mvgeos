@@ -50,7 +50,6 @@ from mvgeos_agent.harness import (
     CompactionSettings,
     MvgeHarness,
 )
-from mvgeos_agent.mvge_loop import MvgeLoop
 from mvgeos_agent.rune_lifecycle import RuneLifecycle
 from mvgeos_agent.snapshot import RuntimeSnapshot
 from mvgeos_agent.types import (
@@ -70,6 +69,15 @@ from mvgeos_agent.types import (
 logger = logging.getLogger(__name__)
 
 SPELL_NAME_REGEX = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def _resolve_api_key(explicit_key: str | None = None) -> str:
+    return (
+        explicit_key
+        or os.environ.get("OPENROUTER_API_KEY")
+        or os.environ.get("MVGEOS_API_KEY")
+        or ""
+    )
 
 
 def _validate_spell_name(name: Any) -> bool:
@@ -168,12 +176,7 @@ class Mvge:
                 load_dotenv(env_path)
         caller_dir = resolved_caller_dir
 
-        self._api_key = (
-            api_key
-            or os.environ.get("OPENROUTER_API_KEY")
-            or os.environ.get("MVGEOS_API_KEY")
-            or ""
-        )
+        self._api_key = _resolve_api_key(api_key)
         self._name = name
         self._caller_dir = caller_dir
 
@@ -261,7 +264,6 @@ class Mvge:
         self._realm: Realm | None = None
         self._agent_tome: MvgeTome | None = None
         self._tome_ledger: TomeLedger | None = None
-        self._loop: MvgeLoop | None = None
         self._harness: MvgeHarness | None = None
         self._compaction: CompactionRunner | None = None
         self._state: MvgeState | None = None
@@ -624,7 +626,6 @@ class Mvge:
         assert self._model is not None
         assert self._realm is not None
         assert self._state is not None
-        assert self._loop is not None
         assert self._harness is not None
 
         stream_fn = self._make_stream_fn(
@@ -696,11 +697,7 @@ class Mvge:
             return
 
         if not self._api_key:
-            self._api_key = (
-                os.environ.get("OPENROUTER_API_KEY")
-                or os.environ.get("MVGEOS_API_KEY")
-                or ""
-            )
+            self._api_key = _resolve_api_key()
         if not self._api_key:
             raise MissingApiKeyError
 
@@ -775,7 +772,6 @@ class Mvge:
             model=self._model,
             compaction=self._compaction,
         )
-        self._loop = self._harness.loop
 
     async def run(self, prompt: str) -> MvgeInvocation:
         """Template method for processing a turn."""
@@ -830,7 +826,6 @@ class Mvge:
         self._tome_resume = resume_tome_id
         self._state = None
         self._agent_tome = None
-        self._loop = None
         self._harness = None
         self._initialized = False
         await self.initialize()
