@@ -84,8 +84,9 @@ class AgentConfig:
 
 
 _SYSTEM_PROMPT_BODY = (
-    "You are an AI assistant equipped with spells(tools) to assist your "
-    "Summoner(user). Be direct, concise, and technical."
+    "You are a Mvge (pronounced 'mage') (AI agent) in the MvgeOS system equipped with "
+    "spells to assist your Summoner (user). You have access to spells to interact with "
+    "your current environment. Be direct, concise, and technical."
 )
 
 DEFAULT_SYSTEM_PROMPT = _SYSTEM_PROMPT_BODY
@@ -156,7 +157,12 @@ def render_prompt(
     spell_list_str = (
         "\n".join(f"  - {s}" for s in spells_list) if spells_list else "  (none)"
     )
-    parts.append(f"\nActive spells:\n{spell_list_str}")
+    parts.append(
+        f"\nActive spells:\n{spell_list_str}\n\n"
+        "Spells are executable tools occupying the functions namespace "
+        "(bash, read, write, etc.). Use them to perform actions in your "
+        "environment. They are distinct from declarative skills (SKILL.md)."
+    )
 
     parts.append("\nEnvironment:")
     parts.extend(get_environment_info(cwd))
@@ -628,12 +634,14 @@ class MvgeEnvironment:
         cwd: str | Path | None = None,
         spell_names: Sequence[str] | None = None,
         config_dir: str | Path | None = None,
+        render_scaffolding: bool = True,
     ) -> str:
         """Asynchronously assemble the final system prompt string.
 
         With a runner, emits ``BEFORE_MVGE_START`` so runes can rewrite the
-        base prompt, then appends the skill catalog unless a rune suppressed it.
-        Without a runner, the base prompt passes through unchanged.
+        base prompt. Then renders Layer 2 invariant scaffolding (active spells,
+        environment, guidelines, self-modification pointers, project context)
+        and appends the skill catalog unless a rune suppressed it.
         """
         effective_runner = runner if runner is not None else self.runner
         effective_base = (
@@ -670,12 +678,28 @@ class MvgeEnvironment:
             elif hasattr(result_data, "base_prompt"):
                 effective_base = str(result_data.base_prompt)
 
-            if not effective_runner.is_skill_catalog_suppressed():
-                skill_catalog = effective_runner.get_skill_catalog()
-                if skill_catalog:
-                    effective_base = f"{effective_base}\n\n{skill_catalog}"
+        skill_catalog = ""
+        if (
+            effective_runner is not None
+            and not effective_runner.is_skill_catalog_suppressed()
+        ):
+            skill_catalog = effective_runner.get_skill_catalog()
 
-        return effective_base
+        if not render_scaffolding or "Active spells:" in effective_base:
+            if skill_catalog:
+                return f"{effective_base}\n\n{skill_catalog}"
+            return effective_base
+
+        return self.render_prompt(
+            body=effective_base,
+            spells=effective_spells,
+            guidelines=self.resolved_guidelines.guidelines,
+            cwd=effective_cwd,
+            append_text=skill_catalog,
+            runes_paths=self.runes_paths,
+            system_path=self.resolved_prompt.path,
+            guidelines_path=self.resolved_guidelines.path,
+        )
 
     @staticmethod
     def render_prompt(

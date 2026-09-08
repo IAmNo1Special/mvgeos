@@ -589,7 +589,7 @@ class TestBuildSystemPrompt:
                 spells=["bash", "read"],
                 guidelines=env.resolved_guidelines.guidelines,
             )
-            assert "You are an AI assistant" in prompt
+            assert "You are a Mvge" in prompt
             assert "Active spells:" in prompt
             assert "bash" in prompt
             assert "read" in prompt
@@ -606,7 +606,7 @@ class TestBuildSystemPrompt:
                 spells=["bash"],
                 guidelines=env.resolved_guidelines.guidelines,
             )
-            assert "You are an AI assistant" in prompt
+            assert "You are a Mvge" in prompt
 
     def test_custom_prompt_overrides_base(self) -> None:
         env = MvgeEnvironment.resolve(

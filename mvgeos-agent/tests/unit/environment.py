@@ -579,7 +579,8 @@ class TestMvgeEnvironmentAssemble:
             "test-agent", project_dir=tmp_path, config_dir=tmp_path / "cfg"
         )
         assembled = await env.assemble_system_prompt(base_prompt="You are Mvge.")
-        assert assembled == "You are Mvge."
+        assert "You are Mvge." in assembled
+        assert "Active spells:" in assembled
 
     @pytest.mark.asyncio
     async def test_emits_before_mvge_start_once(self, tmp_path: Path) -> None:
@@ -632,7 +633,8 @@ class TestMvgeEnvironmentAssemble:
         )
 
         result = await env.assemble_system_prompt(runner=runner)
-        assert result == "Runes were here."
+        assert "Runes were here." in result
+        assert "Active spells:" in result
 
     @pytest.mark.asyncio
     async def test_skill_catalog_appended(self, tmp_path: Path) -> None:
@@ -642,7 +644,9 @@ class TestMvgeEnvironmentAssemble:
         )
 
         result = await env.assemble_system_prompt(runner=runner, base_prompt="Body.")
-        assert result == "Body.\n\n## Available Skills\n\n### demo"
+        assert "Body." in result
+        assert "Active spells:" in result
+        assert "## Available Skills\n\n### demo" in result
 
     @pytest.mark.asyncio
     async def test_suppressed_catalog_not_appended(self, tmp_path: Path) -> None:
@@ -652,7 +656,8 @@ class TestMvgeEnvironmentAssemble:
         )
 
         result = await env.assemble_system_prompt(runner=runner, base_prompt="Body.")
-        assert result == "Body."
+        assert "Body." in result
+        assert "## Available Skills" not in result
 
     @pytest.mark.asyncio
     async def test_empty_catalog_not_appended(self, tmp_path: Path) -> None:
@@ -662,7 +667,8 @@ class TestMvgeEnvironmentAssemble:
         )
 
         result = await env.assemble_system_prompt(runner=runner, base_prompt="Body.")
-        assert result == "Body."
+        assert "Body." in result
+        assert "## Available Skills" not in result
 
 
 # ---------------------------------------------------------------------------

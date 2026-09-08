@@ -47,7 +47,7 @@ async def test_system_prompt_matches_environment_assemble() -> None:
             base_prompt=agent._build_system_prompt(),
             custom_prompt=getattr(agent, "_custom_system_prompt", ""),
             cwd=Path.cwd(),
-            spell_names=agent._spell_names,
+            spell_names=[s.name for s in agent._build_spells()],
             config_dir=agent.config_dir,
         )
 

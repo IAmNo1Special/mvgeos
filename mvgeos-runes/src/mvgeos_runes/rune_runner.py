@@ -334,7 +334,11 @@ class RuneRunner:
 
         lines = ["## Available Skills"]
         lines.append("")
-        lines.append("The following skills are available for use. To activate a skill,")
+        lines.append(
+            "The following skills are declarative domain guides and "
+            "specialized workflows (in SKILL.md). They are distinct from "
+            "executable spells (tools). To activate and follow a skill,"
+        )
         lines.append(
             "read its SKILL.md file using the `read` spell with the path shown below."
         )
