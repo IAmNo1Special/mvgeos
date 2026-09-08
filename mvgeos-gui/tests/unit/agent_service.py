@@ -1448,5 +1448,172 @@ class TestSubagentLifecycleObservability:
         agent_service.handle_event(agent_end_ev, msg, app_state)
         assert task.status == TaskStatus.COMPLETE
         assert task.progress == 100.0
-        # Main agent should still be running!
         assert agent_service._is_running is True
+
+
+# ---------------------------------------------------------------------------
+# Slash command dispatching & state sync tests
+# ---------------------------------------------------------------------------
+
+
+def test_rich_to_markdown() -> None:
+    from mvgeos_gui.services.agent_service import rich_to_markdown
+
+    assert (
+        rich_to_markdown("[bold]Available commands:[/bold]")
+        == "**Available commands:**"
+    )
+    assert rich_to_markdown("[dim]Tome ID: none[/dim]") == "*Tome ID: none*"
+    assert (
+        rich_to_markdown("[green]Model switched: candidate[/green]")
+        == "Model switched: candidate"
+    )
+    result = rich_to_markdown("  [cyan]/help          [/cyan] Show this help message")
+    assert "/help" in result
+    assert "[cyan]" not in result
+    assert "Show this help message" in result
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_slash_command_help(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify /help executes locally via CommandDispatcher without LLM turn."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock()
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.on = MagicMock()
+    agent_service._agent = mock_agent
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("/help", app_state, msg)
+
+    mock_agent.run.assert_not_called()
+    assert msg.is_streaming is False
+    assert app_state.is_channeling is False
+    assert app_state.mvge_status == "idle"
+    assert "Available commands:" in msg.content
+    assert "/tome" in msg.content
+    assert "/help" in msg.content
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_slash_command_tome(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify /tome displays agent tome information without LLM turn."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock()
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.on = MagicMock()
+    mock_agent.tome_id = "tome-xyz-123"
+    mock_agent.model_id = "test/model-id"
+    mock_agent.enabled_spells = ["read_file", "write_to_file"]
+    mock_agent.registered_providers = ["openrouter"]
+    agent_service._agent = mock_agent
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("/tome", app_state, msg)
+
+    mock_agent.run.assert_not_called()
+    assert msg.is_streaming is False
+    assert app_state.is_channeling is False
+    assert "Tome ID: tome-xyz-123" in msg.content
+    assert "Model: test/model-id" in msg.content
+    assert "read_file" in msg.content
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_slash_command_model_switch_syncs_state(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify /model <id> switches agent model and syncs AppState."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock()
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.on = MagicMock()
+    mock_agent.model_id = "openai/gpt-4o"
+    agent_service._agent = mock_agent
+
+    mock_registry = MagicMock()
+    mock_registry.get.return_value = MagicMock(id="openai/gpt-4o")
+    agent_service._model_registry = mock_registry
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("/model openai/gpt-4o", app_state, msg)
+
+    mock_agent.run.assert_not_called()
+    mock_agent.switch_model.assert_called_with("openai/gpt-4o")
+    assert app_state.selected_model == "openai/gpt-4o"
+    assert msg.is_streaming is False
+    assert "Model switched: openai/gpt-4o" in msg.content
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_slash_command_new_tome_syncs_state(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify /new resets session and syncs AppState new_conversation."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock()
+    mock_agent.reset_session = AsyncMock()
+    mock_agent.on = MagicMock()
+    mock_agent.tome_id = "new-tome-id"
+    agent_service._agent = mock_agent
+
+    app_state.active_tome_id = "old-tome-id"
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("/new", app_state, msg)
+
+    mock_agent.run.assert_not_called()
+    mock_agent.reset_session.assert_called_once_with(resume_tome_id=None)
+    assert app_state.active_tome_id is None
+    assert msg.is_streaming is False
+    assert "New tome:" in msg.content
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_skill_invocation_runs_agent(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify skill invocations like /grill-me pass through to agent.run."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock()
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.on = MagicMock()
+    agent_service._agent = mock_agent
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("/grill-me please test the plan", app_state, msg)
+
+    mock_agent.run.assert_called_once_with("/grill-me please test the plan")
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_mid_prompt_skill_runs_agent(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify natural language with inline skills runs agent.run."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock()
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.on = MagicMock()
+    agent_service._agent = mock_agent
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    prompt = "let's use /grill-me and then /to-tickets"
+    await agent_service.run_prompt(prompt, app_state, msg)
+
+    mock_agent.run.assert_called_once_with(prompt)

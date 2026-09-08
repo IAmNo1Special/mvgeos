@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import re
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -16,8 +17,11 @@ from coding_mvge import root_mvge
 from mvgeos_agent import Mvge
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.errors import AuthenticationError, RateLimitError
+from mvgeos_agent.protocol import MvgeAgent
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 from mvgeos_cli.auth import load_api_key_from_auth
+from mvgeos_cli.commands.dispatcher import SLASH_COMMANDS, CommandDispatcher
+from mvgeos_provider.model_registry import ModelRegistry
 
 from mvgeos_gui.models import (
     Artifact,
@@ -32,6 +36,14 @@ if TYPE_CHECKING:
     from mvgeos_gui.state import AppState
 
 logger = logging.getLogger(__name__)
+
+
+def rich_to_markdown(text: str) -> str:
+    """Translate Rich markup from CommandDispatcher into clean Markdown."""
+    text = re.sub(r"\[/?bold\]", "**", text)
+    text = re.sub(r"\[/?dim\]", "*", text)
+    text = re.sub(r"\[/?[a-zA-Z0-9_# -]+\]", "", text)
+    return text
 
 
 def resolve_api_key(explicit_key: str | None = None) -> str | None:
@@ -56,11 +68,13 @@ class AgentService:
         project_path: Path,
         api_key: str | None = None,
         agent_factory: Callable[..., Any] | None = None,
+        model_registry: ModelRegistry | None = None,
     ) -> None:
         self._project_path = project_path
         self._api_key = resolve_api_key(api_key)
         self._agent_factory = agent_factory
-        self._agent: Mvge | None = None
+        self._model_registry = model_registry or ModelRegistry()
+        self._agent: MvgeAgent | None = None
         self._active_message: ChatMessage | None = None
         self._active_transcript: InvocationTranscript | None = None
         self._active_state: AppState | None = None
@@ -88,8 +102,8 @@ class AgentService:
     def is_running(self) -> bool:
         return self._is_running
 
-    def get_or_create_agent(self, state: AppState) -> Any:
-        """Instantiate or retrieve the bound Mvge instance."""
+    def get_or_create_agent(self, state: AppState) -> MvgeAgent:
+        """Instantiate or retrieve the bound MvgeAgent instance."""
         if self._agent is not None:
             return self._agent
 
@@ -113,7 +127,7 @@ class AgentService:
             self._agent = Mvge(
                 api_key=self._api_key,
                 name="coding_mvge",
-                spells=root_mvge._spells,
+                spells=root_mvge.spells,
                 tome_dir=state.tome_service.tome_dir,
                 tome_resume=state.active_tome_id,
                 environment=env,
@@ -390,10 +404,89 @@ class AgentService:
         """Update a subagent background task's status/progress."""
         return state.update_background_task(task_id, status=status, progress=progress)
 
+    async def dispatch_slash_command(
+        self, prompt: str, state: AppState, message: ChatMessage
+    ) -> None:
+        """Execute a harness slash command locally and synchronize state."""
+        self._is_running = True
+        self._active_message = message
+        self._active_transcript = InvocationTranscript.bind(message)
+        self._active_state = state
+
+        output_lines: list[str] = []
+        try:
+            agent = self.get_or_create_agent(state)
+        except Exception as e:
+            message.is_error = True
+            message.error_message = str(e)
+            self._active_transcript.set_text(f"**Error**: {e}")
+            self._cleanup_slash_turn(state, message)
+            return
+
+        dispatcher = CommandDispatcher(
+            agent, self._model_registry, out=output_lines.append
+        )
+        try:
+            should_exit = await dispatcher.dispatch(prompt)
+        except Exception as exc:
+            message.is_error = True
+            message.error_message = str(exc)
+            output_lines.append(f"Command error: {exc}")
+            should_exit = False
+
+        formatted = [rich_to_markdown(line) for line in output_lines]
+        output_text = "\n".join(formatted).strip()
+        if not output_text and should_exit:
+            output_text = "*Session ended.*"
+
+        self._active_transcript.set_text(output_text)
+
+        # Synchronize reactive state
+        parts = prompt.strip().split(maxsplit=1)
+        cmd_name = parts[0] if parts else ""
+
+        if cmd_name in ("/model", "/models") and len(parts) > 1:
+            arg = parts[1].strip()
+            if arg not in ("--free", "-f") and agent.model_id:
+                state.switch_model(agent.model_id)
+
+        elif cmd_name == "/new":
+            state.new_conversation()
+
+        elif cmd_name == "/resume" and len(parts) > 1:
+            if agent.tome_id:
+                state.switch_to_tome(agent.tome_id)
+
+        elif cmd_name == "/spells":
+            state.clear_skills()
+            self.populate_skills(agent, state)
+            state.notify()
+
+        elif cmd_name == "/refresh-models":
+            state.notify()
+
+        self._cleanup_slash_turn(state, message)
+
+    def _cleanup_slash_turn(self, state: AppState, message: ChatMessage) -> None:
+        message.is_streaming = False
+        state.is_channeling = False
+        state.set_mvge_status("idle")
+        self._is_running = False
+        self._active_message = None
+        self._active_state = None
+        self._active_transcript = None
+        state.notify()
+
     async def run_prompt(
         self, prompt: str, state: AppState, message: ChatMessage
     ) -> None:
         """Run agent with prompt asynchronously while capturing all events."""
+        stripped = prompt.strip()
+        cmd_name = stripped.split(maxsplit=1)[0] if stripped else ""
+        if cmd_name in SLASH_COMMANDS:
+            await self.dispatch_slash_command(prompt, state, message)
+            return
+
         self._is_running = True
         self._active_message = message
         self._active_transcript = InvocationTranscript.bind(message)
@@ -428,7 +521,7 @@ class AgentService:
             agent = self.get_or_create_agent(state)
             self._ensure_listeners(agent)
 
-            if hasattr(agent, "switch_model") and state.selected_model:
+            if state.selected_model:
                 await agent.switch_model(state.selected_model)
 
             keepalive_stop = asyncio.Event()
