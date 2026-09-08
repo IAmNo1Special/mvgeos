@@ -1,6 +1,6 @@
 [project]
 name = "mvgeos-runes"
-version = "1.14.0"
+version = "1.14.1"
 description = "Extension system: manifest, loader, and sigil hook protocol"
 requires-python = ">=3.14"
 license = "MIT"
