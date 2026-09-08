@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.1] - 2026-09-08
+
+
+### Bug Fixes
+
+- **agent:** wire Layer 2 scaffolding and disambiguate spells tools and skills (575edff)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (64d0212)
+
+- **release:** v1.14.1 (a0491e7)
+
+
+### Performance
+
+- **gui:** optimize input-to-chat latency and reduce time to first token (44e7c44)
+
+
+### Refactoring
+
+- **commands:** decouple command execution from cli formatting into mvgeos-agent (dbf3443)
+
+- **coding-mvge:** rename knowledge_skill to skill_evolution and deepen engine seams (5cf1cbf)
+
+
 ## [1.14.0] - 2026-09-08
 
 
