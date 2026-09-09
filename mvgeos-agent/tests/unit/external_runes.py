@@ -9,10 +9,15 @@ import pytest
 from mvgeos_provider.base import Realm
 from mvgeos_provider.types import ChannelConfig, Model
 
-# Ensure runes path is in sys.path
-RUNES_DIR = Path("C:/Users/ivmno/.agents/.mvgeos/runes")
-if str(RUNES_DIR) not in sys.path:
+# Ensure runes path is in sys.path when installed
+RUNES_DIR = Path("~/.agents/.mvgeos/runes").expanduser()
+if str(RUNES_DIR) not in sys.path and RUNES_DIR.is_dir():
     sys.path.insert(0, str(RUNES_DIR))
+
+pytestmark = pytest.mark.skipif(
+    not RUNES_DIR.is_dir(),
+    reason="External runes in ~/.agents/.mvgeos/runes not installed on host",
+)
 
 
 def test_ollama_realm_unit() -> None:
