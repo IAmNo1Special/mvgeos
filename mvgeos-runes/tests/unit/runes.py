@@ -7,6 +7,7 @@ import pytest
 
 from mvgeos_runes.loader import (
     clear_skill_manifest_cache,
+    discover_plugin_skill_paths,
     get_default_skill_paths,
     load_factory_from_manifest,
     load_manifests,
@@ -884,6 +885,25 @@ class TestGetDefaultSkillPaths:
         # Agent path should have agent name substituted
         agent_path = paths[2][0]
         assert "test_agent" in str(agent_path)
+
+    def test_discover_plugin_skill_paths(self, tmp_path: Path) -> None:
+        plugin_dir = tmp_path / ".agents" / "plugins" / "my-plugin"
+        plugin_skills = plugin_dir / "skills" / "my-skill"
+        plugin_skills.mkdir(parents=True)
+        (plugin_skills / "SKILL.md").write_text(
+            "---\nname: my-skill\ndescription: Test skill\n---\nBody",
+            encoding="utf-8",
+        )
+
+        discovered = discover_plugin_skill_paths(cwd=tmp_path)
+        assert len(discovered) == 1
+        path, scope = discovered[0]
+        assert path == plugin_dir / "skills"
+        assert scope == SkillScope.PROJECT
+
+        loads, diags = load_skills_from_paths(discovered)
+        assert len(loads) == 1
+        assert loads[0].manifest.name == "my-skill"
 
 
 def test_load_factory_from_manifest_with_local_import() -> None:

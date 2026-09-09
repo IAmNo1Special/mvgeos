@@ -126,6 +126,34 @@ class MvgeAgent(Protocol):
         """Assemble runtime snapshot for introspection."""
         ...
 
+    async def fork_tome(self, entry_id: str | None = None) -> str:
+        """Branch current Tome from entry_id (or active leaf) and
+        switch to the new Tome.
+        """
+        ...
+
+    async def checkout_leaf(self, leaf_id: str) -> None:
+        """Switch active position in the Tome to a specific leaf entry."""
+        ...
+
+    async def list_leaves(self) -> list[str]:
+        """List all active leaf entry IDs in the current Tome."""
+        ...
+
+    async def undo(self) -> str | None:
+        """Revert the most recent summoner invocation by pointing active
+        leaf to its parent.
+        """
+        ...
+
+    async def compact(self) -> str:
+        """Trigger mana pool compaction on the current Tome branch."""
+        ...
+
+    def get_skills_catalog(self) -> list[dict[str, str]]:
+        """List registered skills with metadata."""
+        ...
+
     async def close(self) -> None:
         """Shut down resources, runes, and sessions."""
         ...

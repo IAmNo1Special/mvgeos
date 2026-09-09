@@ -13,13 +13,20 @@ from mvgeos_agent.protocol import AgentFactory, MvgeAgent
 _global_default_factory: AgentFactory | None = None
 
 
-def validate_api_key(api_key: str) -> None:
-    """Validate OpenRouter API key format. Raises ValueError if invalid."""
-    if not api_key or not api_key.startswith("sk-or-"):
-        raise ValueError(
-            "Invalid OpenRouter API key. It must start with 'sk-or-'. "
-            "Get a key at https://openrouter.ai/keys"
-        )
+def validate_api_key(api_key: str, model_id: str | None = None) -> None:
+    """Validate API key format. Raises ValueError if invalid."""
+    if model_id and model_id.startswith("ollama/"):
+        return
+    if api_key.startswith("sk-or-") or api_key.startswith("AIza"):
+        return
+    if model_id and model_id.startswith("google/") and api_key.strip():
+        return
+    if not api_key:
+        raise ValueError("API key is required.")
+    raise ValueError(
+        "Invalid API key format. OpenRouter keys start with 'sk-or-', "
+        "and Google keys start with 'AIza'."
+    )
 
 
 def default_agent_factory(
@@ -95,8 +102,8 @@ async def create_agent(
     **kwargs: Any,
 ) -> MvgeAgent:
     """Resolve environment, create an agent via factory, and initialize it."""
-    if api_key:
-        validate_api_key(api_key)
+    if api_key or (model and not model.startswith("ollama/")):
+        validate_api_key(api_key, model_id=model)
     spells_list: list[str] | None = None
     if isinstance(spells, str):
         spells_list = [s.strip() for s in spells.split(",") if s.strip()]

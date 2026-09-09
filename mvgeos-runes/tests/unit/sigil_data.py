@@ -16,6 +16,7 @@ from mvgeos_runes.types import (
     ContextTransformData,
     InputData,
     PrepareNextTurnData,
+    ResourcesDiscoverData,
     SessionBeforeForkData,
     SessionBeforeSwitchData,
     SessionShutdownData,
@@ -169,6 +170,18 @@ class TestSigilDataClasses:
         assert data.max_turns == 10
         assert data.temperature == 0.7
 
+    def test_resources_discover_data(self) -> None:
+        data = ResourcesDiscoverData(
+            cwd="/test",
+            reason="startup",
+            skill_paths=["/skills/a"],
+            prompt_paths=["/prompts/p.md"],
+        )
+        assert data.cwd == "/test"
+        assert data.reason == "startup"
+        assert data.skill_paths == ["/skills/a"]
+        assert data.prompt_paths == ["/prompts/p.md"]
+
 
 class TestCreateSigilData:
     """Test the create_sigil_data factory function."""
@@ -212,3 +225,10 @@ class TestCreateSigilData:
         data = "not a dict"
         result = create_sigil_data(SigilHook.AFTER_SPELL_RESULT, data)
         assert result == "not a dict"
+
+    def test_creates_resources_discover_data_from_dict(self) -> None:
+        raw = {"cwd": "/workspace", "reason": "startup", "skill_paths": ["/skills"]}
+        typed = create_sigil_data(SigilHook.RESOURCES_DISCOVER, raw)
+        assert isinstance(typed, ResourcesDiscoverData)
+        assert typed.cwd == "/workspace"
+        assert typed.skill_paths == ["/skills"]

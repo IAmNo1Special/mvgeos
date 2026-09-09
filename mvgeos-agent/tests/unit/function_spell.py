@@ -259,3 +259,21 @@ class TestSpellDirectoryDiscovery:
             SpellDiscoveryError, match="Could not discover spell in 'ambiguous.py'"
         ):
             discover_spells_from_dir(spells_dir)
+
+    @pytest.mark.asyncio
+    async def test_execute_injects_signal_when_supported(self) -> None:
+        from mvgeos_agent.function_spell import FunctionSpell
+        from mvgeos_agent.types import AbortController
+
+        received_signal = None
+
+        def my_spell(query: str, signal=None) -> str:
+            nonlocal received_signal
+            received_signal = signal
+            return f"searched {query}"
+
+        spell = FunctionSpell(func=my_spell)
+        controller = AbortController()
+        res = await spell.execute("cast_1", {"query": "test"}, signal=controller.signal)
+        assert res == "searched test"
+        assert received_signal is controller.signal

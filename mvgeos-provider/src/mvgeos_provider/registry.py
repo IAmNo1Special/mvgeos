@@ -94,7 +94,11 @@ class RealmRegistry:
         return self._extension_providers.get(name)
 
     def get_registered_providers(self) -> list[str]:
-        return list(self._extension_providers.keys())
+        providers = list(self._extension_providers.keys())
+        for rf in self._realm_factories:
+            if rf not in providers and rf != "openrouter":
+                providers.append(rf)
+        return providers
 
     def register_realm_factory(self, prefix: str, factory: RealmFactory) -> None:
         """Register a pluggable RealmFactory for a provider prefix."""

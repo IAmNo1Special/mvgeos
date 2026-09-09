@@ -455,13 +455,14 @@ class MvgeTome:
             return {"cancelled": True}
         return {"cancelled": False}
 
-    async def fork(self, entry_id: str) -> MvgeTome | None:
+    async def fork(self, entry_id: str | None = None) -> MvgeTome | None:
         """Fork the Tome at an entry and start the branched tome.
 
         Returns None when a SESSION_BEFORE_FORK sigil cancels the fork or the
         ledger rejects the branch; failures leave the source session running.
         """
-        fork_result = await self.before_fork(entry_id)
+        target_id = entry_id or self.active_leaf_id or ""
+        fork_result = await self.before_fork(target_id)
         if fork_result and fork_result.get("cancelled"):
             return None
 
@@ -469,7 +470,7 @@ class MvgeTome:
             new_metadata = self._ledger.create_branched_tome(
                 parent_tome_id=self._metadata.id,
                 cwd=self._metadata.cwd,
-                fork_from_leaf_id=entry_id,
+                fork_from_leaf_id=target_id or None,
             )
         except (KeyError, ValueError) as e:
             logger.exception("Failed to fork tome: %s", e)

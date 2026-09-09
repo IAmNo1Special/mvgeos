@@ -76,6 +76,8 @@ def _resolve_api_key(explicit_key: str | None = None) -> str:
         explicit_key
         or os.environ.get("OPENROUTER_API_KEY")
         or os.environ.get("MVGEOS_API_KEY")
+        or os.environ.get("GEMINI_API_KEY")
+        or os.environ.get("GOOGLE_API_KEY")
         or ""
     )
 
@@ -698,7 +700,11 @@ class Mvge:
 
         if not self._api_key:
             self._api_key = _resolve_api_key()
-        if not self._api_key:
+        is_ollama = bool(
+            (self._model_id and self._model_id.startswith("ollama"))
+            or self._provider_name == "ollama"
+        )
+        if not self._api_key and not is_ollama:
             raise MissingApiKeyError
 
         await self._load_runes()
@@ -727,6 +733,8 @@ class Mvge:
             force_fork=self._force_fork_resume,
         )
 
+        self._rebind_runner_context()
+
         if (
             self._agent_tome is not None
             and self._agent_tome.compatibility_report is not None
@@ -737,6 +745,17 @@ class Mvge:
 
         self._wire_runtime(final_prompt)
         self._initialized = True
+
+    def _rebind_runner_context(self) -> None:
+        """Synchronize active session/tome context into the bound RuneRunner."""
+        if self._runner is not None and self._agent_tome is not None:
+            new_ctx = dataclasses.replace(
+                self._runner.context,
+                session_id=self._agent_tome.tome_id,
+                tome_dir=str(self._tome_dir),
+                model_id=self._model_id,
+            )
+            self._runner.bind_context(new_ctx)
 
     def _wire_runtime(self, final_prompt: str) -> None:
         """Construct MvgeState and MvgeHarness from the wired collaborators."""
@@ -772,6 +791,7 @@ class Mvge:
             model=self._model,
             compaction=self._compaction,
         )
+        self._compaction = self._harness.compaction
 
     async def run(self, prompt: str) -> MvgeInvocation:
         """Template method for processing a turn."""
@@ -829,6 +849,108 @@ class Mvge:
         self._harness = None
         self._initialized = False
         await self.initialize()
+
+    async def fork_tome(self, entry_id: str | None = None) -> str:
+        """Branch current Tome from entry_id (or active leaf) and
+        switch to the new Tome.
+        """
+        if not self._initialized or self._agent_tome is None:
+            raise RuntimeError("Agent not initialized")
+        new_tome = await self._agent_tome.fork(entry_id)
+        if new_tome is None:
+            raise RuntimeError("Failed to fork tome")
+        self._agent_tome = new_tome
+        self._tome_resume = new_tome.tome_id
+        if self._harness is not None:
+            self._harness.switch_tome(new_tome)
+            self._compaction = self._harness.compaction
+        if self._state is not None:
+            self._state.invocations = self._agent_tome.reconstruct_invocations()
+        self._rebind_runner_context()
+        return new_tome.tome_id
+
+    async def checkout_leaf(self, leaf_id: str) -> None:
+        """Switch active position in the Tome to a specific leaf entry."""
+        if (
+            not self._initialized
+            or self._agent_tome is None
+            or self._tome_ledger is None
+        ):
+            raise RuntimeError("Agent not initialized")
+        if self._state is not None and getattr(self._state, "is_streaming", False):
+            raise RuntimeError("Cannot checkout leaf while invocation is streaming")
+        self._tome_ledger.append_leaf(self._agent_tome.tome_id, leaf_id)
+        if self._state is not None:
+            self._state.invocations = self._agent_tome.reconstruct_invocations()
+
+    async def list_leaves(self) -> list[str]:
+        """List all active leaf entry IDs in the current Tome."""
+        if (
+            not self._initialized
+            or self._agent_tome is None
+            or self._tome_ledger is None
+        ):
+            return []
+        return self._tome_ledger.list_leaves(self._agent_tome.tome_id)
+
+    async def undo(self) -> str | None:
+        """Revert the most recent summoner invocation by pointing active
+        leaf to its parent.
+        """
+        if (
+            not self._initialized
+            or self._agent_tome is None
+            or self._tome_ledger is None
+        ):
+            raise RuntimeError("Agent not initialized")
+        if self._state is not None and getattr(self._state, "is_streaming", False):
+            raise RuntimeError("Cannot undo while invocation is streaming")
+        target = self._tome_ledger.get_parent_summoner_entry(
+            self._agent_tome.tome_id, self._agent_tome.active_leaf_id
+        )
+        if target is None:
+            raise ValueError("Cannot undo: at root invocation")
+        self._tome_ledger.append_leaf(self._agent_tome.tome_id, target.id)
+        if self._state is not None:
+            self._state.invocations = self._agent_tome.reconstruct_invocations()
+        return target.id
+
+    async def compact(self) -> str:
+        """Trigger mana pool compaction on the current Tome branch."""
+        compaction = self._compaction or (
+            self._harness.compaction if self._harness is not None else None
+        )
+        if (
+            not self._initialized
+            or self._agent_tome is None
+            or compaction is None
+            or self._state is None
+        ):
+            raise RuntimeError("Agent not initialized")
+        if getattr(self._state, "is_streaming", False):
+            raise RuntimeError("Cannot compact while invocation is streaming")
+        if not self._state.invocations:
+            return "No invocations to compact"
+        replacement = await compaction.force_compact(self._state.invocations)
+        if replacement is not None:
+            self._state.invocations = replacement
+            return "Compaction completed"
+        return "Nothing to compact or compaction skipped"
+
+    def get_skills_catalog(self) -> list[dict[str, str]]:
+        """List registered skills with metadata."""
+        if self._runner is None:
+            return []
+        skills = self._runner.get_skills()
+        return [
+            {
+                "name": s.name,
+                "description": s.description,
+                "scope": s.scope.value if s.scope else "unknown",
+                "path": str(s.path),
+            }
+            for s in skills
+        ]
 
     async def close(self) -> None:
         """Teardown the agent session and release resources."""

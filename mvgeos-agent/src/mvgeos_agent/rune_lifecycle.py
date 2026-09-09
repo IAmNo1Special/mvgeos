@@ -16,14 +16,18 @@ from pathlib import Path
 
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_runes.loader import (
+    discover_plugin_skill_paths,
     get_default_skill_paths,
     load_runes_from_paths,
     load_skills_from_paths,
 )
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
+    ResourcesDiscoverData,
     RuneContext,
     RuneScope,
+    SigilHook,
+    SkillScope,
 )
 from mvgeos_runes.watcher import RuneWatcher
 
@@ -126,10 +130,33 @@ class RuneLifecycle:
                 for pname, pconfig in runner.get_registered_providers().items():
                     if isinstance(pconfig, dict):
                         self._provider_registry.register_provider(pname, pconfig)
+                for prefix, factory in runner.get_registered_realm_factories().items():
+                    self._provider_registry.register_realm_factory(prefix, factory)
         elif diagnostics:
             runner.extend_diagnostics(diagnostics)
 
-        skill_paths = get_default_skill_paths(self._agent_name)
+        skill_paths = list(get_default_skill_paths(self._agent_name))
+        skill_paths.extend(discover_plugin_skill_paths(cwd=Path(self._cwd)))
+
+        # Dynamic Resource Discovery hook (SigilHook.RESOURCES_DISCOVER)
+        res_data = ResourcesDiscoverData(cwd=self._cwd, reason="startup")
+        res_result = await runner.emit_chain(SigilHook.RESOURCES_DISCOVER, res_data)
+
+        dynamic_paths: list[str | Path] = []
+        if isinstance(res_result, ResourcesDiscoverData):
+            dynamic_paths.extend(res_result.skill_paths)
+        elif isinstance(res_result, dict):
+            dynamic_paths.extend(res_result.get("skill_paths", []))
+        dynamic_paths.extend(runner.get_registered_skill_paths())
+
+        for dp in dynamic_paths:
+            resolved_dp = Path(dp).expanduser().resolve()
+            if resolved_dp.exists():
+                if (resolved_dp / "SKILL.md").is_file():
+                    skill_paths.append((resolved_dp.parent, SkillScope.PROJECT))
+                else:
+                    skill_paths.append((resolved_dp, SkillScope.PROJECT))
+
         skill_loads, skill_diagnostics = await asyncio.to_thread(
             load_skills_from_paths, skill_paths, self._agent_name
         )

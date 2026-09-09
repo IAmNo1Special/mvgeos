@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
@@ -50,6 +51,7 @@ class SigilHook(StrEnum):
     INPUT = "input"
     SHOULD_STOP_AFTER_TURN = "should_stop_after_turn"
     PREPARE_NEXT_TURN = "prepare_next_turn"
+    RESOURCES_DISCOVER = "resources_discover"
 
 
 @dataclass
@@ -234,6 +236,16 @@ class PrepareNextTurnData:
     queue_mode: str = "one-at-a-time"
 
 
+@dataclass
+class ResourcesDiscoverData:
+    """Data passed to RESOURCES_DISCOVER sigil hook."""
+
+    cwd: str
+    reason: str = "startup"
+    skill_paths: list[str | Path] = field(default_factory=list)
+    prompt_paths: list[str | Path] = field(default_factory=list)
+
+
 # Mapping from SigilHook to its typed data class
 SIGIL_HOOK_DATA_CLASSES: dict[SigilHook, type] = {
     SigilHook.BEFORE_INVOCATION: BeforeInvocationData,
@@ -258,6 +270,7 @@ SIGIL_HOOK_DATA_CLASSES: dict[SigilHook, type] = {
     SigilHook.INPUT: InputData,
     SigilHook.SHOULD_STOP_AFTER_TURN: ShouldStopAfterTurnData,
     SigilHook.PREPARE_NEXT_TURN: PrepareNextTurnData,
+    SigilHook.RESOURCES_DISCOVER: ResourcesDiscoverData,
 }
 
 
@@ -362,6 +375,9 @@ class RuneContext:
     has_ui: bool = False
     agent_name: str = ""
     api_key: str = ""
+    session_id: str = ""
+    tome_dir: str = ""
+    model_id: str = ""
 
 
 @dataclass

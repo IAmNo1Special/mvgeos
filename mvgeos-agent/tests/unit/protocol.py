@@ -94,6 +94,24 @@ class DummyAgent:
     def build_snapshot(self) -> Any:
         return None
 
+    async def fork_tome(self, entry_id: str | None = None) -> str:
+        return "forked-tome"
+
+    async def checkout_leaf(self, leaf_id: str) -> None:
+        pass
+
+    async def list_leaves(self) -> list[str]:
+        return ["leaf-1"]
+
+    async def undo(self) -> str | None:
+        return "target-1"
+
+    async def compact(self) -> str:
+        return "compacted"
+
+    def get_skills_catalog(self) -> list[dict[str, str]]:
+        return []
+
     async def close(self) -> None:
         pass
 

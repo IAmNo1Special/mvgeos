@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -8,6 +9,7 @@ if TYPE_CHECKING:
 
 from mvgeos_runes.types import (
     RegisteredCommand,
+    RuneContext,
     RuneShortcut,
     Sandbox,
     SigilHook,
@@ -32,6 +34,10 @@ class RuneAPI:
     @property
     def sandbox(self) -> Sandbox:
         return self._runner.sandbox
+
+    @property
+    def context(self) -> RuneContext:
+        return self._runner.context
 
     def on(self, hook: SigilHook, handler: Any) -> None:
         self._runner.register_handler(hook, handler, rune_name=self._rune_name)
@@ -80,6 +86,24 @@ class RuneAPI:
     ) -> dict[str, dict[str, Any]]:
         return self._runner.get_registered_providers()
 
+    def register_realm_factory(
+        self,
+        prefix: str,
+        factory: Any,
+        override: bool = False,
+    ) -> bool:
+        return self._runner.register_realm_factory(
+            prefix,
+            factory,
+            rune_name=self._rune_name,
+            override=override or self._override,
+        )
+
+    def get_registered_realm_factories(
+        self,
+    ) -> dict[str, Any]:
+        return self._runner.get_registered_realm_factories()
+
     def get_active_spells(self) -> list[str]:
         return self._runner.get_active_spells()
 
@@ -95,6 +119,14 @@ class RuneAPI:
     def get_skills(self) -> list[SkillManifest]:
         """Get all registered skills."""
         return self._runner.get_skills()
+
+    def register_skill_path(self, path: Path | str) -> None:
+        """Dynamically register an additional skill directory path."""
+        self._runner.register_skill_path(path)
+
+    def register_skill(self, manifest: SkillManifest) -> None:
+        """Dynamically register an in-memory SkillManifest."""
+        self._runner.register_skill(manifest)
 
     def get_skill_catalog(self) -> str:
         """Get the skill catalog formatted for system prompt injection."""

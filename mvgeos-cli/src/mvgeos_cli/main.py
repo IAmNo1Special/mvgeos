@@ -280,6 +280,10 @@ def _repl_callback(
     if ctx.invoked_subcommand is not None:
         return
 
+    if api_key is None and model and model.startswith("google/"):
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if api_key is None and model and model.startswith("ollama/"):
+        api_key = ""
     if api_key is None:
         api_key = os.environ.get("OPENROUTER_API_KEY")
     if api_key is None:

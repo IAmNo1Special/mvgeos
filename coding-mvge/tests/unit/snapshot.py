@@ -59,9 +59,19 @@ class TestBuildSnapshotNoRunes:
 
     def test_default_spells(self) -> None:
         snap = root_mvge.build_snapshot()
-        assert len(snap.spells) == 7
+        assert len(snap.spells) == 9
         names = {s.name for s in snap.spells}
-        assert names == {"bash", "read", "write", "edit", "find", "list_files", "grep"}
+        assert names == {
+            "bash",
+            "read",
+            "write",
+            "edit",
+            "find",
+            "list_files",
+            "grep",
+            "search_web",
+            "read_url",
+        }
 
 
 class TestBuildSnapshotWithRunner:

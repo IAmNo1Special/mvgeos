@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -244,3 +245,22 @@ class TestRuneAPISandbox:
         runner = RuneRunner()
         with pytest.raises(RuntimeError, match="No sandbox configured"):
             _ = runner.sandbox
+
+
+class TestRuneAPISkillRegistration:
+    def test_register_skill_path_delegates_to_runner(
+        self, api: RuneAPI, runner: RuneRunner, tmp_path: Path
+    ) -> None:
+        p = tmp_path / "skills"
+        api.register_skill_path(p)
+        assert runner.get_registered_skill_paths() == [p.resolve()]
+
+    def test_register_skill_delegates_to_runner(
+        self, api: RuneAPI, runner: RuneRunner
+    ) -> None:
+        from mvgeos_runes.types import SkillManifest
+
+        manifest = SkillManifest(name="api-skill", description="API registered skill")
+        api.register_skill(manifest)
+        assert runner.get_skills() == [manifest]
+        assert "api-skill" in runner.get_skill_catalog()

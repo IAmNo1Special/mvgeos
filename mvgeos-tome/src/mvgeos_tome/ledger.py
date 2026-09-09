@@ -425,6 +425,37 @@ class TomeLedger:
                 return meta.active_leaf_id
             return None
 
+    def list_leaves(self, tome_id: str) -> list[str]:
+        """Compute all active leaf entry IDs in the Tome entry graph.
+
+        Filters out LEAF marker entries and returns IDs of content entries
+        that never appear as a parent_id to another content entry.
+        """
+        entries = self.get_entries(tome_id)
+        content_entries = [e for e in entries if e.type != TomeEntryType.LEAF]
+        if not content_entries:
+            return []
+        parent_ids = {e.parent_id for e in content_entries if e.parent_id is not None}
+        return [e.id for e in content_entries if e.id not in parent_ids]
+
+    def get_parent_summoner_entry(
+        self, tome_id: str, leaf_id: str | None = None
+    ) -> TomeEntry | None:
+        """Find the parent entry of the most recent summoner (user) invocation
+        along the leaf branch.
+        """
+        target_leaf = leaf_id or self.get_leaf_id(tome_id)
+        branch_entries = self.get_entries_for_context(tome_id, leaf_id=target_leaf)
+        for entry in reversed(branch_entries):
+            if (
+                entry.type == TomeEntryType.MESSAGE
+                and (entry.payload or {}).get("role") == "user"
+            ):
+                if entry.parent_id is None:
+                    return None
+                return self.get_entry(tome_id, entry.parent_id)
+        return None
+
     def create_branched_tome(
         self,
         parent_tome_id: str,
@@ -1145,3 +1176,11 @@ class TomeLedger:
         self, tome_id: str, limit: int
     ) -> list[TomeEntry]:
         return await asyncio.to_thread(self.read_last_n_entries, tome_id, limit)
+
+    async def list_leaves_async(self, tome_id: str) -> list[str]:
+        return await asyncio.to_thread(self.list_leaves, tome_id)
+
+    async def get_parent_summoner_entry_async(
+        self, tome_id: str, leaf_id: str | None = None
+    ) -> TomeEntry | None:
+        return await asyncio.to_thread(self.get_parent_summoner_entry, tome_id, leaf_id)

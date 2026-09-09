@@ -225,3 +225,59 @@ async def test_standalone_watchers_start_and_stop(runes_dir: Path) -> None:
     assert lifecycle.watchers == []
 
     await lifecycle.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_rune_resources_discover_dynamic_skills(tmp_path: Path) -> None:
+    custom_skills_root = tmp_path / "custom_skills"
+    dynamic_skill = custom_skills_root / "dynamic-skill"
+    dynamic_skill.mkdir(parents=True)
+    (dynamic_skill / "SKILL.md").write_text(
+        "---\n"
+        "name: dynamic-skill\n"
+        "description: Dynamically yielded skill\n"
+        "---\n"
+        "# Instructions\n",
+        encoding="utf-8",
+    )
+
+    runes_root = tmp_path / "runes_disc"
+    disc_rune = runes_root / "disc-rune"
+    disc_rune.mkdir(parents=True)
+    (disc_rune / "manifest.json").write_text(
+        json.dumps(
+            {
+                "name": "disc-rune",
+                "version": "1.0.0",
+                "description": "Resource discover rune",
+                "entry_point": "rune.py",
+            }
+        ),
+        encoding="utf-8",
+    )
+    path_escaped = str(dynamic_skill).replace("\\", "\\\\")
+    (disc_rune / "rune.py").write_text(
+        f"""
+from mvgeos_runes.types import ResourcesDiscoverData, SigilHook
+
+def rune_factory(api):
+    async def on_discover(data: ResourcesDiscoverData) -> ResourcesDiscoverData:
+        data.skill_paths.append(r"{path_escaped}")
+        return data
+
+    api.on(SigilHook.RESOURCES_DISCOVER, on_discover)
+""",
+        encoding="utf-8",
+    )
+
+    lifecycle = RuneLifecycle(
+        agent_name="disc-agent",
+        runes_paths=[str(runes_root)],
+        cwd=str(tmp_path),
+    )
+    runner = await lifecycle.load()
+
+    skills = runner.get_skills()
+    skill_names = [s.name for s in skills]
+    assert "dynamic-skill" in skill_names
+    assert "dynamic-skill" in runner.get_skill_catalog()

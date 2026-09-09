@@ -101,6 +101,7 @@ class RuneRunner:
         self._commands: dict[str, RegisteredCommand] = {}
         self._shortcuts: dict[str, RuneShortcut] = {}
         self._providers: dict[str, dict[str, Any]] = {}
+        self._realm_factories: dict[str, tuple[Any, str | None]] = {}
         self._context = RuneContext()
         self._message_queue: list[str] = []
         self._session_name: str | None = None
@@ -124,6 +125,7 @@ class RuneRunner:
         self._active_spells_by_rune: dict[str | None, set[str]] = {}
         self._pinned_runes: set[str | None] = set()
         self._rune_handlers: dict[str, dict[SigilHook, list[Handler]]] = {}
+        self._registered_skill_paths: list[Path] = []
 
     @property
     def context(self) -> RuneContext:
@@ -190,6 +192,12 @@ class RuneRunner:
         for k in to_remove_commands:
             del self._commands[k]
 
+        to_remove_factories = [
+            k for k, v in self._realm_factories.items() if v[1] == rune_name
+        ]
+        for k in to_remove_factories:
+            del self._realm_factories[k]
+
         if rune_name in self._rune_handlers:
             for hook, handlers in self._rune_handlers[rune_name].items():
                 if hook in self._sigil_handlers:
@@ -254,6 +262,28 @@ class RuneRunner:
     def get_registered_providers(self) -> dict[str, dict[str, Any]]:
         return dict(self._providers)
 
+    def register_realm_factory(
+        self,
+        prefix: str,
+        factory: Any,
+        rune_name: str | None = None,
+        override: bool = False,
+    ) -> bool:
+        """Register a realm factory for a provider prefix attributed to a rune."""
+        if rune_name is None:
+            rune_name = self._current_loading_rune
+        if prefix in self._realm_factories and not override:
+            logger.warning(
+                "Duplicate realm factory registration skipped for prefix: %s", prefix
+            )
+            return False
+        self._realm_factories[prefix] = (factory, rune_name)
+        return True
+
+    def get_registered_realm_factories(self) -> dict[str, Any]:
+        """Return dict of prefix -> factory without rune attribution tuple."""
+        return {k: v[0] for k, v in self._realm_factories.items()}
+
     def get_all_registered_spells(self) -> list[SpellDefinition]:
         return list(self._spells.values())
 
@@ -310,6 +340,20 @@ class RuneRunner:
     def get_skills(self) -> list[SkillManifest]:
         """Get all loaded skill manifests."""
         return [load.manifest for load in self._loaded_skills]
+
+    def register_skill_path(self, path: Path | str) -> None:
+        """Register a skill directory path dynamically."""
+        resolved = Path(path).expanduser().resolve()
+        if resolved not in self._registered_skill_paths:
+            self._registered_skill_paths.append(resolved)
+
+    def get_registered_skill_paths(self) -> list[Path]:
+        """Get all dynamically registered skill paths."""
+        return list(self._registered_skill_paths)
+
+    def register_skill(self, manifest: SkillManifest) -> None:
+        """Register an in-memory SkillManifest directly."""
+        self.load_skills([SkillLoad(manifest=manifest)])
 
     @property
     def skill_diagnostics(self) -> list[SkillDiagnostic]:

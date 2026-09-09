@@ -66,6 +66,15 @@ class FunctionSpell(MvgeSpell):
         validated = self.prepare_arguments(params)
         args = {k: v for k, v in validated.items() if v is not None}
 
+        try:
+            func_params = inspect.signature(self.func).parameters
+            if "signal" in func_params and signal is not None:
+                args["signal"] = signal
+            if "on_update" in func_params and on_update is not None:
+                args["on_update"] = on_update
+        except (ValueError, TypeError):
+            pass
+
         if inspect.iscoroutinefunction(self.func):
             result = await self.func(**args)
         else:

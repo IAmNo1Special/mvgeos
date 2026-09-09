@@ -865,3 +865,50 @@ class TestRuneRunnerContext:
         assert runner.context == ctx
         assert runner.context.agent_name == "tester"
         assert runner.context.api_key == "key-123"
+
+
+class TestRealmFactoryRegistration:
+    def test_register_and_get_realm_factory(self) -> None:
+        runner = RuneRunner()
+
+        def factory(**kwargs: Any) -> None:
+            return None
+
+        assert runner.register_realm_factory(
+            "test_provider", factory, rune_name="test_rune"
+        )
+        factories = runner.get_registered_realm_factories()
+        assert "test_provider" in factories
+        assert factories["test_provider"] is factory
+
+    def test_duplicate_registration_without_override(self) -> None:
+        runner = RuneRunner()
+
+        def f1(**kwargs: Any) -> int:
+            return 1
+
+        def f2(**kwargs: Any) -> int:
+            return 2
+
+        assert runner.register_realm_factory("p", f1)
+        assert not runner.register_realm_factory("p", f2, override=False)
+        assert runner.get_registered_realm_factories()["p"] is f1
+        assert runner.register_realm_factory("p", f2, override=True)
+        assert runner.get_registered_realm_factories()["p"] is f2
+
+    def test_clear_rune_evicts_realm_factories(self) -> None:
+        runner = RuneRunner()
+
+        def f1(**kwargs: Any) -> int:
+            return 1
+
+        def f2(**kwargs: Any) -> int:
+            return 2
+
+        runner.register_realm_factory("p1", f1, rune_name="rune_a")
+        runner.register_realm_factory("p2", f2, rune_name="rune_b")
+        assert len(runner.get_registered_realm_factories()) == 2
+        runner.clear_rune("rune_a")
+        factories = runner.get_registered_realm_factories()
+        assert "p1" not in factories
+        assert "p2" in factories

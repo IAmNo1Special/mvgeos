@@ -26,6 +26,12 @@ SLASH_COMMANDS: dict[str, str] = {
     "/steer": "Steer agent mid-run: /steer <message>",
     "/followup": "Queue follow-up for post-run: /followup <message>",
     "/refresh-models": "Refresh model catalog from OpenRouter API",
+    "/fork": "Fork current tome at entry or active leaf: /fork [entry_id]",
+    "/leaves": "List active leaf entry IDs in the current tome",
+    "/checkout": "Checkout an existing leaf entry: /checkout <leaf_id>",
+    "/undo": "Undo the last summoner invocation",
+    "/compact": "Trigger mana pool compaction on the current branch",
+    "/skills": "List available skills and their locations",
 }
 
 
@@ -45,6 +51,12 @@ class CommandAction(StrEnum):
     FOLLOWUP_QUEUED = "followup_queued"
     SESSION_RESET = "session_reset"
     SESSION_RESUMED = "session_resumed"
+    FORK_CREATED = "fork_created"
+    LEAVES_LISTED = "leaves_listed"
+    LEAF_CHECKED_OUT = "leaf_checked_out"
+    INVOCATION_UNDONE = "invocation_undone"
+    MANA_COMPACTED = "mana_compacted"
+    SKILLS_LISTED = "skills_listed"
     INFO = "info"
     ERROR = "error"
 
@@ -358,6 +370,122 @@ class CommandDispatcher:
                 action=CommandAction.ERROR,
                 data={"error": "Usage: /resume <path-to-tome.jsonl>"},
                 message="Usage: /resume <path-to-tome.jsonl>",
+            )
+
+        if cmd == "/fork":
+            entry_id = args.strip() if args else None
+            try:
+                new_tome_id = await self._agent.fork_tome(entry_id)
+            except Exception as e:
+                return CommandOutcome(
+                    command=cmd,
+                    action=CommandAction.ERROR,
+                    data={"error": str(e)},
+                    message=f"Failed to fork tome: {e}",
+                )
+            return CommandOutcome(
+                command=cmd,
+                action=CommandAction.FORK_CREATED,
+                data={"tome_id": new_tome_id, "entry_id": entry_id},
+                message=f"Forked tome: {new_tome_id}",
+            )
+
+        if cmd == "/leaves":
+            try:
+                leaves = await self._agent.list_leaves()
+            except Exception as e:
+                return CommandOutcome(
+                    command=cmd,
+                    action=CommandAction.ERROR,
+                    data={"error": str(e)},
+                    message=f"Failed to list leaves: {e}",
+                )
+            lines = [f"Tome leaves ({len(leaves)}):"]
+            for leaf in leaves:
+                lines.append(f"  {leaf}")
+            return CommandOutcome(
+                command=cmd,
+                action=CommandAction.LEAVES_LISTED,
+                data={"leaves": leaves},
+                message="\n".join(lines),
+            )
+
+        if cmd == "/checkout":
+            if not args.strip():
+                return CommandOutcome(
+                    command=cmd,
+                    action=CommandAction.ERROR,
+                    data={"error": "Usage: /checkout <leaf_id>"},
+                    message="Usage: /checkout <leaf_id>",
+                )
+            leaf_id = args.strip()
+            try:
+                await self._agent.checkout_leaf(leaf_id)
+            except Exception as e:
+                return CommandOutcome(
+                    command=cmd,
+                    action=CommandAction.ERROR,
+                    data={"error": str(e), "leaf_id": leaf_id},
+                    message=f"Failed to checkout leaf {leaf_id}: {e}",
+                )
+            return CommandOutcome(
+                command=cmd,
+                action=CommandAction.LEAF_CHECKED_OUT,
+                data={"leaf_id": leaf_id},
+                message=f"Checked out leaf: {leaf_id}",
+            )
+
+        if cmd == "/undo":
+            try:
+                undone_target_id = await self._agent.undo()
+            except Exception as e:
+                return CommandOutcome(
+                    command=cmd,
+                    action=CommandAction.ERROR,
+                    data={"error": str(e)},
+                    message=f"Failed to undo: {e}",
+                )
+            return CommandOutcome(
+                command=cmd,
+                action=CommandAction.INVOCATION_UNDONE,
+                data={"target_id": undone_target_id},
+                message=f"Undone to invocation: {undone_target_id}",
+            )
+
+        if cmd == "/compact":
+            try:
+                result_msg = await self._agent.compact()
+            except Exception as e:
+                return CommandOutcome(
+                    command=cmd,
+                    action=CommandAction.ERROR,
+                    data={"error": str(e)},
+                    message=f"Failed to compact: {e}",
+                )
+            return CommandOutcome(
+                command=cmd,
+                action=CommandAction.MANA_COMPACTED,
+                data={"result": result_msg},
+                message=result_msg,
+            )
+
+        if cmd == "/skills":
+            skills = self._agent.get_skills_catalog()
+            if not skills:
+                return CommandOutcome(
+                    command=cmd,
+                    action=CommandAction.SKILLS_LISTED,
+                    data={"skills": []},
+                    message="No skills registered",
+                )
+            lines = [f"Available skills ({len(skills)}):"]
+            for s in skills:
+                lines.append(f"  {s['name']:<20} ({s['scope']}) - {s['description']}")
+            return CommandOutcome(
+                command=cmd,
+                action=CommandAction.SKILLS_LISTED,
+                data={"skills": skills},
+                message="\n".join(lines),
             )
 
         return CommandOutcome(

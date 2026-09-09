@@ -14,7 +14,7 @@ def generate_spell_schema(func: Callable[..., Any]) -> dict[str, Any]:
 
     fields: dict[str, tuple[Any, Any]] = {}
     for param_name, param in sig.parameters.items():
-        if param_name in ("spell_cast_id", "params", "signal", "on_update"):
+        if param_name in ("spell_cast_id", "params", "signal", "on_update", "client"):
             continue
         annotation = type_hints.get(param_name, Any)
         default = ... if param.default is inspect.Parameter.empty else param.default

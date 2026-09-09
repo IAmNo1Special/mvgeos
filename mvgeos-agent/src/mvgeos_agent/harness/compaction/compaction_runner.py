@@ -127,6 +127,63 @@ class CompactionRunner:
         )
         return replacement
 
+    async def force_compact(
+        self,
+        invocations: list[MvgeInvocation],
+        signal: AbortSignal | None = None,
+    ) -> list[MvgeInvocation] | None:
+        """Force manual compaction of invocations regardless of
+        current Mana pressure.
+        """
+        prepared = prepare_compaction(
+            invocations, self._settings, self._previous_summary
+        )
+        if prepared is None:
+            return None
+
+        await self._emit(
+            MvgeEvent(
+                type=MvgeEventType.COMPACTION_START,
+                data={
+                    "mana_before": prepared.mana_before,
+                    "mana_pool": self._model.context_window,
+                },
+            )
+        )
+
+        summary = await generate_summary(
+            prepared.to_summarize, self._summarize, prepared.previous_summary, signal
+        )
+        if summary is None:
+            await self._emit(
+                MvgeEvent(
+                    type=MvgeEventType.COMPACTION_END,
+                    data={"error": "Summarization failed"},
+                )
+            )
+            return None
+
+        replacement: list[MvgeInvocation] = [
+            SummonerRequest(role="user", content=f"{_SUMMARY_PREFIX}{summary}"),
+            *prepared.retained_tail,
+        ]
+        self._previous_summary = summary
+
+        self._record(summary, prepared.mana_before, prepared.retained_tail)
+
+        await self._emit(
+            MvgeEvent(
+                type=MvgeEventType.COMPACTION_END,
+                data={
+                    "mana_before": prepared.mana_before,
+                    "mana_after": estimate_context_mana(replacement).mana,
+                    "summarized": len(prepared.to_summarize),
+                    "retained": len(prepared.retained_tail),
+                },
+            )
+        )
+        return replacement
+
     async def _summarize(
         self,
         messages: list[dict[str, str]],

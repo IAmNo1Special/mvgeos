@@ -469,3 +469,37 @@ def get_default_skill_paths(agent_name: str) -> list[tuple[Path, SkillScope]]:
         path = _resolve_search_path(path_template, agent_name)
         result.append((path, scope))
     return result
+
+
+def discover_plugin_skill_paths(
+    cwd: Path | None = None,
+) -> list[tuple[Path, SkillScope]]:
+    """Discover skill directories inside Agent Plugins.
+
+    Discovers plugins in:
+    - .agents/plugins/*/skills (PROJECT scope)
+    - ~/.agents/plugins/*/skills (USER scope)
+    - ~/.agents/.mvgeos/plugins/*/skills (USER scope)
+
+    Only plugins with valid ``skills/`` directories are returned.
+    """
+    results: list[tuple[Path, SkillScope]] = []
+    base_cwd = cwd if cwd is not None else Path.cwd()
+
+    plugin_candidates: list[tuple[Path, SkillScope]] = [
+        (base_cwd / ".agents" / "plugins", SkillScope.PROJECT),
+        (Path("~/.agents/plugins").expanduser(), SkillScope.USER),
+        (Path("~/.agents/.mvgeos/plugins").expanduser(), SkillScope.USER),
+    ]
+
+    for pdir, scope in plugin_candidates:
+        if not pdir.is_dir():
+            continue
+        for entry in sorted(pdir.iterdir()):
+            if not entry.is_dir() or entry.name.startswith("."):
+                continue
+            skills_sub = entry / "skills"
+            if skills_sub.is_dir():
+                results.append((skills_sub, scope))
+
+    return results

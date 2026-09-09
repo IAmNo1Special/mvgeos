@@ -143,7 +143,7 @@ class TestMvgeInit:
 
     def test_coding_mvge_instance(self) -> None:
         assert root_mvge.name == "coding_mvge"
-        assert len(root_mvge.enabled_spells) == 7
+        assert len(root_mvge.enabled_spells) == 9
         assert set(root_mvge.enabled_spells) == {
             "bash",
             "read",
@@ -152,6 +152,8 @@ class TestMvgeInit:
             "find",
             "list_files",
             "grep",
+            "search_web",
+            "read_url",
         }
 
     def test_default_tome_dir(self) -> None:
