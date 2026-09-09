@@ -1,0 +1,67 @@
+name: Bug Report
+description: File a reproducible bug report or regression in MvgeOS
+title: "fix: "
+labels: ["needs-triage", "bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue with MvgeOS. Please provide clear details and reproduction steps.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component / Package
+      description: Select the primary MvgeOS package affected by this issue.
+      options:
+        - mvgeos-agent (Core loop, session lifecycle, harness)
+        - mvgeos-provider (Realm protocol, OpenRouter streaming)
+        - mvgeos-tome (JSONL persistence, file locking, branching)
+        - mvgeos-runes (Extensions, sigil hooks, sandboxing)
+        - mvgeos-cli (Terminal interface, REPL, CLI commands)
+        - mvgeos-gui (Desktop NiceGUI interface)
+        - coding-mvge (Default coding agent package)
+        - documentation / build / ci
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of the bug.
+      placeholder: Describe what happened and why it is incorrect.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps, command, or script to reproduce the behavior.
+      placeholder: |
+        1. Run 'mvgeos ...'
+        2. Execute ...
+        3. Observe error ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: A concise description of what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Output / Traceback
+      description: Please provide full traceback or terminal logs (use code blocks).
+      render: shell
+    validations:
+      required: false
+  - type: input
+    id: environment
+    attributes:
+      label: Environment Details
+      description: OS version, Python version, uv version (e.g. Windows 11, Python 3.13.2, uv 0.6.0).
+      placeholder: OS: Windows 11 / macOS 15 / Ubuntu 24.04, Python: 3.13.x, uv: x.y.z
+    validations:
+      required: true

@@ -1,0 +1,48 @@
+name: Feature Request
+description: Propose an enhancement, new spell, or architecture capability for MvgeOS
+title: "feat: "
+labels: ["needs-triage", "enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting an improvement for MvgeOS. Please describe the motivation and design from first principles.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Target Component / Package
+      description: Select the primary MvgeOS package targeted by this request.
+      options:
+        - mvgeos-agent (Core loop, session lifecycle, harness)
+        - mvgeos-provider (Realm protocol, OpenRouter streaming)
+        - mvgeos-tome (JSONL persistence, file locking, branching)
+        - mvgeos-runes (Extensions, sigil hooks, sandboxing)
+        - mvgeos-cli (Terminal interface, REPL, CLI commands)
+        - mvgeos-gui (Desktop NiceGUI interface)
+        - coding-mvge (Default coding agent package)
+        - all / architecture
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Motivation
+      description: Is this related to a problem or limitation in the current workflow?
+      placeholder: Describe the current limitation or user friction.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution / Interface
+      description: A detailed description of the suggested behavior, API design, or protocol adherence.
+      placeholder: Describe how this should work, including interfaces or spell signatures where applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative designs, workarounds, or approaches considered.
+    validations:
+      required: false
