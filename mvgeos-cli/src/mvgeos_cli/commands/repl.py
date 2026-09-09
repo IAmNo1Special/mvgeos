@@ -152,14 +152,14 @@ async def _read_initial_prompt(
             multiline=False,
         )
         return result
-    except KeyboardInterrupt, EOFError:
+    except (KeyboardInterrupt, EOFError):
         return None
 
 
 async def _read_fallback_prompt() -> str | None:
     try:
         return await asyncio.to_thread(input, "> ")
-    except KeyboardInterrupt, EOFError:
+    except (KeyboardInterrupt, EOFError):
         return None
 
 

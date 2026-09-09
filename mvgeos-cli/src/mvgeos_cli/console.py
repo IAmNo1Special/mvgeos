@@ -69,6 +69,6 @@ def prompt_api_key(console: Console | None = None) -> str | None:
     try:
         entered = typer.prompt("Enter OpenRouter API key", hide_input=True)
         return entered.strip() if entered else None
-    except KeyboardInterrupt, EOFError, typer.Abort:
+    except (KeyboardInterrupt, EOFError, typer.Abort):
         console.print("[red]Aborted.[/red]")
         return None

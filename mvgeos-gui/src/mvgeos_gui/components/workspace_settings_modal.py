@@ -37,7 +37,7 @@ def render_workspace_settings_modal(state: AppState) -> None:
         try:
             temp = float(edited["temperature"])
             tokens = int(edited["max_tokens"])
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             temp = 0.7
             tokens = 4096
 

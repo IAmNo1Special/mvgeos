@@ -2,7 +2,7 @@
 
 **Last Updated**: 2026-08-20
 **Current Status**: Core engine, provider, tome persistence, rune loader, CLI, desktop GUI, and coding agent implemented with 1,667 passing tests (2 skipped) and 93%+ coverage.
-**Location**: `C:\Users\ivmno\Desktop\mvgeos\`
+**Location**: `.`
 
 ---
 
@@ -24,13 +24,11 @@
 ## 🔧 QUALITY GATES (Always Run Before Committing)
 
 ```bash
-cd C:\Users\ivmno\Desktop\mvgeos
-
-# Tests (must pass, 90%+ coverage floor) — canonical invocations: root TESTING.md
+# Tests (must pass, 88%+ coverage floor) — canonical invocations: root TESTING.md
 uv run python -m pytest --cov
 
 # Type checking (must pass)
-uv run mypy
+uv run mypy .
 
 # Linting (must pass)
 uv run ruff check

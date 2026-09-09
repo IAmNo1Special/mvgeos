@@ -104,7 +104,7 @@ class TomeService:
         """
         try:
             entries = self.ledger.get_entries(tome_id)
-        except ValueError, KeyError:
+        except (ValueError, KeyError):
             return "Conversation"
         for entry in entries:
             if entry.type == TomeEntryType.TOME_INFO:

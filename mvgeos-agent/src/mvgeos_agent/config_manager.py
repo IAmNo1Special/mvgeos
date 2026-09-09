@@ -244,7 +244,7 @@ class ConfigManager:
                 raise ValueError("Invalid temperature value: expected float")
             try:
                 val_float = float(value)
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 raise ValueError("Invalid temperature value: expected float") from None
             if val_float < 0.0 or val_float > 2.0:
                 raise ValueError(
@@ -258,7 +258,7 @@ class ConfigManager:
             if isinstance(value, str):
                 try:
                     val_int = int(value)
-                except ValueError, TypeError:
+                except (ValueError, TypeError):
                     raise ValueError("Invalid max_tokens value: expected int") from None
             elif isinstance(value, int):
                 val_int = value
@@ -298,7 +298,7 @@ class ConfigManager:
             if isinstance(value, str):
                 try:
                     val_int = int(value)
-                except ValueError, TypeError:
+                except (ValueError, TypeError):
                     raise ValueError(
                         "Invalid contemplation_budget value: "
                         "expected integer >= 0 or null"
@@ -398,5 +398,5 @@ class ConfigManager:
             if not isinstance(data, dict):
                 return {}
             return data
-        except json.JSONDecodeError, OSError:
+        except (json.JSONDecodeError, OSError):
             return {}

@@ -431,7 +431,7 @@ class AppState:
         ledger = self.tome_service.ledger
         try:
             entries = ledger.get_entries(tome_id)
-        except ValueError, KeyError:
+        except (ValueError, KeyError):
             self.messages = []
             return
 

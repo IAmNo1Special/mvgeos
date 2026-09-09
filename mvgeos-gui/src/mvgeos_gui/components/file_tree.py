@@ -24,7 +24,7 @@ def _render_tree(state: AppState, root: Path, path: Path, depth: int) -> None:
     """Recursively render a directory tree."""
     try:
         entries = sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
-    except PermissionError, OSError:
+    except (PermissionError, OSError):
         return
 
     for entry in entries:

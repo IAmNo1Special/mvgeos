@@ -47,7 +47,7 @@ class LockMetadata:
             if "pid" not in data or "timestamp" not in data or "host" not in data:
                 return None
             return cls.from_dict(data)
-        except json.JSONDecodeError, KeyError, ValueError, TypeError:
+        except (json.JSONDecodeError, KeyError, ValueError, TypeError):
             return None
 
 
@@ -83,7 +83,7 @@ def _is_windows_process_alive(pid: int) -> bool:
             return False
         finally:
             kernel32.CloseHandle(handle)
-    except OSError, ValueError:
+    except (OSError, ValueError):
         return False
 
 
@@ -138,7 +138,7 @@ class FileLock:
         try:
             content = self._meta_path.read_text(encoding="utf-8")
             return LockMetadata.from_json(content)
-        except OSError, ValueError:
+        except (OSError, ValueError):
             return None
 
     def _write_metadata(self) -> None:

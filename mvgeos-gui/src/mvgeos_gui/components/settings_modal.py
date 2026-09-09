@@ -38,14 +38,14 @@ def render_app_settings_modal(state: AppState) -> None:
             mana_limit = int(edited["mana_limit"])
             if mana_limit <= 0:
                 raise ValueError("Mana limit must be positive")
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             ui.notify("Invalid mana limit: must be a positive integer", type="negative")
             return
         try:
             temperature = float(edited["temperature"])
             if temperature < 0.0 or temperature > 2.0:
                 raise ValueError("Temperature must be between 0.0 and 2.0")
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             ui.notify(
                 "Invalid temperature: must be between 0.0 and 2.0",
                 type="negative",

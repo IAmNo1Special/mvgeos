@@ -3,7 +3,7 @@
 ## Setup
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/IAmNo1Special/mvgeos.git
 cd mvgeos
 uv sync
 pre-commit install
@@ -21,14 +21,14 @@ pre-commit install
 Testing standards are defined in [TESTING.md](TESTING.md). Canonical invocations use the module form (`uv run python -m pytest ...`) — on Windows, direct executable spawn is blocked by Application Control policy.
 
 ```bash
-# Full suite with the 90% combined coverage floor
+# Full suite with the 88% combined coverage floor (fail_under)
 uv run python -m pytest --cov
 
 # One package, both tiers
 uv run python -m pytest mvgeos-agent/tests
 ```
 
-Requirement: all tests passing, 90% combined coverage floor enforced via pyproject.
+Requirement: all tests passing, 88% combined coverage floor enforced via pyproject (target 90%+).
 
 ## Architecture Decision Records
 

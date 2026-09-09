@@ -51,7 +51,7 @@ def _load_models_json() -> list[tuple[str, str, int, list[str], bool]]:
                 params = entry[3] if len(entry) > 3 else []
                 result.append((mid, name, ctx, params, is_free))
         return result
-    except json.JSONDecodeError, OSError:
+    except (json.JSONDecodeError, OSError):
         return []
 
 
@@ -138,7 +138,7 @@ class ModelRegistry:
             return False
         try:
             data = json.loads(self._cache_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError, OSError:
+        except (json.JSONDecodeError, OSError):
             return False
         timestamp = data.get("_cached_at", 0)
         if time.time() - timestamp > self._cache_ttl_seconds:
@@ -255,5 +255,5 @@ def _is_free_entry(entry: dict[str, Any]) -> bool:
             float(pricing.get("prompt", "1")) == 0
             and float(pricing.get("completion", "1")) == 0
         )
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         return False

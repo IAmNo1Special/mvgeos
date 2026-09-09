@@ -2,7 +2,7 @@
 name = "mvgeos"
 version = "1.14.1"
 description = "MvgeOS — a Python-based AI coding agent"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 license = "MIT"
 dependencies = []
 
@@ -50,7 +50,7 @@ coding-mvge = { workspace = true, editable = true }
 
 [tool.ruff]
 line-length = 88
-target-version = "py314"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = [
@@ -74,7 +74,7 @@ select = [
 "*/__init__.py" = ["E402", "F401"]
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.13"
 strict = true
 # warn_unreachable is the one strict-mode gap worth closing explicitly;
 # every other previously listed flag is implied by strict or default-on.

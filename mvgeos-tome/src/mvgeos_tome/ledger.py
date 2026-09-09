@@ -560,7 +560,7 @@ class TomeLedger:
                 )
         except TomeVersionError:
             raise
-        except json.JSONDecodeError, KeyError, ValueError:
+        except (json.JSONDecodeError, KeyError, ValueError):
             return None
 
     def _read_tome_entries(self, tome_id: str) -> list[TomeEntry]:
@@ -806,7 +806,7 @@ class TomeLedger:
                                                 raw_line=header_raw,
                                             )
                                         )
-                                except ValueError, TypeError:
+                                except (ValueError, TypeError):
                                     issues.append(
                                         TomeIntegrityIssue(
                                             line_number=1,

@@ -85,7 +85,7 @@ def get_git_branch() -> str | None:
             text=True,
             timeout=2,
         )
-    except OSError, subprocess.SubprocessError:
+    except (OSError, subprocess.SubprocessError):
         return None
     if result.returncode != 0:
         return None

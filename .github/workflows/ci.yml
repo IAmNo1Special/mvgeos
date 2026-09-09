@@ -87,14 +87,31 @@ jobs:
       - run: uv run ruff format --check
       - run: uv run mypy .
 
+  # Cross-platform test verification: validates execution on Windows and macOS.
+  test-crossplatform:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --all-packages
+      - name: Full test suite on ${{ matrix.os }}
+        run: uv run python -m pytest
+
   # Release automation: needs IS the wait-for-green. This job only starts
-  # once test + coverage + lint all succeeded, so every tag sits on verified
+  # once test + coverage + lint + crossplatform all succeeded, so every tag sits on verified
   # code by construction. Pushes a chore(release) commit + v* tag and
   # dispatches release.yml (tag pushes via GITHUB_TOKEN don't trigger
   # workflows due to GitHub's loop guard). PR runs and the bot's own
   # release commits skip via the if guard below.
   bump:
-    needs: [test, coverage, lint]
+    needs: [test, coverage, lint, test-crossplatform]
     if: >-
       github.event_name == 'push' &&
       !contains(github.event.head_commit.message, 'chore(release):')

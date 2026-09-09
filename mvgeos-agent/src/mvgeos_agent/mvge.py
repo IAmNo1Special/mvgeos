@@ -121,7 +121,7 @@ def _validate_spell_signature(spell: Any) -> bool:
         return False
     try:
         sig = inspect.signature(execute_fn)
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         return False
 
     try:

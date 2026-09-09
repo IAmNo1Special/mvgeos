@@ -139,7 +139,7 @@ class ConfigService:
                 k: v for k, v in data.items() if k in AppSettings.__dataclass_fields__
             }
             settings = AppSettings(**valid)
-        except json.JSONDecodeError, TypeError:
+        except (json.JSONDecodeError, TypeError):
             return AppSettings()
 
         # Backfill from keyring if the file has no api_key but the keyring
@@ -160,7 +160,7 @@ class ConfigService:
                 existing = json.loads(
                     self.app_settings_path.read_text(encoding="utf-8")
                 )
-            except json.JSONDecodeError, OSError:
+            except (json.JSONDecodeError, OSError):
                 existing = {}
 
         merged = {**existing, **self._settings_to_dict(settings)}

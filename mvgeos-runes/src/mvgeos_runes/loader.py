@@ -188,7 +188,7 @@ def load_factory_from_manifest(
                     )
                 )
             return None
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         pass
 
     return cast(RuneFactory, factory)

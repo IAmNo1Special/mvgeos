@@ -1,16 +1,16 @@
 # 🧙‍♂️ MvgeOS
 
-[![Python](https://img.shields.io/badge/python-3.14%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type Checking: mypy](https://img.shields.io/badge/type%20checking-mypy%20strict-blue.svg)](https://mypy-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-1640%2B%20passed-brightgreen.svg)]()
-[![Coverage](https://img.shields.io/badge/coverage-93%25%2B-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-2070%2B%20passed-brightgreen.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-88%25%2B%20enforced-brightgreen.svg)]()
 
 > **MvgeOS** is a modern, extensible, protocol-compliant AI coding agent architecture built in Python.
 
-Mvges (Agents) invoke Spells (Tools) across Models through Realms (Providers) on behalf of Summoners (Users), storing state and conversation history in Pi-compatible JSONL Tomes (Sessions).
+Mvges (Agents) invoke Spells (Tools) across Models through Realms (Providers) on behalf of Summoners (Users), storing state and conversation history in Pi-compatible JSONL Tomes (Sessions). See [Architecture Provenance](docs/architecture/PROVENANCE.md) for ecosystem inspirations and the cross-harness continuity roadmap.
 
 ---
 
@@ -32,13 +32,13 @@ MvgeOS is organized as a monorepo powered by `uv` workspaces:
 
 | Package | Purpose |
 | --- | --- |
-| [`mvgeos-agent`](file:///c:/Users/ivmno/Desktop/mvgeos/mvgeos-agent/AGENTS.md) | Core Mvge loop, invocations, state, spell execution, and MvgeHarness session lifecycle |
-| [`mvgeos-provider`](file:///c:/Users/ivmno/Desktop/mvgeos/mvgeos-provider/AGENTS.md) | Realm protocol, model registry, retry policies, and OpenRouter provider |
-| [`mvgeos-tome`](file:///c:/Users/ivmno/Desktop/mvgeos/mvgeos-tome/AGENTS.md) | JSONL session persistence with cross-process file locking and in-memory index |
-| [`mvgeos-runes`](file:///c:/Users/ivmno/Desktop/mvgeos/mvgeos-runes/AGENTS.md) | Extension system: manifest parser, loader, watcher, and sigil hooks |
-| [`mvgeos-cli`](file:///c:/Users/ivmno/Desktop/mvgeos/mvgeos-cli/AGENTS.md) | CLI commands (`mvgeos`), REPL, and TUI interface |
-| [`mvgeos-gui`](file:///c:/Users/ivmno/Desktop/mvgeos/mvgeos-gui/AGENTS.md) | Native desktop application powered by NiceGUI with 1:1 Antigravity UI |
-| [`coding-mvge`](file:///c:/Users/ivmno/Desktop/mvgeos/coding-mvge/AGENTS.md) | Concrete coding agent implementation with built-in development spells |
+| [`mvgeos-agent`](mvgeos-agent/AGENTS.md) | Core Mvge loop, invocations, state, spell execution, and MvgeHarness session lifecycle |
+| [`mvgeos-provider`](mvgeos-provider/AGENTS.md) | Realm protocol, model registry, retry policies, and OpenRouter provider |
+| [`mvgeos-tome`](mvgeos-tome/AGENTS.md) | JSONL session persistence with cross-process file locking and in-memory index |
+| [`mvgeos-runes`](mvgeos-runes/AGENTS.md) | Extension system: manifest parser, loader, watcher, and sigil hooks |
+| [`mvgeos-cli`](mvgeos-cli/AGENTS.md) | CLI commands (`mvgeos`), REPL, and TUI interface |
+| [`mvgeos-gui`](mvgeos-gui/AGENTS.md) | Native desktop application powered by NiceGUI with 1:1 Antigravity UI |
+| [`coding-mvge`](coding-mvge/AGENTS.md) | Concrete coding agent implementation with built-in development spells |
 
 ---
 
@@ -67,7 +67,7 @@ MvgeOS adopts a consistent domain language across all packages:
 
 ### Prerequisites
 
-- **Python**: `>= 3.14`
+- **Python**: `>= 3.13`
 - **Package Manager**: [`uv`](https://github.com/astral-sh/uv)
 - **API Key**: [OpenRouter API Key](https://openrouter.ai/)
 
@@ -156,7 +156,7 @@ All code in MvgeOS is developed using strict TDD (Test-Driven Development) and a
 uv run python -m pytest --cov
 
 # Run type checker in strict mode
-uv run mypy
+uv run mypy .
 
 # Run linter
 uv run ruff check
@@ -164,6 +164,13 @@ uv run ruff check
 # Verify formatting
 uv run ruff format --check
 ```
+
+---
+
+## 🔒 Security & Architecture Provenance
+
+- **Security Policy**: For vulnerability reporting, prompt injection threat models, and local execution safeguards, review [SECURITY.md](SECURITY.md).
+- **Architecture Provenance**: To learn about the origins of MvgeOS, its ecosystem inspirations (Pi, Google ADK, Eve, arXiv literature), and the cross-harness session continuity roadmap, review [PROVENANCE.md](docs/architecture/PROVENANCE.md).
 
 ---
 
@@ -184,7 +191,7 @@ uv run git-cliff --config cliff.toml --output CHANGELOG.md
 
 ## 📄 License
 
-This project is licensed under the [MIT License](file:///c:/Users/ivmno/Desktop/mvgeos/LICENSE).
+This project is licensed under the [MIT License](LICENSE).
 
 ---
 

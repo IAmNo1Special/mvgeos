@@ -420,7 +420,7 @@ def coerce_agent_config(
         if isinstance(raw_temp, bool):
             raise TypeError("temperature cannot be boolean")
         temperature = float(raw_temp)
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         logger.warning(
             "Invalid temperature in config (%r); falling back to default %s",
             raw_temp,
@@ -434,7 +434,7 @@ def coerce_agent_config(
         if isinstance(raw_max_tokens, bool):
             raise TypeError("max_tokens cannot be boolean")
         max_tokens = int(raw_max_tokens)
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         logger.warning(
             "Invalid max_tokens in config (%r); falling back to default %s",
             raw_max_tokens,
@@ -463,7 +463,7 @@ def coerce_agent_config(
             if isinstance(raw_budget, bool):
                 raise TypeError("contemplation_budget cannot be boolean")
             contemplation_budget = int(raw_budget)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             logger.warning(
                 "Invalid contemplation_budget in config (%r); "
                 "falling back to default None",
