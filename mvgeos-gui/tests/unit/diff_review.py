@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 from nicegui import ui
 from nicegui.testing import User
@@ -130,3 +132,46 @@ async def test_render_diff_review_modal_close_button(user: User) -> None:
 
     await user.open("/test_diff_close")
     await user.should_see("src/main.py")
+
+
+@pytest.mark.asyncio
+async def test_render_diff_review_modal_side_by_side_mode(user: User) -> None:
+    """Verify switching to side-by-side mode and back to unified."""
+    view = _make_diff_view()
+    state = AppState()
+    state._selected_diff_path = view.file_path
+
+    @ui.page("/test_diff_sbs")
+    def page() -> None:
+        render_diff_modal(state, view)
+
+    await user.open("/test_diff_sbs")
+    user.find(marker="side_by_side_view_btn").click()
+    await user.should_see("import os")
+    await user.should_see("print('hello world')")
+
+    user.find(marker="unified_view_btn").click()
+    await user.should_see("import os")
+
+
+@pytest.mark.asyncio
+async def test_render_diff_review_modal_close_event_clears_selection(
+    user: User,
+) -> None:
+    """Verify closing the modal triggers clear_diff_selection."""
+    view = _make_diff_view()
+    state = AppState()
+    state._selected_diff_path = view.file_path
+    state.clear_diff_selection = MagicMock()
+
+    @ui.page("/test_diff_close_event")
+    def page() -> None:
+        render_diff_modal(state, view)
+
+    await user.open("/test_diff_close_event")
+    dialog = next(iter(user.find(ui.dialog).elements))
+    listener_id = next(
+        k for k, v in dialog._event_listeners.items() if v.type == "close"
+    )
+    dialog._handle_event({"listener_id": listener_id, "args": None})
+    state.clear_diff_selection.assert_called_once()

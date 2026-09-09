@@ -24,7 +24,7 @@
 ## 🔧 QUALITY GATES (Always Run Before Committing)
 
 ```bash
-# Tests (must pass, 88%+ coverage floor) — canonical invocations: root TESTING.md
+# Tests (must pass, 90%+ coverage floor) — canonical invocations: root TESTING.md
 uv run python -m pytest --cov
 
 # Type checking (must pass)

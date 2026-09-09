@@ -108,3 +108,48 @@ async def test_workspace_settings_modal_does_not_render_when_hidden(
 
     await user.open("/test_workspace_hidden")
     await user.should_not_see("Project Settings")
+
+
+@pytest.mark.asyncio
+async def test_workspace_settings_modal_save_success(
+    user: User, tmp_path: Path
+) -> None:
+    """Clicking Save should persist workspace settings and hide modal."""
+    project_dir = tmp_path / "my-project"
+    project_dir.mkdir()
+    state = _make_state(tmp_path, project_dir)
+
+    @ui.page("/test_workspace_save_action")
+    def page() -> None:
+        render_workspace_settings_modal(state)
+
+    await user.open("/test_workspace_save_action")
+    name_input = next(iter(user.find(marker="project_name_input").elements))
+    name_input.set_value("new-project-name")
+
+    user.find("Save").click()
+    assert state._show_workspace_settings is False
+    saved = state._config_service.load_workspace_settings(project_dir)
+    assert saved.project_name == "new-project-name"
+
+
+@pytest.mark.asyncio
+async def test_workspace_settings_modal_cancel_action(
+    user: User, tmp_path: Path
+) -> None:
+    """Closing the dialog should invoke _on_close and hide modal."""
+    project_dir = tmp_path / "my-project"
+    project_dir.mkdir()
+    state = _make_state(tmp_path, project_dir)
+
+    @ui.page("/test_workspace_cancel_action")
+    def page() -> None:
+        render_workspace_settings_modal(state)
+
+    await user.open("/test_workspace_cancel_action")
+    dialog = next(iter(user.find(ui.dialog).elements))
+    listener_id = next(
+        k for k, v in dialog._event_listeners.items() if v.type == "close"
+    )
+    dialog._handle_event({"listener_id": listener_id, "args": None})
+    assert state._show_workspace_settings is False

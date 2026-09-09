@@ -22,7 +22,7 @@ def _sanitize_filename(name: str) -> str:
     and limits length to 255 characters.
     """
     # Replace invalid characters with underscore
-    sanitized = re.sub(r'[<>:"\/|?*\x00-\x1f]', "_", name)
+    sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name)
     # Collapse multiple underscores
     sanitized = re.sub(r"_+", "_", sanitized)
     # Strip leading/trailing dots and spaces (Windows issues)

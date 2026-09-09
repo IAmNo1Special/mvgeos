@@ -5,15 +5,19 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from mvgeos_runes.rune_runner import RuneRunner
-from mvgeos_runes.types import SigilHook
+from mvgeos_runes.types import Diagnostic, DiagnosticKind, SigilHook
 from mvgeos_tome.ledger import TomeLedger
 from mvgeos_tome.types import TomeEntryType, TomeMetadata
 
-from mvgeos_agent.agent_session import MvgeTome
+from mvgeos_agent.agent_session import MvgeTome, _serialise_invocation
+from mvgeos_agent.compatibility import SessionCompatibilityReport
 from mvgeos_agent.types import (
+    ContentType,
     MvgeResponse,
+    SpellResultMessage,
     StopReason,
     SummonerRequest,
+    TomeIncompatibleError,
     TomeResumeError,
 )
 
@@ -854,3 +858,248 @@ class TestTomeAsync:
 
             entries = await ledger.get_entries_async(tome.tome_id)
             assert len([e for e in entries if e.payload.get("role") == "user"]) == 30
+
+
+class TestAgentSessionCoverageExtensions:
+    """Tests targeting uncovered branches and edge cases in agent_session."""
+
+    def test_serialise_invocation_non_dataclass(self) -> None:
+        """_serialise_invocation handles non-dataclass objects gracefully."""
+
+        class NonDataclass:
+            role = "custom_role"
+
+        res = _serialise_invocation(NonDataclass())
+        assert res == {"role": "custom_role"}
+
+        res_bare = _serialise_invocation(object())
+        assert res_bare == {"role": "unknown"}
+
+    def test_sync_properties_and_accessors(self) -> None:
+        """Verify ledger, tome_id, metadata, active_leaf_id, and entries accessors."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, ledger = _temp_tome(tmp)
+            assert tome.ledger is ledger
+            assert tome.tome_id == tome.metadata.id
+            assert tome.compatibility_report is None
+            assert tome.active_leaf_id is None
+            tome.record_message(role="user", content="hello")
+            assert tome.active_leaf_id is not None
+            assert len(tome.get_entries()) >= 1
+            assert len(tome.get_context_entries()) >= 1
+
+    @pytest.mark.asyncio
+    async def test_start_and_shutdown_idempotence(self) -> None:
+        """start returns early if started; shutdown returns early if not started."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, _ledger = _temp_tome(tmp)
+            tome._started = True
+            # Calling start while started is a no-op
+            await tome.start()
+
+            tome._started = False
+            # Calling shutdown while not started is a no-op
+            await tome.shutdown()
+
+            tome._started = True
+            await tome.shutdown(reason="switch", target_session_file="other.jsonl")
+            assert tome._started is False
+
+    def test_advance_leaf_edge_cases(self) -> None:
+        """_advance_leaf handles None and catches exceptions."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, ledger = _temp_tome(tmp)
+            tome._advance_leaf(None)
+
+            entry = tome.record_message(role="user", content="hello")
+            assert entry is not None
+
+            # When ledger raises, _advance_leaf catches and logs
+            ledger.append_leaf = MagicMock(side_effect=RuntimeError("disk error"))
+            tome._advance_leaf(entry)
+
+    @pytest.mark.asyncio
+    async def test_advance_leaf_async_edge_cases(self) -> None:
+        """_advance_leaf_async handles None and catches exceptions."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, ledger = _temp_tome(tmp)
+            await tome._advance_leaf_async(None)
+
+            entry = await tome.record_message_async(role="user", content="hello")
+            assert entry is not None
+
+            ledger.append_leaf_async = AsyncMock(
+                side_effect=RuntimeError("async error")
+            )
+            await tome._advance_leaf_async(entry)
+
+    def test_record_compaction_and_custom_sync(self) -> None:
+        """Test record_compaction and record_custom when stopped vs running."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, _ledger = _temp_tome(tmp)
+            tome._started = False
+            assert (
+                tome.record_compaction(
+                    summary="sum",
+                    mana_before=100,
+                    retained_tail=[],
+                )
+                is None
+            )
+            assert tome.record_custom("custom_type") is None
+
+            tome._started = True
+            c_entry = tome.record_compaction(
+                summary="sum",
+                mana_before=100,
+                retained_tail=[],
+                first_kept_entry_id="k-1",
+                parent_id="p-1",
+            )
+            assert c_entry is not None
+
+            cust_entry = tome.record_custom(
+                custom_type="meta",
+                data={"key": "val"},
+                parent_id="p-1",
+            )
+            assert cust_entry is not None
+
+            cust_entry_default_parent = tome.record_custom(
+                custom_type="meta",
+                data={"key": "val"},
+                parent_id=None,
+            )
+            assert cust_entry_default_parent is not None
+
+    @pytest.mark.asyncio
+    async def test_safe_emit_error_handling(self) -> None:
+        """_safe_emit and _safe_emit_first catch exceptions from rune runner."""
+        runner = MagicMock()
+        runner.emit_async = AsyncMock(side_effect=RuntimeError("emit fail"))
+        runner.emit_first = AsyncMock(side_effect=RuntimeError("emit_first fail"))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = TomeLedger(Path(tmp))
+            meta = ledger.create_tome("/tmp")
+            tome = MvgeTome(ledger, meta, runner)
+
+            # Neither should raise
+            await tome._safe_emit(SigilHook.SESSION_START, {})
+            res = await tome._safe_emit_first(SigilHook.SESSION_START, {})
+            assert res is None
+
+            tome.bind_runner(None)
+            await tome._safe_emit(SigilHook.SESSION_START, {})
+            assert await tome._safe_emit_first(SigilHook.SESSION_START, {}) is None
+
+    @pytest.mark.asyncio
+    async def test_open_force_fork_failure_raises_tome_incompatible(self) -> None:
+        """When force_fork=True and fork raises, TomeIncompatibleError is raised."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = TomeLedger(Path(tmp))
+            meta = ledger.create_tome("/tmp", model="old-model")
+
+            # Mock validate_session_compatibility to return incompatible report
+            report = SessionCompatibilityReport(
+                compatible=False,
+                tome_id=meta.id,
+                diagnostics=[
+                    Diagnostic(
+                        kind=DiagnosticKind.MODEL_MISMATCH,
+                        rune_name="core",
+                        message="mismatch",
+                    )
+                ],
+                model_mismatch=("old-model", "new-model"),
+            )
+            with (
+                pytest.MonkeyPatch.context() as mp,
+            ):
+                mp.setattr(
+                    "mvgeos_agent.agent_session.validate_session_compatibility",
+                    lambda *args, **kwargs: report,
+                )
+                ledger.create_branched_tome = MagicMock(
+                    side_effect=RuntimeError("fork failed")
+                )
+
+                with pytest.raises(TomeIncompatibleError) as exc_info:
+                    await MvgeTome.open(
+                        ledger,
+                        meta.id,
+                        force_fork=True,
+                        strict=True,
+                    )
+                assert exc_info.value.model_mismatch == ("old-model", "new-model")
+
+    def test_reconstruct_invocations_complex_types(self) -> None:
+        """Reconstruct invocations with compaction and spellResult messages."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, _ledger = _temp_tome(tmp)
+
+            # Record a compaction with various retainedTail formats
+            retained_tail = [
+                SummonerRequest(role="user", content="user query"),
+                MvgeResponse(
+                    role="assistant",
+                    content=[{"type": ContentType.TEXT, "text": "blocks"}],
+                    stop_reason=StopReason.STOP,
+                ),
+                MvgeResponse(
+                    role="assistant",
+                    content="str response",  # type: ignore[arg-type]
+                    stop_reason=StopReason.STOP,
+                ),
+                MvgeResponse(
+                    role="assistant",
+                    content=12345,  # type: ignore[arg-type]
+                    stop_reason=StopReason.STOP,
+                ),
+                SpellResultMessage(
+                    role="spellResult",
+                    content=[{"type": ContentType.TEXT, "text": "result"}],
+                    spell_name="bash",
+                    spell_cast_id="c1",
+                ),
+                SpellResultMessage(
+                    role="tool",
+                    content="tool string",  # type: ignore[arg-type]
+                    spell_name="read",
+                    spell_cast_id="c2",
+                ),
+                SpellResultMessage(
+                    role="spellResult",
+                    content=999,  # type: ignore[arg-type]
+                    spell_name="calc",
+                    spell_cast_id="c3",
+                ),
+            ]
+            comp = tome.record_compaction(
+                summary="summary text",
+                mana_before=500,
+                retained_tail=retained_tail,
+            )
+            assert comp is not None
+            tome._advance_leaf(comp)
+
+            # Record direct spellResult and tool messages
+            tome.record_message(
+                role="spellResult",
+                content=[{"type": ContentType.TEXT, "text": "res"}],
+            )
+            tome.record_message(
+                role="tool",
+                content="str content",
+            )
+            tome.record_message(
+                role="spellResult",
+                content=777,
+            )
+
+            invocations = tome.reconstruct_invocations()
+            assert len(invocations) > 0
+            roles = [inv.role for inv in invocations]
+            assert "user" in roles
+            assert "assistant" in roles
+            assert "spellResult" in roles

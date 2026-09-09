@@ -5,8 +5,8 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type Checking: mypy](https://img.shields.io/badge/type%20checking-mypy%20strict-blue.svg)](https://mypy-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-2070%2B%20passed-brightgreen.svg)]()
-[![Coverage](https://img.shields.io/badge/coverage-88%25%2B%20enforced-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-2150%2B%20passed-brightgreen.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-90%25%2B%20enforced-brightgreen.svg)]()
 
 > **MvgeOS** is a modern, extensible, protocol-compliant AI coding agent architecture built in Python.
 
