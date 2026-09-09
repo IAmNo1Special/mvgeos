@@ -19,6 +19,7 @@ env/
 Thumbs.db
 .env
 .env.*
+!.env.example
 .coverage
 htmlcov/
 .pytest_cache/

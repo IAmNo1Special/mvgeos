@@ -84,10 +84,13 @@ uv sync
 
 ### Environment Configuration
 
-Set your OpenRouter API key:
+Copy the example configuration or set your OpenRouter API key directly:
 
 ```bash
-# Linux / macOS
+# Copy template to .env
+cp .env.example .env
+
+# Or export in shell (Linux / macOS)
 export OPENROUTER_API_KEY="your-openrouter-api-key"
 
 # Windows PowerShell
