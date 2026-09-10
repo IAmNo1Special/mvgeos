@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from mvgeos_agent.truncate import DEFAULT_MAX_BYTES
 from mvgeos_agent.types import SpellStatus
 
 from coding_mvge.spells import find
@@ -105,8 +106,12 @@ class TestFindSpell:
 
     @pytest.mark.asyncio
     async def test_find_byte_limit_notice(self, tmp_path: Path) -> None:
-        for i in range(300):
-            (tmp_path / f"{'n' * 100}{i:03d}.py").touch()
+        probe = tmp_path / f"{'n' * 100}0000.py"
+        probe.touch()
+        entry_len = len(str(probe)) + 1
+        count = min((DEFAULT_MAX_BYTES + 8192) // entry_len + 1, 1500)
+        for i in range(count):
+            (tmp_path / f"{'n' * 100}{i:04d}.py").touch()
 
         result = await find("*.py", str(tmp_path))
         assert result.status == SpellStatus.SUCCESS
