@@ -36,4 +36,4 @@ learning_proposal.md
 *.db
 *.db-shm
 *.db-wal
-
+.nicegui/
