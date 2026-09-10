@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import httpx
 import pytest
 from mvgeos_agent.types import AbortController, AbortError, SpellStatus
@@ -155,3 +157,215 @@ async def test_read_url_invalid_scheme() -> None:
     result = await read_url("file:///etc/passwd")
     assert result.status == SpellStatus.ERROR
     assert "Invalid URL" in (result.error_message or "")
+
+
+@pytest.mark.asyncio
+async def test_read_url_aborted_before_fetch() -> None:
+    controller = AbortController()
+    controller.abort()
+    with pytest.raises(AbortError):
+        await read_url("https://example.com", signal=controller.signal)
+
+
+@pytest.mark.asyncio
+async def test_read_url_aborted_after_fetch() -> None:
+    controller = AbortController()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        controller.abort()
+        return httpx.Response(200, text="Hello world")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    with pytest.raises(AbortError):
+        await read_url("https://example.com", signal=controller.signal, client=client)
+
+
+@pytest.mark.asyncio
+async def test_read_url_http_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, text="Not Found")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    result = await read_url("https://example.com/missing", client=client)
+    assert result.status == SpellStatus.ERROR
+    assert "HTTP 404" in (result.error_message or "")
+
+
+@pytest.mark.asyncio
+async def test_read_url_empty_content() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            text="<html><body>   </body></html>",
+            headers={"Content-Type": "text/html"},
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    result = await read_url("https://example.com/empty", client=client)
+    assert result.status == SpellStatus.SUCCESS
+    assert "returned empty content" in (result.content or "")
+
+
+@pytest.mark.asyncio
+async def test_read_url_without_title_and_with_br_and_headings() -> None:
+    html = "<h2>Subtitle</h2><br><p>Text with line break<br/></p><h3>Section</h3>"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=html, headers={"Content-Type": "text/html"})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    result = await read_url("https://example.com/notitle", client=client)
+    assert result.status == SpellStatus.SUCCESS
+    content = result.content or ""
+    assert "## Subtitle" in content
+    assert "### Section" in content
+    assert "Text with line break" in content
+
+
+@pytest.mark.asyncio
+async def test_read_url_network_exception() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("Connection refused")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    result = await read_url("https://example.com/broken", client=client)
+    assert result.status == SpellStatus.ERROR
+    assert "Connection refused" in (result.error_message or "")
+
+
+@pytest.mark.asyncio
+async def test_read_url_default_client_mocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock_response = httpx.Response(
+        200, text="Default client content", headers={"Content-Type": "text/plain"}
+    )
+
+    class MockAsyncClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self) -> MockAsyncClient:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            pass
+
+        async def get(self, url: str, **kwargs: object) -> httpx.Response:
+            return mock_response
+
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    result = await read_url("https://example.com/default-client")
+    assert result.status == SpellStatus.SUCCESS
+    assert result.content == "Default client content"
+
+
+@pytest.mark.asyncio
+async def test_search_web_empty_results() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, text="<html><body><div class='no-results'>None</div></body></html>"
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    result = await search_web("xyznonexistent12345", client=client)
+    assert result.status == SpellStatus.SUCCESS
+    assert "No search results found" in (result.content or "")
+
+
+@pytest.mark.asyncio
+async def test_search_web_aborted_after_fetch() -> None:
+    controller = AbortController()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        controller.abort()
+        return httpx.Response(200, text="<html><body></body></html>")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    with pytest.raises(AbortError):
+        await search_web("query", signal=controller.signal, client=client)
+
+
+@pytest.mark.asyncio
+async def test_search_web_network_exception() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("DNS failure")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    result = await search_web("query", client=client)
+    assert result.status == SpellStatus.ERROR
+    assert "DNS failure" in (result.error_message or "")
+
+
+@pytest.mark.asyncio
+async def test_search_web_default_client_mocked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ddg_html = """
+    <html><body>
+    <div class="result results_links results_links_deep web-result">
+      <a class="result__a" href="//example.com/test">Test Title</a>
+      <a class="result__snippet">Test snippet description.</a>
+    </div>
+    </body></html>
+    """
+    mock_response = httpx.Response(200, text=ddg_html)
+
+    class MockAsyncClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self) -> MockAsyncClient:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            pass
+
+        async def post(self, url: str, **kwargs: object) -> httpx.Response:
+            return mock_response
+
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    result = await search_web("test")
+    assert result.status == SpellStatus.SUCCESS
+    assert "[Test Title](https://example.com/test)" in (result.content or "")
+
+
+def test_clean_ddg_url_helper() -> None:
+    from coding_mvge.spells.search_web import _clean_ddg_url
+
+    assert _clean_ddg_url("") == ""
+    assert _clean_ddg_url("//example.com") == "https://example.com"
+    assert _clean_ddg_url("https://example.com/direct") == "https://example.com/direct"
+    assert (
+        _clean_ddg_url("https://duckduckgo.com/l/?uddg=https%3A%2F%2Fpython.org&rut=1")
+        == "https://python.org"
+    )
+    assert (
+        _clean_ddg_url("https://duckduckgo.com/l/?uddg=")
+        == "https://duckduckgo.com/l/?uddg="
+    )
+
+
+def test_ddg_parser_close_flush() -> None:
+    from coding_mvge.spells.search_web import _DuckDuckGoHTMLParser
+
+    parser = _DuckDuckGoHTMLParser()
+    # Feed an unclosed result tag at EOF
+    parser.feed('<a class="result__a" href="https://example.com">Unclosed Item</a>')
+    parser.close()
+    assert len(parser.results) == 1
+    assert parser.results[0]["title"] == "Unclosed Item"
+    assert parser.results[0]["url"] == "https://example.com"
+
+
+def test_ddg_parser_consecutive_a_tags() -> None:
+    from coding_mvge.spells.search_web import _DuckDuckGoHTMLParser
+
+    parser = _DuckDuckGoHTMLParser()
+    # Feed two result__a tags consecutively without closing container
+    parser.feed(
+        '<a class="result__a" href="https://one.com">Item One</a>'
+        '<a class="result__a" href="https://two.com">Item Two</a>'
+    )
+    parser.close()
+    assert len(parser.results) == 2
+    assert parser.results[0]["title"] == "Item One"
+    assert parser.results[1]["title"] == "Item Two"
