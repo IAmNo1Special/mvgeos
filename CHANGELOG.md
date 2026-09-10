@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-09-10
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (4c656af)
+
+- ignore .nicegui directory (b7f4681)
+
+- **release:** v2.1.0 (708bf38)
+
+
+### Features
+
+- **gui:** restyle desktop GUI to space-black Void theme (1616f7d)
+
+
 ## [2.0.0] - 2026-09-10
 
 
