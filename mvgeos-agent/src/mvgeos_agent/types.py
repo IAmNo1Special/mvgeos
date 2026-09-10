@@ -223,7 +223,7 @@ class MvgeSpell:
         params: dict[str, Any],
         signal: AbortSignal | None = None,
         on_update: Any | None = None,
-    ) -> dict[str, Any] | str:
+    ) -> dict[str, Any] | str | SpellResult:
         raise NotImplementedError
 
 

@@ -388,7 +388,7 @@ All 7 spells implemented:
 - `cast_write` - File writing with parent dir creation
 - `cast_edit` - String replacement in files
 - `cast_find` - Glob pattern file finding
-- `cast_list` - Directory listing (recursive/non-recursive)
+- `cast_list` - Single-directory listing (recursion lives in `cast_find`)
 - `cast_grep` - Regex pattern matching in files
 
 ### CodingMvge (coding-mvge/mvge.py)

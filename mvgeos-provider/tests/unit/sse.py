@@ -40,6 +40,9 @@ class MockStreamResponse:
     def read(self) -> bytes:
         return self._body
 
+    async def aread(self) -> bytes:
+        return self._body
+
 
 def _make_client(
     lines: list[bytes],
@@ -600,3 +603,85 @@ async def test_stream_exhausts_retries_surfaces_diagnostic_fields() -> None:
     assert resp.remedy_hint == "Add credits"
     assert resp.quota_limit == 50
     assert resp.quota_remaining == 0
+
+
+@pytest.mark.asyncio
+async def test_error_from_response_async_uses_aread() -> None:
+    from mvgeos_provider.sse import _error_from_response_async
+
+    class AsyncOnlyResponse:
+        status_code = 400
+        headers: dict[str, str] = {}
+
+        def read(self) -> bytes:
+            raise RuntimeError("sync read() in async streaming context")
+
+        async def aread(self) -> bytes:
+            return b'{"error": {"message": "context length exceeded"}}'
+
+    err = await _error_from_response_async(AsyncOnlyResponse())
+    assert err.message == "context length exceeded"
+
+
+@pytest.mark.asyncio
+async def test_error_from_response_async_falls_back_to_read() -> None:
+    from mvgeos_provider.sse import _error_from_response_async
+
+    class SyncOnlyResponse:
+        status_code = 400
+        headers: dict[str, str] = {}
+
+        def read(self) -> bytes:
+            return b'{"error": {"message": "bad request"}}'
+
+    err = await _error_from_response_async(SyncOnlyResponse())
+    assert err.message == "bad request"
+
+
+@pytest.mark.asyncio
+async def test_error_from_response_async_unreadable_body() -> None:
+    from mvgeos_provider.sse import _error_from_response_async
+
+    class BrokenResponse:
+        status_code = 400
+        headers: dict[str, str] = {}
+
+        def read(self) -> bytes:
+            raise RuntimeError("nope")
+
+        async def aread(self) -> bytes:
+            raise RuntimeError("nope")
+
+    err = await _error_from_response_async(BrokenResponse())
+    assert err.message == "HTTP 400"
+
+
+@pytest.mark.asyncio
+async def test_stream_400_surfaces_provider_message() -> None:
+    client = _make_client(
+        lines=[],
+        status_code=400,
+        body=b'{"error": {"message": "prompt is too long"}}',
+    )
+    realm = DummySSERealm(client=client)
+    model = _test_model()
+    config = ChannelConfig(model=model, max_retries=1)
+
+    responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 1
+    assert responses[0].error_message == "prompt is too long"
+
+
+def test_error_from_response_string_error_body() -> None:
+    from mvgeos_provider.sse import _error_from_response
+
+    class StringErrorResponse:
+        status_code = 400
+        headers: dict[str, str] = {}
+
+        def read(self) -> bytes:
+            return b'{"error": "boom"}'
+
+    err = _error_from_response(StringErrorResponse())
+    assert err.message == "boom"

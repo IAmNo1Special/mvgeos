@@ -1,11 +1,14 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from mvgeos_provider.types import Model
 
 from mvgeos_agent.core_loop import LoopCallbacks
 from mvgeos_agent.harness import MvgeHarness
+from mvgeos_agent.harness.compaction.compaction import DEFAULT_COMPACTION_SETTINGS
 from mvgeos_agent.mvge_loop import MvgeLoop
 from mvgeos_agent.types import (
+    MvgeInvocation,
     MvgeResponse,
     MvgeState,
     StopReason,
@@ -128,3 +131,109 @@ async def test_harness_run_with_prompt_appends_invocation() -> None:
     assert len(mock_state.invocations) == 1
     assert isinstance(mock_state.invocations[0], SummonerRequest)
     assert mock_state.invocations[0].content == "User question"
+
+
+def _crowded_model() -> Model:
+    return Model(
+        id="test-provider/test-model",
+        name="Test Model",
+        realm="test-realm",
+        base_url="https://api.example.com/v1",
+        api_key="test-key",
+        context_window=100_000,
+    )
+
+
+def _harness_with_compaction(
+    invocations: list[MvgeInvocation], model: Model | None = None
+) -> tuple[MvgeHarness, MagicMock, MagicMock]:
+    mock_loop = MagicMock(spec=MvgeLoop)
+    mock_loop._build_callbacks.return_value = LoopCallbacks()
+    mock_loop.run = AsyncMock(return_value=MvgeResponse(role="assistant", content=[]))
+    mock_state = MagicMock(spec=MvgeState)
+    mock_state.invocations = list(invocations)
+    mock_compaction = MagicMock()
+    mock_compaction._settings = DEFAULT_COMPACTION_SETTINGS
+    mock_compaction.force_compact = AsyncMock(return_value=None)
+    harness = MvgeHarness(
+        loop=mock_loop,
+        compaction=mock_compaction,
+        state=mock_state,
+        model=model or _crowded_model(),
+    )
+    return harness, mock_compaction, mock_state
+
+
+@pytest.mark.asyncio
+async def test_harness_precompact_when_pool_crowded() -> None:
+    crowded = [
+        MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": "prior"}],
+            mana_usage={"total": 90_000.0},
+            stop_reason=StopReason.STOP,
+        )
+    ]
+    compacted = [SummonerRequest(role="user", content="summary")]
+    harness, mock_compaction, mock_state = _harness_with_compaction(crowded)
+    mock_compaction.force_compact = AsyncMock(return_value=compacted)
+
+    await harness.run(stream_fn=AsyncMock(), model={"id": "test-model"})
+
+    mock_compaction.force_compact.assert_awaited_once()
+    assert mock_state.invocations == compacted
+
+
+@pytest.mark.asyncio
+async def test_harness_no_precompact_when_room() -> None:
+    roomy = [
+        MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": "prior"}],
+            mana_usage={"total": 100.0},
+            stop_reason=StopReason.STOP,
+        )
+    ]
+    harness, mock_compaction, _ = _harness_with_compaction(roomy)
+
+    await harness.run(stream_fn=AsyncMock(), model={"id": "test-model"})
+
+    mock_compaction.force_compact.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_harness_no_precompact_without_window() -> None:
+    crowded = [
+        MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": "prior"}],
+            mana_usage={"total": 90_000.0},
+            stop_reason=StopReason.STOP,
+        )
+    ]
+    windowless = _crowded_model()
+    windowless.context_window = 0
+    harness, mock_compaction, _ = _harness_with_compaction(crowded, windowless)
+
+    await harness.run(stream_fn=AsyncMock(), model={"id": "test-model"})
+
+    mock_compaction.force_compact.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_harness_precompact_failure_does_not_fail_run() -> None:
+    crowded = [
+        MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": "prior"}],
+            mana_usage={"total": 90_000.0},
+            stop_reason=StopReason.STOP,
+        )
+    ]
+    harness, mock_compaction, mock_state = _harness_with_compaction(crowded)
+    mock_compaction.force_compact = AsyncMock(side_effect=RuntimeError("boom"))
+
+    result = await harness.run(stream_fn=AsyncMock(), model={"id": "test-model"})
+
+    assert result is not None
+    assert mock_state.invocations == crowded

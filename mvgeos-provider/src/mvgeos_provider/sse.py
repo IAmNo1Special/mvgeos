@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -69,6 +70,11 @@ class SSEChunk:
     usage: dict[str, Any] | None = None
 
 
+logger = logging.getLogger(__name__)
+
+_ERROR_LOG_BODY_CAP = 4000
+
+
 def _get_header(
     headers: dict[str, Any] | Any,
     key: str,
@@ -111,22 +117,23 @@ def _parse_rate_limits(
     return quota_limit, quota_remaining, reset_at
 
 
-def _error_from_response(response: Any) -> ParsedError:
-    """Extract error message, error code, and diagnostics from an HTTP response."""
+def _build_parsed_error(body: bytes, status_code: int, headers: Any) -> ParsedError:
+    """Parse an HTTP error body into a ParsedError (pure, no I/O)."""
     try:
-        body = response.read()
         error_data = json.loads(body.decode("utf-8")) if body else {}
     except Exception:
         error_data = {}
-    err_obj = error_data.get("error", {})
-    message = err_obj.get("message", f"HTTP {response.status_code}")
+    err_obj = error_data.get("error", {}) if isinstance(error_data, dict) else {}
+    if not isinstance(err_obj, dict):
+        err_obj = {"message": str(err_obj)} if err_obj else {}
+    message = err_obj.get("message", f"HTTP {status_code}")
     if message:
         message = message.replace("\r\n", "\n").replace("\r", "\n").strip("\n")
-    if response.status_code == 429:
+    if status_code == 429:
         error_code = "rate_limited"
-        if message == f"HTTP {response.status_code}":
+        if message == f"HTTP {status_code}":
             message = "Rate limit exceeded"
-    elif response.status_code == 401:
+    elif status_code == 401:
         error_code = "auth_failed"
     else:
         error_code = None
@@ -136,7 +143,7 @@ def _error_from_response(response: Any) -> ParsedError:
     limit_source = metadata.get("limit_source") if isinstance(metadata, dict) else None
     remedy_hint = metadata.get("remedy_hint") if isinstance(metadata, dict) else None
     meta_headers = metadata.get("headers", {}) if isinstance(metadata, dict) else {}
-    resp_headers = getattr(response, "headers", {}) or {}
+    resp_headers = headers or {}
 
     quota_limit, quota_remaining, reset_at = _parse_rate_limits(
         resp_headers, meta_headers
@@ -158,6 +165,42 @@ def _error_from_response(response: Any) -> ParsedError:
         quota_limit=quota_limit,
         quota_remaining=quota_remaining,
     )
+
+
+def _error_from_response(response: Any) -> ParsedError:
+    """Extract error message, error code, and diagnostics from an HTTP response."""
+    try:
+        body = response.read()
+    except Exception:
+        body = b""
+    return _build_parsed_error(
+        body, response.status_code, getattr(response, "headers", {})
+    )
+
+
+async def _error_from_response_async(response: Any) -> ParsedError:
+    """Async variant for streaming responses; falls back to sync read()."""
+    body = b""
+    try:
+        aread = getattr(response, "aread", None)
+        if callable(aread):
+            body = await aread()
+        else:
+            body = response.read()
+    except Exception:
+        body = b""
+    parsed = _build_parsed_error(
+        body, response.status_code, getattr(response, "headers", {})
+    )
+    if parsed.message == f"HTTP {response.status_code}":
+        logger.warning(
+            "Realm request failed with status %s and unreadable body",
+            response.status_code,
+        )
+    else:
+        snippet = parsed.message[:_ERROR_LOG_BODY_CAP]
+        logger.warning("Realm request failed (%s): %s", response.status_code, snippet)
+    return parsed
 
 
 class SSEStreamingRealm(Realm, ABC):
@@ -220,6 +263,10 @@ class SSEStreamingRealm(Realm, ABC):
         """Extract error message and code from a non-200 HTTP response."""
         return _error_from_response(response)
 
+    async def _parse_error_async(self, response: Any) -> ParsedError:
+        """Async variant for streaming responses (uses aread with fallback)."""
+        return await _error_from_response_async(response)
+
     def _realm_name(self, model: Model) -> str:
         """Derive the realm identifier to tag on MvgeResponse instances."""
         return self.realm_name or model.realm or "sse"
@@ -268,7 +315,7 @@ class SSEStreamingRealm(Realm, ABC):
                         message = retryable_chunk_error.error_message or ""
                         error_code = retryable_chunk_error.error_code
                     else:
-                        parsed_err = self._parse_error(response)
+                        parsed_err = await self._parse_error_async(response)
                         message, error_code = parsed_err
                         if not is_retryable_status(
                             response.status_code, response.headers
@@ -497,6 +544,10 @@ class SSEStreamingRealm(Realm, ABC):
 
 
 __all__ = [
+    "ParsedError",
     "SSEChunk",
     "SSEStreamingRealm",
+    "_build_parsed_error",
+    "_error_from_response",
+    "_error_from_response_async",
 ]

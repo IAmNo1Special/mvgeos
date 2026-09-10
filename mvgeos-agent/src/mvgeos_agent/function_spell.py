@@ -23,7 +23,9 @@ class FunctionSpell(MvgeSpell):
 
     Infers tool name from func.__name__, description from func.__doc__, and
     parameter JSON Schema via generate_spell_schema. Supports both async and
-    sync callables, gracefully converting outputs into model-ready strings.
+    sync callables. SpellResult outputs pass through unchanged (preserving
+    status, details, and terminate); all other outputs are converted into
+    model-ready strings.
     """
 
     def __init__(
@@ -59,7 +61,7 @@ class FunctionSpell(MvgeSpell):
         params: dict[str, Any],
         signal: AbortSignal | None = None,
         on_update: Any | None = None,
-    ) -> str:
+    ) -> str | SpellResult:
         if signal is not None and getattr(signal, "aborted", False):
             raise AbortError("Operation aborted")
 
@@ -80,11 +82,7 @@ class FunctionSpell(MvgeSpell):
         else:
             result = await asyncio.to_thread(self.func, **args)
 
-        if isinstance(result, SpellResult):
-            if result.error_message:
-                return f"[error] {result.error_message}"
-            return result.content or f"{self.name} completed"
-        elif isinstance(result, str):
+        if isinstance(result, (SpellResult, str)):
             return result
         elif isinstance(result, BaseModel):
             return result.model_dump_json()

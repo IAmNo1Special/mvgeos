@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from mvgeos_provider.base import Realm
@@ -10,10 +11,14 @@ from mvgeos_agent.core_loop import LoopCallbacks, StreamFn
 from mvgeos_agent.harness.compaction.compaction import (
     DEFAULT_COMPACTION_SETTINGS,
     CompactionSettings,
+    estimate_context_mana,
+    should_compact,
 )
 from mvgeos_agent.harness.compaction.compaction_runner import CompactionRunner
 from mvgeos_agent.mvge_loop import MvgeLoop
 from mvgeos_agent.types import AbortSignal, MvgeInvocation, MvgeState, SummonerRequest
+
+logger = logging.getLogger(__name__)
 
 
 class MvgeHarness:
@@ -120,6 +125,8 @@ class MvgeHarness:
         if prompt is not None:
             self._state.invocations.append(SummonerRequest(role="user", content=prompt))
 
+        await self._maybe_precompact(signal)
+
         # Build effective callbacks and set after_invocation on the loop
         effective_callbacks = self._callbacks or self._loop._build_callbacks()
         original_after_invocation = effective_callbacks.after_invocation
@@ -149,6 +156,36 @@ class MvgeHarness:
             contemplation_level=contemplation_level,
             signal=signal,
         )
+
+    async def _maybe_precompact(self, signal: AbortSignal | None = None) -> None:
+        """Force-compact before the first send when the Mana Pool is crowded.
+
+        Post-turn compaction cannot rescue an already-oversized transcript:
+        the next provider send fails before after_invocation ever runs. This
+        pre-send attempt handles gradual accumulation. A single already-huge
+        spell result may survive (it sits in the retained tail); that session
+        needs manual rescue (compact / undo / new tome) and future casts are
+        bounded by the dispatcher truncation backstop.
+        """
+        if self._compaction is None or self._model is None:
+            return
+        try:
+            context_window = getattr(self._model, "context_window", 0) or 0
+            if not context_window:
+                return
+            settings = getattr(
+                self._compaction, "_settings", DEFAULT_COMPACTION_SETTINGS
+            )
+            estimated = estimate_context_mana(list(self._state.invocations)).mana
+            if not should_compact(estimated, context_window, settings):
+                return
+            replacement = await self._compaction.force_compact(
+                list(self._state.invocations), signal
+            )
+            if replacement is not None:
+                self._state.invocations = list(replacement)
+        except Exception:
+            logger.exception("Pre-send compaction attempt failed")
 
 
 __all__ = ["MvgeHarness"]

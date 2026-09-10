@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -18,6 +20,52 @@ from coding_mvge.spells._process_tree import (
     validate_working_directory,
 )
 from coding_mvge.spells.bash import bash
+
+
+class _FakeReader:
+    """Async stream reader yielding fixed chunks then EOF."""
+
+    def __init__(self, chunks: list[bytes]) -> None:
+        self._chunks = list(chunks)
+
+    async def read(self, _n: int) -> bytes:
+        await asyncio.sleep(0)
+        if self._chunks:
+            return self._chunks.pop(0)
+        return b""
+
+
+class _EndlessReader:
+    """Reader that never EOFs, for output-cap tests."""
+
+    async def read(self, n: int) -> bytes:
+        await asyncio.sleep(0)
+        return b"x" * n
+
+
+def _mock_proc(
+    stdout_chunks: list[bytes] | None = None,
+    stderr_chunks: list[bytes] | None = None,
+    returncode: int = 0,
+) -> MagicMock:
+    proc = MagicMock()
+    proc.stdout = (
+        _FakeReader(stdout_chunks) if stdout_chunks is not None else _FakeReader([])
+    )
+    proc.stderr = (
+        _FakeReader(stderr_chunks) if stderr_chunks is not None else _FakeReader([])
+    )
+    proc.wait = AsyncMock(return_value=returncode)
+    proc.returncode = returncode
+    proc.pid = 9999
+    return proc
+
+
+def _patch_spawn(proc: MagicMock) -> Any:
+    return (
+        patch("asyncio.create_subprocess_shell", new=AsyncMock(return_value=proc)),
+        patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)),
+    )
 
 
 class TestTimeoutResolution:
@@ -244,21 +292,13 @@ class TestCastBash:
 
     @pytest.mark.asyncio
     async def test_cast_bash_timeout(self, tmp_path: Path) -> None:
-        mock_proc = MagicMock()
-        mock_proc.communicate = AsyncMock(side_effect=TimeoutError())
-        mock_proc.returncode = None
-        mock_proc.pid = 9999
-        mock_proc.wait = AsyncMock()
+        mock_proc = _mock_proc()
+        mock_proc.stdout.read = AsyncMock(side_effect=TimeoutError())
 
+        shell_patch, exec_patch = _patch_spawn(mock_proc)
         with (
-            patch(
-                "asyncio.create_subprocess_shell",
-                new=AsyncMock(return_value=mock_proc),
-            ),
-            patch(
-                "asyncio.create_subprocess_exec",
-                new=AsyncMock(return_value=mock_proc),
-            ),
+            shell_patch,
+            exec_patch,
             patch(
                 "coding_mvge.spells.bash.kill_process_tree", new=AsyncMock()
             ) as mock_kill,
@@ -282,21 +322,13 @@ class TestCastBash:
 
     @pytest.mark.asyncio
     async def test_cast_bash_cancelled(self, tmp_path: Path) -> None:
-        mock_proc = MagicMock()
-        mock_proc.communicate = AsyncMock(side_effect=asyncio.CancelledError())
-        mock_proc.returncode = None
-        mock_proc.pid = 9999
-        mock_proc.wait = AsyncMock()
+        mock_proc = _mock_proc()
+        mock_proc.stdout.read = AsyncMock(side_effect=asyncio.CancelledError())
 
+        shell_patch, exec_patch = _patch_spawn(mock_proc)
         with (
-            patch(
-                "asyncio.create_subprocess_shell",
-                new=AsyncMock(return_value=mock_proc),
-            ),
-            patch(
-                "asyncio.create_subprocess_exec",
-                new=AsyncMock(return_value=mock_proc),
-            ),
+            shell_patch,
+            exec_patch,
             patch(
                 "coding_mvge.spells.bash.kill_process_tree", new=AsyncMock()
             ) as mock_kill,
@@ -346,8 +378,8 @@ class TestBuiltinSpellBash:
                 "workspace_root": str(workspace),
             },
         )
-        assert "[error]" in result
-        assert "outside authorized workspace root" in result
+        assert result.status == SpellStatus.ERROR
+        assert "outside authorized workspace root" in result.error_message
 
     @pytest.mark.asyncio
     async def test_builtin_spell_execution(self, tmp_path: Path) -> None:
@@ -365,3 +397,129 @@ class TestBuiltinSpellBash:
             "call-1", {"command": "echo hi", "timeout_ms": 12345}
         )
         assert result == "done"
+
+
+class TestBashBounding:
+    @pytest.mark.asyncio
+    async def test_small_output_no_spill(self, tmp_path: Path) -> None:
+        proc = _mock_proc([b"hello\nworld\n"])
+        shell_patch, exec_patch = _patch_spawn(proc)
+        with shell_patch, exec_patch:
+            result = await bash(command="echo hi", workspace_root=tmp_path)
+        assert result.status == SpellStatus.SUCCESS
+        assert result.content == "hello\nworld\n"
+        assert result.details["truncation"]["truncated"] is False
+        assert result.details["truncation"]["full_output_path"] is None
+        assert result.details["truncation"]["version"] == 1
+
+    @pytest.mark.asyncio
+    async def test_large_output_tail_truncation_with_spill(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+        lines = [f"line{i:05d}\n".encode() for i in range(10000)]
+        proc = _mock_proc(lines)
+        shell_patch, exec_patch = _patch_spawn(proc)
+        with shell_patch, exec_patch:
+            result = await bash(command="seq", workspace_root=tmp_path)
+        assert result.status == SpellStatus.SUCCESS
+        assert result.details["truncation"]["truncated"] is True
+        assert result.details["truncation"]["strategy"] == "tail"
+        assert "line09999" in result.content
+        assert "line00000" not in result.content
+        assert "Full output:" in result.content
+        spill = Path(result.details["truncation"]["full_output_path"])
+        assert spill.is_file()
+        assert b"line00000" in spill.read_bytes()
+        assert b"line09999" in spill.read_bytes()
+
+    @pytest.mark.asyncio
+    async def test_output_cap_kills_process(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            sys.modules["coding_mvge.spells.bash"], "MAX_BASH_BYTES", 1024
+        )
+        proc = MagicMock()
+        proc.stdout = _EndlessReader()
+        proc.stderr = _FakeReader([])
+        proc.wait = AsyncMock(return_value=0)
+        proc.returncode = 0
+        proc.pid = 9999
+
+        shell_patch, exec_patch = _patch_spawn(proc)
+        with (
+            shell_patch,
+            exec_patch,
+            patch(
+                "coding_mvge.spells.bash.kill_process_tree", new=AsyncMock()
+            ) as mock_kill,
+        ):
+            result = await bash(command="yes", workspace_root=tmp_path)
+        assert result.status == SpellStatus.PARTIAL
+        assert "process killed" in result.error_message
+        mock_kill.assert_awaited_once_with(proc)
+
+    @pytest.mark.asyncio
+    async def test_none_stream_is_skipped(self, tmp_path: Path) -> None:
+        proc = _mock_proc([b"out\n"])
+        proc.stdout = None
+        shell_patch, exec_patch = _patch_spawn(proc)
+        with shell_patch, exec_patch:
+            result = await bash(command="echo hi", workspace_root=tmp_path)
+        assert result.status == SpellStatus.SUCCESS
+        assert result.content == ""
+
+    @pytest.mark.asyncio
+    async def test_stderr_truncation_marked(self, tmp_path: Path) -> None:
+        err = [f"err{i:05d}-{'y' * 30}\n".encode() for i in range(3000)]
+        proc = _mock_proc([], err, returncode=1)
+        shell_patch, exec_patch = _patch_spawn(proc)
+        with shell_patch, exec_patch:
+            result = await bash(command="nope", workspace_root=tmp_path)
+        assert result.status == SpellStatus.ERROR
+        assert "[stderr truncated]" in result.error_message
+
+    @pytest.mark.asyncio
+    async def test_lines_only_truncation_has_no_spill(self, tmp_path: Path) -> None:
+        lines = [f"l{i:04d}\n".encode() for i in range(2500)]
+        proc = _mock_proc(lines)
+        shell_patch, exec_patch = _patch_spawn(proc)
+        with shell_patch, exec_patch:
+            result = await bash(command="seq", workspace_root=tmp_path)
+        assert result.status == SpellStatus.SUCCESS
+        assert result.details["truncation"]["truncated"] is True
+        assert result.details["truncation"]["full_output_path"] is None
+        assert "Full output" not in result.content
+
+
+class TestTailAccumulator:
+    def test_empty_feed(self) -> None:
+        from coding_mvge.spells.bash import _TailAccumulator
+
+        acc = _TailAccumulator()
+        acc.feed(b"")
+        view = acc.display()
+        assert view.truncated is False
+        assert view.text == ""
+        assert view.total_lines == 0
+
+    def test_overflow_trims_to_tail(self) -> None:
+        from coding_mvge.spells.bash import _TailAccumulator
+
+        acc = _TailAccumulator()
+        acc.feed(b"A" * 110_000)
+        acc.feed(b"\nend\n")
+        view = acc.display()
+        assert view.truncated is True
+        assert view.strategy == "tail"
+        assert view.text == "end\n"
+        assert view.total_lines == 2
+        assert view.shown_start == 1
+        assert view.shown_end == 2
+
+    def test_utf8_safe_suffix(self) -> None:
+        from coding_mvge.spells.bash import _utf8_safe_suffix
+
+        assert _utf8_safe_suffix(b"\xff\xffABC", 4) == b"ABC"
+        assert _utf8_safe_suffix(b"hello", 10) == b"hello"

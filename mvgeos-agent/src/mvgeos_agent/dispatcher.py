@@ -10,6 +10,11 @@ from mvgeos_agent.errors import (
     SpellTimeoutError,
     to_error,
 )
+from mvgeos_agent.truncate import (
+    MAX_SPELL_RESULT_BYTES,
+    format_size,
+    truncate_head,
+)
 from mvgeos_agent.types import (
     AbortError,
     AbortSignal,
@@ -30,6 +35,48 @@ _TRUNCATED_SPELL_CALL = (
     "Spell '{name}' was not cast: the response hit the output Mana limit, so its "
     "arguments may be truncated. Re-issue the spell cast with complete arguments."
 )
+
+
+def _apply_backstop(
+    result_text: str, details: dict[str, Any]
+) -> tuple[str, dict[str, Any]]:
+    """Cap bypassing spell output so one cast cannot poison the Mana Pool.
+
+    Spell-level truncation runs first; this fires only when a spell
+    bypassed its own bound. Preserves the spell's original totals.
+    """
+    if len(result_text.encode("utf-8")) <= MAX_SPELL_RESULT_BYTES:
+        return result_text, details
+    capped = truncate_head(result_text, max_bytes=MAX_SPELL_RESULT_BYTES)
+    existing = details.get("truncation")
+    if isinstance(existing, dict):
+        merged = dict(existing)
+        shown = capped.text.count("\n") + (1 if capped.text else 0)
+        try:
+            total = int(merged.get("total_lines", capped.total_lines))
+        except (TypeError, ValueError):
+            total = capped.total_lines
+        merged["shown_start"] = total - shown + 1 if shown else None
+        merged["shown_end"] = total if shown else None
+        merged["backstop_applied"] = True
+        details["truncation"] = merged
+    else:
+        details["truncation"] = {
+            "version": 1,
+            "truncated": True,
+            "strategy": "head",
+            "total_lines": capped.total_lines,
+            "shown_start": capped.shown_start,
+            "shown_end": capped.shown_end,
+            "total_bytes": capped.total_bytes,
+            "full_output_path": None,
+            "backstop_applied": True,
+        }
+    notice = (
+        f"\n\n[Dispatcher backstop: output exceeded "
+        f"{format_size(MAX_SPELL_RESULT_BYTES)} limit.]"
+    )
+    return f"{capped.text}{notice}", details
 
 
 @dataclass
@@ -234,11 +281,13 @@ class SpellDispatcher:
             is_error = False
             terminate = False
             result_content: Any = raw_result
+            result_details: dict[str, Any] = {}
 
             if isinstance(raw_result, SpellResult):
                 result_content = raw_result.content
                 is_error = raw_result.status == "error"
                 terminate = raw_result.terminate
+                result_details = dict(raw_result.details)
 
             if callbacks.after_spell_result is not None:
                 chained = await callbacks.after_spell_result(
@@ -251,16 +300,20 @@ class SpellDispatcher:
                 if isinstance(chained, dict):
                     result_content = chained.get("result", result_content)
 
+            result_text, result_details = _apply_backstop(
+                str(result_content), result_details
+            )
             await emit(
                 MvgeEvent(
                     type=MvgeEventType.SPELL_CASTING_END,
-                    data={"spellCastId": spell_cast_id, "result": result_content},
+                    data={"spellCastId": spell_cast_id, "result": result_text},
                 )
             )
             return SpellResultMessage(
                 spell_cast_id=spell_cast_id,
                 spell_name=spell_name,
-                content=[{"type": "text", "text": str(result_content)}],
+                content=[{"type": "text", "text": result_text}],
+                details=result_details or None,
                 is_error=is_error,
                 terminate=terminate,
             )

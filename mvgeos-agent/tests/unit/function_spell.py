@@ -89,11 +89,30 @@ class TestFunctionSpell:
     async def test_execute_returning_spell_result(self) -> None:
         spell = FunctionSpell(spell_result_func)
         res_ok = await spell.execute("call-4", {"success": True})
-        assert res_ok == "yay"
+        assert isinstance(res_ok, SpellResult)
+        assert res_ok.content == "yay"
+        assert res_ok.status == SpellStatus.SUCCESS
 
         res_err = await spell.execute("call-5", {"success": False})
-        assert "[error]" in res_err
-        assert "nay" in res_err
+        assert isinstance(res_err, SpellResult)
+        assert res_err.status == SpellStatus.ERROR
+        assert res_err.error_message == "nay"
+
+    @pytest.mark.asyncio
+    async def test_execute_preserves_spell_result_details(self) -> None:
+        def detailed() -> SpellResult:
+            """Return a detailed SpellResult."""
+            return SpellResult(
+                spell_name="detailed",
+                status=SpellStatus.SUCCESS,
+                content="done",
+                details={"truncation": {"version": 1, "truncated": False}},
+            )
+
+        spell = FunctionSpell(detailed)
+        result = await spell.execute("call-7", {})
+        assert isinstance(result, SpellResult)
+        assert result.details["truncation"]["version"] == 1
 
     @pytest.mark.asyncio
     async def test_execute_invalid_arguments_raises_error_format(self) -> None:

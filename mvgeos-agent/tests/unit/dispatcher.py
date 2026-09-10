@@ -7,6 +7,7 @@ import pytest
 
 from mvgeos_agent.core_loop import LoopCallbacks, LoopContext
 from mvgeos_agent.dispatcher import BatchResult, SpellDispatcher
+from mvgeos_agent.function_spell import FunctionSpell
 from mvgeos_agent.types import (
     MvgeEvent,
     MvgeEventType,
@@ -424,3 +425,256 @@ async def test_dispatch_missing_spell() -> None:
     assert len(end_events) == 1
     assert end_events[0].data["spellCastId"] == "call_missing"
     assert "error" in end_events[0].data
+
+
+class DetailedSpell(MvgeSpell):
+    def __init__(self, name: str, content: str, details: dict) -> None:
+        super().__init__(
+            name=name,
+            description=f"Detailed spell {name}",
+            parameters={},
+            execution_mode=SpellExecutionMode.PARALLEL,
+        )
+        self._content = content
+        self._details = details
+
+    async def execute(
+        self,
+        spell_cast_id: str,
+        params: dict[str, Any],
+        signal: Any | None = None,
+        on_update: Any | None = None,
+    ) -> SpellResult:
+        return SpellResult(
+            spell_name=self.name,
+            content=self._content,
+            details=self._details,
+        )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_backstop_caps_bypassing_spell() -> None:
+    async def emit(event: MvgeEvent) -> None:
+        pass
+
+    spell = SlowMockSpell("spell_big", delay_s=0, result_text="x" * 200_000)
+    dispatcher = SpellDispatcher()
+    context = LoopContext(spells=[spell])
+
+    inv = MvgeResponse(
+        stop_reason=StopReason.SPELL_USE,
+        content=[
+            {
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_1", "name": "spell_big", "arguments": {}},
+            }
+        ],
+    )
+
+    res = await dispatcher.dispatch_batch(
+        inv=inv,
+        context=context,
+        callbacks=LoopCallbacks(),
+        emit=emit,
+    )
+
+    assert len(res.messages) == 1
+    text = res.messages[0].content[0]["text"]
+    assert len(text.encode("utf-8")) <= 100_000 + 1024
+    assert "Dispatcher backstop" in text
+    assert res.messages[0].details is not None
+    assert res.messages[0].details["truncation"]["backstop_applied"] is True
+    assert res.messages[0].details["truncation"]["version"] == 1
+
+
+@pytest.mark.asyncio
+async def test_dispatch_propagates_spell_details() -> None:
+    async def emit(event: MvgeEvent) -> None:
+        pass
+
+    spell = DetailedSpell(
+        "spell_d",
+        "small output",
+        {"truncation": {"version": 1, "truncated": False}},
+    )
+    dispatcher = SpellDispatcher()
+    context = LoopContext(spells=[spell])
+
+    inv = MvgeResponse(
+        stop_reason=StopReason.SPELL_USE,
+        content=[
+            {
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_1", "name": "spell_d", "arguments": {}},
+            }
+        ],
+    )
+
+    res = await dispatcher.dispatch_batch(
+        inv=inv,
+        context=context,
+        callbacks=LoopCallbacks(),
+        emit=emit,
+    )
+
+    assert len(res.messages) == 1
+    assert res.messages[0].content[0]["text"] == "small output"
+    assert res.messages[0].details is not None
+    assert res.messages[0].details["truncation"]["version"] == 1
+    assert "backstop" not in res.messages[0].content[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_backstop_preserves_spell_totals() -> None:
+    async def emit(event: MvgeEvent) -> None:
+        pass
+
+    spell = DetailedSpell(
+        "spell_huge",
+        "y" * 200_000,
+        {
+            "truncation": {
+                "version": 1,
+                "truncated": False,
+                "strategy": None,
+                "total_lines": 1,
+                "shown_start": None,
+                "shown_end": None,
+                "total_bytes": 200_000,
+                "full_output_path": None,
+                "backstop_applied": False,
+            }
+        },
+    )
+    dispatcher = SpellDispatcher()
+    context = LoopContext(spells=[spell])
+
+    inv = MvgeResponse(
+        stop_reason=StopReason.SPELL_USE,
+        content=[
+            {
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_1", "name": "spell_huge", "arguments": {}},
+            }
+        ],
+    )
+
+    res = await dispatcher.dispatch_batch(
+        inv=inv,
+        context=context,
+        callbacks=LoopCallbacks(),
+        emit=emit,
+    )
+
+    details = res.messages[0].details
+    assert details is not None
+    assert details["truncation"]["backstop_applied"] is True
+    assert details["truncation"]["total_bytes"] == 200_000
+
+
+@pytest.mark.asyncio
+async def test_dispatch_backstop_garbage_totals_fallback() -> None:
+    async def emit(event: MvgeEvent) -> None:
+        pass
+
+    spell = DetailedSpell(
+        "spell_g",
+        "z" * 200_000,
+        {"truncation": {"version": 1, "total_lines": "lots"}},
+    )
+    dispatcher = SpellDispatcher()
+    context = LoopContext(spells=[spell])
+
+    inv = MvgeResponse(
+        stop_reason=StopReason.SPELL_USE,
+        content=[
+            {
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_1", "name": "spell_g", "arguments": {}},
+            }
+        ],
+    )
+
+    res = await dispatcher.dispatch_batch(
+        inv=inv,
+        context=context,
+        callbacks=LoopCallbacks(),
+        emit=emit,
+    )
+
+    details = res.messages[0].details
+    assert details is not None
+    assert details["truncation"]["backstop_applied"] is True
+
+
+@pytest.mark.asyncio
+async def test_dispatch_chained_non_dict_ignored() -> None:
+    async def emit(event: MvgeEvent) -> None:
+        pass
+
+    async def after_spell_result(_data: dict[str, Any]) -> Any:
+        return ["not", "a", "dict"]
+
+    spell = SlowMockSpell("spell_a", delay_s=0, result_text="kept")
+    dispatcher = SpellDispatcher()
+    context = LoopContext(spells=[spell])
+
+    inv = MvgeResponse(
+        stop_reason=StopReason.SPELL_USE,
+        content=[
+            {
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_1", "name": "spell_a", "arguments": {}},
+            }
+        ],
+    )
+
+    res = await dispatcher.dispatch_batch(
+        inv=inv,
+        context=context,
+        callbacks=LoopCallbacks(after_spell_result=after_spell_result),
+        emit=emit,
+    )
+
+    assert len(res.messages) == 1
+    assert res.messages[0].content[0]["text"] == "kept"
+
+
+def _detailed_fn() -> SpellResult:
+    """Return details through coercion."""
+    return SpellResult(
+        spell_name="detailed_fn",
+        content="coerced ok",
+        details={"truncation": {"version": 1, "truncated": False}},
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_propagates_coerced_function_details() -> None:
+    async def emit(event: MvgeEvent) -> None:
+        pass
+
+    dispatcher = SpellDispatcher()
+    context = LoopContext(spells=[FunctionSpell(_detailed_fn)])
+
+    inv = MvgeResponse(
+        stop_reason=StopReason.SPELL_USE,
+        content=[
+            {
+                "type": "spell_cast",
+                "spell_cast": {"id": "call_1", "name": "_detailed_fn", "arguments": {}},
+            }
+        ],
+    )
+
+    res = await dispatcher.dispatch_batch(
+        inv=inv,
+        context=context,
+        callbacks=LoopCallbacks(),
+        emit=emit,
+    )
+
+    assert len(res.messages) == 1
+    assert res.messages[0].content[0]["text"] == "coerced ok"
+    assert res.messages[0].details is not None
+    assert res.messages[0].details["truncation"]["version"] == 1
