@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-09-10
+
+
+### Bug Fixes
+
+- **test:** make external runes unit tests portable across environments (f2d7455)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (1e4eff6)
+
+- prepare repository for public release and broaden Python compatibility (043914d)
+
+- **release:** v1.15.0 (3de142e)
+
+
+### Documentation
+
+- **github:** add issue templates and pull request template (4e87430)
+
+- **env:** provide .env.example configuration template (bdd3227)
+
+
+### Features
+
+- **core:** implement external runes, tome tree navigation, and web spells (fd4beac)
+
+
+### Refactoring
+
+- eliminate redundant tests, shims, and legacy migrations (514850f)
+
+
+### Tests
+
+- **core:** elevate test coverage to 90%+ and ratchet coverage floor to 90 (97a3d83)
+
+- **coding-mvge:** expand unit tests for web spells edge cases (7817213)
+
+- **core:** expand unit tests across agent, provider, runes, and tome for 90% coverage (8ac402b)
+
+
 ## [1.14.1] - 2026-09-08
 
 
