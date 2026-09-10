@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-09-10
+
+
+### Bug Fixes
+
+- **coding-mvge:** size byte-limit tests from measured paths (1c13529)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (743d5ce)
+
+- **release:** v2.0.0 (2283dd3)
+
+
+### Features
+
+- **agent,coding-mvge,provider:** bound spell outputs with Pi-grade truncation **BREAKING CHANGE** (3bcb6a8)
+
+
 ## [1.15.0] - 2026-09-10
 
 
