@@ -16,7 +16,7 @@ def render_sidebar(state: AppState) -> ui.column:
     container = (
         ui.column()
         .classes(
-            "h-full bg-[#13151b] border-r border-[#2b2f3d] "
+            "h-full bg-[#08080a] border-r border-[#292335] "
             "shrink-0 flex flex-col sidebar-container"
         )
         .style(f"width: {collapsed_width if collapsed else expanded_width}px")
@@ -25,12 +25,12 @@ def render_sidebar(state: AppState) -> ui.column:
     with container:
         # Header
         with ui.row().classes(
-            "w-full h-12 items-center justify-between px-3 border-b border-[#2b2f3d]"
+            "w-full h-12 items-center justify-between px-3 border-b border-[#292335]"
         ):
             with ui.row().classes("items-center gap-2"):
-                ui.icon("auto_awesome", size="16px").classes("text-[#3b82f6]")
+                ui.icon("auto_awesome", size="16px").classes("text-[#7b6cf6]")
                 ui.label("MvgeOS").classes(
-                    "text-sm font-semibold text-[#e6edf3] tracking-wide "
+                    "text-sm font-semibold text-[#eceaf4] tracking-wide "
                     "sidebar-label" + (" collapsed" if collapsed else " expanded")
                 )
             ui.button(
@@ -43,10 +43,10 @@ def render_sidebar(state: AppState) -> ui.column:
 
         # Workspace / Project display
         with ui.row().classes("px-3 py-2 items-center gap-2"):
-            ui.icon("folder_open", size="14px").classes("text-[#3b82f6]")
+            ui.icon("folder_open", size="14px").classes("text-[#7b6cf6]")
             project_name = state.project_path.name or str(state.project_path)
             ui.label(project_name).classes(
-                "text-xs text-[#e6edf3] truncate font-medium sidebar-label"
+                "text-xs text-[#eceaf4] truncate font-medium sidebar-label"
                 + (" collapsed" if collapsed else " expanded")
             )
 
@@ -57,8 +57,8 @@ def render_sidebar(state: AppState) -> ui.column:
                     "+ New Conversation",
                     on_click=state.new_conversation,
                 ).props("unelevated no-caps").classes(
-                    "w-full bg-[#1e212b] hover:bg-[#262a36] text-[#e6edf3] "
-                    "border border-[#2b2f3d] text-xs font-medium py-2 "
+                    "w-full bg-[#0e0e12] hover:bg-[#16161d] text-[#eceaf4] "
+                    "border border-[#292335] text-xs font-medium py-2 "
                     "rounded-lg text-left pl-3 sidebar-label"
                     + (" collapsed" if collapsed else " expanded")
                 ).mark("new_conversation_btn")
@@ -68,7 +68,7 @@ def render_sidebar(state: AppState) -> ui.column:
                     "Sign In",
                     on_click=state.show_login,
                 ).props("unelevated no-caps").classes(
-                    "w-full bg-[#3b82f6] hover:bg-blue-600 "
+                    "w-full mvge-glow-btn "
                     "text-white text-xs font-medium py-2 rounded-lg "
                     "sidebar-label" + (" collapsed" if collapsed else " expanded")
                 ).mark("sign_in_btn")
@@ -152,20 +152,20 @@ def render_sidebar(state: AppState) -> ui.column:
             with (
                 ui.row().classes("mx-3 mt-3"),
                 ui.card().classes(
-                    "w-full p-3 bg-[#1e212b] border border-[#2b2f3d] "
+                    "w-full p-3 bg-[#0e0e12] border border-[#292335] "
                     "rounded-lg sidebar-label"
                     + (" collapsed" if collapsed else " expanded")
                 ),
             ):
                 ui.label("Current Session").classes(
-                    "text-[10px] font-semibold uppercase tracking-wider text-[#64748b]"
+                    "text-[10px] font-semibold uppercase tracking-wider text-[#6e6584]"
                 )
                 ui.label(state.tome_title).classes(
-                    "text-sm text-[#e6edf3] truncate mt-1"
+                    "text-sm text-[#eceaf4] truncate mt-1"
                 )
                 if state.active_tome_id:
                     ui.label(state.active_tome_id[:8]).classes(
-                        "text-[10px] text-[#64748b] font-mono mt-0.5"
+                        "text-[10px] text-[#6e6584] font-mono mt-0.5"
                     )
 
         # Recent Sessions
@@ -175,18 +175,18 @@ def render_sidebar(state: AppState) -> ui.column:
         ):
             ui.label("Recent Sessions").classes(
                 "text-[10px] font-semibold uppercase tracking-wider "
-                "text-[#64748b] px-2 py-1"
+                "text-[#6e6584] px-2 py-1"
             )
             if not state.loaded_tomes:
                 ui.label("No sessions yet").classes(
-                    "text-[11px] text-[#64748b] px-2 py-2"
+                    "text-[11px] text-[#6e6584] px-2 py-2"
                 )
             else:
                 for entry in state.loaded_tomes:
                     bg = (
-                        "bg-[#1e212b]/70 border border-[#2b2f3d]/60"
+                        "bg-[#0e0e12]/70 border border-[#292335]/60"
                         if entry.is_active
-                        else "hover:bg-[#1e212b]/40"
+                        else "hover:bg-[#0e0e12]/40"
                     )
                     with (
                         ui.row()
@@ -200,24 +200,24 @@ def render_sidebar(state: AppState) -> ui.column:
                         )
                     ):
                         ui.icon("chat_bubble_outline", size="12px").classes(
-                            "text-[#8b949e]"
+                            "text-[#9c94b3]"
                         )
                         ui.label(entry.title).classes(
-                            "text-[#e6edf3] truncate text-[11px] flex-1"
+                            "text-[#eceaf4] truncate text-[11px] flex-1"
                         )
                         with ui.row().classes("items-center gap-1"):
                             ui.label(entry.relative_time).classes(
-                                "text-[10px] text-[#64748b]"
+                                "text-[10px] text-[#6e6584]"
                             )
                             if entry.git_branch:
                                 ui.label(entry.git_branch).classes(
                                     "text-[10px] px-1 py-0.5 rounded "
-                                    "bg-[#3b82f6]/10 text-[#3b82f6] "
-                                    "border border-[#3b82f6]/30 font-mono"
+                                    "bg-[#7b6cf6]/10 text-[#7b6cf6] "
+                                    "border border-[#7b6cf6]/30 font-mono"
                                 )
 
         # Bottom: collapse button + version
-        with ui.row().classes("border-t border-[#2b2f3d] px-3 py-2 items-center gap-2"):
+        with ui.row().classes("border-t border-[#292335] px-3 py-2 items-center gap-2"):
             ui.button(
                 icon="chevron_left",
                 on_click=_toggle_sidebar,
@@ -226,7 +226,7 @@ def render_sidebar(state: AppState) -> ui.column:
                 "collapse-btn-icon" + (" collapsed" if collapsed else "")
             )
             ui.label(f"v{__version__}").classes(
-                "text-[10px] text-[#64748b] sidebar-label"
+                "text-[10px] text-[#6e6584] sidebar-label"
                 + (" collapsed" if collapsed else " expanded")
             )
 
@@ -252,7 +252,7 @@ def _sidebar_item(
     active_cls = (
         "nav-link-active text-primary"
         if active
-        else "text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#1e212b]/60"
+        else "text-[#9c94b3] hover:text-[#eceaf4] hover:bg-[#0e0e12]/60"
     )
     with (
         ui.row()
@@ -263,7 +263,7 @@ def _sidebar_item(
         .on("click", lambda _, v=view: state.set_current_view(v))
     ):
         ui.icon(icon, size="14px").classes(
-            "shrink-0 " + ("nav-icon-active" if active else "text-[#8b949e]")
+            "shrink-0 " + ("nav-icon-active" if active else "text-[#9c94b3]")
         )
         ui.label(label).classes(
             "font-normal truncate sidebar-label"

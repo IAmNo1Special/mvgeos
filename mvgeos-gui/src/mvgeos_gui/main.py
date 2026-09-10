@@ -195,7 +195,7 @@ def main() -> None:
     width, height, x, y = calculate_initial_window_geometry()
 
     if not args.web:
-        app.native.window_args["background_color"] = "#181a20"
+        app.native.window_args["background_color"] = "#000000"
         app.native.window_args["min_size"] = (800, 500)
         if x is not None:
             app.native.window_args["x"] = x

@@ -9,23 +9,23 @@ def render_diff_viewer(state: AppState) -> None:
     """Render the diff viewer for the selected file."""
     view = state.get_selected_diff_view()
     if view is None:
-        ui.label("No diff selected").classes("text-xs text-[#64748b] p-4")
+        ui.label("No diff selected").classes("text-xs text-[#6e6584] p-4")
         return
 
     with ui.column().classes("w-full h-full overflow-y-auto"):
         # Header
         with ui.row().classes(
-            "w-full items-center justify-between p-3 border-b border-[#2b2f3d]"
+            "w-full items-center justify-between p-3 border-b border-[#292335]"
         ):
             ui.label(view.file_path).classes(
-                "text-xs text-[#e6edf3] font-mono truncate flex-1"
+                "text-xs text-[#eceaf4] font-mono truncate flex-1"
             )
             status_colors = {
                 "new": "text-[#22c55e]",
                 "modified": "text-[#f59e0b]",
                 "deleted": "text-[#ef4444]",
             }
-            status_color = status_colors.get(view.status, "text-[#8b949e]")
+            status_color = status_colors.get(view.status, "text-[#9c94b3]")
             ui.label(view.status.upper()).classes(
                 f"text-[10px] font-bold {status_color} mr-2"
             )
@@ -36,7 +36,7 @@ def render_diff_viewer(state: AppState) -> None:
 
         # Stats
         with ui.row().classes(
-            "px-3 py-2 gap-3 text-[10px] text-[#8b949e] border-b border-[#2b2f3d]/60"
+            "px-3 py-2 gap-3 text-[10px] text-[#9c94b3] border-b border-[#292335]/60"
         ):
             ui.label(f"+{view.additions} additions").classes("text-[#22c55e]")
             ui.label(f"-{view.deletions} deletions").classes("text-[#ef4444]")
@@ -51,16 +51,16 @@ def render_diff_viewer(state: AppState) -> None:
                 ui.expansion(
                     hunk_title,
                     group="diff-hunks",
-                ).classes("w-full border-b border-[#2b2f3d]/60"),
+                ).classes("w-full border-b border-[#292335]/60"),
                 ui.column().classes("w-full font-mono text-xs"),
             ):
                 for line in hunk.lines:
                     line_colors = {
                         "addition": "bg-[#22c55e]/10 text-[#22c55e]",
                         "deletion": "bg-[#ef4444]/10 text-[#ef4444]",
-                        "context": "text-[#8b949e]",
+                        "context": "text-[#9c94b3]",
                     }
-                    color = line_colors.get(line.line_type, "text-[#8b949e]")
+                    color = line_colors.get(line.line_type, "text-[#9c94b3]")
                     prefix = {"addition": "+", "deletion": "-", "context": " "}.get(
                         line.line_type, " "
                     )
@@ -71,8 +71,8 @@ def render_diff_viewer(state: AppState) -> None:
                         new_num = (
                             str(line.new_line_number) if line.new_line_number else ""
                         )
-                        ui.label(old_num).classes("w-8 text-right text-[#64748b] mr-2")
-                        ui.label(new_num).classes("w-8 text-right text-[#64748b] mr-2")
+                        ui.label(old_num).classes("w-8 text-right text-[#6e6584] mr-2")
+                        ui.label(new_num).classes("w-8 text-right text-[#6e6584] mr-2")
                         ui.label(f"{prefix}{line.content}").classes(
                             "whitespace-pre-wrap"
                         )

@@ -19,11 +19,11 @@ _ARTIFACT_TYPE_ICONS: dict[ArtifactType, str] = {
 }
 
 _ARTIFACT_TYPE_COLORS: dict[ArtifactType, str] = {
-    ArtifactType.WALKTHROUGH: "text-[#3b82f6]",
+    ArtifactType.WALKTHROUGH: "text-[#7b6cf6]",
     ArtifactType.IMPLEMENTATION_PLAN: "text-[#22c55e]",
     ArtifactType.CODE_REVIEW: "text-[#f59e0b]",
-    ArtifactType.DOCUMENT: "text-[#7c3aed]",
-    ArtifactType.OTHER: "text-[#8b949e]",
+    ArtifactType.DOCUMENT: "text-[#7b6cf6]",
+    ArtifactType.OTHER: "text-[#9c94b3]",
 }
 
 
@@ -38,41 +38,41 @@ def _render_markdown_with_mermaid(content: str) -> None:
                 ui.markdown(part).classes("markdown-content max-w-none w-full")
         else:
             with ui.column().classes(
-                "w-full my-3 p-3 rounded-lg bg-[#0f1118] border border-[#252836]"
+                "w-full my-3 p-3 rounded-lg bg-[#08080c] border border-[#241f38]"
             ):
                 ui.label("Mermaid Diagram").classes(
-                    "text-[10px] text-[#64748b] uppercase font-mono mb-2"
+                    "text-[10px] text-[#6e6584] uppercase font-mono mb-2"
                 )
                 try:
                     ui.mermaid(part.strip()).classes("w-full")
                 except Exception:
                     ui.code(part.strip()).classes(
-                        "w-full text-[11px] bg-[#08090c] p-2 rounded font-mono"
+                        "w-full text-[11px] bg-[#050507] p-2 rounded font-mono"
                     )
 
 
 def render_artifact_card(artifact: Artifact, state: AppState) -> None:
     """Render an in-stream Artifact card with title, summary, and action buttons."""
     icon_name = _ARTIFACT_TYPE_ICONS.get(artifact.artifact_type, "category")
-    color_class = _ARTIFACT_TYPE_COLORS.get(artifact.artifact_type, "text-[#8b949e]")
+    color_class = _ARTIFACT_TYPE_COLORS.get(artifact.artifact_type, "text-[#9c94b3]")
     type_label = artifact.artifact_type.value.replace("_", " ").title()
 
     with (
         ui.column().classes("w-full max-w-3xl mx-auto px-6 py-2 items-start"),
         ui.card().classes(
-            "w-full bg-[#1a1d26] border border-[#2b2f3d] rounded-xl p-4 gap-2 shadow-md"
+            "w-full bg-[#101014] border border-[#292335] rounded-xl p-4 gap-2 shadow-md"
         ),
     ):
         with ui.row().classes("w-full items-center justify-between gap-4"):
             with ui.row().classes("items-center gap-2"):
                 ui.icon(icon_name, size="16px").classes(color_class)
-                ui.label(artifact.title).classes("text-sm font-semibold text-[#e6edf3]")
+                ui.label(artifact.title).classes("text-sm font-semibold text-[#eceaf4]")
                 ui.badge(type_label, color="grey-9").props("rounded dense").classes(
-                    "text-[9px] text-[#8b949e] font-mono uppercase"
+                    "text-[9px] text-[#9c94b3] font-mono uppercase"
                 )
             with ui.row().classes("items-center gap-1"):
                 ui.label(artifact.created_at).classes(
-                    "text-[10px] text-[#64748b] font-mono"
+                    "text-[10px] text-[#6e6584] font-mono"
                 )
                 ui.button(
                     icon="visibility",
@@ -83,7 +83,7 @@ def render_artifact_card(artifact: Artifact, state: AppState) -> None:
                 ui.tooltip("Review artifact")
 
         if artifact.summary:
-            ui.label(artifact.summary).classes("text-xs text-[#8b949e] leading-relaxed")
+            ui.label(artifact.summary).classes("text-xs text-[#9c94b3] leading-relaxed")
 
 
 def render_artifact_drawer(state: AppState) -> None:
@@ -98,21 +98,21 @@ def render_artifact_drawer(state: AppState) -> None:
     with (
         ui.dialog().classes("w-full max-w-4xl").on("close", _on_close) as dialog,
         ui.card().classes(
-            "w-full bg-[#13151b] border border-[#2b2f3d] rounded-xl p-0 overflow-hidden"
+            "w-full bg-[#08080a] border border-[#292335] rounded-xl p-0 overflow-hidden"
         ),
     ):
         with ui.row().classes(
             "w-full h-11 px-4 items-center justify-between "
-            "border-b border-[#2b2f3d] bg-[#1a1d26]"
+            "border-b border-[#292335] bg-[#101014]"
         ):
             with ui.row().classes("items-center gap-2"):
-                ui.icon("description", size="16px").classes("text-[#3b82f6]")
-                ui.label(artifact.title).classes("text-sm font-medium text-[#e6edf3]")
+                ui.icon("description", size="16px").classes("text-[#7b6cf6]")
+                ui.label(artifact.title).classes("text-sm font-medium text-[#eceaf4]")
                 ui.badge(
                     artifact.artifact_type.value.replace("_", " ").title(),
                     color="grey-9",
                 ).props("rounded dense").classes(
-                    "text-[9px] text-[#8b949e] font-mono uppercase"
+                    "text-[9px] text-[#9c94b3] font-mono uppercase"
                 )
             ui.button(
                 icon="close",
@@ -120,7 +120,7 @@ def render_artifact_drawer(state: AppState) -> None:
             ).props("flat dense round text-color=grey-5 size=sm")
 
         with ui.row().classes(
-            "w-full px-4 py-2 items-center gap-2 border-b border-[#2b2f3d] bg-[#1a1d26]"
+            "w-full px-4 py-2 items-center gap-2 border-b border-[#292335] bg-[#101014]"
         ):
             ui.button(
                 icon="content_copy",
@@ -133,21 +133,21 @@ def render_artifact_drawer(state: AppState) -> None:
             ).props("flat dense no-caps size=xs text-color=grey-5")
             ui.tooltip("Download artifact")
             if artifact.file_paths:
-                ui.label("Files:").classes("text-[10px] text-[#64748b] font-mono")
+                ui.label("Files:").classes("text-[10px] text-[#6e6584] font-mono")
                 for path in artifact.file_paths:
-                    ui.label(path).classes("text-[10px] text-[#3b82f6] font-mono")
+                    ui.label(path).classes("text-[10px] text-[#7b6cf6] font-mono")
 
         content_container = ui.column().classes(
-            "w-full max-h-[70vh] overflow-auto bg-[#0e1117] p-4"
+            "w-full max-h-[70vh] overflow-auto bg-[#050507] p-4"
         )
         with content_container:
             if artifact.summary:
                 with ui.row().classes(
                     "w-full items-center gap-2 p-3 mb-3 rounded-lg "
-                    "bg-[#1e212b] border border-[#2b2f3d]"
+                    "bg-[#0e0e12] border border-[#292335]"
                 ):
-                    ui.icon("info", size="14px").classes("text-[#3b82f6]")
-                    ui.label(artifact.summary).classes("text-xs text-[#94a3b8] italic")
+                    ui.icon("info", size="14px").classes("text-[#7b6cf6]")
+                    ui.label(artifact.summary).classes("text-xs text-[#8f87a8] italic")
 
             _render_markdown_with_mermaid(artifact.content)
 

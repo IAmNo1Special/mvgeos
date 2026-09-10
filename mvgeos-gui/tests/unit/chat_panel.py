@@ -220,6 +220,22 @@ async def test_chat_panel_shows_files_side_panel(user: User, tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_chat_panel_composer_uses_curvy_style(user: User) -> None:
+    """Verify composer renders curvy glow wrapper with send button."""
+    state = AppState()
+
+    @ui.page("/test_chat_panel_curvy")
+    def page() -> None:
+        render_chat_panel(state)
+
+    await user.open("/test_chat_panel_curvy")
+    assert user.find("composer-curvy") is not None
+    assert user.find("composer-main") is not None
+    assert user.find("prompt_input") is not None
+    assert user.find("send_prompt_btn") is not None
+
+
+@pytest.mark.asyncio
 async def test_chat_panel_shows_diff_side_panel(user: User, tmp_path) -> None:
     state = AppState(project_path=tmp_path)
     state.chat_side_panel = "diff"

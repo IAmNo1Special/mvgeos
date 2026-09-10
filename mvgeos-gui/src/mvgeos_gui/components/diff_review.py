@@ -20,21 +20,21 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
     with (
         ui.dialog().classes("w-full max-w-4xl").on("close", _on_close) as dialog,
         ui.card().classes(
-            "w-full bg-[#13151b] border border-[#2b2f3d] rounded-xl p-0 overflow-hidden"
+            "w-full bg-[#08080a] border border-[#292335] rounded-xl p-0 overflow-hidden"
         ),
     ):
         with ui.row().classes(
             "w-full h-11 px-4 items-center justify-between "
-            "border-b border-[#2b2f3d] bg-[#1a1d26]"
+            "border-b border-[#292335] bg-[#101014]"
         ):
             with ui.row().classes("items-center gap-2"):
-                ui.icon("difference", size="16px").classes("text-[#3b82f6]")
+                ui.icon("difference", size="16px").classes("text-[#7b6cf6]")
                 ui.label(diff_view.file_path).classes(
-                    "text-sm font-medium text-[#e6edf3] font-mono"
+                    "text-sm font-medium text-[#eceaf4] font-mono"
                 )
                 ui.badge(diff_view.status, color="grey-9").props(
                     "rounded dense"
-                ).classes("text-[10px] text-[#8b949e] font-mono")
+                ).classes("text-[10px] text-[#9c94b3] font-mono")
                 if add_total > 0:
                     ui.badge(
                         f"+{add_total}",
@@ -57,18 +57,18 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
             with content_container:
                 for hunk in diff_view.hunks:
                     with ui.column().classes(
-                        "w-full mb-2 rounded-lg border border-[#2b2f3d] overflow-hidden"
+                        "w-full mb-2 rounded-lg border border-[#292335] overflow-hidden"
                     ):
                         with ui.row().classes(
-                            "w-full px-3 py-1.5 bg-[#1a1d26] items-center gap-2"
+                            "w-full px-3 py-1.5 bg-[#101014] items-center gap-2"
                         ):
                             ui.label(
                                 f"@@ -{hunk.source_start},{hunk.source_length}"
                                 f" +{hunk.target_start},{hunk.target_length} @@"
-                            ).classes("text-[10px] text-[#64748b] font-mono")
+                            ).classes("text-[10px] text-[#6e6584] font-mono")
                         for line in hunk.lines:
                             with ui.row().classes(
-                                "w-full items-stretch hover:bg-[#1e212b]"
+                                "w-full items-stretch hover:bg-[#0e0e12]"
                             ):
                                 line_no = (
                                     str(line.old_line_number)
@@ -77,8 +77,8 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
                                 )
                                 ui.label(line_no).classes(
                                     "w-10 text-right pr-3 text-[10px] "
-                                    "text-[#64748b] font-mono select-none "
-                                    "border-r border-[#2b2f3d]"
+                                    "text-[#6e6584] font-mono select-none "
+                                    "border-r border-[#292335]"
                                 )
                                 line_no_new = (
                                     str(line.new_line_number)
@@ -87,11 +87,11 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
                                 )
                                 ui.label(line_no_new).classes(
                                     "w-10 text-right pr-3 text-[10px] "
-                                    "text-[#64748b] font-mono select-none "
-                                    "border-r border-[#2b2f3d]"
+                                    "text-[#6e6584] font-mono select-none "
+                                    "border-r border-[#292335]"
                                 )
                                 prefix = " "
-                                color = "text-[#e6edf3]"
+                                color = "text-[#eceaf4]"
                                 if line.line_type == "addition":
                                     prefix = "+"
                                     color = "text-[#22c55e]"
@@ -108,19 +108,19 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
             with content_container:
                 for hunk in diff_view.hunks:
                     with ui.row().classes(
-                        "w-full mb-2 rounded-lg border border-[#2b2f3d] overflow-hidden"
+                        "w-full mb-2 rounded-lg border border-[#292335] overflow-hidden"
                     ):
-                        with ui.column().classes("w-1/2 border-r border-[#2b2f3d]"):
+                        with ui.column().classes("w-1/2 border-r border-[#292335]"):
                             ui.label(
                                 f"@@ -{hunk.source_start},{hunk.source_length} @@"
                             ).classes(
-                                "w-full px-3 py-1.5 bg-[#1a1d26] text-[10px] "
-                                "text-[#64748b] font-mono border-b border-[#2b2f3d]"
+                                "w-full px-3 py-1.5 bg-[#101014] text-[10px] "
+                                "text-[#6e6584] font-mono border-b border-[#292335]"
                             )
                             for line in hunk.lines:
                                 if line.line_type in ("context", "deletion"):
                                     with ui.row().classes(
-                                        "w-full items-stretch hover:bg-[#1e212b]"
+                                        "w-full items-stretch hover:bg-[#0e0e12]"
                                     ):
                                         line_no = (
                                             str(line.old_line_number)
@@ -129,8 +129,8 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
                                         )
                                         ui.label(line_no).classes(
                                             "w-10 text-right pr-3 text-[10px] "
-                                            "text-[#64748b] font-mono select-none "
-                                            "border-r border-[#2b2f3d]"
+                                            "text-[#6e6584] font-mono select-none "
+                                            "border-r border-[#292335]"
                                         )
                                         prefix = (
                                             " " if line.line_type == "context" else "-"
@@ -138,7 +138,7 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
                                         color = (
                                             "text-[#ef4444]"
                                             if line.line_type == "deletion"
-                                            else "text-[#e6edf3]"
+                                            else "text-[#eceaf4]"
                                         )
                                         ui.label(f"{prefix}{line.content}").classes(
                                             "flex-grow text-xs font-mono "
@@ -148,13 +148,13 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
                             ui.label(
                                 f"@@ +{hunk.target_start},{hunk.target_length} @@"
                             ).classes(
-                                "w-full px-3 py-1.5 bg-[#1a1d26] text-[10px] "
-                                "text-[#64748b] font-mono border-b border-[#2b2f3d]"
+                                "w-full px-3 py-1.5 bg-[#101014] text-[10px] "
+                                "text-[#6e6584] font-mono border-b border-[#292335]"
                             )
                             for line in hunk.lines:
                                 if line.line_type in ("context", "addition"):
                                     with ui.row().classes(
-                                        "w-full items-stretch hover:bg-[#1e212b]"
+                                        "w-full items-stretch hover:bg-[#0e0e12]"
                                     ):
                                         line_no = (
                                             str(line.new_line_number)
@@ -163,8 +163,8 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
                                         )
                                         ui.label(line_no).classes(
                                             "w-10 text-right pr-3 text-[10px] "
-                                            "text-[#64748b] font-mono select-none "
-                                            "border-r border-[#2b2f3d]"
+                                            "text-[#6e6584] font-mono select-none "
+                                            "border-r border-[#292335]"
                                         )
                                         prefix = (
                                             " " if line.line_type == "context" else "+"
@@ -172,7 +172,7 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
                                         color = (
                                             "text-[#22c55e]"
                                             if line.line_type == "addition"
-                                            else "text-[#e6edf3]"
+                                            else "text-[#eceaf4]"
                                         )
                                         ui.label(f"{prefix}{line.content}").classes(
                                             "flex-grow text-xs font-mono "
@@ -180,9 +180,9 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
                                         )
 
         with ui.row().classes(
-            "w-full px-4 py-2 items-center gap-2 border-b border-[#2b2f3d] bg-[#1a1d26]"
+            "w-full px-4 py-2 items-center gap-2 border-b border-[#292335] bg-[#101014]"
         ):
-            ui.label("View:").classes("text-[11px] text-[#8b949e]")
+            ui.label("View:").classes("text-[11px] text-[#9c94b3]")
             ui_unified_active = view_mode[0] == "unified"
             ui.button(
                 "Unified",
@@ -201,7 +201,7 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
             ).mark("side_by_side_view_btn")
 
         content_container = ui.column().classes(
-            "w-full max-h-[60vh] overflow-auto bg-[#0e1117] p-0"
+            "w-full max-h-[60vh] overflow-auto bg-[#050507] p-0"
         )
         _render_unified()
 

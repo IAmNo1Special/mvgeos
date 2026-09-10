@@ -13,17 +13,17 @@ def render_command_palette(state: AppState) -> None:
     with (
         ui.dialog().props("maximized") as dialog,
         ui.card().classes(
-            "w-full max-w-2xl mx-auto mt-20 bg-[#13151b] border "
-            "border-[#2b2f3d] rounded-xl shadow-2xl"
+            "w-full max-w-2xl mx-auto mt-20 bg-[#08080a] border "
+            "border-[#292335] rounded-xl shadow-2xl"
         ),
     ):
         ui.label("Quick Switcher").classes(
-            "text-sm font-semibold text-[#e6edf3] mb-3 px-4 pt-4"
+            "text-sm font-semibold text-[#eceaf4] mb-3 px-4 pt-4"
         )
 
         search_input = (
             ui.input(placeholder="Type a command, session, or file...")
-            .props("dense dark outlined rounded borderless bg-[#1e212b] text-white")
+            .props("dense dark outlined rounded borderless bg-[#0e0e12] text-white")
             .classes("w-full mb-3 mx-4")
         )
 
@@ -52,11 +52,11 @@ def render_command_palette(state: AppState) -> None:
                     ui.row()
                     .classes(
                         "w-full items-center gap-3 px-3 py-2 rounded-lg cursor-pointer "
-                        "hover:bg-[#1e212b] text-xs text-[#e6edf3]"
+                        "hover:bg-[#0e0e12] text-xs text-[#eceaf4]"
                     )
                     .on("click", lambda _, v=view: open_view(v))
                 ):
-                    ui.icon(icon, size="16px").classes("text-[#8b949e]")
+                    ui.icon(icon, size="16px").classes("text-[#9c94b3]")
                     ui.label(label).classes("flex-1")
 
         search_input.on("keydown.escape", close_palette)

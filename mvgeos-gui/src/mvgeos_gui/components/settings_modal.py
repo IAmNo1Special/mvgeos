@@ -69,17 +69,17 @@ def render_app_settings_modal(state: AppState) -> None:
     with (
         ui.dialog().classes("w-full max-w-2xl").on("close", _on_close) as dialog,
         ui.card().classes(
-            "w-full bg-[#13151b] border border-[#2b2f3d] rounded-xl p-0 overflow-hidden"
+            "w-full bg-[#08080a] border border-[#292335] rounded-xl p-0 overflow-hidden"
         ),
     ):
         with ui.row().classes(
             "w-full h-11 px-4 items-center justify-between "
-            "border-b border-[#2b2f3d] bg-[#1a1d26]"
+            "border-b border-[#292335] bg-[#101014]"
         ):
             with ui.row().classes("items-center gap-2"):
-                ui.icon("settings", size="16px").classes("text-[#3b82f6]")
+                ui.icon("settings", size="16px").classes("text-[#7b6cf6]")
                 ui.label("Application Settings").classes(
-                    "text-sm font-medium text-[#e6edf3]"
+                    "text-sm font-medium text-[#eceaf4]"
                 )
             ui.button(
                 icon="close",
@@ -89,7 +89,7 @@ def render_app_settings_modal(state: AppState) -> None:
         with ui.column().classes("w-full p-4 gap-4 max-h-[70vh] overflow-auto"):
             with ui.row().classes("w-full gap-4"):  # noqa: SIM117
                 with ui.column().classes("flex-1 gap-1"):
-                    ui.label("API Key").classes("text-xs text-[#8b949e]")
+                    ui.label("API Key").classes("text-xs text-[#9c94b3]")
                     ui.input(
                         value=str(edited["api_key"]),
                         on_change=lambda e: edited.__setitem__("api_key", e.value),
@@ -98,7 +98,7 @@ def render_app_settings_modal(state: AppState) -> None:
                     )
 
                 with ui.column().classes("flex-1 gap-1"):
-                    ui.label("Default Model").classes("text-xs text-[#8b949e]")
+                    ui.label("Default Model").classes("text-xs text-[#9c94b3]")
                     ui.select(
                         options=get_model_options(),
                         value=str(edited["default_model"]),
@@ -113,7 +113,7 @@ def render_app_settings_modal(state: AppState) -> None:
             with ui.row().classes("w-full gap-4"):  # noqa: SIM117
                 with ui.column().classes("flex-1 gap-1"):
                     ui.label("Mana Limit (max_tokens)").classes(
-                        "text-xs text-[#8b949e]"
+                        "text-xs text-[#9c94b3]"
                     )
                     ui.input(
                         value=str(edited["mana_limit"]),
@@ -123,7 +123,7 @@ def render_app_settings_modal(state: AppState) -> None:
                     )
 
                 with ui.column().classes("flex-1 gap-1"):
-                    ui.label("Temperature").classes("text-xs text-[#8b949e]")
+                    ui.label("Temperature").classes("text-xs text-[#9c94b3]")
                     ui.input(
                         value=str(edited["temperature"]),
                         on_change=lambda e: edited.__setitem__("temperature", e.value),
@@ -133,7 +133,7 @@ def render_app_settings_modal(state: AppState) -> None:
 
             with ui.row().classes("w-full gap-4"):  # noqa: SIM117
                 with ui.column().classes("flex-1 gap-1"):
-                    ui.label("Theme").classes("text-xs text-[#8b949e]")
+                    ui.label("Theme").classes("text-xs text-[#9c94b3]")
                     ui.select(
                         AVAILABLE_THEMES,
                         value=str(edited["theme"]),
@@ -144,13 +144,13 @@ def render_app_settings_modal(state: AppState) -> None:
 
         with ui.row().classes(
             "w-full px-4 py-3 items-center justify-end gap-2 "
-            "border-t border-[#2b2f3d] bg-[#1a1d26]"
+            "border-t border-[#292335] bg-[#101014]"
         ):
             ui.button("Cancel", on_click=lambda: dialog.close()).props(
                 "flat dense no-caps text-color=grey-5"
             )
             ui.button("Save", on_click=_save).props(
-                "unelevated dense no-caps bg-[#3b82f6] text-white"
+                "unelevated dense no-caps mvge-glow-btn text-white"
             )
 
     dialog.open()

@@ -17,32 +17,32 @@ from mvgeos_gui.utils import copy_to_clipboard
 def render_message_header(msg: ChatMessage) -> ui.row:
     """Render the header row: avatar, model badge, mana usage, timestamp."""
     with ui.row().classes(
-        "w-full items-center justify-between pb-2 border-b border-[#252836]"
+        "w-full items-center justify-between pb-2 border-b border-[#241f38]"
     ) as row:
         with ui.row().classes("items-center gap-2"):
             with ui.row().classes(
-                "w-6 h-6 rounded-lg bg-[#3b82f6]/20 border "
-                "border-[#3b82f6]/40 items-center justify-center"
+                "w-6 h-6 rounded-lg bg-[#7b6cf6]/20 border "
+                "border-[#7b6cf6]/40 items-center justify-center"
             ):
-                ui.icon("auto_awesome", size="14px").classes("text-[#3b82f6]")
-            ui.label("Mvge").classes("text-xs font-semibold text-[#e6edf3]")
+                ui.icon("auto_awesome", size="14px").classes("text-[#7b6cf6]")
+            ui.label("Mvge").classes("text-xs font-semibold text-[#eceaf4]")
             if msg.model:
                 model_slug = msg.model.split("/")[-1].split(":")[0]
                 ui.badge(model_slug, color="grey-9").props("rounded dense").classes(
-                    "text-[10px] text-[#8b949e] font-mono"
+                    "text-[10px] text-[#9c94b3] font-mono"
                 )
 
         with ui.row().classes("items-center gap-2"):
             if msg.mana_used > 0:
                 with ui.row().classes(
                     "items-center gap-1 px-2 py-0.5 rounded "
-                    "bg-[#1e212b] border border-[#2b2f3d]"
+                    "bg-[#0e0e12] border border-[#292335]"
                 ):
                     ui.icon("bolt", size="12px").classes("text-[#f59e0b]")
                     ui.label(f"{msg.mana_used:,} Mana").classes(
                         "text-[10px] text-[#f59e0b] font-mono"
                     )
-            ui.label(msg.timestamp).classes("text-[10px] text-[#64748b] font-mono")
+            ui.label(msg.timestamp).classes("text-[10px] text-[#6e6584] font-mono")
 
     return row
 
@@ -84,7 +84,7 @@ def render_streaming_indicator(msg: ChatMessage) -> ui.row | None:
             else "Channeling response..."
         )
         ui.label(stream_label).classes(
-            "text-[11px] text-[#8b949e] italic animate-pulse"
+            "text-[11px] text-[#9c94b3] italic animate-pulse"
         )
     return row
 
@@ -109,7 +109,7 @@ def render_message_footer(
     if msg.is_streaming and not (msg.content or msg.contemplation):
         return None
     with ui.row().classes(
-        "w-full items-center justify-end gap-1 pt-2 border-t border-[#252836]/60"
+        "w-full items-center justify-end gap-1 pt-2 border-t border-[#241f38]/60"
     ) as row:
         copy_text = msg.content or "\n\n".join(msg.contemplation)
         with ui.button(
@@ -143,7 +143,7 @@ def render_assistant_message(
             "w-full max-w-3xl mx-auto px-6 py-3 items-start"
         ) as container,
         ui.card().classes(
-            "w-full bg-[#181a20] border border-[#2b2f3d] rounded-2xl "
+            "w-full bg-[#000000] border border-[#292335] rounded-2xl "
             "p-4 gap-3 shadow-lg"
         ),
     ):

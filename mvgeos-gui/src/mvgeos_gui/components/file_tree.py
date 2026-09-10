@@ -39,7 +39,7 @@ def _render_tree(state: AppState, root: Path, path: Path, depth: int) -> None:
                 _render_tree(state, root, entry, depth + 1)
         else:
             row_cls = (
-                f"pl-{depth * 4 + 2} py-1 cursor-pointer hover:bg-[#1e212b] "
+                f"pl-{depth * 4 + 2} py-1 cursor-pointer hover:bg-[#0e0e12] "
                 f"rounded text-xs w-full items-center gap-1"
             )
             with (
@@ -47,5 +47,5 @@ def _render_tree(state: AppState, root: Path, path: Path, depth: int) -> None:
                 .classes(row_cls)
                 .on("click", lambda p=entry: state.open_in_editor())
             ):
-                ui.icon("insert_drive_file", size="12px").classes("text-[#8b949e]")
-                ui.label(entry.name).classes("text-[#e6edf3] truncate")
+                ui.icon("insert_drive_file", size="12px").classes("text-[#9c94b3]")
+                ui.label(entry.name).classes("text-[#eceaf4] truncate")

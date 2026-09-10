@@ -37,18 +37,18 @@ def render_chat_panel(state: AppState) -> ui.column:
             with (
                 ui.row().classes(
                     "w-full h-11 items-center justify-between px-3 "
-                    "border-b border-[#2b2f3d] shrink-0"
+                    "border-b border-[#292335] shrink-0"
                 ),
                 ui.row().classes("items-center gap-1"),
             ):
                 if state.project_path:
                     with ui.row().classes(
-                        "items-center gap-1.5 mr-2 px-2 py-0.5 rounded bg-[#1e212b]/60"
+                        "items-center gap-1.5 mr-2 px-2 py-0.5 rounded bg-[#0e0e12]/60"
                     ):
-                        ui.icon("folder_open", size="12px").classes("text-[#8b949e]")
+                        ui.icon("folder_open", size="12px").classes("text-[#9c94b3]")
                         ui.label(
                             state.project_path.name or str(state.project_path)
-                        ).classes("text-xs text-[#8b949e] max-w-[300px] truncate")
+                        ).classes("text-xs text-[#9c94b3] max-w-[300px] truncate")
 
                 _toolbar_button(
                     icon="panel_left_close" if state.sidebar_open else "panel_left",
@@ -175,9 +175,9 @@ def render_chat_panel(state: AppState) -> ui.column:
                     )
                     .props('round unelevated size=sm id="chat-scroll-bottom-btn"')
                     .classes(
-                        "absolute right-4 bottom-4 z-30 bg-[#1e212b] "
-                        "hover:bg-[#2b2f3d] text-[#e6edf3] border border-[#2b2f3d] "
-                        "hover:border-[#3b82f6] shadow-xl transition-all "
+                        "absolute right-4 bottom-4 z-30 bg-[#0e0e12] "
+                        "hover:bg-[#292335] text-[#eceaf4] border border-[#292335] "
+                        "hover:border-[#7b6cf6] shadow-xl transition-all "
                         "duration-200 opacity-0 pointer-events-none"
                     )
                     .mark("chat-scroll-bottom-btn")
@@ -200,16 +200,16 @@ def render_chat_panel(state: AppState) -> ui.column:
             def side_panel_view() -> None:
                 if state.chat_side_panel in ("files", "diff"):
                     with ui.column().classes(
-                        "w-80 border-l border-[#2b2f3d] bg-[#13151b] "
+                        "w-80 border-l border-[#292335] bg-[#08080a] "
                         "shrink-0 overflow-hidden"
                     ):
                         with ui.row().classes(
                             "w-full h-11 items-center justify-between px-3 "
-                            "border-b border-[#2b2f3d]"
+                            "border-b border-[#292335]"
                         ):
                             ui.label(
                                 "Files" if state.chat_side_panel == "files" else "Diff"
-                            ).classes("text-xs font-semibold text-[#e6edf3]")
+                            ).classes("text-xs font-semibold text-[#eceaf4]")
                             ui.button(
                                 icon="close",
                                 on_click=lambda: state.set_chat_side_panel(None),
@@ -237,20 +237,20 @@ def _render_empty_chat(state: AppState) -> None:
     """Render the centered empty-chat prompt."""
     with ui.column().classes("w-full h-full items-center justify-center px-4"):
         with ui.row().classes(
-            "w-14 h-14 rounded-2xl bg-[#1e212b] border border-[#2b2f3d] "
+            "w-14 h-14 rounded-2xl bg-[#0e0e12] border border-[#292335] "
             "items-center justify-center shadow-lg mb-6"
         ):
-            ui.icon("auto_awesome", size="28px").classes("text-[#3b82f6]")
+            ui.icon("auto_awesome", size="28px").classes("text-[#7b6cf6]")
 
         ui.label("What should Mvge work on?").classes(
-            "text-2xl font-semibold text-[#e6edf3] tracking-tight"
+            "text-2xl font-semibold text-[#eceaf4] tracking-tight"
         )
         status_text = {
             "channeling": "Mvge is channeling a response…",
             "working": "Mvge is working…",
             "idle": "Choose a project — Mvge starts when you send.",
         }.get(state.mvge_status, "Choose a project — Mvge starts when you send.")
-        ui.label(status_text).classes("text-sm text-[#8b949e] mt-1 mb-8")
+        ui.label(status_text).classes("text-sm text-[#9c94b3] mt-1 mb-8")
 
         with ui.row().classes("gap-2 flex-wrap justify-center mb-6"):
             for prompt in EXAMPLE_PROMPTS:
@@ -258,8 +258,8 @@ def _render_empty_chat(state: AppState) -> None:
                     prompt,
                     on_click=lambda p=prompt: _fill_composer(state, p),
                 ).props("unelevated dense no-caps").classes(
-                    "rounded-lg border border-[#2b2f3d] px-3 py-1.5 text-xs "
-                    "text-[#8b949e] hover:border-[#3b82f6] hover:text-[#e6edf3] "
+                    "rounded-lg border border-[#292335] px-3 py-1.5 text-xs "
+                    "text-[#9c94b3] hover:border-[#7b6cf6] hover:text-[#eceaf4] "
                     "transition-colors"
                 )
 
@@ -280,228 +280,300 @@ def _render_user_message(msg: object) -> None:
     with (
         ui.column().classes("w-full max-w-3xl mx-auto px-6 py-3 items-end"),
         ui.card().classes(
-            "w-auto max-w-[85%] bg-[#1e212b] border border-[#2b2f3d] "
+            "w-auto max-w-[85%] bg-[#0e0e12] border border-[#292335] "
             "rounded-2xl p-4 shadow-md"
         ),
     ):
         with ui.row().classes(
-            "w-full items-center justify-between pb-1 border-b border-[#252836] mb-2"
+            "w-full items-center justify-between pb-1 border-b border-[#241f38] mb-2"
         ):
             with ui.row().classes("items-center gap-1.5"):
-                ui.icon("account_circle", size="16px").classes("text-[#3b82f6]")
-                ui.label("Summoner").classes("text-xs font-semibold text-[#e6edf3]")
+                ui.icon("account_circle", size="16px").classes("text-[#7b6cf6]")
+                ui.label("Summoner").classes("text-xs font-semibold text-[#eceaf4]")
             if timestamp:
-                ui.label(timestamp).classes("text-[10px] text-[#64748b] font-mono")
+                ui.label(timestamp).classes("text-[10px] text-[#6e6584] font-mono")
         ui.label(content).classes(
-            "text-xs text-[#e6edf3] whitespace-pre-wrap leading-relaxed"
+            "text-xs text-[#eceaf4] whitespace-pre-wrap leading-relaxed"
         )
 
 
 def _render_composer(state: AppState) -> None:
-    """Render the bottom composer input area."""
+    """Render the bottom composer input area.
+
+    Curvy glow styling adapted from Uiverse.io "curvy-earwig-22" by
+    Lakshay-art (MIT License): fluid full-width version with no search
+    icon; the filter slot is reused as the send/stop button.
+    """
     ac_service = state.get_autocomplete_service()
 
-    with (
-        ui.column().classes("w-full px-6 pb-6 pt-2 shrink-0"),
-        ui.card().classes(
-            "w-full bg-[#1e212b] border border-[#2b2f3d] rounded-2xl p-3 shadow-2xl"
-        ),
-    ):
-        # Attachment and Mention chips
-        @ui.refreshable
-        def chips_view() -> None:
-            if state.pending_attachments:
-                with ui.row().classes("items-center gap-1.5 flex-wrap mb-2"):
-                    for idx, name in enumerate(state.pending_attachments):
-                        with ui.row().classes(
-                            "items-center gap-1 px-2 py-0.5 rounded-md bg-[#2b2f3d]"
-                        ):
-                            ui.icon("insert_drive_file", size="12px").classes(
-                                "text-[#8b949e]"
-                            )
-                            ui.label(name).classes(
-                                "text-xs text-[#e6edf3] truncate max-w-[140px]"
-                            )
-                            ui.icon("close", size="10px").classes(
-                                "text-[#64748b] cursor-pointer"
-                            ).on("click", lambda _, i=idx: state.remove_attachment(i))
+    # Glow containment: px-8/pb-8 give the halo fringe room to decay before
+    # the chat column's overflow:hidden walls (sides/bottom); pt-5 tops up
+    # the open messages area. See .mvge-glow note in styles.py.
+    with ui.column().classes("w-full px-8 pb-8 pt-5 shrink-0"):  # noqa: SIM117
+        with ui.element("div").classes("mvge-poda").mark("composer-curvy"):
+            ui.element("div").classes("mvge-glow")
+            ui.element("div").classes("mvge-dark-border-bg")
+            ui.element("div").classes("mvge-dark-border-bg")
+            ui.element("div").classes("mvge-dark-border-bg")
+            ui.element("div").classes("mvge-white")
+            ui.element("div").classes("mvge-border")
+            with ui.element("div").classes("mvge-main").mark("composer-main"):
+                # Attachment and Mention chips
+                @ui.refreshable
+                def chips_view() -> None:
+                    if state.pending_attachments:
+                        with ui.row().classes("items-center gap-1.5 flex-wrap mb-2"):
+                            for idx, name in enumerate(state.pending_attachments):
+                                with ui.row().classes(
+                                    "items-center gap-1 px-2 py-0.5 rounded-md "
+                                    "bg-[#292335]"
+                                ):
+                                    ui.icon("insert_drive_file", size="12px").classes(
+                                        "text-[#9c94b3]"
+                                    )
+                                    ui.label(name).classes(
+                                        "text-xs text-[#eceaf4] truncate max-w-[140px]"
+                                    )
+                                    ui.icon("close", size="10px").classes(
+                                        "text-[#6e6584] cursor-pointer"
+                                    ).on(
+                                        "click",
+                                        lambda _, i=idx: state.remove_attachment(i),
+                                    )
 
-            if state.selected_mentions:
-                with ui.row().classes("items-center gap-1.5 flex-wrap mb-2"):
-                    for idx, chip in enumerate(state.selected_mentions):
-                        with ui.row().classes(
-                            "items-center gap-1 px-2 py-0.5 rounded-md "
-                            "bg-[#2b2f3d] border border-[#3b82f6]/30"
-                        ):
-                            ui.icon("insert_drive_file", size="12px").classes(
-                                "text-[#8b949e]"
-                            )
-                            ui.label(chip.text).classes(
-                                "text-xs text-[#e6edf3] truncate max-w-[160px]"
-                            )
-                            ui.icon("close", size="10px").classes(
-                                "text-[#64748b] cursor-pointer"
-                            ).on(
-                                "click",
-                                lambda _, i=idx: state.remove_selected_mention(i),
-                            )
+                    if state.selected_mentions:
+                        with ui.row().classes("items-center gap-1.5 flex-wrap mb-2"):
+                            for idx, chip in enumerate(state.selected_mentions):
+                                with ui.row().classes(
+                                    "items-center gap-1 px-2 py-0.5 rounded-md "
+                                    "bg-[#292335] border border-[#7b6cf6]/30"
+                                ):
+                                    ui.icon("insert_drive_file", size="12px").classes(
+                                        "text-[#9c94b3]"
+                                    )
+                                    ui.label(chip.text).classes(
+                                        "text-xs text-[#eceaf4] truncate max-w-[160px]"
+                                    )
+                                    ui.icon("close", size="10px").classes(
+                                        "text-[#6e6584] cursor-pointer"
+                                    ).on(
+                                        "click",
+                                        lambda _, i=idx: state.remove_selected_mention(
+                                            i
+                                        ),
+                                    )
 
-        chips_view()
+                chips_view()
 
-        last_chips_state = [
-            (len(state.pending_attachments), len(state.selected_mentions))
-        ]
+                last_chips_state = [
+                    (len(state.pending_attachments), len(state.selected_mentions))
+                ]
 
-        def _on_chips_check() -> None:
-            cur = (len(state.pending_attachments), len(state.selected_mentions))
-            if cur != last_chips_state[0]:
-                last_chips_state[0] = cur
-                chips_view.refresh()
-
-        state.subscribe(_on_chips_check)
-
-        # Autocomplete service wrapper
-        with ui.column().classes("relative w-full"):
-            placeholder_text = "Ask Mvge anything… (@ to mention, / for commands)"
-            prompt_input = (
-                ui.textarea(placeholder=placeholder_text)
-                .props("autogrow borderless dense rows=2")
-                .classes("w-full bg-transparent text-sm text-[#e6edf3] resize-none")
-                .mark("prompt_input")
-            )
-
-            # Sync active_prompt if set externally (e.g. example prompts)
-            last_active_prompt = [state.active_prompt]
-
-            def _on_prompt_check() -> None:
-                if state.active_prompt and state.active_prompt != last_active_prompt[0]:
-                    last_active_prompt[0] = state.active_prompt
-                    prompt_input.value = state.active_prompt
-                    state.active_prompt = ""
-
-            state.subscribe(_on_prompt_check)
-
-            # Bind input to autocomplete service
-            def handle_input_change(e: Any) -> None:
-                val = getattr(e, "value", None)
-                if val is None and hasattr(e, "args"):
-                    val = e.args
-                text = str(val if val is not None else (prompt_input.value or ""))
-                ac_service.process_input(text, len(text))
-
-            prompt_input.on("update:model-value", handle_input_change)
-
-            def handle_submit() -> None:
-                text = prompt_input.value or ""
-                if not text.strip() and not state.selected_mentions:
-                    return
-                # Prepend mentions to text if any
-                if state.selected_mentions:
-                    prefix = " ".join(m.text for m in state.selected_mentions) + " "
-                    text = prefix + text
-                    state.clear_selected_mentions()
-                prompt_input.value = ""
-                ac_service.close()
-                _scroll_to_bottom(element_id=None, force=True)
-                state.submit_prompt(text)
-
-            def handle_enter(e: object) -> None:
-                # If autocomplete popup is open, enter selects the item
-                if ac_service.is_open:
-                    item = ac_service.get_selected_item()
-                    if item:
-                        _apply_autocomplete_selection(
-                            ac_service, prompt_input, item, state
-                        )
-                    return
-                # Shift+Enter inserts newline, normal Enter submits
-                handle_submit()
-
-            def handle_arrow_down(e: object) -> None:
-                if ac_service.is_open:
-                    ac_service.move_down()
-
-            def handle_arrow_up(e: object) -> None:
-                if ac_service.is_open:
-                    ac_service.move_up()
-
-            prompt_input.on(
-                "keydown.tab.prevent",
-                lambda e: handle_tab(ac_service, prompt_input, state),
-            )
-            prompt_input.on("keydown.down.prevent", handle_arrow_down)
-            prompt_input.on("keydown.up.prevent", handle_arrow_up)
-
-            prompt_input.on(
-                "keydown.backspace",
-                lambda e: _handle_backspace(prompt_input, state),
-            )
-
-            prompt_input.on("keydown.enter.exact.prevent", handle_enter)
-            prompt_input.on("keydown.escape.prevent", ac_service.close)
-
-            # Autocomplete popup
-            @ui.refreshable
-            def popup_view() -> None:
-                if not ac_service.is_open:
-                    return
-                items = ac_service.get_visible_items()
-                if not items:
-                    return
-                popup_id = f"autocomplete-popup-{id(ac_service)}"
-                selected_idx = ac_service.selected_index
-                with (
-                    ui.element("div")
-                    .classes(
-                        "absolute z-50 w-full bg-[#2b2f3d] "
-                        "border border-[#3b82f6] rounded-lg shadow-xl "
-                        "max-h-48 overflow-y-auto bottom-full mb-1"
+                def _on_chips_check() -> None:
+                    cur = (
+                        len(state.pending_attachments),
+                        len(state.selected_mentions),
                     )
-                    .props(f"id={popup_id}")
-                ):
-                    for idx, item in enumerate(items):
-                        is_selected = idx == selected_idx
-                        item_cls = (
-                            "bg-[#3b82f6]/20"
-                            if is_selected
-                            else "hover:bg-[#2b2f3d]/50"
+                    if cur != last_chips_state[0]:
+                        last_chips_state[0] = cur
+                        chips_view.refresh()
+
+                state.subscribe(_on_chips_check)
+
+                # Input zone: textarea + glow masks + send button
+                # (no search icon; filter slot is the send/stop button).
+                with ui.column().classes("relative w-full mvge-input-zone"):
+                    placeholder_text = (
+                        "Ask Mvge anything… (@ to mention, / for commands)"
+                    )
+                    prompt_input = (
+                        ui.textarea(placeholder=placeholder_text)
+                        .props("autogrow borderless dense rows=2")
+                        .classes(
+                            "w-full bg-transparent text-sm text-[#eceaf4] resize-none"
                         )
-                        with (
-                            ui.row()
-                            .classes(
-                                f"items-center gap-2 px-2 py-1 cursor-pointer "
-                                f"{item_cls} rounded w-full"
-                            )
-                            .on(
-                                "click",
-                                lambda _, i=idx: _select_autocomplete_item(
-                                    ac_service, prompt_input, i, state
-                                ),
-                            )
-                            .props(f'data-index="{idx}"')
+                        .mark("prompt_input")
+                    )
+                    ui.element("div").classes("mvge-input-mask")
+                    ui.element("div").classes("mvge-pink-mask")
+                    ui.element("div").classes("mvge-send-border")
+
+                    # Sync active_prompt if set externally (e.g. example prompts)
+                    last_active_prompt = [state.active_prompt]
+
+                    def _on_prompt_check() -> None:
+                        if (
+                            state.active_prompt
+                            and state.active_prompt != last_active_prompt[0]
                         ):
-                            ui.icon("help_outline", size="14px").classes(
-                                "text-[#8b949e]"
+                            last_active_prompt[0] = state.active_prompt
+                            prompt_input.value = state.active_prompt
+                            state.active_prompt = ""
+
+                    state.subscribe(_on_prompt_check)
+
+                    # Bind input to autocomplete service
+                    def handle_input_change(e: Any) -> None:
+                        val = getattr(e, "value", None)
+                        if val is None and hasattr(e, "args"):
+                            val = e.args
+                        text = str(
+                            val if val is not None else (prompt_input.value or "")
+                        )
+                        ac_service.process_input(text, len(text))
+
+                    prompt_input.on("update:model-value", handle_input_change)
+
+                    def handle_submit() -> None:
+                        text = prompt_input.value or ""
+                        if not text.strip() and not state.selected_mentions:
+                            return
+                        # Prepend mentions to text if any
+                        if state.selected_mentions:
+                            prefix = (
+                                " ".join(m.text for m in state.selected_mentions) + " "
                             )
-                            ui.label(str(ac_service.get_item_label(item))).classes(
-                                "text-xs text-[#e6edf3] truncate"
+                            text = prefix + text
+                            state.clear_selected_mentions()
+                        prompt_input.value = ""
+                        ac_service.close()
+                        _scroll_to_bottom(element_id=None, force=True)
+                        state.submit_prompt(text)
+
+                    def handle_enter(e: object) -> None:
+                        # If autocomplete popup is open, enter selects the item
+                        if ac_service.is_open:
+                            item = ac_service.get_selected_item()
+                            if item:
+                                _apply_autocomplete_selection(
+                                    ac_service, prompt_input, item, state
+                                )
+                            return
+                        # Shift+Enter inserts newline, normal Enter submits
+                        handle_submit()
+
+                    def handle_arrow_down(e: object) -> None:
+                        if ac_service.is_open:
+                            ac_service.move_down()
+
+                    def handle_arrow_up(e: object) -> None:
+                        if ac_service.is_open:
+                            ac_service.move_up()
+
+                    prompt_input.on(
+                        "keydown.tab.prevent",
+                        lambda e: handle_tab(ac_service, prompt_input, state),
+                    )
+                    prompt_input.on("keydown.down.prevent", handle_arrow_down)
+                    prompt_input.on("keydown.up.prevent", handle_arrow_up)
+
+                    prompt_input.on(
+                        "keydown.backspace",
+                        lambda e: _handle_backspace(prompt_input, state),
+                    )
+
+                    prompt_input.on("keydown.enter.exact.prevent", handle_enter)
+                    prompt_input.on("keydown.escape.prevent", ac_service.close)
+
+                    # Autocomplete popup
+                    @ui.refreshable
+                    def popup_view() -> None:
+                        if not ac_service.is_open:
+                            return
+                        items = ac_service.get_visible_items()
+                        if not items:
+                            return
+                        popup_id = f"autocomplete-popup-{id(ac_service)}"
+                        selected_idx = ac_service.selected_index
+                        with (
+                            ui.element("div")
+                            .classes(
+                                "absolute z-50 w-full bg-[#292335] "
+                                "border border-[#7b6cf6] rounded-lg shadow-xl "
+                                "max-h-48 overflow-y-auto bottom-full mb-1"
                             )
+                            .props(f"id={popup_id}")
+                        ):
+                            for idx, item in enumerate(items):
+                                is_selected = idx == selected_idx
+                                item_cls = (
+                                    "bg-[#7b6cf6]/20"
+                                    if is_selected
+                                    else "hover:bg-[#292335]/50"
+                                )
+                                with (
+                                    ui.row()
+                                    .classes(
+                                        "items-center gap-2 px-2 py-1 cursor-pointer "
+                                        f"{item_cls} rounded w-full"
+                                    )
+                                    .on(
+                                        "click",
+                                        lambda _, i=idx: _select_autocomplete_item(
+                                            ac_service, prompt_input, i, state
+                                        ),
+                                    )
+                                    .props(f'data-index="{idx}"')
+                                ):
+                                    ui.icon("help_outline", size="14px").classes(
+                                        "text-[#9c94b3]"
+                                    )
+                                    ui.label(
+                                        str(ac_service.get_item_label(item))
+                                    ).classes("text-xs text-[#eceaf4] truncate")
 
-                if items and 0 <= selected_idx < len(items):
-                    ui.run_javascript(f"""
-                        const container = document.getElementById('{popup_id}');
-                        const item = container?.querySelector(
-                            '[data-index="{selected_idx}"]'
-                        );
-                        if (item) item.scrollIntoView({{ block: 'nearest' }});
-                    """)
+                        if items and 0 <= selected_idx < len(items):
+                            ui.run_javascript(f"""
+                                const container = document.getElementById('{popup_id}');
+                                const item = container?.querySelector(
+                                    '[data-index="{selected_idx}"]'
+                                );
+                                if (item) item.scrollIntoView({{ block: 'nearest' }});
+                            """)
 
-            ac_service.subscribe_items_changed(popup_view.refresh)
-            popup_view()
+                    ac_service.subscribe_items_changed(popup_view.refresh)
+                    popup_view()
 
-            # Toolbar row
-            with ui.row().classes("w-full items-center justify-between pt-1"):
-                with ui.row().classes("items-center gap-2"):  # noqa: SIM117
+                    @ui.refreshable
+                    def action_btn_view() -> None:
+                        if state.is_channeling:
+                            with (
+                                ui.button(
+                                    icon="stop",
+                                    on_click=state.stop_channeling,
+                                )
+                                .props("unelevated dense size=sm")
+                                .classes("mvge-send-btn mvge-stop")
+                                .mark("stop_channeling_btn")
+                            ):
+                                ui.tooltip("Stop generation")
+                        else:
+                            with (
+                                ui.button(
+                                    icon="arrow_forward",
+                                    on_click=handle_submit,
+                                )
+                                .props("unelevated dense size=sm")
+                                .classes("mvge-send-btn")
+                                .mark("send_prompt_btn")
+                            ):
+                                ui.tooltip("Send prompt")
+
+                    action_btn_view()
+
+                    last_action_state = [state.is_channeling]
+
+                    def _on_action_check() -> None:
+                        if state.is_channeling != last_action_state[0]:
+                            last_action_state[0] = state.is_channeling
+                            action_btn_view.refresh()
+
+                    state.subscribe(_on_action_check)
+
+                # Toolbar row below the input (model + context actions)
+                with ui.row().classes(
+                    "w-full items-center gap-2 pt-1 mvge-composer-toolbar pl-2"
+                ):
                     with (
                         ui.button(icon="add")
                         .props("flat dense round text-color=grey-4 size=sm")
@@ -518,50 +590,8 @@ def _render_composer(state: AppState) -> None:
                         on_change=lambda e: state.switch_model(e.value),
                         with_input=True,
                     ).props("dense borderless dark rounded text-xs").classes(
-                        "text-xs text-[#8b949e] font-mono"
+                        "text-xs text-[#9c94b3] font-mono"
                     )
-
-                @ui.refreshable
-                def action_btn_view() -> None:
-                    with ui.row().classes("items-center gap-2"):
-                        if state.is_channeling:
-                            with (
-                                ui.button(
-                                    icon="stop",
-                                    on_click=state.stop_channeling,
-                                )
-                                .props(
-                                    "unelevated dense round color=red "
-                                    "text-color=white size=sm"
-                                )
-                                .classes("shadow bg-[#ef4444] hover:bg-[#dc2626]")
-                                .mark("stop_channeling_btn")
-                            ):
-                                ui.tooltip("Stop generation")
-                        else:
-                            with (
-                                ui.button(
-                                    icon="arrow_forward",
-                                    on_click=handle_submit,
-                                )
-                                .props(
-                                    "unelevated dense round color=primary "
-                                    "text-color=white size=sm"
-                                )
-                                .classes("bg-[#3b82f6] hover:bg-[#2563eb] shadow")
-                            ):
-                                ui.tooltip("Send prompt")
-
-                action_btn_view()
-
-                last_action_state = [state.is_channeling]
-
-                def _on_action_check() -> None:
-                    if state.is_channeling != last_action_state[0]:
-                        last_action_state[0] = state.is_channeling
-                        action_btn_view.refresh()
-
-                state.subscribe(_on_action_check)
 
 
 def _toolbar_button(
