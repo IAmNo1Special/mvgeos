@@ -403,6 +403,48 @@ class TestRetryRealmRequest:
             await retry_realm_request(request, max_retries=2)
         assert calls == 3
 
+    @pytest.mark.asyncio
+    async def test_retry_invocation_aborted_before_start(self) -> None:
+        from mvgeos_provider.types import AbortController, AbortError
+
+        controller = AbortController()
+        controller.abort()
+
+        async def produce() -> RealmResponse:
+            return _error("transient")
+
+        with pytest.raises(AbortError):
+            await retry_invocation(produce, signal=controller.signal)
+
+    @pytest.mark.asyncio
+    async def test_retry_invocation_aborted_during_sleep(self) -> None:
+        import asyncio
+
+        from mvgeos_provider.types import AbortController, AbortError
+
+        controller = AbortController()
+
+        async def produce() -> RealmResponse:
+            return _error("overloaded")
+
+        policy = RetryPolicy(max_retries=3, base_delay_ms=2000)
+
+        async def abort_soon() -> None:
+            await asyncio.sleep(0.05)
+            controller.abort()
+
+        asyncio.create_task(abort_soon())
+
+        with pytest.raises(AbortError):
+            await retry_invocation(produce, policy=policy, signal=controller.signal)
+
+    def test_parse_delay_invalid_returns_none(self) -> None:
+        from mvgeos_provider.retry import _parse_delay
+
+        assert _parse_delay("not-a-number") is None
+        assert _parse_delay(None) is None
+        assert _parse_delay(" 12.5 ") == 12.5
+
 
 class _StatusError(Exception):
     def __init__(self, status: int, headers: _Headers) -> None:

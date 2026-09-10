@@ -655,3 +655,54 @@ class TestTomePersistence:
         result = await runner.maybe_compact(_long_transcript())
 
         assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_force_compact_success(self) -> None:
+        runner = CompactionRunner(
+            realm=_realm(),
+            model=_model(),
+            emit=Recorder(),
+            settings=CompactionSettings(reserve_mana=200, keep_recent_mana=200),
+            tome=None,
+        )
+
+        result = await runner.force_compact(_long_transcript())
+
+        assert result is not None
+        assert len(result) < len(_long_transcript())
+        assert "Summary of earlier conversation" in str(result[0].content)
+
+    @pytest.mark.asyncio
+    async def test_force_compact_short_transcript(self) -> None:
+        runner = CompactionRunner(
+            realm=_realm(),
+            model=_model(),
+            emit=Recorder(),
+            settings=CompactionSettings(reserve_mana=200, keep_recent_mana=200),
+            tome=None,
+        )
+
+        result = await runner.force_compact(
+            [SummonerRequest(role="user", content="hi")]
+        )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_force_compact_summary_failure(self) -> None:
+        broken_realm = MagicMock()
+        broken_realm.complete = AsyncMock(
+            return_value=RealmResponse(
+                model=_model(),
+                error_message="Realm failure",
+            )
+        )
+        runner = CompactionRunner(
+            realm=broken_realm,
+            model=_model(),
+            emit=Recorder(),
+            settings=CompactionSettings(reserve_mana=200, keep_recent_mana=200),
+            tome=None,
+        )
+
+        result = await runner.force_compact(_long_transcript())
+        assert result is None

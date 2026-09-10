@@ -338,6 +338,67 @@ class TestRuneWatcherStartStop:
             watcher = RuneWatcher(ext_dir, runner)
             await watcher.start()
             await watcher.stop()
-
             assert watcher._observer is None
             assert watcher._handler is None
+
+    @pytest.mark.asyncio
+    async def test_reload_rune_async_factory(self) -> None:
+        runner = RuneRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            rune_dir = ext_dir / "async_rune"
+            rune_dir.mkdir()
+
+            manifest_data = (
+                '{"name": "async_rune", "version": "1.0.0", '
+                '"description": "Async Test", "hooks": [], '
+                '"entry_point": "main.py"}'
+            )
+            (rune_dir / "manifest.json").write_text(manifest_data, encoding="utf-8")
+            (rune_dir / "main.py").write_text(
+                "async def rune_factory(api):\n"
+                "    api.register_shortcut('ctrl+a', 'Async Shortcut')\n"
+            )
+
+            watcher = RuneWatcher(ext_dir, runner)
+            await watcher._reload_rune("async_rune")
+
+            shortcuts = runner.get_shortcuts()
+            assert any(s.key == "ctrl+a" for s in shortcuts)
+
+    @pytest.mark.asyncio
+    async def test_reload_rune_corrupt_manifest(self) -> None:
+        runner = RuneRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            rune_dir = ext_dir / "bad_rune"
+            rune_dir.mkdir()
+            (rune_dir / "manifest.json").write_text("{invalid json", encoding="utf-8")
+
+            watcher = RuneWatcher(ext_dir, runner)
+            await watcher._reload_rune("bad_rune")
+
+    @pytest.mark.asyncio
+    async def test_schedule_reload_handles_callback_exception(self) -> None:
+        async def failing_callback(name: str) -> None:
+            raise RuntimeError("Reload blew up")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            handler = _RuneReloadHandler(
+                Path(tmpdir),
+                failing_callback,
+                debounce_seconds=0.01,
+                loop=asyncio.get_running_loop(),
+            )
+            handler._schedule_reload("test_rune")
+            await asyncio.sleep(0.05)
+
+    def test_schedule_reload_closed_loop(self) -> None:
+        loop = asyncio.new_event_loop()
+        loop.close()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            handler = _RuneReloadHandler(
+                Path(tmpdir), AsyncMock(), debounce_seconds=0.01, loop=loop
+            )
+            handler._schedule_reload("test_rune")

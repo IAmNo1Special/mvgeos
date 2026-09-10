@@ -280,3 +280,38 @@ def test_tome_ledger_cleanup_stale_locks_exception_handling(
     # Initialization should catch exception and not fail
     ledger = TomeLedger(tome_dir)
     assert ledger.dir == tome_dir
+
+
+def test_filelock_acquire_recovers_stale_lock_on_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lock = FileLock(tmp_path / "stale_recovery.lock", timeout=0.01)
+    stale_meta = LockMetadata(pid=99999999, timestamp=100.0, host=socket.gethostname())
+    lock.metadata_path.write_text(stale_meta.to_json(), encoding="utf-8")
+
+    attempts = 0
+    orig_acquire = lock._lock.acquire
+
+    def fake_acquire(*args: object, **kwargs: object) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise filelock.Timeout("timeout")
+        orig_acquire(*args, **kwargs)
+
+    monkeypatch.setattr(lock._lock, "acquire", fake_acquire)
+    lock.acquire()
+    meta = lock.read_metadata()
+    assert meta is not None
+    assert meta.pid == os.getpid()
+    lock.release()
+
+
+def test_windows_process_alive_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    import ctypes
+
+    from mvgeos_tome.locking import _is_windows_process_alive
+
+    # Test windll is None
+    monkeypatch.setattr(ctypes, "windll", None, raising=False)
+    assert _is_windows_process_alive(1234) is False

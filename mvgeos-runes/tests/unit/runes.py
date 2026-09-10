@@ -206,6 +206,29 @@ def test_load_manifests_nonexistent_dir() -> None:
     assert manifests == []
 
 
+def test_load_manifests_skips_files() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ext_dir = Path(tmpdir)
+        (ext_dir / "README.txt").write_text("hello", encoding="utf-8")
+        assert load_manifests(ext_dir) == []
+
+
+def test_discover_rune_site_packages_posix_structure(tmp_path: Path) -> None:
+    from mvgeos_runes.loader import discover_rune_site_packages
+
+    rune_dir = tmp_path / "my_rune"
+    venv_dir = rune_dir / ".venv"
+    lib_dir = venv_dir / "lib"
+    posix_sp = lib_dir / "site-packages"
+    posix_sp.mkdir(parents=True)
+    python_sp = lib_dir / "python3.13" / "site-packages"
+    python_sp.mkdir(parents=True)
+
+    paths = discover_rune_site_packages(rune_dir)
+    assert posix_sp in paths
+    assert python_sp in paths
+
+
 def test_load_factory_from_manifest_no_entry_point() -> None:
     manifest = RuneManifest(name="test", version="1.0", description="", entry_point="")
     factory = load_factory_from_manifest(manifest, Path("/tmp"))
@@ -670,6 +693,42 @@ Content"""
             assert manifest.name == "test-skill"
             assert manifest.description == "Test skill"
 
+    def test_load_skill_manifest_invalid_structures(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            # truncated frontmatter
+            d1 = base / "trunc"
+            d1.mkdir()
+            (d1 / "SKILL.md").write_text("---incomplete", encoding="utf-8")
+            assert load_skill_manifest(d1) is None
+
+            # frontmatter not dict
+            d2 = base / "notdict"
+            d2.mkdir()
+            (d2 / "SKILL.md").write_text("---\n- item1\n---\nbody", encoding="utf-8")
+            assert load_skill_manifest(d2) is None
+
+            # invalid description
+            d3 = base / "baddesc"
+            d3.mkdir()
+            (d3 / "SKILL.md").write_text(
+                "---\nname: baddesc\ndescription: 123\n---\nbody", encoding="utf-8"
+            )
+            assert load_skill_manifest(d3) is None
+
+            # fallback metadata and disable_model_invocation
+            d4 = base / "valid-extra"
+            d4.mkdir()
+            (d4 / "SKILL.md").write_text(
+                "---\nname: valid-extra\ndescription: valid\nmetadata: non_dict\n"
+                "disable-model-invocation: non_bool\n---\nbody",
+                encoding="utf-8",
+            )
+            m = load_skill_manifest(d4)
+            assert m is not None
+            assert m.metadata == {}
+            assert m.disable_model_invocation is False
+
 
 class TestLoadSkillManifests:
     def test_load_skill_manifests_multiple(self) -> None:
@@ -754,9 +813,23 @@ Content""",
             assert manifests[0].name == "real-skill"
             assert len(diagnostics) == 0
 
+    def test_load_skill_manifests_skips_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skills_dir = Path(tmpdir)
+            (skills_dir / "README.txt").write_text("info", encoding="utf-8")
+            assert load_skill_manifests(skills_dir) == []
+
 
 class TestLoadSkillsFromPaths:
+    def test_load_skills_from_paths_skips_nonexistent(self) -> None:
+        loads, diags = load_skills_from_paths(
+            [("/nonexistent/skills/path", SkillScope.PROJECT)]
+        )
+        assert loads == []
+        assert diags == []
+
     def test_dedup_by_name_first_wins(self) -> None:
+
         with (
             tempfile.TemporaryDirectory() as tmpdir1,
             tempfile.TemporaryDirectory() as tmpdir2,
@@ -887,7 +960,16 @@ class TestGetDefaultSkillPaths:
         assert "test_agent" in str(agent_path)
 
     def test_discover_plugin_skill_paths(self, tmp_path: Path) -> None:
-        plugin_dir = tmp_path / ".agents" / "plugins" / "my-plugin"
+        plugins_root = tmp_path / ".agents" / "plugins"
+        plugins_root.mkdir(parents=True)
+        # Create non-directory file
+        (plugins_root / "README.md").write_text("Plugins info", encoding="utf-8")
+        # Create hidden directory
+        (plugins_root / ".cache").mkdir()
+        # Create plugin directory without skills/
+        (plugins_root / "empty-plugin").mkdir()
+
+        plugin_dir = plugins_root / "my-plugin"
         plugin_skills = plugin_dir / "skills" / "my-skill"
         plugin_skills.mkdir(parents=True)
         (plugin_skills / "SKILL.md").write_text(

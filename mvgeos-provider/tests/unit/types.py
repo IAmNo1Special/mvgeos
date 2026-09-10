@@ -1,3 +1,5 @@
+import pytest
+
 from mvgeos_provider.base import Realm
 from mvgeos_provider.types import Model
 
@@ -80,3 +82,77 @@ def test_realm_response_has_diagnostic_fields() -> None:
     assert resp.reset_at == 1788566400.0
     assert resp.quota_limit == 50
     assert resp.quota_remaining == 0
+
+
+@pytest.mark.asyncio
+async def test_abort_controller_and_signal() -> None:
+    import asyncio
+
+    from mvgeos_provider.types import AbortController, AbortError
+
+    controller = AbortController()
+    signal = controller.signal
+    assert not signal.aborted
+
+    called: list[int] = []
+    signal.on_abort(lambda: called.append(1))
+
+    # Callback that raises should be suppressed cleanly
+    def broken_callback() -> None:
+        raise ValueError("boom")
+
+    signal.on_abort(broken_callback)
+
+    signal.raise_if_aborted()
+
+    async def waiter() -> None:
+        await signal.wait()
+
+    task1 = asyncio.create_task(waiter())
+    task2 = asyncio.create_task(waiter())
+
+    await asyncio.sleep(0.01)
+    assert not signal.aborted
+    controller.abort()
+    assert signal.aborted
+    assert 1 in called
+
+    await asyncio.gather(task1, task2)
+
+    # Calling abort again is a no-op
+    controller.abort()
+
+    # on_abort when already aborted invokes callback immediately
+    already_called: list[int] = []
+    signal.on_abort(lambda: already_called.append(2))
+    assert 2 in already_called
+
+    with pytest.raises(AbortError):
+        signal.raise_if_aborted()
+
+    # wait() when already aborted returns immediately
+    await signal.wait()
+
+
+@pytest.mark.asyncio
+async def test_realm_base_protocol() -> None:
+    from mvgeos_provider.base import Realm
+    from mvgeos_provider.types import ChannelConfig
+
+    realm = Realm()
+    model = Model(
+        id="test",
+        name="test",
+        realm="test",
+        base_url="",
+        api_key="",
+    )
+    config = ChannelConfig(model=model)
+
+    with pytest.raises(NotImplementedError):
+        realm.stream(model, [], config)
+
+    with pytest.raises(NotImplementedError):
+        await realm.complete(model, [], config)
+
+    await realm.close()
