@@ -24,7 +24,7 @@ class MvgeState:
     system_prompt: str = ""
     prompt_source: PromptSource = PromptSource.BUILTIN
     model: dict[str, Any] | None = None
-    contemplation_level: ContemplationLevel = ContemplationLevel.MEDIUM
+    contemplation_level: ContemplationLevel | str = ContemplationLevel.MEDIUM
     spells: list[MvgeSpell] = field(default_factory=list)
     _spell_index: dict[str, MvgeSpell] = field(
         default_factory=dict, init=False, repr=False, compare=False

@@ -9,6 +9,7 @@ from mvgeos_core.channel import Model
 from mvgeos_provider.model_registry import (
     CACHE_TTL_SECONDS,
     ModelRegistry,
+    _create_openrouter_model,
     _is_free_entry,
 )
 
@@ -327,3 +328,90 @@ async def test_auto_refresh_force_refresh(tmp_path: Path) -> None:
 
     assert count == 1
     assert reg.get("live/model") is not None
+
+
+def test_create_openrouter_model_contemplation_levels() -> None:
+    # Explicit levels
+    m1 = _create_openrouter_model(
+        id="test/model1",
+        name="Test 1",
+        supported_contemplation_levels=["none", "low", "high"],
+    )
+    assert m1.supported_contemplation_levels == ["none", "low", "high"]
+    assert m1.supports_contemplation is True
+
+    # Auto-detected from reasoning in parameters
+    m2 = _create_openrouter_model(
+        id="test/model2",
+        name="Test 2",
+        supported_parameters=["reasoning", "temperature"],
+    )
+    assert m2.supports_contemplation is True
+    assert "x-high" in m2.supported_contemplation_levels
+
+    # No reasoning
+    m3 = _create_openrouter_model(
+        id="test/model3",
+        name="Test 3",
+        supported_parameters=["temperature"],
+    )
+    assert m3.supports_contemplation is False
+    assert m3.supported_contemplation_levels == []
+
+
+def test_model_registry_providers_and_models(tmp_path: Path) -> None:
+    cache_path = tmp_path / "cache.json"
+    cache_path.write_text(
+        json.dumps(
+            {
+                "_cached_at": time.time(),
+                "models": [
+                    {
+                        "id": "openai/gpt-4o",
+                        "name": "GPT-4o",
+                        "supported_parameters": ["temperature"],
+                    },
+                    {
+                        "id": "openai/o1",
+                        "name": "o1",
+                        "supported_parameters": ["reasoning"],
+                        "supported_contemplation_levels": ["low", "medium", "high"],
+                    },
+                    {
+                        "id": "anthropic/claude-3-5-sonnet",
+                        "name": "Claude Sonnet",
+                        "supported_parameters": ["thinking"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    reg = ModelRegistry(cache_path=cache_path)
+    reg.load_cache()
+
+    providers = reg.get_providers_for_realm("openrouter")
+    assert "anthropic" in providers
+    assert "openai" in providers
+    assert providers == sorted(providers)
+
+    openai_models = reg.get_models_for_provider("openai", "openrouter")
+    openai_ids = [m.id for m in openai_models]
+    assert "openai/gpt-4o" in openai_ids
+    assert "openai/o1" in openai_ids
+    assert "anthropic/claude-3-5-sonnet" not in openai_ids
+
+    # Supported contemplation levels
+    levels_o1 = reg.get_supported_contemplation_levels("openai/o1")
+    assert levels_o1 == ["low", "medium", "high"]
+
+    levels_sonnet = reg.get_supported_contemplation_levels(
+        "anthropic/claude-3-5-sonnet"
+    )
+    assert len(levels_sonnet) > 0
+
+    levels_gpt4o = reg.get_supported_contemplation_levels("openai/gpt-4o")
+    assert levels_gpt4o == []
+
+    levels_unknown = reg.get_supported_contemplation_levels("unknown/model")
+    assert levels_unknown == []

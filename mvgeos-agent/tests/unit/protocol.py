@@ -91,6 +91,9 @@ class DummyAgent:
     async def switch_model(self, model_id: str) -> None:
         pass
 
+    async def set_contemplation_level(self, level: Any) -> None:
+        pass
+
     async def reset_session(self, *, resume_tome_id: str | None = None) -> None:
         pass
 

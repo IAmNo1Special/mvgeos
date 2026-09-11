@@ -9,7 +9,7 @@ from nicegui import ui
 from mvgeos_gui.services.config_service import ConfigService, WorkspaceSettings
 from mvgeos_gui.state import AppState
 
-CONTEMPLATION_LEVELS = ["none", "low", "medium", "high"]
+CONTEMPLATION_LEVELS = ["none", "low", "medium", "high", "x-high"]
 
 
 def render_workspace_settings_modal(state: AppState) -> None:
@@ -97,9 +97,20 @@ def render_workspace_settings_modal(state: AppState) -> None:
             with ui.row().classes("w-full gap-4"):  # noqa: SIM117
                 with ui.column().classes("flex-1 gap-1"):
                     ui.label("Contemplation Level").classes("text-xs text-[#9c94b3]")
+                    supported = (
+                        state.get_contemplation_levels_for_selected_model()
+                        if hasattr(state, "get_contemplation_levels_for_selected_model")
+                        else []
+                    )
+                    options = (
+                        list(supported) if supported else list(CONTEMPLATION_LEVELS)
+                    )
+                    current_val = str(edited["contemplation_level"])
+                    if current_val and current_val not in options:
+                        options = [current_val, *options]
                     ui.select(
-                        CONTEMPLATION_LEVELS,
-                        value=str(edited["contemplation_level"]),
+                        options,
+                        value=current_val,
                         on_change=lambda e: edited.__setitem__(
                             "contemplation_level", e.value
                         ),

@@ -594,14 +594,129 @@ def _render_composer(state: AppState) -> None:
                     ):
                         ui.tooltip("Add context files")
 
-                    ui.select(
-                        options=get_model_options(),
-                        value=state.selected_model,
-                        on_change=lambda e: state.switch_model(e.value),
-                        with_input=True,
-                    ).props("dense borderless dark rounded text-xs").classes(
-                        "text-xs text-[#9c94b3] font-mono"
-                    )
+                    @ui.refreshable
+                    def cascading_selector_view() -> None:
+                        is_router = state.is_router_realm()
+                        supports_contemplation = (
+                            state.supports_contemplation_for_selected_model()
+                        )
+
+                        # Tier 1: Realm Select
+                        realms = state.get_realms()
+                        realm_labels = {
+                            "openrouter": "OpenRouter",
+                            "ollama": "Ollama",
+                            "google": "Google Direct",
+                        }
+                        realm_options = {
+                            r: realm_labels.get(r, r.capitalize()) for r in realms
+                        }
+                        with (
+                            ui.select(
+                                options=realm_options,
+                                value=state.selected_realm,
+                                on_change=lambda e: state.switch_realm(e.value),
+                            )
+                            .props("dense borderless dark rounded text-xs")
+                            .classes("text-xs text-[#9c94b3] font-mono")
+                            .mark("realm_select")
+                        ):
+                            ui.tooltip("Realm")
+
+                        # Tier 2: Provider Select (Visible only if router)
+                        if is_router:
+                            providers = state.get_providers_for_selected_realm()
+                            prov_options = {p: p for p in providers}
+                            if (
+                                state.selected_provider
+                                and state.selected_provider not in prov_options
+                            ):
+                                prov_options[state.selected_provider] = (
+                                    state.selected_provider
+                                )
+                            with (
+                                ui.select(
+                                    options=prov_options,
+                                    value=state.selected_provider,
+                                    on_change=lambda e: state.switch_provider(e.value),
+                                )
+                                .props("dense borderless dark rounded text-xs")
+                                .classes("text-xs text-[#9c94b3] font-mono")
+                                .mark("provider_select")
+                            ):
+                                ui.tooltip("Provider")
+
+                        # Tier 3: Model Select
+                        all_options = get_model_options()
+                        model_ids = state.get_models_for_selection()
+                        model_options = {
+                            mid: all_options.get(mid, mid) for mid in model_ids
+                        }
+                        if state.selected_model not in model_options:
+                            model_options[state.selected_model] = all_options.get(
+                                state.selected_model, state.selected_model
+                            )
+                        with (
+                            ui.select(
+                                options=model_options,
+                                value=state.selected_model,
+                                on_change=lambda e: state.switch_model(e.value),
+                                with_input=True,
+                            )
+                            .props("dense borderless dark rounded text-xs")
+                            .classes("text-xs text-[#9c94b3] font-mono")
+                            .mark("model_select")
+                        ):
+                            ui.tooltip("Model")
+
+                        # Tier 4: Contemplation Level Select (Dynamic, if supported)
+                        if supports_contemplation:
+                            levels = state.get_contemplation_levels_for_selected_model()
+                            level_options = {lvl: f"Thinking: {lvl}" for lvl in levels}
+                            if (
+                                state.contemplation_level
+                                and state.contemplation_level not in level_options
+                            ):
+                                level_options[state.contemplation_level] = (
+                                    f"Thinking: {state.contemplation_level}"
+                                )
+                            with (
+                                ui.select(
+                                    options=level_options,
+                                    value=state.contemplation_level,
+                                    on_change=lambda e: state.set_contemplation_level(
+                                        e.value
+                                    ),
+                                )
+                                .props("dense borderless dark rounded text-xs")
+                                .classes("text-xs text-[#9c94b3] font-mono")
+                                .mark("contemplation_select")
+                            ):
+                                ui.tooltip("Contemplation Level")
+
+                    cascading_selector_view()
+
+                    last_selector_state = [
+                        (
+                            state.selected_realm,
+                            state.selected_provider,
+                            state.selected_model,
+                            state.contemplation_level,
+                        )
+                    ]
+
+                    def _on_selector_check() -> None:
+                        current_sel = (
+                            state.selected_realm,
+                            state.selected_provider,
+                            state.selected_model,
+                            state.contemplation_level,
+                        )
+                        if current_sel != last_selector_state[0]:
+                            last_selector_state[0] = current_sel
+                            cascading_selector_view.refresh()
+
+                    state.subscribe_view("cascading_selector", _on_selector_check)
 
 
 def _toolbar_button(

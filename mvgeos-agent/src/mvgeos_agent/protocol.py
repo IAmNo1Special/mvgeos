@@ -118,6 +118,10 @@ class MvgeAgent(Protocol):
         """Switch active model for the running agent."""
         ...
 
+    async def set_contemplation_level(self, level: ContemplationLevel | str) -> None:
+        """Switch the contemplation level in-flight."""
+        ...
+
     async def reset_session(self, *, resume_tome_id: str | None = None) -> None:
         """Reset or resume session lifecycle."""
         ...

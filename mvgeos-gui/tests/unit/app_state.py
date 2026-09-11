@@ -1209,3 +1209,61 @@ class TestViewListeners:
         state.subscribe(lambda: notified.append(1))
         state.notify()
         assert notified == [1]
+
+
+class TestCascadingSelectorState:
+    def test_default_cascading_state(self) -> None:
+        state = AppState()
+        assert state.selected_realm == "openrouter"
+        assert state.selected_provider == "nvidia"
+        assert state.selected_model == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        assert state.contemplation_level == "medium"
+        assert state.is_router_realm() is True
+
+    def test_get_realms(self) -> None:
+        state = AppState()
+        realms = state.get_realms()
+        assert "openrouter" in realms
+
+    def test_get_providers_for_router_and_direct(self) -> None:
+        state = AppState()
+        providers = state.get_providers_for_selected_realm()
+        assert isinstance(providers, list)
+        assert len(providers) > 0
+        assert "nvidia" in providers
+
+        # Direct realm has no providers
+        with patch.object(state, "is_router_realm", return_value=False):
+            assert state.get_providers_for_selected_realm() == []
+
+    def test_switch_realm_to_direct_clears_provider(self) -> None:
+        state = AppState()
+        with patch("mvgeos_gui.state.is_realm_router", return_value=False):
+            state.switch_realm("ollama")
+            assert state.selected_realm == "ollama"
+            assert state.selected_provider is None
+
+    def test_switch_provider_cascades_model(self) -> None:
+        state = AppState()
+        state.switch_provider("anthropic")
+        assert state.selected_provider == "anthropic"
+
+    def test_switch_model_syncs_provider_prefix(self) -> None:
+        state = AppState()
+        state.switch_model("anthropic/claude-3-5-sonnet")
+        assert state.selected_model == "anthropic/claude-3-5-sonnet"
+        assert state.selected_provider == "anthropic"
+
+    def test_set_contemplation_level(self) -> None:
+        state = AppState()
+        called: list[bool] = []
+        state.subscribe(lambda: called.append(True))
+        state.set_contemplation_level("x-high")
+        assert state.contemplation_level == "x-high"
+        assert called == [True]
+
+    def test_supports_contemplation_and_levels(self) -> None:
+        state = AppState()
+        levels = state.get_contemplation_levels_for_selected_model()
+        assert isinstance(levels, list)
+        assert state.supports_contemplation_for_selected_model() is True

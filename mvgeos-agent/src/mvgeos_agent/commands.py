@@ -32,6 +32,7 @@ SLASH_COMMANDS: dict[str, str] = {
     "/undo": "Undo the last summoner invocation",
     "/compact": "Trigger mana pool compaction on the current branch",
     "/skills": "List available skills and their locations",
+    "/contemplation": "Show or set contemplation level: /contemplation [level]",
 }
 
 
@@ -57,6 +58,8 @@ class CommandAction(StrEnum):
     INVOCATION_UNDONE = "invocation_undone"
     MANA_COMPACTED = "mana_compacted"
     SKILLS_LISTED = "skills_listed"
+    CONTEMPLATION_CHANGED = "contemplation_changed"
+    CONTEMPLATION_INFO = "contemplation_info"
     INFO = "info"
     ERROR = "error"
 
@@ -224,11 +227,56 @@ class CommandDispatcher:
                     message=f"Failed to switch model: {e}",
                 )
 
+            getter = getattr(self._registry, "get_supported_contemplation_levels", None)
+            supported_levels = getter(candidate) if getter is not None else []
+            msg = f"Model switched: {candidate}"
+            if supported_levels:
+                msg += (
+                    f"\nSupported contemplation levels: {', '.join(supported_levels)}"
+                )
             return CommandOutcome(
                 command=cmd,
                 action=CommandAction.MODEL_SWITCHED,
-                data={"model_id": candidate},
-                message=f"Model switched: {candidate}",
+                data={
+                    "model_id": candidate,
+                    "supported_contemplation_levels": supported_levels,
+                },
+                message=msg,
+            )
+
+        if cmd in ("/contemplation", "/thinking"):
+            getter = getattr(self._registry, "get_supported_contemplation_levels", None)
+            levels = getter(self._agent.model_id) if getter is not None else []
+            current_level = getattr(self._agent, "contemplation_level", "medium")
+            if not args.strip():
+                lines = [f"Current contemplation level: {current_level}"]
+                if levels:
+                    lines.append(f"Supported contemplation levels: {', '.join(levels)}")
+                else:
+                    lines.append("Current model does not declare contemplation levels.")
+                return CommandOutcome(
+                    command=cmd,
+                    action=CommandAction.CONTEMPLATION_INFO,
+                    data={
+                        "contemplation_level": current_level,
+                        "supported_contemplation_levels": levels,
+                    },
+                    message="\n".join(lines),
+                )
+            new_level = args.strip().lower()
+            if hasattr(self._agent, "set_contemplation_level"):
+                await self._agent.set_contemplation_level(new_level)
+            msg = f"Contemplation level set to: {new_level}"
+            if levels and new_level not in levels:
+                msg += f" (Note: model specifies supported levels: {', '.join(levels)})"
+            return CommandOutcome(
+                command=cmd,
+                action=CommandAction.CONTEMPLATION_CHANGED,
+                data={
+                    "contemplation_level": new_level,
+                    "supported_contemplation_levels": levels,
+                },
+                message=msg,
             )
 
         if cmd == "/refresh-models":

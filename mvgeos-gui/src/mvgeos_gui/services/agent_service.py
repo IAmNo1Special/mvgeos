@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import logging
 import os
 import time
@@ -514,6 +515,11 @@ class AgentService:
         elif outcome.action == CommandAction.CATALOG_REFRESHED:
             state.notify()
 
+        elif outcome.action == CommandAction.CONTEMPLATION_CHANGED:
+            new_level = outcome.data.get("contemplation_level")
+            if new_level and hasattr(state, "set_contemplation_level"):
+                state.set_contemplation_level(new_level)
+
         self._cleanup_slash_turn(state, message)
 
     def _cleanup_slash_turn(self, state: AppState, message: ChatMessage) -> None:
@@ -568,8 +574,16 @@ class AgentService:
             agent = self.get_or_create_agent(state)
             self._ensure_listeners(agent)
 
-            if state.selected_model:
-                await agent.switch_model(state.selected_model)
+            if state.selected_model and hasattr(agent, "switch_model"):
+                switch_res = agent.switch_model(state.selected_model)
+                if inspect.isawaitable(switch_res):
+                    await switch_res
+            if hasattr(agent, "set_contemplation_level") and getattr(
+                state, "contemplation_level", None
+            ):
+                cont_res = agent.set_contemplation_level(state.contemplation_level)
+                if inspect.isawaitable(cont_res):
+                    await cont_res
 
             keepalive_stop = asyncio.Event()
 

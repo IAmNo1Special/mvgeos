@@ -66,6 +66,33 @@ class RealmRegistry:
         """Return all model IDs, filtering out internal ~ prefixes."""
         return self._model_registry.get_flat_model_ids()
 
+    def get_providers_for_realm(self, realm: str = "openrouter") -> list[str]:
+        """Return sorted unique list of provider prefixes for models in the realm."""
+        return self._model_registry.get_providers_for_realm(realm)
+
+    def get_models_for_provider(
+        self, provider: str, realm: str = "openrouter"
+    ) -> list[Model]:
+        """Return list of Model instances matching the given provider and realm."""
+        return self._model_registry.get_models_for_provider(provider, realm)
+
+    def get_supported_contemplation_levels(self, model_id: str) -> list[str]:
+        """Return supported contemplation levels for model ID, or empty list."""
+        return self._model_registry.get_supported_contemplation_levels(model_id)
+
+    def is_realm_router(self, realm: str = "openrouter") -> bool:
+        """Return True if the specified realm is a router realm."""
+        if realm.lower() == "openrouter":
+            return True
+        factory = self._realm_factories.get(realm)
+        if factory is not None:
+            try:
+                instance = factory()
+                return bool(getattr(instance, "is_router", False))
+            except Exception:
+                pass
+        return False
+
     def get_shared_client(self) -> httpx.AsyncClient:
         if self._shared_client is None or self._shared_client.is_closed:
             self._shared_client = httpx.AsyncClient(
@@ -212,6 +239,9 @@ class RealmRegistry:
                 max_tokens=model_info.max_tokens,
                 headers=dict(model_info.headers or {}),
                 supported_parameters=list(model_info.supported_parameters),
+                supported_contemplation_levels=list(
+                    model_info.supported_contemplation_levels
+                ),
                 is_free=model_info.is_free,
             )
         else:
@@ -287,3 +317,23 @@ async def refresh_models(force_refresh: bool = False) -> int:
     return await get_default_realm_registry().refresh_models(
         force_refresh=force_refresh
     )
+
+
+def get_providers_for_realm(realm: str = "openrouter") -> list[str]:
+    """Return sorted unique list of provider prefixes for models in the realm."""
+    return get_default_realm_registry().get_providers_for_realm(realm)
+
+
+def get_models_for_provider(provider: str, realm: str = "openrouter") -> list[Model]:
+    """Return list of Model instances matching the given provider and realm."""
+    return get_default_realm_registry().get_models_for_provider(provider, realm)
+
+
+def get_supported_contemplation_levels(model_id: str) -> list[str]:
+    """Return supported contemplation levels for model ID, or empty list."""
+    return get_default_realm_registry().get_supported_contemplation_levels(model_id)
+
+
+def is_realm_router(realm: str = "openrouter") -> bool:
+    """Return True if the realm routes requests across multiple providers."""
+    return get_default_realm_registry().is_realm_router(realm)

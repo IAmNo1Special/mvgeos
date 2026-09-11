@@ -293,6 +293,9 @@ class FakeRegistry:
     def list_all(self) -> list[Any]:
         return []
 
+    def get_supported_contemplation_levels(self, model_id: str) -> list[str]:
+        return []
+
 
 class TestTuiApp:
     def _app(

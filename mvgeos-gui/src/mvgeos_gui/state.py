@@ -16,6 +16,13 @@ from pathlib import Path
 from typing import Any, cast
 
 from mvgeos_core.constants import DEFAULT_AGENT_NAME
+from mvgeos_provider import (
+    get_default_realm_registry,
+    get_models_for_provider,
+    get_providers_for_realm,
+    get_supported_contemplation_levels,
+    is_realm_router,
+)
 from mvgeos_runes.loader import get_default_skill_paths, load_skills_from_paths
 from mvgeos_runes.types import SkillManifest
 from mvgeos_tome.types import TomeEntryType
@@ -52,7 +59,10 @@ class AppState:
     active_tome_id: str | None = None
     tome_title: str = "New Conversation"
     inspector_expanded: bool = True
+    selected_realm: str = "openrouter"
+    selected_provider: str | None = "nvidia"
     selected_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    contemplation_level: str = "medium"
     recent_projects: list[Path] = field(default_factory=list)
     is_channeling: bool = False
     tome_service: TomeService = field(
@@ -116,6 +126,9 @@ class AppState:
         """Initialize state invariants."""
         if not self.recent_projects and self.project_path:
             self.recent_projects.append(self.project_path)
+        if "/" in self.selected_model and self.selected_provider == "nvidia":
+            prefix = self.selected_model.split("/")[0]
+            self.selected_provider = prefix
 
     def subscribe(self, listener: Callable[[], Any]) -> None:
         """Subscribe a listener callback to state changes."""
@@ -521,9 +534,153 @@ class AppState:
         self.load_messages_for_tome(meta.id)
         self.load_tomes()
 
+    def get_realms(self) -> list[str]:
+        """Return available realm identifiers."""
+        try:
+            reg = get_default_realm_registry()
+            realms = ["openrouter"]
+            for r in reg.get_registered_realm_factories():
+                if r not in realms:
+                    realms.append(r)
+            return realms
+        except Exception:
+            return ["openrouter"]
+
+    def is_router_realm(self, realm: str | None = None) -> bool:
+        """Return True if the realm is a router requiring provider selection."""
+        target_realm = realm or self.selected_realm
+        try:
+            return is_realm_router(target_realm)
+        except Exception:
+            return target_realm.lower() == "openrouter"
+
+    def get_providers_for_selected_realm(self) -> list[str]:
+        """Return list of providers available for the current realm."""
+        if not self.is_router_realm(self.selected_realm):
+            return []
+        try:
+            providers = get_providers_for_realm(self.selected_realm)
+            if not providers and self.selected_realm == "openrouter":
+                providers = [
+                    "anthropic",
+                    "google",
+                    "meta-llama",
+                    "mistralai",
+                    "nvidia",
+                    "openai",
+                    "qwen",
+                ]
+            return providers
+        except Exception:
+            return ["nvidia"]
+
+    def get_models_for_selection(self) -> list[str]:
+        """Return model IDs matching the current realm and provider selection."""
+        try:
+            if self.is_router_realm(self.selected_realm):
+                if self.selected_provider:
+                    models = get_models_for_provider(
+                        self.selected_provider, self.selected_realm
+                    )
+                    if models:
+                        return [m.id for m in models]
+                    return [self.selected_model]
+            else:
+                reg = get_default_realm_registry()
+                all_models = reg.model_registry.list_all()
+                matching = [
+                    m.id
+                    for m in all_models
+                    if (
+                        m.realm == self.selected_realm
+                        or m.provider_prefix == self.selected_realm
+                    )
+                ]
+                if matching:
+                    return matching
+                return [f"{self.selected_realm}/default"]
+        except Exception:
+            pass
+        return [self.selected_model]
+
+    def get_contemplation_levels_for_selected_model(self) -> list[str]:
+        """Return contemplation levels supported by the selected model."""
+        try:
+            levels = get_supported_contemplation_levels(self.selected_model)
+            if levels:
+                return levels
+            reg = get_default_realm_registry()
+            model = reg.model_registry.get(self.selected_model)
+            if model is not None:
+                if model.supported_contemplation_levels:
+                    return list(model.supported_contemplation_levels)
+                if model.supports_contemplation:
+                    return ["none", "low", "medium", "high", "x-high"]
+        except Exception:
+            pass
+        return []
+
+    def supports_contemplation_for_selected_model(self) -> bool:
+        """Return True if the selected model supports contemplation / reasoning."""
+        levels = self.get_contemplation_levels_for_selected_model()
+        if levels:
+            return True
+        try:
+            reg = get_default_realm_registry()
+            model = reg.model_registry.get(self.selected_model)
+            return bool(model.supports_contemplation) if model is not None else False
+        except Exception:
+            return False
+
+    def _cascade_contemplation(self) -> None:
+        """Ensure contemplation level matches supported levels if any."""
+        if self.supports_contemplation_for_selected_model():
+            levels = self.get_contemplation_levels_for_selected_model()
+            if levels and self.contemplation_level not in levels:
+                self.contemplation_level = "medium" if "medium" in levels else levels[0]
+
+    def switch_realm(self, realm: str) -> None:
+        """Switch realm and cascade provider, model, and contemplation."""
+        self.selected_realm = realm
+        if self.is_router_realm(realm):
+            providers = self.get_providers_for_selected_realm()
+            if not self.selected_provider or self.selected_provider not in providers:
+                self.selected_provider = providers[0] if providers else None
+        else:
+            self.selected_provider = None
+
+        models = self.get_models_for_selection()
+        if self.selected_model not in models:
+            self.selected_model = models[0] if models else self.selected_model
+
+        self._cascade_contemplation()
+        self.notify()
+
+    def switch_provider(self, provider: str | None) -> None:
+        """Switch provider and cascade model and contemplation."""
+        self.selected_provider = provider
+        models = self.get_models_for_selection()
+        if self.selected_model not in models:
+            self.selected_model = models[0] if models else self.selected_model
+
+        self._cascade_contemplation()
+        self.notify()
+
     def switch_model(self, model_id: str) -> None:
-        """Switch the selected Realm model."""
+        """Switch the selected Realm model and cascade contemplation."""
         self.selected_model = model_id
+        if "/" in model_id and self.is_router_realm(self.selected_realm):
+            prefix = model_id.split("/")[0]
+            providers = self.get_providers_for_selected_realm()
+            if prefix in providers:
+                self.selected_provider = prefix
+
+        self._cascade_contemplation()
+        self.notify()
+
+    def set_contemplation_level(self, level: str) -> None:
+        """Set contemplation level for the active session."""
+        self.contemplation_level = level
         self.notify()
 
     def set_message_feedback(self, index: int, feedback: str | None) -> None:

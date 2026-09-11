@@ -12,6 +12,10 @@ from mvgeos_provider.registry import (
     get_default_realm_registry,
     get_flat_model_ids,
     get_model_options,
+    get_models_for_provider,
+    get_providers_for_realm,
+    get_supported_contemplation_levels,
+    is_realm_router,
     refresh_models,
 )
 from mvgeos_provider.sse import SSEChunk, SSEStreamingRealm
@@ -31,6 +35,10 @@ __all__ = [
     "get_default_realm_registry",
     "get_flat_model_ids",
     "get_model_options",
+    "get_models_for_provider",
+    "get_providers_for_realm",
+    "get_supported_contemplation_levels",
+    "is_realm_router",
     "list_models",
     "refresh_models",
 ]

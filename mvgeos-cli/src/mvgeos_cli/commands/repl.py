@@ -633,6 +633,12 @@ async def run_repl(
 
     console.print("[green]MvgeOS REPL[/green]")
     console.print(f"[dim]Model: {model}[/dim]")
+    levels = registry.get_supported_contemplation_levels(model)
+    if levels:
+        levels_str = ", ".join(levels)
+        console.print(
+            f"[dim]Contemplation: {contemplation} (supported: {levels_str})[/dim]"
+        )
     if agent.tome_id:
         console.print(f"[dim]Tome: {agent.tome_id}[/dim]")
     console.print(

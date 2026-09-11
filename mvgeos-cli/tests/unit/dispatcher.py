@@ -190,3 +190,48 @@ async def test_unknown_command(mock_agent: MagicMock, mock_registry: MagicMock) 
     should_exit = await dispatcher.dispatch("/unknown")
     assert should_exit is False
     assert any("Unknown command: /unknown" in line for line in output)
+
+
+@pytest.mark.asyncio
+async def test_model_switch_displays_contemplation_levels(
+    mock_agent: MagicMock, mock_registry: MagicMock
+) -> None:
+    output: list[str] = []
+    mock_registry.get_supported_contemplation_levels.return_value = [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "x-high",
+    ]
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
+
+    await dispatcher.dispatch("/model nvidia/nemotron")
+    assert any("Supported contemplation levels" in line for line in output)
+    assert any("x-high" in line for line in output)
+
+
+@pytest.mark.asyncio
+async def test_contemplation_command(
+    mock_agent: MagicMock, mock_registry: MagicMock
+) -> None:
+    output: list[str] = []
+    mock_agent.contemplation_level = "medium"
+    mock_agent.set_contemplation_level = AsyncMock()
+    mock_registry.get_supported_contemplation_levels.return_value = [
+        "none",
+        "low",
+        "high",
+    ]
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
+
+    # Inspect current
+    await dispatcher.dispatch("/contemplation")
+    assert any("Current contemplation level: medium" in line for line in output)
+    assert any(
+        "Supported contemplation levels: none, low, high" in line for line in output
+    )
+
+    # Set new
+    await dispatcher.dispatch("/contemplation high")
+    mock_agent.set_contemplation_level.assert_awaited_once_with("high")

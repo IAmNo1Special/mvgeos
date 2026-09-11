@@ -267,3 +267,19 @@ async def test_chat_panel_shows_diff_side_panel(user: User, tmp_path) -> None:
 
     await user.open("/test_chat_diff")
     await user.should_see("Diff")
+
+
+@pytest.mark.asyncio
+async def test_chat_panel_cascading_selector(user: User) -> None:
+    """Verify 4-tier cascading selector renders tiers dynamically."""
+    state = AppState()
+
+    @ui.page("/test_chat_cascading")
+    def page() -> None:
+        render_chat_panel(state)
+
+    await user.open("/test_chat_cascading")
+    assert user.find("realm_select") is not None
+    assert user.find("provider_select") is not None
+    assert user.find("model_select") is not None
+    assert user.find("contemplation_select") is not None

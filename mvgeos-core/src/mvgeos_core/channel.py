@@ -38,6 +38,7 @@ class Model:
     max_tokens: int = 4096
     headers: dict[str, str] = field(default_factory=dict)
     supported_parameters: list[str] = field(default_factory=list)
+    supported_contemplation_levels: list[str] = field(default_factory=list)
     is_free: bool = False
 
     @property
@@ -49,6 +50,20 @@ class Model:
     def provider(self) -> str:
         """The organization that provides this model (derived from the model ID)."""
         return self.id.split("/")[0] if "/" in self.id else self.realm
+
+    @property
+    def provider_prefix(self) -> str:
+        """The provider prefix before '/' in id, or realm, or id."""
+        return self.id.split("/")[0] if "/" in self.id else (self.realm or self.id)
+
+    @property
+    def supports_contemplation(self) -> bool:
+        """Return True if the model supports contemplation/reasoning."""
+        return (
+            bool(self.supported_contemplation_levels)
+            or "reasoning" in self.supported_parameters
+            or "thinking" in self.supported_parameters
+        )
 
 
 @dataclass

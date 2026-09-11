@@ -17,13 +17,34 @@ CACHE_TTL_SECONDS = 86400
 _MODELS_PATH = Path(__file__).parent / "models.json"
 
 
+_DEFAULT_CONTEMPLATION_LEVELS: list[str] = [
+    "none",
+    "low",
+    "medium",
+    "high",
+    "x-high",
+]
+
+
 def _create_openrouter_model(
     id: str,
     name: str,
     context_window: int = 4096,
     supported_parameters: list[str] | None = None,
     is_free: bool = False,
+    supported_contemplation_levels: list[str] | None = None,
 ) -> Model:
+    params = supported_parameters or []
+    if supported_contemplation_levels is not None:
+        levels = list(supported_contemplation_levels)
+    elif any(
+        p in params
+        for p in ("reasoning", "thinking", "include_reasoning", "reasoning_effort")
+    ) or any(m in id for m in ("openai/o1", "openai/o3")):
+        levels = list(_DEFAULT_CONTEMPLATION_LEVELS)
+    else:
+        levels = []
+
     return Model(
         id=id,
         name=name,
@@ -33,7 +54,8 @@ def _create_openrouter_model(
         max_completion_mana=0,
         context_window=context_window,
         max_tokens=4096,
-        supported_parameters=supported_parameters or [],
+        supported_parameters=params,
+        supported_contemplation_levels=levels,
         is_free=is_free,
     )
 
@@ -127,6 +149,31 @@ class ModelRegistry:
         """Return all model IDs, filtering out internal ~ prefixes."""
         return [m.id for m in self.list_all() if m.id and not m.id.startswith("~")]
 
+    def get_providers_for_realm(self, realm: str = "openrouter") -> list[str]:
+        """Return sorted unique list of provider prefixes for models in the realm."""
+        providers: set[str] = set()
+        for m in self.list_all():
+            if m.realm == realm and m.provider_prefix:
+                providers.add(m.provider_prefix)
+        return sorted(providers)
+
+    def get_models_for_provider(
+        self, provider: str, realm: str = "openrouter"
+    ) -> list[Model]:
+        """Return list of Model instances matching the given provider and realm."""
+        return [
+            m
+            for m in self.list_all()
+            if m.realm == realm and m.provider_prefix == provider
+        ]
+
+    def get_supported_contemplation_levels(self, model_id: str) -> list[str]:
+        """Return supported contemplation levels for model ID, or empty list."""
+        model = self.get(model_id)
+        if model is None:
+            return []
+        return list(model.supported_contemplation_levels)
+
     def _load_baseline(self) -> None:
         self._models.update(_load_baseline_models())
 
@@ -150,6 +197,9 @@ class ModelRegistry:
                 context_window=entry.get("context_length", 4096),
                 supported_parameters=entry.get("supported_parameters", []),
                 is_free=entry.get("is_free", False),
+                supported_contemplation_levels=entry.get(
+                    "supported_contemplation_levels"
+                ),
             )
         self._refreshed = True
         logger.info("Loaded %d models from cache", len(data.get("models", [])))
@@ -206,12 +256,18 @@ class ModelRegistry:
             mid = entry.get("id", "")
             if not mid:
                 continue
+            levels = (
+                entry.get("supported_contemplation_levels")
+                or entry.get("contemplation_levels")
+                or entry.get("reasoning_levels")
+            )
             self._models[mid] = _create_openrouter_model(
                 id=mid,
                 name=entry.get("name", mid),
                 context_window=entry.get("context_length", 4096),
                 supported_parameters=entry.get("supported_parameters", []),
                 is_free=_is_free_entry(entry),
+                supported_contemplation_levels=levels,
             )
             count += 1
 
@@ -232,6 +288,11 @@ class ModelRegistry:
                         "context_length": e.get("context_length", 4096),
                         "supported_parameters": e.get("supported_parameters", []),
                         "is_free": _is_free_entry(e),
+                        "supported_contemplation_levels": (
+                            self._models[e["id"]].supported_contemplation_levels
+                            if e.get("id") in self._models
+                            else (e.get("supported_contemplation_levels") or [])
+                        ),
                     }
                     for e in api_data
                 ],

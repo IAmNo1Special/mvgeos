@@ -109,6 +109,18 @@ class CliCommandDispatcher:
 
         if outcome.action == CommandAction.MODEL_SWITCHED:
             output(f"[green]Model switched: {outcome.data.get('model_id')}[/green]")
+            levels = outcome.data.get("supported_contemplation_levels", [])
+            if levels:
+                output(
+                    f"[dim]Supported contemplation levels: {', '.join(levels)}[/dim]"
+                )
+            return
+
+        if outcome.action in (
+            CommandAction.CONTEMPLATION_CHANGED,
+            CommandAction.CONTEMPLATION_INFO,
+        ):
+            output(f"[dim]{outcome.message}[/dim]")
             return
 
         if outcome.action == CommandAction.CATALOG_REFRESHED:

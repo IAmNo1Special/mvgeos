@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import copy
 import dataclasses
 import importlib.util
@@ -699,7 +700,11 @@ class Mvge:
                     model=model,
                     temperature=temperature,
                     max_tokens=max_tokens,
-                    contemplation_level=state.contemplation_level.value,
+                    contemplation_level=(
+                        state.contemplation_level.value
+                        if isinstance(state.contemplation_level, ContemplationLevel)
+                        else str(state.contemplation_level)
+                    ),
                     contemplation_budget=state.contemplation_budget,
                     exclude_contemplation=state.exclude_contemplation,
                     spells=spells,
@@ -849,7 +854,8 @@ class Mvge:
     async def set_contemplation_level(self, level: ContemplationLevel | str) -> None:
         """Switch the contemplation level in-flight."""
         if isinstance(level, str):
-            level = ContemplationLevel(level)
+            with contextlib.suppress(ValueError):
+                level = ContemplationLevel(level)
         if self._contemplation_level == level:
             return
 
@@ -857,8 +863,11 @@ class Mvge:
         if self._state is not None:
             self._state.contemplation_level = level
         if self._agent_tome is not None:
+            lvl_val = (
+                level.value if isinstance(level, ContemplationLevel) else str(level)
+            )
             await self._agent_tome.record_custom_async(
-                "contemplation_switch", {"level": level.value}
+                "contemplation_switch", {"level": lvl_val}
             )
 
     async def reset_session(self, *, resume_tome_id: str | None = None) -> None:

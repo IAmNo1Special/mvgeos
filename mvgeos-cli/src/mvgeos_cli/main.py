@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import sys
 from typing import Any, cast
@@ -16,7 +17,7 @@ from mvgeos_agent.protocol import AgentFactory, MvgeAgent
 from mvgeos_core.constants import (
     DEFAULT_AGENT_NAME,
 )
-from mvgeos_provider import NoRealmRegisteredError
+from mvgeos_provider import NoRealmRegisteredError, get_default_realm_registry
 from mvgeos_runes.installer import install_rune
 from typer._click.parser import _split_opt
 from typer.core import TyperGroup
@@ -120,6 +121,45 @@ async def _run_agent(
             if spells_enabled is not None
             else _default_spells_from_config(resolved)
         )
+
+        reg = get_default_realm_registry()
+        active_realm = None
+        with contextlib.suppress(Exception):
+            _, active_realm = reg.resolve(
+                model_id, api_key=api_key, provider_name=provider_name
+            )
+
+        if active_realm is not None and active_realm.is_router:
+            target_realm = getattr(active_realm, "realm_name", "openrouter")
+            providers = reg.get_providers_for_realm(target_realm)
+            if len(providers) > 1 and not provider_name and "/" not in model_id:
+                if sys.stdin.isatty() and sys.stdout.isatty() and not prompts_out:
+                    console.print(
+                        f"[yellow]Realm '{target_realm}' is a router. "
+                        f"Available providers: {', '.join(providers[:10])}...[/yellow]"
+                    )
+                    prompted = input("Select provider: ").strip()
+                    if prompted:
+                        provider_name = prompted
+                    else:
+                        console.print(
+                            format_error(
+                                "Provider selection required for router realm."
+                            )
+                        )
+                        return 1
+                else:
+                    console.print(
+                        format_error(
+                            f"Provider selection required for router realm "
+                            f"'{target_realm}'. Specify --provider or use "
+                            "provider/model format."
+                        )
+                    )
+                    return 1
+        elif active_realm is not None and not active_realm.is_router:
+            if not provider_name:
+                provider_name = getattr(active_realm, "realm_name", None)
 
         if not prompts_out:
             if tui:
