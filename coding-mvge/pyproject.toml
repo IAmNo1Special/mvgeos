@@ -1,6 +1,6 @@
 [project]
 name = "coding_mvge"
-version = "0.2.2"
+version = "0.2.3"
 description = "Concrete coding agent implementation for MvgeOS with built-in development spells"
 requires-python = ">=3.13"
 license = "MIT"
