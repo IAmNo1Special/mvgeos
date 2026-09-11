@@ -178,8 +178,13 @@ def _error_from_response(response: Any) -> ParsedError:
     )
 
 
-async def _error_from_response_async(response: Any) -> ParsedError:
-    """Async variant for streaming responses; falls back to sync read()."""
+async def _error_from_response_async(
+    response: Any, attempt: int = 0, max_attempts: int = 1
+) -> ParsedError:
+    """Async variant for streaming responses; falls back to sync read().
+
+    Logs at DEBUG for intermediate retry attempts, WARNING for the final attempt.
+    """
     body = b""
     try:
         aread = getattr(response, "aread", None)
@@ -192,14 +197,25 @@ async def _error_from_response_async(response: Any) -> ParsedError:
     parsed = _build_parsed_error(
         body, response.status_code, getattr(response, "headers", {})
     )
+    is_final = attempt >= max_attempts - 1
+    log_level = logging.WARNING if is_final else logging.DEBUG
+    attempt_str = f"attempt {attempt + 1}/{max_attempts}"
     if parsed.message == f"HTTP {response.status_code}":
-        logger.warning(
-            "Realm request failed with status %s and unreadable body",
+        logger.log(
+            log_level,
+            "Realm request %s failed with status %s and unreadable body",
+            attempt_str,
             response.status_code,
         )
     else:
         snippet = parsed.message[:_ERROR_LOG_BODY_CAP]
-        logger.warning("Realm request failed (%s): %s", response.status_code, snippet)
+        logger.log(
+            log_level,
+            "Realm request %s failed (%s): %s",
+            attempt_str,
+            response.status_code,
+            snippet,
+        )
     return parsed
 
 
@@ -263,9 +279,11 @@ class SSEStreamingRealm(Realm, ABC):
         """Extract error message and code from a non-200 HTTP response."""
         return _error_from_response(response)
 
-    async def _parse_error_async(self, response: Any) -> ParsedError:
+    async def _parse_error_async(
+        self, response: Any, attempt: int = 0, max_attempts: int = 1
+    ) -> ParsedError:
         """Async variant for streaming responses (uses aread with fallback)."""
-        return await _error_from_response_async(response)
+        return await _error_from_response_async(response, attempt, max_attempts)
 
     def _realm_name(self, model: Model) -> str:
         """Derive the realm identifier to tag on MvgeResponse instances."""
@@ -315,7 +333,9 @@ class SSEStreamingRealm(Realm, ABC):
                         message = retryable_chunk_error.error_message or ""
                         error_code = retryable_chunk_error.error_code
                     else:
-                        parsed_err = await self._parse_error_async(response)
+                        parsed_err = await self._parse_error_async(
+                            response, attempt, max_attempts
+                        )
                         message, error_code = parsed_err
                         if not is_retryable_status(
                             response.status_code, response.headers

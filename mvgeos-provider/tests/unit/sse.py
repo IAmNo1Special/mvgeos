@@ -685,3 +685,48 @@ def test_error_from_response_string_error_body() -> None:
 
     err = _error_from_response(StringErrorResponse())
     assert err.message == "boom"
+
+
+@pytest.mark.asyncio
+async def test_error_from_response_async_log_level_by_attempt(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify _error_from_response_async log level by attempt number."""
+    import logging
+
+    from mvgeos_provider.sse import _error_from_response_async
+
+    class AsyncErrorResponse:
+        status_code = 429
+        headers: dict[str, str] = {}
+
+        def read(self) -> bytes:
+            raise RuntimeError("sync read not available")
+
+        async def aread(self) -> bytes:
+            return b'{"error": {"message": "Rate limit exceeded"}}'
+
+    # Test intermediate attempt (not final) -> DEBUG
+    with caplog.at_level(logging.DEBUG, logger="mvgeos_provider.sse"):
+        await _error_from_response_async(
+            AsyncErrorResponse(), attempt=0, max_attempts=3
+        )
+
+    debug_logs = [r for r in caplog.records if r.levelno == logging.DEBUG]
+    assert len(debug_logs) == 1
+    assert "attempt 1/3" in debug_logs[0].message
+    assert "Rate limit exceeded" in debug_logs[0].message
+
+    # Clear caplog
+    caplog.clear()
+
+    # Test final attempt -> WARNING
+    with caplog.at_level(logging.WARNING, logger="mvgeos_provider.sse"):
+        await _error_from_response_async(
+            AsyncErrorResponse(), attempt=2, max_attempts=3
+        )
+
+    warning_logs = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warning_logs) == 1
+    assert "attempt 3/3" in warning_logs[0].message
+    assert "Rate limit exceeded" in warning_logs[0].message
