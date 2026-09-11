@@ -19,10 +19,8 @@ from mvgeos_runes.types import (
 
 from mvgeos_agent.config_manager import ConfigLayer, ConfigValue
 from mvgeos_agent.environment import (
-    DEFAULT_GUIDELINES,
     DEFAULT_SYSTEM_PROMPT,
     PromptSource,
-    ResolvedGuidelines,
     ResolvedPrompt,
 )
 from mvgeos_agent.snapshot import (
@@ -301,7 +299,6 @@ class TestRuntimeSnapshotSerialisation:
                 path=None,
                 text=DEFAULT_SYSTEM_PROMPT,
             ),
-            guidelines=list(DEFAULT_GUIDELINES),
             skills=[
                 SnapshotSkill(
                     name="my-skill",
@@ -445,9 +442,6 @@ class TestAssembleSnapshot:
             "max_tokens": ConfigValue(value=8192, layer=ConfigLayer.DEFAULTS),
         }
         resolved_prompt = ResolvedPrompt(text="Hello", source=PromptSource.BUILTIN)
-        resolved_guidelines = ResolvedGuidelines(
-            guidelines=["be concise"], source=PromptSource.BUILTIN
-        )
         skill_manifest = SkillManifest(
             name="some-skill",
             description="desc",
@@ -481,7 +475,6 @@ class TestAssembleSnapshot:
                 ConfigLayer.PROJECT: Path("/project/config.json"),
             },
             resolved_prompt=resolved_prompt,
-            resolved_guidelines=resolved_guidelines,
             skills=[skill_manifest],
             rune_diagnostics=[rune_diag],
             skill_diagnostics=[skill_diag],
@@ -499,7 +492,6 @@ class TestAssembleSnapshot:
         assert snap.config[0].layer == "agent"
         assert snap.config[1].layer == "defaults"
         assert snap.prompt.source == "builtin"
-        assert snap.guidelines == ["be concise"]
         assert len(snap.skills) == 1
         assert snap.skills[0].version == "0.2.0"
         assert len(snap.diagnostics) == 2
@@ -510,9 +502,6 @@ class TestAssembleSnapshot:
         from mvgeos_agent.snapshot import assemble_snapshot
 
         resolved_prompt = ResolvedPrompt(text="x", source=PromptSource.BUILTIN)
-        resolved_guidelines = ResolvedGuidelines(
-            guidelines=[], source=PromptSource.BUILTIN
-        )
 
         snap = assemble_snapshot(
             agent_name="empty",
@@ -522,7 +511,6 @@ class TestAssembleSnapshot:
             config_values={},
             config_source_files={},
             resolved_prompt=resolved_prompt,
-            resolved_guidelines=resolved_guidelines,
             skills=[],
             rune_diagnostics=[],
             skill_diagnostics=[],

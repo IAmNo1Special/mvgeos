@@ -58,11 +58,6 @@ def _render_summary(snapshot: RuntimeSnapshot) -> str:
             lines.append(f"  text={snapshot.prompt.text}")
         lines.append("")
 
-    lines.append(f"Guidelines ({len(snapshot.guidelines)}):")
-    for guideline in snapshot.guidelines:
-        lines.append(f"  {guideline}")
-    lines.append("")
-
     lines.append(f"Skills ({len(snapshot.skills)}):")
     for skill in snapshot.skills:
         lines.append(f"  {skill.name} v{skill.version} (scope={skill.scope})")

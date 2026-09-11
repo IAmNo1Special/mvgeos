@@ -66,22 +66,18 @@ async def test_render_prompt_matches_environment_render() -> None:
         expected = free_render(
             "You are Mvge",
             ["bash"],
-            ["Be concise."],
             cwd=cwd,
             runes_paths=agent._environment.runes_paths,
             system_path=agent._environment.resolved_prompt.path,
-            guidelines_path=agent._environment.resolved_guidelines.path,
         )
 
         assert (
             Env.render_prompt(
                 "You are Mvge",
                 ["bash"],
-                ["Be concise."],
                 cwd=cwd,
                 runes_paths=agent._environment.runes_paths,
                 system_path=agent._environment.resolved_prompt.path,
-                guidelines_path=agent._environment.resolved_guidelines.path,
             )
             == expected
         )

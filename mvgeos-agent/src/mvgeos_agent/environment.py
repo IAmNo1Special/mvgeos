@@ -53,19 +53,6 @@ class ResolvedPrompt:
     path: Path | None = None
 
 
-@dataclass(frozen=True)
-class ResolvedGuidelines:
-    """Guidelines resolved through the discovery chain.
-
-    The ``source`` and ``path`` expose which layer won for runtime
-    introspection.
-    """
-
-    guidelines: list[str]
-    source: PromptSource
-    path: Path | None = None
-
-
 _VALID_CONTEMPLATION_LEVELS = ("none", "low", "medium", "high")
 
 
@@ -92,13 +79,10 @@ _SYSTEM_PROMPT_BODY = (
 
 DEFAULT_SYSTEM_PROMPT = _SYSTEM_PROMPT_BODY
 
-DEFAULT_GUIDELINES: list[str] = []
-
 SYSTEM_MD_FILENAME = "SYSTEM.md"
-GUIDELINES_MD_FILENAME = "GUIDELINES.md"
+APPEND_SYSTEM_MD_FILENAME = "APPEND_SYSTEM.md"
 
 DEFAULT_SYSTEM_MD = _SYSTEM_PROMPT_BODY + "\n"
-DEFAULT_GUIDELINES_MD = ""
 
 
 def get_environment_info(cwd: str | Path | None = None) -> list[str]:
@@ -134,7 +118,6 @@ def get_environment_info(cwd: str | Path | None = None) -> list[str]:
 def render_prompt(
     body: str,
     spells: Sequence[str] = (),
-    guidelines: Sequence[str] = (),
     cwd: str | Path | None = None,
     append_text: str = "",
     *,
@@ -142,17 +125,11 @@ def render_prompt(
     skills_paths: Sequence[Path] = (),
     runes_paths: Sequence[Path] = (),
     system_path: Path | None = None,
-    guidelines_path: Path | None = None,
 ) -> str:
     """The single rendering every entry point goes through."""
     parts: list[str] = []
     if body:
         parts.append(body)
-
-    guidelines_list = list(guidelines)
-    if guidelines_list:
-        parts.append("\nGuidelines:")
-        parts.extend(f"- {guideline}" for guideline in guidelines_list)
 
     spells_list = list(spells)
     spell_list_str = (
@@ -194,9 +171,6 @@ def render_prompt(
     if project_agents_file.is_file():
         self_mod_lines.append(f"- Project Rules: {project_agents_file.as_posix()}")
         has_self_mod = True
-    if guidelines_path is not None and guidelines_path.is_file():
-        self_mod_lines.append(f"- Guidelines: {guidelines_path.as_posix()}")
-        has_self_mod = True
     if system_path is not None and system_path.is_file():
         self_mod_lines.append(f"- System Instructions: {system_path.as_posix()}")
         has_self_mod = True
@@ -237,24 +211,18 @@ def resolve_config_dir(name: str, config_dir: Path | None = None) -> Path:
 
 
 def ensure_config_files(name: str, config_dir: Path | None = None) -> Path:
-    """Create SYSTEM.md and GUIDELINES.md with editable defaults if absent.
+    """Create SYSTEM.md with editable defaults if absent.
 
-    Both files are the Summoner's configuration surface, so they are seeded
+    The file is the Summoner's configuration surface, so it is seeded
     with real content rather than left empty. Existing files are never
     overwritten.
     """
     resolved = resolve_config_dir(name, config_dir)
     resolved.mkdir(parents=True, exist_ok=True)
 
-    for filename, content in (
-        (SYSTEM_MD_FILENAME, DEFAULT_SYSTEM_MD),
-        (GUIDELINES_MD_FILENAME, DEFAULT_GUIDELINES_MD),
-    ):
-        path = resolved / filename
-        # An empty file counts as unseeded: earlier versions created
-        # GUIDELINES.md with touch(), leaving nothing to edit.
-        if not path.exists() or not path.read_text(encoding="utf-8").strip():
-            path.write_text(content, encoding="utf-8")
+    path = resolved / SYSTEM_MD_FILENAME
+    if not path.exists() or not path.read_text(encoding="utf-8").strip():
+        path.write_text(DEFAULT_SYSTEM_MD, encoding="utf-8")
 
     return resolved
 
@@ -268,18 +236,51 @@ def _read_text(path: Path) -> str:
         return ""
 
 
-def _parse_guidelines(path: Path) -> list[str]:
-    """Read a guidelines file into bare lines, dropping bullet markers."""
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except OSError:
-        logger.warning("Could not read guidelines at %s", path)
-        return []
-    return [
-        stripped.lstrip("-*").strip()
-        for line in raw.splitlines()
-        if (stripped := line.strip())
-    ]
+def resolve_append_system_prompts(
+    *,
+    project_dir: Path | None = None,
+    caller_dir: Path | None = None,
+    global_dir: Path | None = None,
+) -> list[tuple[Path, str]]:
+    """Discover APPEND_SYSTEM.md files in general-to-specific order:
+    1. Global (~/.agents/APPEND_SYSTEM.md)
+    2. Project (<project>/.agents/APPEND_SYSTEM.md)
+    3. Caller (<caller>/system_prompt/APPEND_SYSTEM.md or <caller>/APPEND_SYSTEM.md)
+
+    Returns a list of (path, content) tuples for non-empty files found.
+    """
+    results: list[tuple[Path, str]] = []
+
+    # 1. Global (~/.agents/APPEND_SYSTEM.md)
+    g_dir = global_dir if global_dir is not None else Path("~/.agents").expanduser()
+    global_file = g_dir / APPEND_SYSTEM_MD_FILENAME
+    if global_file.is_file():
+        content = _read_text(global_file)
+        if content:
+            results.append((global_file, content))
+
+    # 2. Project (<project>/.agents/APPEND_SYSTEM.md)
+    proj_base = project_dir if project_dir is not None else Path.cwd()
+    project_file = proj_base / ".agents" / APPEND_SYSTEM_MD_FILENAME
+    if project_file.is_file():
+        content = _read_text(project_file)
+        if content:
+            results.append((project_file, content))
+
+    # 3. Caller (<caller>/system_prompt/APPEND_SYSTEM.md or <caller>/APPEND_SYSTEM.md)
+    if caller_dir is not None:
+        caller_sys_dir = caller_dir / "system_prompt" / APPEND_SYSTEM_MD_FILENAME
+        caller_file = caller_dir / APPEND_SYSTEM_MD_FILENAME
+        if caller_sys_dir.is_file():
+            content = _read_text(caller_sys_dir)
+            if content:
+                results.append((caller_sys_dir, content))
+        elif caller_file.is_file():
+            content = _read_text(caller_file)
+            if content:
+                results.append((caller_file, content))
+
+    return results
 
 
 def resolve_system_prompt(
@@ -289,115 +290,81 @@ def resolve_system_prompt(
     config_dir: Path | None = None,
     project_dir: Path | None = None,
     caller_dir: Path | None = None,
+    global_dir: Path | None = None,
     default: str = DEFAULT_SYSTEM_PROMPT,
     filename: str = SYSTEM_MD_FILENAME,
 ) -> ResolvedPrompt:
     """Resolve the system prompt from the discovery chain:
     custom -> caller SYSTEM.md -> project SYSTEM.md -> agent-scope SYSTEM.md -> default
+    and append any discovered APPEND_SYSTEM.md files in general-to-specific order
+    (Global -> Project -> Caller).
     """
+    resolved_base: ResolvedPrompt
     if custom:
         custom_path = Path(custom).expanduser()
         if custom_path.is_file():
-            return ResolvedPrompt(
+            resolved_base = ResolvedPrompt(
                 text=_read_text(custom_path),
                 source=PromptSource.CUSTOM_PATH,
                 path=custom_path,
             )
-        return ResolvedPrompt(text=custom, source=PromptSource.CUSTOM_LITERAL)
+        else:
+            resolved_base = ResolvedPrompt(
+                text=custom, source=PromptSource.CUSTOM_LITERAL
+            )
+    elif (
+        caller_dir is not None
+        and (caller_sys_dir := caller_dir / "system_prompt" / filename).is_file()
+        and (text := _read_text(caller_sys_dir))
+    ):
+        resolved_base = ResolvedPrompt(
+            text=text, source=PromptSource.AGENT_MD, path=caller_sys_dir
+        )
+    elif (
+        caller_dir is not None
+        and (caller_file := caller_dir / filename).is_file()
+        and (text := _read_text(caller_file))
+    ):
+        resolved_base = ResolvedPrompt(
+            text=text, source=PromptSource.AGENT_MD, path=caller_file
+        )
+    else:
+        proj_base = project_dir if project_dir is not None else Path.cwd()
+        project_file = proj_base / ".agents" / ".mvgeos" / filename
+        std_project_file = proj_base / ".agents" / filename
+        agent_dir = resolve_config_dir(agent_name, config_dir)
+        agent_file = agent_dir / filename
 
-    if caller_dir is not None:
-        caller_sys_dir = caller_dir / "system_prompt" / filename
-        if caller_sys_dir.is_file():
-            text = _read_text(caller_sys_dir)
-            if text:
-                return ResolvedPrompt(
-                    text=text, source=PromptSource.AGENT_MD, path=caller_sys_dir
-                )
-        caller_file = caller_dir / filename
-        if caller_file.is_file():
-            text = _read_text(caller_file)
-            if text:
-                return ResolvedPrompt(
-                    text=text, source=PromptSource.AGENT_MD, path=caller_file
-                )
-
-    proj_base = project_dir if project_dir is not None else Path.cwd()
-    project_file = proj_base / ".agents" / ".mvgeos" / filename
-    if project_file.is_file():
-        text = _read_text(project_file)
-        if text:
-            return ResolvedPrompt(
+        if project_file.is_file() and (text := _read_text(project_file)):
+            resolved_base = ResolvedPrompt(
                 text=text, source=PromptSource.PROJECT_MD, path=project_file
             )
-
-    agent_dir = resolve_config_dir(agent_name, config_dir)
-    agent_file = agent_dir / filename
-    if agent_file.is_file():
-        text = _read_text(agent_file)
-        if text:
-            return ResolvedPrompt(
+        elif std_project_file.is_file() and (text := _read_text(std_project_file)):
+            resolved_base = ResolvedPrompt(
+                text=text, source=PromptSource.PROJECT_MD, path=std_project_file
+            )
+        elif agent_file.is_file() and (text := _read_text(agent_file)):
+            resolved_base = ResolvedPrompt(
                 text=text, source=PromptSource.AGENT_MD, path=agent_file
             )
+        else:
+            resolved_base = ResolvedPrompt(text=default, source=PromptSource.BUILTIN)
 
-    return ResolvedPrompt(text=default, source=PromptSource.BUILTIN)
+    appends = resolve_append_system_prompts(
+        project_dir=project_dir,
+        caller_dir=caller_dir,
+        global_dir=global_dir,
+    )
+    if appends:
+        parts = [resolved_base.text] if resolved_base.text else []
+        parts.extend(content for _, content in appends)
+        return ResolvedPrompt(
+            text="\n\n".join(parts),
+            source=resolved_base.source,
+            path=resolved_base.path,
+        )
 
-
-def resolve_guidelines(
-    agent_name: str = DEFAULT_AGENT_NAME,
-    *,
-    config_dir: Path | None = None,
-    project_dir: Path | None = None,
-    caller_dir: Path | None = None,
-    default: Sequence[str] = DEFAULT_GUIDELINES,
-    filename: str = GUIDELINES_MD_FILENAME,
-) -> ResolvedGuidelines:
-    """Resolve guidelines from the discovery chain:
-    caller system_prompt/GUIDELINES.md -> project GUIDELINES.md ->
-    agent-scope GUIDELINES.md -> default.
-    """
-    if caller_dir is not None:
-        caller_sys_dir = caller_dir / "system_prompt" / filename
-        if caller_sys_dir.is_file():
-            parsed = _parse_guidelines(caller_sys_dir)
-            if parsed:
-                return ResolvedGuidelines(
-                    guidelines=parsed,
-                    source=PromptSource.AGENT_MD,
-                    path=caller_sys_dir,
-                )
-        caller_file = caller_dir / filename
-        if caller_file.is_file():
-            parsed = _parse_guidelines(caller_file)
-            if parsed:
-                return ResolvedGuidelines(
-                    guidelines=parsed,
-                    source=PromptSource.AGENT_MD,
-                    path=caller_file,
-                )
-
-    proj_base = project_dir if project_dir is not None else Path.cwd()
-    project_file = proj_base / ".agents" / ".mvgeos" / filename
-    if project_file.is_file():
-        parsed = _parse_guidelines(project_file)
-        if parsed:
-            return ResolvedGuidelines(
-                guidelines=parsed,
-                source=PromptSource.PROJECT_MD,
-                path=project_file,
-            )
-
-    agent_dir = resolve_config_dir(agent_name, config_dir)
-    agent_file = agent_dir / filename
-    if agent_file.is_file():
-        parsed = _parse_guidelines(agent_file)
-        if parsed:
-            return ResolvedGuidelines(
-                guidelines=parsed,
-                source=PromptSource.AGENT_MD,
-                path=agent_file,
-            )
-
-    return ResolvedGuidelines(guidelines=list(default), source=PromptSource.BUILTIN)
+    return resolved_base
 
 
 def coerce_agent_config(
@@ -536,7 +503,6 @@ class MvgeEnvironment:
     runes_paths: list[Path]
     config: dict[str, ConfigValue]
     resolved_prompt: ResolvedPrompt
-    resolved_guidelines: ResolvedGuidelines
     diagnostics: list[Diagnostic | SkillDiagnostic] = field(default_factory=list)
     spells: list[MvgeSpell | SpellDefinition] = field(default_factory=list)
     runner: RuneRunner | None = None
@@ -550,6 +516,7 @@ class MvgeEnvironment:
         *,
         project_dir: Path | None = None,
         config_dir: Path | None = None,
+        global_dir: Path | None = None,
         overrides: dict[str, Any] | None = None,
         custom_prompt: str = "",
         spells: list[MvgeSpell | SpellDefinition] | None = None,
@@ -590,14 +557,8 @@ class MvgeEnvironment:
             config_dir=config_dir,
             project_dir=project_dir,
             caller_dir=caller_dir,
+            global_dir=global_dir,
             default=DEFAULT_SYSTEM_PROMPT,
-        )
-        resolved_guidelines = resolve_guidelines(
-            agent_name=agent_name,
-            config_dir=config_dir,
-            project_dir=project_dir,
-            caller_dir=caller_dir,
-            default=DEFAULT_GUIDELINES,
         )
 
         diags: list[Diagnostic | SkillDiagnostic] = []
@@ -618,7 +579,6 @@ class MvgeEnvironment:
             runes_paths=coerced.runes_paths,
             config=resolved_config,
             resolved_prompt=resolved_prompt,
-            resolved_guidelines=resolved_guidelines,
             diagnostics=diags,
             spells=spells or [],
             runner=runner,
@@ -641,7 +601,7 @@ class MvgeEnvironment:
 
         With a runner, emits ``BEFORE_MVGE_START`` so runes can rewrite the
         base prompt. Then renders Layer 2 invariant scaffolding (active spells,
-        environment, guidelines, self-modification pointers, project context)
+        environment, self-modification pointers, project context)
         and appends the skill catalog unless a rune suppressed it.
         """
         effective_runner = runner if runner is not None else self.runner
@@ -694,19 +654,16 @@ class MvgeEnvironment:
         return self.render_prompt(
             body=effective_base,
             spells=effective_spells,
-            guidelines=self.resolved_guidelines.guidelines,
             cwd=effective_cwd,
             append_text=skill_catalog,
             runes_paths=self.runes_paths,
             system_path=self.resolved_prompt.path,
-            guidelines_path=self.resolved_guidelines.path,
         )
 
     @staticmethod
     def render_prompt(
         body: str,
         spells: Sequence[str] = (),
-        guidelines: Sequence[str] = (),
         cwd: str | Path | None = None,
         append_text: str = "",
         *,
@@ -714,20 +671,17 @@ class MvgeEnvironment:
         skills_paths: Sequence[Path] = (),
         runes_paths: Sequence[Path] = (),
         system_path: Path | None = None,
-        guidelines_path: Path | None = None,
     ) -> str:
-        """Render a prompt with body, spells, guidelines, and environment."""
+        """Render a prompt with body, spells, and environment."""
         return render_prompt(
             body=body,
             spells=spells,
-            guidelines=guidelines,
             cwd=cwd,
             append_text=append_text,
             spells_dir=spells_dir,
             skills_paths=skills_paths,
             runes_paths=runes_paths,
             system_path=system_path,
-            guidelines_path=guidelines_path,
         )
 
     def build_snapshot(self) -> RuntimeSnapshot:
@@ -760,7 +714,6 @@ class MvgeEnvironment:
             config_values=self.config if self.config_manager is not None else {},
             config_source_files=config_source_files,
             resolved_prompt=self.resolved_prompt,
-            resolved_guidelines=self.resolved_guidelines,
             skills=skills,
             rune_diagnostics=rune_diagnostics,
             skill_diagnostics=skill_diagnostics,

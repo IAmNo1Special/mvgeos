@@ -598,7 +598,6 @@ class TestBuildSystemPrompt:
             prompt = MvgeEnvironment.render_prompt(
                 env.resolved_prompt.text,
                 spells=["bash", "read"],
-                guidelines=env.resolved_guidelines.guidelines,
             )
             assert "You are a Mvge" in prompt
             assert "Active spells:" in prompt
@@ -615,7 +614,6 @@ class TestBuildSystemPrompt:
             prompt = MvgeEnvironment.render_prompt(
                 env.resolved_prompt.text,
                 spells=["bash"],
-                guidelines=env.resolved_guidelines.guidelines,
             )
             assert "You are a Mvge" in prompt
 
@@ -628,7 +626,6 @@ class TestBuildSystemPrompt:
         prompt = MvgeEnvironment.render_prompt(
             env.resolved_prompt.text,
             spells=env.spell_names or [],
-            guidelines=env.resolved_guidelines.guidelines,
         )
         assert "Custom agent prompt here." in prompt
         assert "You are Mvge" not in prompt
@@ -643,47 +640,32 @@ class TestBuildSystemPrompt:
             prompt = MvgeEnvironment.render_prompt(
                 env.resolved_prompt.text,
                 spells=env.spell_names or [],
-                guidelines=env.resolved_guidelines.guidelines,
             )
             assert "Loaded from file." in prompt
             assert "You are Mvge" not in prompt
 
-    def test_guidelines_md_loads(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            config_dir = Path(td)
-            (config_dir / "GUIDELINES.md").write_text(
-                "- Rule one\n- Rule two\n", encoding="utf-8"
-            )
-            env = MvgeEnvironment.resolve(
-                "test-agent", config_dir=config_dir, allow_unknown_agent=True
-            )
-            prompt = MvgeEnvironment.render_prompt(
-                env.resolved_prompt.text,
-                spells=env.spell_names or [],
-                guidelines=env.resolved_guidelines.guidelines,
-            )
-            assert "Rule one" in prompt
-            assert "Rule two" in prompt
-            assert "Be concise" not in prompt
-
-    def test_both_files_load(self) -> None:
+    def test_append_system_md_loads(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             config_dir = Path(td)
             (config_dir / "SYSTEM.md").write_text("File-based agent.", encoding="utf-8")
-            (config_dir / "GUIDELINES.md").write_text(
-                "- Custom rule\n", encoding="utf-8"
+            caller_dir = config_dir / "caller"
+            caller_sys = caller_dir / "system_prompt"
+            caller_sys.mkdir(parents=True)
+            (caller_sys / "APPEND_SYSTEM.md").write_text(
+                "Additive instructions.", encoding="utf-8"
             )
             env = MvgeEnvironment.resolve(
-                "test-agent", config_dir=config_dir, allow_unknown_agent=True
+                "test-agent",
+                config_dir=config_dir,
+                caller_dir=caller_dir,
+                allow_unknown_agent=True,
             )
             prompt = MvgeEnvironment.render_prompt(
                 env.resolved_prompt.text,
                 spells=env.spell_names or [],
-                guidelines=env.resolved_guidelines.guidelines,
             )
             assert "File-based agent." in prompt
-            assert "Custom rule" in prompt
-            assert "Be concise" not in prompt
+            assert "Additive instructions." in prompt
 
 
 class TestMvgeConfig:

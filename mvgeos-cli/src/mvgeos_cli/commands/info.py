@@ -46,7 +46,6 @@ def _render_snapshot(snap: RuntimeSnapshot, ascii_only: bool = False) -> str:
     _render_runes(render_console, snap, box_style=box_style, ascii_only=ascii_only)
     _render_config(render_console, snap, box_style=box_style, ascii_only=ascii_only)
     _render_prompt(render_console, snap, box_style=box_style, ascii_only=ascii_only)
-    _render_guidelines(render_console, snap, box_style=box_style, ascii_only=ascii_only)
     _render_skills(render_console, snap, box_style=box_style, ascii_only=ascii_only)
     _render_diagnostics(
         render_console, snap, box_style=box_style, ascii_only=ascii_only
@@ -162,25 +161,6 @@ def _render_prompt(
         _clip_path(path, ascii_only),
         snap.prompt.text or "-",
     )
-
-    console.print(table)
-
-
-def _render_guidelines(
-    console: Console,
-    snap: RuntimeSnapshot,
-    box_style: box.Box | None = None,
-    ascii_only: bool = False,
-) -> None:
-    if not snap.guidelines:
-        return
-
-    table = Table(title="Guidelines", show_lines=False, box=box_style)
-    table.add_column("Index", style="cyan")
-    table.add_column("Guideline")
-
-    for i, g in enumerate(snap.guidelines):
-        table.add_row(str(i), g)
 
     console.print(table)
 

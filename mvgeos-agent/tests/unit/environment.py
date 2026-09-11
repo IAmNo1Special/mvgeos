@@ -23,20 +23,18 @@ from mvgeos_runes.types import (
 
 from mvgeos_agent.config_manager import ConfigLayer, ConfigManager, ConfigValue
 from mvgeos_agent.environment import (
-    DEFAULT_GUIDELINES,
-    DEFAULT_GUIDELINES_MD,
+    APPEND_SYSTEM_MD_FILENAME,
     DEFAULT_SYSTEM_PROMPT,
     AgentConfig,
     MvgeEnvironment,
     PromptSource,
-    ResolvedGuidelines,
     ResolvedPrompt,
     coerce_agent_config,
     ensure_config_files,
     get_environment_info,
     render_prompt,
+    resolve_append_system_prompts,
     resolve_config_dir,
-    resolve_guidelines,
     resolve_system_prompt,
 )
 from mvgeos_agent.mvge import Mvge
@@ -77,15 +75,6 @@ class TestResolvedDataClasses:
 
     def test_resolved_prompt_path_defaults_to_none(self) -> None:
         resolved = ResolvedPrompt(text="hi", source=PromptSource.BUILTIN)
-        assert resolved.path is None
-
-    def test_resolved_guidelines_is_frozen(self) -> None:
-        resolved = ResolvedGuidelines(guidelines=["a"], source=PromptSource.BUILTIN)
-        with pytest.raises(AttributeError):
-            resolved.guidelines = ["b"]  # type: ignore[misc]
-
-    def test_resolved_guidelines_path_defaults_to_none(self) -> None:
-        resolved = ResolvedGuidelines(guidelines=["a"], source=PromptSource.BUILTIN)
         assert resolved.path is None
 
 
@@ -323,87 +312,88 @@ class TestPromptDiscoveryPrecedence:
         assert resolved.path is None
 
 
-class TestGuidelinesDiscoveryPrecedence:
-    def test_project_wins_over_agent(self, tmp_path: Path) -> None:
+class TestAppendSystemDiscoveryAndPrecedence:
+    def test_append_system_cascade_order(self, tmp_path: Path) -> None:
+        global_dir = tmp_path / "global"
+        global_dir.mkdir()
+        (global_dir / APPEND_SYSTEM_MD_FILENAME).write_text(
+            "Global Append Rules", encoding="utf-8"
+        )
+
         project_dir = tmp_path / "project"
-        project_dir.mkdir()
-        (project_dir / ".agents" / ".mvgeos").mkdir(parents=True)
-        (project_dir / ".agents" / ".mvgeos" / "GUIDELINES.md").write_text(
-            "- Project rule\n", encoding="utf-8"
+        project_agents = project_dir / ".agents"
+        project_agents.mkdir(parents=True)
+        (project_agents / APPEND_SYSTEM_MD_FILENAME).write_text(
+            "Project Append Rules", encoding="utf-8"
         )
 
-        agent_dir = tmp_path / "agent"
-        agent_dir.mkdir()
-        (agent_dir / "GUIDELINES.md").write_text("- Agent rule\n", encoding="utf-8")
+        caller_dir = tmp_path / "caller"
+        caller_sys = caller_dir / "system_prompt"
+        caller_sys.mkdir(parents=True)
+        (caller_sys / APPEND_SYSTEM_MD_FILENAME).write_text(
+            "Caller Append Rules", encoding="utf-8"
+        )
 
-        resolved = resolve_guidelines(
+        resolved = resolve_system_prompt(
             agent_name="test",
-            config_dir=agent_dir,
+            global_dir=global_dir,
             project_dir=project_dir,
-        )
-        assert resolved.guidelines == ["Project rule"]
-        assert resolved.source == PromptSource.PROJECT_MD
-
-    def test_agent_wins_over_builtin(self, tmp_path: Path) -> None:
-        agent_dir = tmp_path / "agent"
-        agent_dir.mkdir()
-        (agent_dir / "GUIDELINES.md").write_text("- Agent rule\n", encoding="utf-8")
-
-        resolved = resolve_guidelines(
-            agent_name="test",
-            config_dir=agent_dir,
-        )
-        assert resolved.guidelines == ["Agent rule"]
-        assert resolved.source == PromptSource.AGENT_MD
-
-    def test_caller_guidelines_system_prompt_dir(self, tmp_path: Path) -> None:
-        caller_dir = tmp_path / "caller_pkg"
-        sys_prompt_dir = caller_dir / "system_prompt"
-        sys_prompt_dir.mkdir(parents=True)
-        (sys_prompt_dir / "GUIDELINES.md").write_text(
-            "- Subdir rule 1\n- Subdir rule 2\n", encoding="utf-8"
-        )
-
-        resolved = resolve_guidelines(
-            agent_name="test",
             caller_dir=caller_dir,
         )
-        assert resolved.guidelines == ["Subdir rule 1", "Subdir rule 2"]
-        assert resolved.source == PromptSource.AGENT_MD
-        assert resolved.path == sys_prompt_dir / "GUIDELINES.md"
 
-    def test_builtin_when_nothing_exists(self, tmp_path: Path) -> None:
-        resolved = resolve_guidelines(
+        expected_order = (
+            f"{DEFAULT_SYSTEM_PROMPT}\n\n"
+            "Global Append Rules\n\n"
+            "Project Append Rules\n\n"
+            "Caller Append Rules"
+        )
+        assert resolved.text == expected_order
+
+    def test_append_system_skips_empty_files(self, tmp_path: Path) -> None:
+        global_dir = tmp_path / "global"
+        global_dir.mkdir()
+        (global_dir / APPEND_SYSTEM_MD_FILENAME).write_text("   \n", encoding="utf-8")
+
+        project_dir = tmp_path / "project"
+        project_agents = project_dir / ".agents"
+        project_agents.mkdir(parents=True)
+        (project_agents / APPEND_SYSTEM_MD_FILENAME).write_text(
+            "Project Only", encoding="utf-8"
+        )
+
+        resolved = resolve_system_prompt(
             agent_name="test",
-            config_dir=tmp_path / "nonexistent",
+            global_dir=global_dir,
+            project_dir=project_dir,
         )
-        assert resolved.guidelines == DEFAULT_GUIDELINES
-        assert resolved.source == PromptSource.BUILTIN
 
-    def test_empty_agent_guidelines_falls_back_to_builtin(self, tmp_path: Path) -> None:
-        agent_dir = tmp_path / "agent"
-        agent_dir.mkdir()
-        (agent_dir / "GUIDELINES.md").write_text("   \n", encoding="utf-8")
+        assert resolved.text == f"{DEFAULT_SYSTEM_PROMPT}\n\nProject Only"
 
-        resolved = resolve_guidelines(
+    def test_append_system_caller_root_fallback(self, tmp_path: Path) -> None:
+        caller_dir = tmp_path / "caller"
+        caller_dir.mkdir()
+        (caller_dir / APPEND_SYSTEM_MD_FILENAME).write_text(
+            "Caller Direct Rules", encoding="utf-8"
+        )
+
+        resolved = resolve_system_prompt(
             agent_name="test",
-            config_dir=agent_dir,
-        )
-        assert resolved.guidelines == DEFAULT_GUIDELINES
-        assert resolved.source == PromptSource.BUILTIN
-
-    def test_bullet_markers_are_stripped(self, tmp_path: Path) -> None:
-        agent_dir = tmp_path / "agent"
-        agent_dir.mkdir()
-        (agent_dir / "GUIDELINES.md").write_text(
-            "- Dash rule\n* Star rule\nBare rule\n", encoding="utf-8"
+            caller_dir=caller_dir,
+            global_dir=tmp_path / "empty_global",
+            project_dir=tmp_path / "empty_project",
         )
 
-        resolved = resolve_guidelines(
-            agent_name="test",
-            config_dir=agent_dir,
-        )
-        assert resolved.guidelines == ["Dash rule", "Star rule", "Bare rule"]
+        assert resolved.text == f"{DEFAULT_SYSTEM_PROMPT}\n\nCaller Direct Rules"
+
+    def test_append_system_helper_direct(self, tmp_path: Path) -> None:
+        global_dir = tmp_path / "global"
+        global_dir.mkdir()
+        (global_dir / APPEND_SYSTEM_MD_FILENAME).write_text("G", encoding="utf-8")
+
+        results = resolve_append_system_prompts(global_dir=global_dir)
+        assert len(results) == 1
+        assert results[0][0] == global_dir / APPEND_SYSTEM_MD_FILENAME
+        assert results[0][1] == "G"
 
 
 # ---------------------------------------------------------------------------
@@ -432,12 +422,9 @@ class TestConfigDirAndSeeding:
 
         config_dir = ensure_config_files("test-mvge")
         assert (config_dir / "SYSTEM.md").exists()
-        assert (config_dir / "GUIDELINES.md").exists()
 
         system_text = (config_dir / "SYSTEM.md").read_text(encoding="utf-8")
         assert DEFAULT_SYSTEM_PROMPT in system_text
-        guidelines_text = (config_dir / "GUIDELINES.md").read_text(encoding="utf-8")
-        assert guidelines_text == DEFAULT_GUIDELINES_MD
 
     def test_ensure_config_files_never_overwrites(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -446,13 +433,9 @@ class TestConfigDirAndSeeding:
         monkeypatch.setenv("USERPROFILE", str(tmp_path))
 
         config_dir = ensure_config_files("test-mvge")
-        (config_dir / "GUIDELINES.md").write_text("- Custom rule\n", encoding="utf-8")
         (config_dir / "SYSTEM.md").write_text("Custom prompt", encoding="utf-8")
 
         ensure_config_files("test-mvge")
-        assert (config_dir / "GUIDELINES.md").read_text(
-            encoding="utf-8"
-        ) == "- Custom rule\n"
         assert (config_dir / "SYSTEM.md").read_text(encoding="utf-8") == "Custom prompt"
 
 
@@ -466,15 +449,12 @@ class TestPromptRendering:
         rendered = render_prompt(
             body="Base body",
             spells=["bash", "read"],
-            guidelines=["Be concise."],
             cwd="/test/dir",
         )
         assert "Base body" in rendered
         assert "Active spells:" in rendered
         assert "  - bash" in rendered
         assert "  - read" in rendered
-        assert "Guidelines:" in rendered
-        assert "- Be concise." in rendered
         assert "Environment:" in rendered
         assert "Working Directory: /test/dir" in rendered
 
@@ -482,10 +462,8 @@ class TestPromptRendering:
         rendered = render_prompt(
             body="Base body",
             spells=[],
-            guidelines=[],
         )
         assert "(none)" in rendered
-        assert "Guidelines:" not in rendered
 
     def test_render_prompt_append_text(self) -> None:
         rendered = render_prompt(
@@ -521,7 +499,6 @@ class TestMvgeEnvironmentResolve:
         assert env.contemplation_level == "medium"
         assert env.spell_names == ConfigManager.DEFAULTS["spells_enabled"]
         assert env.resolved_prompt.source == PromptSource.BUILTIN
-        assert env.resolved_guidelines.source == PromptSource.BUILTIN
         assert "model" in env.config
         assert env.config["model"].layer == ConfigLayer.DEFAULTS
 
@@ -548,12 +525,11 @@ class TestMvgeEnvironmentResolve:
         assert env.queue_mode is QueueMode.ALL
         assert env.config["model"].layer == ConfigLayer.CONSTRUCTOR
 
-    def test_resolve_project_prompt_and_guidelines(self, tmp_path: Path) -> None:
+    def test_resolve_project_prompt(self, tmp_path: Path) -> None:
         config_dir = tmp_path / "agent_config"
         agents_dir = tmp_path / ".agents" / ".mvgeos"
         agents_dir.mkdir(parents=True)
         (agents_dir / "SYSTEM.md").write_text("Custom Project System Prompt")
-        (agents_dir / "GUIDELINES.md").write_text("- Guideline 1\n- Guideline 2")
 
         env = MvgeEnvironment.resolve(
             "test-agent", project_dir=tmp_path, config_dir=config_dir
@@ -561,8 +537,6 @@ class TestMvgeEnvironmentResolve:
 
         assert env.resolved_prompt.source == PromptSource.PROJECT_MD
         assert env.resolved_prompt.text == "Custom Project System Prompt"
-        assert env.resolved_guidelines.source == PromptSource.PROJECT_MD
-        assert env.resolved_guidelines.guidelines == ["Guideline 1", "Guideline 2"]
 
     def test_resolve_is_frozen(self, tmp_path: Path) -> None:
         env = MvgeEnvironment.resolve(

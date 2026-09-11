@@ -33,8 +33,7 @@ coding-mvge/src/coding_mvge/
 ├── __init__.py         # Re-exports root_mvge
 ├── mvge.py             # Instantiates root_mvge = Mvge(name="coding_mvge")
 ├── system_prompt/      # Layer 1 persona instructions and guidelines
-│   ├── SYSTEM.md       # Identity and core persona instructions
-│   ├── GUIDELINES.md   # Behavioral guidelines
+│   ├── SYSTEM.md       # Identity, persona, and guidelines
 │   └── AGENTS.md       # Authoring guide for system prompt customization
 ├── spells/             # Modular Python spell files (one file per spell)
 │   ├── __init__.py     # Re-exports all spells & defines __all__

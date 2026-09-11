@@ -267,16 +267,12 @@ class TestBuildSnapshotPrompt:
     ) -> None:
         monkeypatch.setattr(Mvge, "config_dir", property(lambda self: tmp_path))
         (tmp_path / "SYSTEM.md").write_text("Custom system from file", encoding="utf-8")
-        (tmp_path / "GUIDELINES.md").write_text(
-            "- Be concise\n- Write tests\n", encoding="utf-8"
-        )
 
         agent = Mvge(api_key="key", name="test-agent", spells=[])
         snap = agent.build_snapshot()
 
         assert snap.prompt.text == "Custom system from file"
         assert snap.prompt.source == PromptSource.AGENT_MD.value
-        assert snap.guidelines == ["Be concise", "Write tests"]
 
     def test_prompt_builtin_when_no_files(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

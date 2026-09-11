@@ -75,7 +75,6 @@ def _make_snapshot() -> RuntimeSnapshot:
             path=None,
             text="You are Mvge, a concise AI coding agent.",
         ),
-        guidelines=["Be concise", "Use spells when needed"],
         skills=[
             SnapshotSkill(
                 name="my-skill",
@@ -130,7 +129,6 @@ class TestBuildCommand:
         assert "skills" in data
         assert "diagnostics" in data
         assert "model" in data
-        assert "guidelines" in data
 
     @patch("mvgeos_cli.commands.build._assemble")
     def test_build_spells_have_source(self, mock_assemble: MagicMock) -> None:

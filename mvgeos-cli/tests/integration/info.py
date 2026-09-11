@@ -73,7 +73,6 @@ def _make_snapshot() -> RuntimeSnapshot:
             path=None,
             text="You are Mvge, a concise AI coding agent.",
         ),
-        guidelines=["Be concise", "Use spells when needed"],
         skills=[
             SnapshotSkill(
                 name="my-skill",
@@ -239,11 +238,6 @@ class TestRenderSnapshot:
         snap = _make_snapshot()
         output = _render_snapshot(snap)
         assert "builtin" in output
-
-    def test_render_guidelines(self) -> None:
-        snap = _make_snapshot()
-        output = _render_snapshot(snap)
-        assert "Be concise" in output
 
     def test_render_empty_spells(self) -> None:
         snap = RuntimeSnapshot(agent_name="test", model="m")

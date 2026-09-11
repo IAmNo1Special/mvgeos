@@ -20,7 +20,6 @@ from mvgeos_agent.config_manager import ConfigLayer, ConfigValue
 
 if TYPE_CHECKING:
     from mvgeos_agent.environment import (
-        ResolvedGuidelines,
         ResolvedPrompt,
     )
 
@@ -100,7 +99,6 @@ class RuntimeSnapshot:
     runes: list[SnapshotRune] = field(default_factory=list)
     config: list[SnapshotConfigEntry] = field(default_factory=list)
     prompt: SnapshotPrompt | None = None
-    guidelines: list[str] = field(default_factory=list)
     skills: list[SnapshotSkill] = field(default_factory=list)
     diagnostics: list[SnapshotDiagnostic] = field(default_factory=list)
 
@@ -208,7 +206,6 @@ def assemble_snapshot(
     config_values: dict[str, ConfigValue],
     config_source_files: dict[ConfigLayer, Path | None],
     resolved_prompt: ResolvedPrompt,
-    resolved_guidelines: ResolvedGuidelines,
     skills: list[SkillManifest],
     rune_diagnostics: list[Diagnostic],
     skill_diagnostics: list[SkillDiagnostic],
@@ -228,7 +225,6 @@ def assemble_snapshot(
             for key, val in config_values.items()
         ],
         prompt=to_snapshot_prompt(resolved_prompt),
-        guidelines=list(resolved_guidelines.guidelines),
         skills=[to_snapshot_skill(s) for s in skills],
         diagnostics=[to_snapshot_diagnostic(d) for d in rune_diagnostics]
         + [to_snapshot_diagnostic(d) for d in skill_diagnostics],

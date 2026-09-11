@@ -51,11 +51,10 @@ class TestProposerFileBasedConstruction:
         assert "read_file" in spell_names
         assert "finish" in spell_names
 
-    def test_proposer_mvge_auto_resolves_system_prompt_and_guidelines(self) -> None:
+    def test_proposer_mvge_auto_resolves_system_prompt(self) -> None:
         env = proposer_mvge.environment
         assert "Skill Proposer" in env.resolved_prompt.text
-        guidelines_text = "\n".join(env.resolved_guidelines.guidelines)
-        assert "Target ONE skill per iteration" in guidelines_text
+        assert "Target ONE skill per iteration" in env.resolved_prompt.text
 
 
 class TestProposerSpells:

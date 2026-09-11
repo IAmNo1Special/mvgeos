@@ -10,7 +10,6 @@ from mvgeos_agent.environment import (
     AgentConfig,
     MvgeEnvironment,
     PromptSource,
-    ResolvedGuidelines,
     ResolvedPrompt,
 )
 from mvgeos_agent.function_spell import (
@@ -49,7 +48,6 @@ __all__ = [
     "MvgeState",
     "MvgeTome",
     "PromptSource",
-    "ResolvedGuidelines",
     "ResolvedPrompt",
     "RuneSpellWrapper",
     "RuntimeSnapshot",
