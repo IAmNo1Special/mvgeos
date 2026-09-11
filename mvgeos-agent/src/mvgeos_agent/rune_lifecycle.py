@@ -27,6 +27,7 @@ from mvgeos_runes.types import (
     RuneContext,
     RuneScope,
     SigilHook,
+    SkillDiagnosticKind,
     SkillScope,
 )
 from mvgeos_runes.watcher import RuneWatcher
@@ -165,13 +166,21 @@ class RuneLifecycle:
         elif skill_diagnostics:
             runner.extend_skill_diagnostics(skill_diagnostics)
 
+        shadow_count = sum(
+            1 for d in skill_diagnostics if d.kind == SkillDiagnosticKind.SHADOWED_SKILL
+        )
         for sdiag in skill_diagnostics:
-            logger.warning(
+            logger.debug(
                 "Skill diagnostic: %s (skill=%s, scope=%s, path=%s)",
                 sdiag.message,
                 sdiag.skill_name,
                 sdiag.scope.value if sdiag.scope else "unknown",
                 sdiag.path,
+            )
+        if shadow_count:
+            logger.warning(
+                "Skill diagnostics: %d shadows (user-scope takes precedence)",
+                shadow_count,
             )
 
         self._paths_with_scope = paths_with_scope

@@ -323,13 +323,90 @@ class TestLoad:
                 "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
                 return_value=([], [sdiag]),
             ),
-            caplog.at_level(logging.WARNING, logger="mvgeos_agent.rune_lifecycle"),
+            caplog.at_level(logging.DEBUG, logger="mvgeos_agent.rune_lifecycle"),
         ):
             runner = await lifecycle.load()
 
         assert runner.skill_diagnostics == [sdiag]
-        assert "Skill diagnostic" in caplog.text
-        assert "bad-skill" in caplog.text
+        # Individual diagnostic now logged at DEBUG
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelno == logging.DEBUG
+        assert "bad-skill" in caplog.records[0].message
+
+    @pytest.mark.asyncio
+    async def test_load_skills_scope_order_dedupe(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Skills with same name in different scopes: highest scope wins."""
+        # Create skill directories with same name in different scopes
+        user_skills = tmp_path / "user_skills"
+        agent_skills = tmp_path / "agent_skills"
+        user_skills.mkdir()
+        agent_skills.mkdir()
+
+        # USER scope skill (higher precedence in SKILL_SCOPES order)
+        user_skill_dir = user_skills / "duplicate-skill"
+        user_skill_dir.mkdir()
+        md_user = (
+            "---\nname: duplicate-skill\n"
+            "description: user scope skill\nversion: 1.0.0\n---\n"
+        )
+        (user_skill_dir / "SKILL.md").write_text(md_user)
+
+        # AGENT scope skill (lower precedence)
+        agent_skill_dir = agent_skills / "duplicate-skill"
+        agent_skill_dir.mkdir()
+        md_agent = (
+            "---\nname: duplicate-skill\n"
+            "description: agent scope skill\nversion: 1.0.0\n---\n"
+        )
+        (agent_skill_dir / "SKILL.md").write_text(md_agent)
+
+        # Paths in precedence order: USER first, then AGENT
+        paths = [
+            (str(user_skills), SkillScope.USER),
+            (str(agent_skills), SkillScope.AGENT),
+        ]
+
+        lifecycle = RuneLifecycle(agent_name="tester")
+
+        with (
+            patch(
+                "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
+                return_value=([], []),
+            ),
+            patch(
+                "mvgeos_agent.rune_lifecycle.get_default_skill_paths",
+                return_value=paths,
+            ),
+            caplog.at_level(logging.DEBUG, logger="mvgeos_agent.rune_lifecycle"),
+            caplog.at_level(logging.DEBUG, logger="mvgeos_runes.loader"),
+        ):
+            runner = await lifecycle.load()
+
+        # Verify dedupe logic: only 1 skill loaded (USER scope wins)
+        skills = runner.get_skills()
+        assert len(skills) == 1
+        assert skills[0].name == "duplicate-skill"
+        assert skills[0].scope == SkillScope.USER
+
+        # Verify individual shadow diagnostic was logged at DEBUG level
+        shadow_logs = [
+            r
+            for r in caplog.records
+            if "shadowed" in r.message.lower() and r.levelno == logging.DEBUG
+        ]
+        assert len(shadow_logs) == 1
+
+        # Verify summary warning with count
+        summary_logs = [
+            r
+            for r in caplog.records
+            if "shadows (user-scope takes precedence)" in r.message
+        ]
+        assert len(summary_logs) == 1
+        assert summary_logs[0].levelno == logging.WARNING
+        assert "1 shadows" in summary_logs[0].message
 
     @pytest.mark.asyncio
     async def test_environment_refreshed_after_load(self, tmp_path: Path) -> None:
