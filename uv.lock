@@ -346,7 +346,7 @@ wheels = [
 
 [[package]]
 name = "coding-mvge"
-version = "2.1.0"
+version = "2.1.1"
 source = { editable = "coding-mvge" }
 dependencies = [
     { name = "mvgeos-agent" },
@@ -1009,7 +1009,7 @@ wheels = [
 
 [[package]]
 name = "mvgeos"
-version = "2.1.0"
+version = "2.1.1"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -1054,7 +1054,7 @@ dev = [
 
 [[package]]
 name = "mvgeos-agent"
-version = "2.1.0"
+version = "2.1.1"
 source = { editable = "mvgeos-agent" }
 dependencies = [
     { name = "mvgeos-provider" },
@@ -1073,7 +1073,7 @@ requires-dist = [
 
 [[package]]
 name = "mvgeos-cli"
-version = "2.1.0"
+version = "2.1.1"
 source = { editable = "mvgeos-cli" }
 dependencies = [
     { name = "coding-mvge" },
@@ -1100,7 +1100,7 @@ requires-dist = [
 
 [[package]]
 name = "mvgeos-gui"
-version = "2.1.0"
+version = "2.1.1"
 source = { editable = "mvgeos-gui" }
 dependencies = [
     { name = "coding-mvge" },
@@ -1129,7 +1129,7 @@ requires-dist = [
 
 [[package]]
 name = "mvgeos-provider"
-version = "2.1.0"
+version = "2.1.1"
 source = { editable = "mvgeos-provider" }
 dependencies = [
     { name = "httpx" },
@@ -1140,7 +1140,7 @@ requires-dist = [{ name = "httpx", specifier = ">=0.27" }]
 
 [[package]]
 name = "mvgeos-runes"
-version = "2.1.0"
+version = "2.1.1"
 source = { editable = "mvgeos-runes" }
 dependencies = [
     { name = "pyyaml" },
@@ -1155,7 +1155,7 @@ requires-dist = [
 
 [[package]]
 name = "mvgeos-tome"
-version = "2.1.0"
+version = "2.1.1"
 source = { editable = "mvgeos-tome" }
 dependencies = [
     { name = "filelock" },
