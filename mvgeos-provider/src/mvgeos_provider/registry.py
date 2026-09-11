@@ -6,7 +6,11 @@ from typing import Any
 import httpx
 from mvgeos_core.channel import Model
 
-from mvgeos_provider.base import Realm, RealmFactory
+from mvgeos_provider.base import (
+    NoRealmRegisteredError,
+    Realm,
+    RealmFactory,
+)
 from mvgeos_provider.model_registry import ModelRegistry
 from mvgeos_provider.openrouter import OpenRouterRealm
 
@@ -108,6 +112,14 @@ class RealmRegistry:
             raise TypeError(f"Realm factory for '{prefix}' must be callable")
         self._realm_factories[prefix.strip()] = factory
 
+    def unregister_realm_factory(self, prefix: str) -> None:
+        """Unregister a RealmFactory for a provider prefix."""
+        self._realm_factories.pop(prefix, None)
+
+    def clear_realm_factories(self) -> None:
+        """Clear all registered realm factories."""
+        self._realm_factories.clear()
+
     def get_realm_factory(self, prefix: str) -> RealmFactory | None:
         """Get the registered RealmFactory for a prefix, or None."""
         return self._realm_factories.get(prefix)
@@ -172,7 +184,14 @@ class RealmRegistry:
         if factory is not None:
             return factory(api_key=key, base_url=base_url)
 
-        return self._default_realm_factory(api_key=key, base_url=base_url)
+        if "openrouter" in self._realm_factories:
+            return self._realm_factories["openrouter"](api_key=key, base_url=base_url)
+
+        raise NoRealmRegisteredError(
+            f"No Realm factory registered for model '{model.id}'. "
+            "Run 'mvgeos rune install openrouter-realm' to install it from "
+            "the central marketplace."
+        )
 
     def compose_model(
         self,

@@ -1,5 +1,6 @@
 from mvgeos_core.spells import ExecutionMode
 
+from mvgeos_runes.installer import DEFAULT_MARKETPLACE_URL, install_rune
 from mvgeos_runes.loader import (
     discover_plugin_skill_paths,
     get_default_skill_paths,
@@ -35,6 +36,7 @@ from mvgeos_runes.types import (
 from mvgeos_runes.watcher import RuneWatcher
 
 __all__ = [
+    "DEFAULT_MARKETPLACE_URL",
     "Diagnostic",
     "DiagnosticKind",
     "ExecutionMode",
@@ -59,6 +61,7 @@ __all__ = [
     "SpellDefinition",
     "discover_plugin_skill_paths",
     "get_default_skill_paths",
+    "install_rune",
     "load_factory_from_manifest",
     "load_manifest",
     "load_manifests",

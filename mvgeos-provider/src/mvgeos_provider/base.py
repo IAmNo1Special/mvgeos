@@ -8,9 +8,22 @@ from mvgeos_core.channel import (
     ChannelConfig,
     Model,
 )
+from mvgeos_core.errors import MvgeError
+
+
+class NoRealmRegisteredError(MvgeError):
+    """Raised when no Realm factory is registered for a requested model."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__("no_realm_registered", message)
 
 
 class Realm:
+    @property
+    def is_router(self) -> bool:
+        """Return True if this realm routes requests to multiple upstream providers."""
+        return False
+
     def stream(
         self,
         model: Model,
@@ -54,6 +67,7 @@ class RealmFactory(Protocol):
 
 
 __all__ = [
+    "NoRealmRegisteredError",
     "Realm",
     "RealmFactory",
 ]

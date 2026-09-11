@@ -1157,6 +1157,7 @@ name = "mvgeos-runes"
 version = "0.2.1"
 source = { editable = "mvgeos-runes" }
 dependencies = [
+    { name = "httpx" },
     { name = "mvgeos-core" },
     { name = "pyyaml" },
     { name = "watchdog" },
@@ -1164,6 +1165,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
     { name = "mvgeos-core", editable = "mvgeos-core" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "watchdog", specifier = ">=6.0.0" },

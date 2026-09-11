@@ -11,7 +11,11 @@ from mvgeos_core.channel import (
     RealmResponse,
 )
 
-from mvgeos_provider.base import Realm, RealmFactory
+from mvgeos_provider.base import (
+    NoRealmRegisteredError,
+    Realm,
+    RealmFactory,
+)
 from mvgeos_provider.model_registry import ModelRegistry
 from mvgeos_provider.openrouter import OpenRouterRealm
 from mvgeos_provider.registry import RealmRegistry
@@ -540,3 +544,48 @@ async def test_prewarm_client() -> None:
     assert client2 is client
     assert reg.get_shared_client() is client
     await reg.close()
+
+
+def test_realm_is_router_property() -> None:
+    base_realm = Realm()
+    assert base_realm.is_router is False
+
+    openrouter_realm = OpenRouterRealm(api_key="test-key")
+    assert openrouter_realm.is_router is True
+
+
+def test_create_realm_raises_no_realm_registered_error() -> None:
+    reg = RealmRegistry()
+    reg.unregister_realm_factory("openrouter")
+
+    model = Model(
+        id="anthropic/claude-3-5-sonnet",
+        name="Claude",
+        realm="",
+        base_url="https://api.anthropic.com",
+        api_key="key",
+    )
+    with pytest.raises(NoRealmRegisteredError) as exc_info:
+        reg.create_realm(model, api_key="test-key")
+
+    msg = str(exc_info.value)
+    assert "No Realm factory registered for model 'anthropic/claude-3-5-sonnet'" in msg
+    assert "Run 'mvgeos rune install openrouter-realm'" in msg
+
+
+def test_clear_realm_factories() -> None:
+    reg = RealmRegistry()
+    assert "openrouter" in reg.get_registered_realm_factories()
+
+    reg.clear_realm_factories()
+    assert reg.get_registered_realm_factories() == []
+
+    model = Model(
+        id="openai/gpt-4o",
+        name="GPT-4o",
+        realm="",
+        base_url="https://api.openai.com",
+        api_key="key",
+    )
+    with pytest.raises(NoRealmRegisteredError):
+        reg.create_realm(model, api_key="test-key")

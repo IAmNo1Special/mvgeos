@@ -88,6 +88,10 @@ def _with_system_prompt(
 class OpenRouterRealm(SSEStreamingRealm):
     realm_name: str = "openrouter"
 
+    @property
+    def is_router(self) -> bool:
+        return True
+
     def __init__(
         self,
         api_key: str,

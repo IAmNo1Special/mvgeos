@@ -16,6 +16,8 @@ from mvgeos_agent.protocol import AgentFactory, MvgeAgent
 from mvgeos_core.constants import (
     DEFAULT_AGENT_NAME,
 )
+from mvgeos_provider import NoRealmRegisteredError
+from mvgeos_runes.installer import install_rune
 from typer._click.parser import _split_opt
 from typer.core import TyperGroup
 
@@ -27,6 +29,7 @@ from mvgeos_cli.commands.repl import (
     _display_response,
     run_repl,
 )
+from mvgeos_cli.commands.rune import rune_app
 from mvgeos_cli.commands.setup import DefaultCheckGroup, setup_app
 from mvgeos_cli.commands.skill import skill_app
 from mvgeos_cli.commands.tome import tome_app
@@ -168,6 +171,51 @@ async def _run_agent(
             agent_factory=agent_factory,
         )
         return await _run_print_mode(agent, prompts_out)
+    except NoRealmRegisteredError as exc:
+        is_interactive = not prompts_out and not tui
+        if is_interactive:
+            try:
+                answer = (
+                    input(
+                        "No Realm extension installed. Would you like to install "
+                        "'openrouter-realm' from the marketplace now? [Y/n]: "
+                    )
+                    .strip()
+                    .lower()
+                )
+            except (EOFError, KeyboardInterrupt):
+                answer = "n"
+
+            if answer in ("", "y", "yes"):
+                try:
+                    install_rune("openrouter-realm")
+                    console.print(
+                        "[green]Successfully installed 'openrouter-realm'. "
+                        "Starting session...[/green]"
+                    )
+                    return await _run_agent(
+                        incantation=incantation,
+                        model_id=model_id,
+                        api_key=api_key,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        contemplation_level=contemplation_level,
+                        spells_enabled=spells_enabled,
+                        extension_dir=extension_dir,
+                        resume=resume,
+                        provider_name=provider_name,
+                        tome_dir=tome_dir,
+                        tui=tui,
+                        agent_name=agent_name,
+                        prompts=prompts,
+                        agent_factory=agent_factory,
+                    )
+                except Exception as install_exc:
+                    console.print(format_error(install_exc))
+                    return 1
+
+        console.print(format_error(exc))
+        return 1
     except Exception as exc:
         console.print(format_error(exc))
         return 1
@@ -340,6 +388,7 @@ app.add_typer(config_app, name="config")
 app.add_typer(info_app, name="info")
 app.add_typer(tome_app, name="tome")
 app.add_typer(skill_app, name="skill")
+app.add_typer(rune_app, name="rune")
 app.add_typer(setup_app, name="setup", cls=DefaultCheckGroup)
 
 
