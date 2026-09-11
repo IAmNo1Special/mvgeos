@@ -518,8 +518,8 @@ async def run_tui(
 
     unsubs: list[object] = [
         agent.on("message_update", renderer.on_message_update),
-        agent.on("spell_casting_start", renderer.on_tool_start),
-        agent.on("spell_casting_end", renderer.on_tool_end),
+        agent.on("spell_casting_start", renderer.on_spell_start),
+        agent.on("spell_casting_end", renderer.on_spell_end),
         agent.on("turn_start", renderer.on_turn_start),
         agent.on("turn_end", renderer.on_turn_end),
     ]

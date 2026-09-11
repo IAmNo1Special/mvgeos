@@ -391,9 +391,25 @@ class StreamRenderer:
         self._contemplation_buffer = ""
         self._started = False
         self._filter = _StreamFilter()
-        self._tool_line_open = False
-        self._tool_start_time: float | None = None
+        self._spell_cast_line_open = False
+        self._spell_cast_start_time: float | None = None
         self._narration_finalized = False
+
+    @property
+    def _tool_line_open(self) -> bool:
+        return self._spell_cast_line_open
+
+    @_tool_line_open.setter
+    def _tool_line_open(self, value: bool) -> None:
+        self._spell_cast_line_open = value
+
+    @property
+    def _tool_start_time(self) -> float | None:
+        return self._spell_cast_start_time
+
+    @_tool_start_time.setter
+    def _tool_start_time(self, value: float | None) -> None:
+        self._spell_cast_start_time = value
 
     def _ensure_started(self) -> None:
         if not self._started:
@@ -406,13 +422,16 @@ class StreamRenderer:
     def _write_card_title(self, name: str, args: Any, bg: str) -> None:
         self._sink.write_card_line(_build_card_title(name, args, bg), bg)
 
-    def _write_tool_call_line(self, name: str, args: Any) -> None:
+    def _write_spell_cast_line(self, name: str, args: Any) -> None:
         self._ensure_started()
         if self._sink.line_dirty:
             self._sink.write("\n")
         self._write_card_title(name, args, _CARD_BG_PENDING)
-        self._tool_line_open = True
-        self._tool_start_time = time.monotonic()
+        self._spell_cast_line_open = True
+        self._spell_cast_start_time = time.monotonic()
+
+    def _write_tool_call_line(self, name: str, args: Any) -> None:
+        self._write_spell_cast_line(name, args)
 
     def _write_response_block(self, text: str, bg: str) -> None:
         lines = text.splitlines()
@@ -477,7 +496,7 @@ class StreamRenderer:
         self._sink.stream_narration(clean, self._get_full_md())
         self._narration_finalized = False
 
-    def on_tool_start(self, event: MvgeEvent) -> None:
+    def on_spell_start(self, event: MvgeEvent) -> None:
         pending = self._filter.flush()
         if pending:
             self._markdown_buffer += pending
@@ -487,33 +506,39 @@ class StreamRenderer:
         self._narration_finalized = True
         name = str(event.data.get("spellName", "?"))
         args = event.data.get("arguments", {})
-        self._write_tool_call_line(name, args)
+        self._write_spell_cast_line(name, args)
 
-    def on_tool_end(self, event: MvgeEvent) -> None:
-        had_start = self._tool_start_time is not None
-        if not self._tool_line_open and event.data.get("spellName"):
-            self._write_tool_call_line(
+    def on_tool_start(self, event: MvgeEvent) -> None:
+        self.on_spell_start(event)
+
+    def on_spell_end(self, event: MvgeEvent) -> None:
+        had_start = self._spell_cast_start_time is not None
+        if not self._spell_cast_line_open and event.data.get("spellName"):
+            self._write_spell_cast_line(
                 str(event.data["spellName"]), event.data.get("arguments", {})
             )
         elapsed = 0.0
-        if self._tool_start_time is not None:
-            elapsed = time.monotonic() - self._tool_start_time
-        self._tool_line_open = False
-        self._tool_start_time = None
+        if self._spell_cast_start_time is not None:
+            elapsed = time.monotonic() - self._spell_cast_start_time
+        self._spell_cast_line_open = False
+        self._spell_cast_start_time = None
         bg = _CARD_BG_ERROR if "error" in event.data else _CARD_BG_SUCCESS
         if "error" in event.data:
-            msg = event.data.get("message") or event.data.get("error") or "tool failed"
+            msg = event.data.get("message") or event.data.get("error") or "spell failed"
             self._write_card_line(f"  [error] {msg}", bg, extra="bold red")
         elif "result" in event.data:
             self._write_response_block(self._result_to_text(event.data["result"]), bg)
         if had_start:
             self._write_card_line(f"  Took {elapsed:.1f}s", bg, extra="dim")
 
+    def on_tool_end(self, event: MvgeEvent) -> None:
+        self.on_spell_end(event)
+
     def finish(self, *, error: bool = False) -> None:
-        if self._tool_line_open:
+        if self._spell_cast_line_open:
             self._write_card_line("  (interrupted)", _CARD_BG_PENDING, extra="dim")
-            self._tool_line_open = False
-            self._tool_start_time = None
+            self._spell_cast_line_open = False
+            self._spell_cast_start_time = None
         if not error:
             pending = self._filter.flush()
             if pending:
@@ -535,8 +560,8 @@ class StreamRenderer:
         self._text_parts.clear()
         self._started = False
         self._filter.reset()
-        self._tool_line_open = False
-        self._tool_start_time = None
+        self._spell_cast_line_open = False
+        self._spell_cast_start_time = None
         self._narration_finalized = False
 
     def on_turn_start(self, event: MvgeEvent) -> None:
@@ -652,8 +677,8 @@ async def run_repl(
     renderer = StreamRenderer()
     unsubs: list[object] = [
         agent.on("message_update", renderer.on_message_update),
-        agent.on("spell_casting_start", renderer.on_tool_start),
-        agent.on("spell_casting_end", renderer.on_tool_end),
+        agent.on("spell_casting_start", renderer.on_spell_start),
+        agent.on("spell_casting_end", renderer.on_spell_end),
         agent.on("turn_start", renderer.on_turn_start),
         agent.on("turn_end", renderer.on_turn_end),
     ]

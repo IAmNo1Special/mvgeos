@@ -3,9 +3,11 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mvgeos_core.events import MvgeEvent
 
 from mvgeos_cli.commands.repl import (
     NoConsoleScreenBufferError,
+    StreamRenderer,
     _read_fallback_prompt,
     _StreamFilter,
     run_repl,
@@ -367,3 +369,27 @@ class TestNoConsoleBufferFallback:
         await run_repl(api_key="sk-or-test-key")
 
         mock_agent.close.assert_awaited_once()
+
+
+class TestStreamRendererSpellMethods:
+    def test_spell_cast_lifecycle(self) -> None:
+        sink = MagicMock()
+        sink.line_dirty = False
+        renderer = StreamRenderer(sink=sink)
+
+        start_event = MvgeEvent(
+            type="spell_casting_start",
+            data={"spellName": "read_file", "arguments": {"path": "foo.py"}},
+        )
+        renderer.on_spell_start(start_event)
+        assert renderer._spell_cast_line_open is True
+        assert renderer._spell_cast_start_time is not None
+
+        end_event = MvgeEvent(
+            type="spell_casting_end",
+            data={"spellName": "read_file", "result": "file contents"},
+        )
+        renderer.on_spell_end(end_event)
+        assert renderer._spell_cast_line_open is False
+        assert renderer._spell_cast_start_time is None
+        assert renderer._tool_line_open is False
