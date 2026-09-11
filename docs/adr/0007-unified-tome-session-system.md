@@ -18,7 +18,7 @@ This created confusion, dual storage (`sessions/*.jsonl` + `sessions/entries/*.j
 Unify on a single `TomeLedger` using Pi's session JSONL format:
 
 - One `{tome_id}.jsonl` file per tome in `.agents/.mvgeos/sessions/`
-- Header line: `{"type": "session", "version": 3, "id": "...", "timestamp": "...", "cwd": "...", "parentSession": "...", "activeLeafId": "..."}`
+- Header line: `{"type": "session", "version": 1, "id": "...", "timestamp": "...", "cwd": "...", "parentSession": "...", "activeLeafId": "..."}`
 - Entry lines: Pi's 12 entry types (invocation, spellResult, modelChange, etc.)
 - File locking via `filelock` for concurrency
 - In-memory `Index` rebuilt on startup from JSONL files

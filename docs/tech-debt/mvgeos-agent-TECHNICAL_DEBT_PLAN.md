@@ -11,7 +11,7 @@ Based on `TECHNICAL_DEBT_BY_PACKAGE.md` and source code analysis.
 | AGENT-07 | Linear spell lookup $O(n)$ in `dispatcher.py` | Performance | Medium | [RESOLVED] Implemented via `LoopContext.get_spell` |
 | AGENT-14 | Incomplete session recovery (no model/spell validation) | Gap | Medium | Open |
 | AGENT-15 | Mixed "spell"/"tool" terminology | Architecture | Low | Open |
-| AGENT-16 | Session versioning without migration (in tome) | Architecture | Medium | Open |
+| AGENT-16 | Session versioning without migration (in tome) | Architecture | Medium | [RESOLVED] Canonical schema reset to v1 alongside TOME-008 |
 
 ---
 
@@ -93,17 +93,12 @@ Inconsistent naming:
 
 ---
 
-## AGENT-16: Session Versioning Without Migration
+## AGENT-16: Session Versioning Without Migration [RESOLVED]
 
 **Note**: Tracked alongside `mvgeos-tome` issue TOME-008.
 
-### Fix Steps
-- Agent needs to handle migrated session versions in resume flow.
-- See `mvgeos-tome-TECHNICAL_DEBT_PLAN.md` TOME-008.
-
-### Priority: Medium
-### Effort: Medium
-### Dependencies: mvgeos-tome
+### Resolution
+Resolved alongside TOME-008. Per MvgeOS Design Philosophy ("Zero Backward Compatibility Burden"), `CURRENT_SESSION_VERSION = 1` resets version tracking to a single canonical schema. No legacy version migrations are required. Incompatible versions are cleanly ignored during lookup/open without runtime crashes.
 
 ---
 

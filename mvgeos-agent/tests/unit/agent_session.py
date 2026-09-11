@@ -477,10 +477,10 @@ class TestCompatibility:
 class TestMigrationAndReconstruction:
     @pytest.mark.asyncio
     async def test_version_property_reflects_metadata(self) -> None:
-        meta = TomeMetadata(id="a" * 32, created_at="now", cwd="/test", version=3)
+        meta = TomeMetadata(id="a" * 32, created_at="now", cwd="/test", version=1)
         ledger = MagicMock()
         tome = MvgeTome(ledger, meta)
-        assert tome.version == 3
+        assert tome.version == 1
 
     @pytest.mark.asyncio
     async def test_open_future_version_raises_tome_resume_error(self) -> None:

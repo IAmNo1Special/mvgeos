@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
-CURRENT_SESSION_VERSION: int = 3
+CURRENT_SESSION_VERSION: int = 1
 
 
 class TomeEntryType(StrEnum):
@@ -51,7 +51,7 @@ class TomeMetadata:
     parent_tome_id: str | None = None
     active_leaf_id: str | None = None
     schema_version: str = "1.0"
-    version: int = 3
+    version: int = 1
     model: str | None = None
     contemplation_level: str | None = None
     spells: list[str] = field(default_factory=list)

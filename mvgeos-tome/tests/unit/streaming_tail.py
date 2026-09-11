@@ -16,7 +16,7 @@ def _write_raw_tome(
     tome_file = tome_dir / f"{tome_id}.jsonl"
     header = {
         "type": "session",
-        "version": 3,
+        "version": 1,
         "id": tome_id,
         "timestamp": "2026-01-01T00:00:00+00:00",
         "cwd": str(tome_dir),
@@ -170,7 +170,7 @@ class TestIterTomeEntries:
     def test_iter_tome_entries_entry_not_object(self, tmp_path: Path) -> None:
         file_path = tmp_path / "entry-string.jsonl"
         file_path.write_text(
-            '{"type": "session", "version": 3, "id": "entry-string", '
+            '{"type": "session", "version": 1, "id": "entry-string", '
             '"timestamp": "2026-01-01T00:00:00Z", "cwd": "/tmp"}\n'
             '"just-a-string"\n\n',
             encoding="utf-8",

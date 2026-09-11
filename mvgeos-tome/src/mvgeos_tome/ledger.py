@@ -1006,7 +1006,7 @@ class TomeLedger:
         tome_file = self._tome_file_path(metadata.id)
         header = {
             "type": "session",
-            "version": 3,
+            "version": metadata.version or CURRENT_SESSION_VERSION,
             "id": metadata.id,
             "timestamp": metadata.created_at,
             "cwd": metadata.cwd,

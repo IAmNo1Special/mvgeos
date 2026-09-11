@@ -12,7 +12,7 @@
 
 ### Architecture Quirks
 - **Mixed terminology**: Code uses both "spell" and "tool" interchangeably (`ContentType.TOOL_CALL`, `tool_call` dicts in `dispatcher.py`, `role="tool"` in `agent_session.py`).
-- **Session versioning without migration**: `CURRENT_SESSION_VERSION = 3` in `ledger.py`, but no migration logic exists for older session schemas.
+- [RESOLVED] **Session versioning without migration**: Canonical schema reset to v1 (`CURRENT_SESSION_VERSION = 1`) per zero-backward-compatibility invariant.
 
 ---
 
@@ -37,7 +37,7 @@
 - [RESOLVED] **No session file integrity check**: Resolved via `verify_integrity()` and `verify_integrity_async()` in `ledger.py`, with structured `TomeIntegrityReport` and `TomeIntegrityIssue` reporting.
 
 ### Architecture Quirks
-- **Session version migration**: `TomeLedger._load_tome_metadata()` reads session metadata but has no migration pipeline for previous schema versions (v1/v2 -> v3).
+- [RESOLVED] **Session version migration**: Canonical schema reset to v1 (`CURRENT_SESSION_VERSION = 1`); incompatible schemas ignored per zero-backward-compatibility invariant.
 
 ---
 

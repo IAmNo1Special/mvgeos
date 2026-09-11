@@ -53,7 +53,7 @@ Test paths follow pattern: `mvgeos-tome/tests/unit/<module>.py` and `mvgeos-tome
 ## Architecture
 
 - One `{tome_id}.jsonl` per Tome in a tome directory
-- Line 1 = header `{"type":"session","version":3,"id","timestamp","cwd","parentSession"?,"activeLeafId"?}`
+- Line 1 = header `{"type":"session","version":1,"id","timestamp","cwd","parentSession"?,"activeLeafId"?}`
 - Subsequent lines = entries `{"id","parentId","type","timestamp","payload"}`
 - Every mutation rewrites the entire JSONL file under a `FileLock`
 - The `Index` provides in-memory lookup by id, by parent, and leaf entries

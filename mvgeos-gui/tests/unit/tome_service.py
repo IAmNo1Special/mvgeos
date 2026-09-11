@@ -219,7 +219,7 @@ class TestTomeServiceListTomes:
         new_id = "b" * 32
         old_header = {
             "type": "session",
-            "version": 3,
+            "version": 1,
             "id": old_id,
             "timestamp": "2026-01-01T00:00:00+00:00",
             "cwd": "/project/a",
@@ -227,7 +227,7 @@ class TestTomeServiceListTomes:
         }
         new_header = {
             "type": "session",
-            "version": 3,
+            "version": 1,
             "id": new_id,
             "timestamp": "2026-06-01T00:00:00+00:00",
             "cwd": "/project/a",

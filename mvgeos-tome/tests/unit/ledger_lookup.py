@@ -193,9 +193,9 @@ class TestLedgerVersionHandling:
 
     def test_load_tome_headers_ignores_unsupported_versions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            valid_file = Path(tmp) / "valid-3.jsonl"
+            valid_file = Path(tmp) / "valid-1.jsonl"
             valid_file.write_text(
-                '{"type":"session","version":3,"id":"valid-3","timestamp":"2026-01-01T00:00:00Z","cwd":"/tmp"}\n',
+                '{"type":"session","version":1,"id":"valid-1","timestamp":"2026-01-01T00:00:00Z","cwd":"/tmp"}\n',
                 encoding="utf-8",
             )
             future_file = Path(tmp) / "future-99.jsonl"
@@ -206,7 +206,7 @@ class TestLedgerVersionHandling:
             ledger = _ledger(tmp)
             tomes = ledger.list_tomes()
             assert len(tomes) == 1
-            assert tomes[0].id == "valid-3"
+            assert tomes[0].id == "valid-1"
 
     def test_open_recent_skips_incompatible_version(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -217,7 +217,7 @@ class TestLedgerVersionHandling:
             )
             valid_file = Path(tmp) / "valid-recent.jsonl"
             valid_file.write_text(
-                '{"type":"session","version":3,"id":"valid-recent","timestamp":"2026-01-01T00:00:00Z","cwd":"/workspace/target"}\n',
+                '{"type":"session","version":1,"id":"valid-recent","timestamp":"2026-01-01T00:00:00Z","cwd":"/workspace/target"}\n',
                 encoding="utf-8",
             )
             ledger = _ledger(tmp)

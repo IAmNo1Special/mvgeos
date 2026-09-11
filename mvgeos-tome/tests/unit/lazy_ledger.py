@@ -13,7 +13,7 @@ def _write_tome_file(tome_dir: Path, tome_id: str, entries_data: list[dict]) -> 
     tome_file = tome_dir / f"{tome_id}.jsonl"
     header = {
         "type": "session",
-        "version": 3,
+        "version": 1,
         "id": tome_id,
         "timestamp": "2026-01-01T00:00:00+00:00",
         "cwd": "/tmp",

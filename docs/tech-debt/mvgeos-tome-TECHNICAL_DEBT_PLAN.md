@@ -9,7 +9,7 @@
 | TOME-002 | Full file loading in `_read_tome_entries_from_disk` | High | Medium | [RESOLVED] Implemented via `iter_tome_entries` |
 | TOME-003 | `FileLock` has no stale lock recovery | High | Medium | [RESOLVED] Implemented via `force_release_stale` |
 | TOME-005 | No session file integrity check (CRC/checksum) | Medium | Small | [RESOLVED] Implemented via `verify_integrity` |
-| TOME-008 | Session version migration logic | Medium | Medium | Open |
+| TOME-008 | Session version migration logic | Medium | Medium | [RESOLVED] Canonical schema reset to v1 (`CURRENT_SESSION_VERSION = 1`) per zero-backward-compat invariant |
 
 ---
 
@@ -84,25 +84,18 @@ For large session files (100MB+), this causes $O(n)$ memory spikes.
 
 ---
 
-## Issue 4: Session Version Migration
+## Issue 4: Session Version Migration [RESOLVED]
 **ID**: TOME-008  
 **Priority**: Medium  
 **Effort**: Medium  
-**Dependencies**: TOME-005
+**Dependencies**: TOME-005  
+**Status**: Resolved  
 
-### Root Cause Analysis
-`TomeLedger._write_tome_file` writes `"version": 3`, but no automated schema migration logic exists for reading v1/v2 format files into the current schema.
+### Resolution
+Per MvgeOS Design Philosophy ("Zero Backward Compatibility Burden: Prioritize clean, greenfield architecture and modern standards over backward compatibility. Never retain legacy shims, deprecated code paths, or obsolete conventions"), the current session schema is designated canonical version 1 (`CURRENT_SESSION_VERSION = 1`). `TomeLedger._load_tome_headers` and `list_tomes` validate that loaded files match `CURRENT_SESSION_VERSION`, skipping incompatible schemas without carrying dead migration code paths (`_migrate_v1_to_v2`, etc.).
 
-### Fix Steps
-1. **Add version detection in `TomeLedger._load_tome_metadata()`**:
-   - Read `header.get("version", 1)`
-2. **Implement migration pipeline**:
-   - `_migrate_v1_to_v2(header, entries)`
-   - `_migrate_v2_to_v3(header, entries)`
-   - Auto-upgrade older session files on read
-
-### Testing
-- Test migration round-trip from v1, v2 fixtures to v3 format.
+### Historical Context
+Previously `CURRENT_SESSION_VERSION` was set to 3 without corresponding migrations in place. Setting `CURRENT_SESSION_VERSION = 1` resets version tracking to a single, stable canonical schema.
 
 ---
 

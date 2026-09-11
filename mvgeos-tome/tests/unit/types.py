@@ -10,7 +10,7 @@ from mvgeos_tome.types import (
 
 
 def test_current_session_version() -> None:
-    assert CURRENT_SESSION_VERSION == 3
+    assert CURRENT_SESSION_VERSION == 1
 
 
 def test_tome_entry_has_required_fields() -> None:
