@@ -29,6 +29,10 @@ Run the project's tests and linters and review your own diff for unintended scop
 ## Design Philosophy & Standards
 
 - **Strict Standards Adherence (No Proprietary Polyfills)**: MvgeOS adheres 100% to open, consensus-driven protocols and standards (e.g., the `.agents` protocol, `agentskills.io` specification, standard JSON Schema, OpenRouter APIs, MCP, standard Python typing and PEPs). Never implement proprietary fallbacks, vendor-specific shims, or polyfills for tools that diverge from standard protocols (e.g., strictly discover and inject `AGENTS.md`, never `CLAUDE.md`). External tools and ecosystems align with the open standard, not the other way around.
+- **Protocol Boundary Pattern (Standard at the Boundary, Persona Inside)**: MvgeOS strictly enforces open, standard protocols at all system boundaries (filesystem directory names, network wire formats, HTTP headers, CLI arguments, and API payloads), while reserving MvgeOS domain terminology (Mvge, Spell, Mana, Realm, Tome, Rune, Sigil, Summoner) for internal Python abstractions, user-facing persona, and presentation.
+  - **Filesystem boundaries**: Use standard protocol directory names — `~/.agents/sessions/` (never `tomes/`), `~/.agents/extensions/` (never `runes/`), `~/.agents/skills/`, `~/.agents/models.json`, `~/.agents/mcp.json`.
+  - **Wire boundaries**: Use standard payload fields — `type: "session"` (never `"tome"`), `tools: [...]` (never `"spells"`), `tool_calls: [...]`, `usage: { prompt_tokens, completion_tokens }` (never `"mana"`).
+  - **CLI boundaries**: Canonical commands use standard protocol terms (`mvgeos session`, `mvgeos extension`), with domain terms supported as persona aliases (`mvgeos tome`, `mvgeos rune`).
 - **Zero Backward Compatibility Burden**: Prioritize clean, greenfield architecture and modern standards over backward compatibility. Never retain legacy shims, deprecated code paths, or obsolete conventions.
 
 ## Development Rules

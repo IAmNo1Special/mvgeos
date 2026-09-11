@@ -10,7 +10,7 @@ Based on `TECHNICAL_DEBT_BY_PACKAGE.md` and source code analysis.
 |----|-------|----------|----------|--------|
 | AGENT-07 | Linear spell lookup $O(n)$ in `dispatcher.py` | Performance | Medium | [RESOLVED] Implemented via `LoopContext.get_spell` |
 | AGENT-14 | Incomplete session recovery (no model/spell validation) | Gap | Medium | Open |
-| AGENT-15 | Mixed "spell"/"tool" terminology | Architecture | Low | Open |
+| AGENT-15 | Mixed "spell"/"tool" terminology | Architecture | Low | [RESOLVED] Internal abstractions aligned; external wire boundaries isolated |
 | AGENT-16 | Session versioning without migration (in tome) | Architecture | Medium | [RESOLVED] Canonical schema reset to v1 alongside TOME-008 |
 
 ---
@@ -74,22 +74,21 @@ Session resume verifies existence and reads the header but does not validate:
 
 ---
 
-## AGENT-15: Mixed "Spell"/"Tool" Terminology
+## AGENT-15: Mixed "Spell"/"Tool" Terminology [RESOLVED]
 
-**Files**: Throughout agent and provider message structures
+**Files**: Throughout agent, core, CLI, and provider message structures
 
-### Root Cause
-Inconsistent naming:
-- `MvgeSpell`, `spells` list, `spell_cast_id`
-- But `ContentType.TOOL_CALL`, `tool_call` dicts in messages, `role="tool"` in session persistence, `StopReason.SPELL_USE`
-
-### Fix Steps
-1. Align internal message and event structures with MvgeOS terminology where possible while maintaining protocol compliance with external LLM formats.
-2. Ensure serialization boundaries clearly isolate external API format ("tool") from internal representation ("spell").
-
-### Priority: Low
-### Effort: Small-Medium (mechanical)
-### Dependencies: mvgeos-provider, mvgeos-tome
+### Resolution
+Per the Protocol Boundary Pattern ("Standard at the Boundary, Persona Inside"):
+1. **Core & Agent Internal Terminology**:
+   - `ContentType.SPELL_CAST = "spell_cast"` is canonical (no `ContentType.TOOL_CALL`).
+   - `dispatcher.py` operates strictly on `spell_cast` blocks and emits `spell_casting_start`/`spell_casting_end`.
+   - `SpellResultMessage` defaults to `role="spellResult"`.
+   - `ChannelConfig` in `mvgeos_core.channel` provides `spells: list[dict[str, Any]]` synchronized with `tools` for wire payloads.
+   - `ExperienceHarvester` in `coding_mvge` inspects `invocation.content` for `spell_cast` blocks.
+   - `StreamRenderer` in `mvgeos_cli` uses `_write_spell_cast_line`, `on_spell_start`, and `on_spell_end`.
+2. **External Wire Protocol Isolation**:
+   - External OpenAI / OpenRouter HTTP API boundaries in `mvgeos-provider` (`openrouter.py`) strictly encapsulate `"tools"`, `"tool_calls"`, and `"role": "tool"`, translating them to/from internal `spell_cast` representations without leaking foreign nomenclature into core domain models.
 
 ---
 

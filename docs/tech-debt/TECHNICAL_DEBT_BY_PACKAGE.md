@@ -11,7 +11,7 @@
 - **Incomplete session recovery**: `MvgeTome.open` does not validate model compatibility or spell availability against current configuration.
 
 ### Architecture Quirks
-- **Mixed terminology**: Code uses both "spell" and "tool" interchangeably (`ContentType.TOOL_CALL`, `tool_call` dicts in `dispatcher.py`, `role="tool"` in `agent_session.py`).
+- [RESOLVED] **Mixed terminology**: Internal abstractions aligned with MvgeOS terminology; external wire boundaries strictly isolated in `mvgeos-provider`.
 - [RESOLVED] **Session versioning without migration**: Canonical schema reset to v1 (`CURRENT_SESSION_VERSION = 1`) per zero-backward-compatibility invariant.
 
 ---

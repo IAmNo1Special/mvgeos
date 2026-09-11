@@ -35,8 +35,8 @@ The cap on total Mana the Mvge can spend during a single run. **Not currently im
 Cumulative Mana consumed during a run (`mana_used`). Carried on every `MESSAGE_END` and `TURN_END` event; reduced into `MvgeState` by `MvgeHarness`. Read by compaction to size the Mana Pool.
 
 **Tome**:
-A single persisted conversation between a Summoner and a Mvge, recorded as an append-only sequence of Invocations. The on-disk format is a tree of entries (Pi-compatible JSONL v3).
-_Avoid_: Session (except inside the Pi-compatible JSONL wire format), conversation, chat
+A single persisted conversation between a Summoner and a Mvge, recorded as an append-only sequence of Invocations. Per the Protocol Boundary Pattern, stored on disk in standard session directories (`~/.agents/sessions/`, `.agents/sessions/`) using standard Pi-compatible JSONL v1 wire format (`type: "session"`, `parentSession`). "Session" is the standard protocol term at filesystem, wire, and CLI command boundaries (`mvgeos session`); "Tome" is the domain term inside the persona, Python model, and user presentation (`mvgeos tome` alias).
+_Avoid_: Session (as an internal domain/persona term; use Tome internally and Session at protocol boundaries), conversation, chat
 
 **Invocation**:
 Any single message in a Tome's transcript — a SummonerRequest, an MvgeResponse, or a SpellResultMessage.
@@ -59,8 +59,8 @@ The user on whose behalf a Mvge acts. A SummonerRequest is the Summoner's input 
 _Avoid_: User (as a spoken term), human, operator
 
 **Rune**:
-An extension: a packaged unit that hooks into a Mvge's lifecycle and can register Spells, commands, shortcuts, and Realms. Built-in Runes live at `coding-mvge/src/coding_mvge/runes/<name>/` (e.g., `skill_evolution`); user-installed Runes live at `~/.agents/.mvgeos/runes/` / `~/.agents/.mvgeos/{agent}/runes/` / `{cwd}/.agents/.mvgeos/runes/`. Distinct from Skill (declarative `SKILL.md`) and Spell (executable tool a Rune may register).
-_Avoid_: Extension (as a spoken term), plugin, addon, Skill
+An extension: a packaged unit that hooks into a Mvge's lifecycle and can register Spells, commands, shortcuts, and Realms. Per the Protocol Boundary Pattern, discovered on disk from standard extension directories (`~/.agents/extensions/`, `~/.agents/agents/{agent}/extensions/`, `{cwd}/.agents/extensions/`). Built-in Runes live at `coding-mvge/src/coding_mvge/runes/<name>/` (e.g., `skill_evolution`). "Extension" is the standard protocol term at filesystem and CLI command boundaries (`mvgeos extension`); "Rune" is the domain term inside the persona, Python model, and user presentation (`mvgeos rune` alias).
+_Avoid_: Extension (as an internal domain/persona term; use Rune internally and Extension at protocol boundaries), plugin, addon, Skill
 
 **Skill**:
 A capability pack discovered per `agentskills.io` via `SKILL_SCOPES` (`PROJECT:.agents/skills`, `USER:~/.agents/skills`, `AGENT:~/.agents/.mvgeos/{agent}/skills`): a directory named `^[a-z0-9]+(-[a-z0-9]+)*$` (1-64 chars, must match `name` in frontmatter) containing `SKILL.md` (YAML frontmatter `name`/`description` 1-1024 chars + markdown instructions) and per WikiSkill `PURPOSE.md` (`Origin` + `Patterns Addressed` + `Evolution History`). Disclosed progressively (catalog → full instructions → resources), never executed directly. Distinct from Rune (executable extension) and Spell (executable tool).
