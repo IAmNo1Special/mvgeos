@@ -21,6 +21,7 @@ jobs:
       matrix:
         package:
           - coding-mvge
+          - mvgeos-core
           - mvgeos-agent
           - mvgeos-provider
           - mvgeos-runes
@@ -157,8 +158,22 @@ jobs:
             TYPE=none
           fi
 
+          # Zero-Ver (0.x.y) pre-release remapping:
+          # In initial development (< 1.0.0):
+          #   breaking change (major) -> minor (e.g. 0.1.0 -> 0.2.0)
+          #   feature (minor)         -> patch (e.g. 0.1.0 -> 0.1.1)
+          # Once >= 1.0.0, standard SemVer applies directly.
+          CURRENT_VERSION="$(uv version --short 2>/dev/null || echo "0.0.0")"
+          if [[ "$CURRENT_VERSION" =~ ^0\. ]]; then
+            if [ "$TYPE" = "major" ]; then
+              TYPE=minor
+            elif [ "$TYPE" = "minor" ]; then
+              TYPE=patch
+            fi
+          fi
+
           echo "type=$TYPE" >> "$GITHUB_OUTPUT"
-          echo "Bump type since last tag: $TYPE"
+          echo "Bump type since last tag: $TYPE (current version: $CURRENT_VERSION)"
 
       - name: Bump workspace versions
         if: steps.bump_type.outputs.type != 'none'
@@ -166,10 +181,11 @@ jobs:
         env:
           BUMP_TYPE: ${{ steps.bump_type.outputs.type }}
         run: |
-          for pkg in mvgeos mvgeos-agent mvgeos-provider mvgeos-tome \
+          for pkg in mvgeos mvgeos-core mvgeos-agent mvgeos-provider mvgeos-tome \
                      mvgeos-runes mvgeos-cli mvgeos-gui coding-mvge; do
             uv version --bump "$BUMP_TYPE" --package "$pkg" --no-sync
           done
+          uv lock
 
           NEW_VERSION="$(uv version --short)"
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
@@ -184,6 +200,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add pyproject.toml uv.lock \
+            mvgeos-core/pyproject.toml \
             mvgeos-agent/pyproject.toml mvgeos-provider/pyproject.toml \
             mvgeos-tome/pyproject.toml mvgeos-runes/pyproject.toml \
             mvgeos-cli/pyproject.toml mvgeos-gui/pyproject.toml \
