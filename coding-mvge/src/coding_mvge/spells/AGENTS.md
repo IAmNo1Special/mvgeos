@@ -12,7 +12,7 @@ Spells are native Python callables or `MvgeSpell` classes that provide the agent
 ## Example Spell Template
 ```python
 from __future__ import annotations
-from mvgeos_agent.types import SpellResult, SpellStatus
+from mvgeos_core.spells import SpellResult, SpellStatus
 
 
 async def my_spell(target: str, count: int = 1) -> SpellResult:
