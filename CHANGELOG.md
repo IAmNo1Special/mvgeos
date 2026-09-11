@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-09-11
+
+
+### Bug Fixes
+
+- **coding-mvge:** harvest spells from invocation content blocks (1732763)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (7d98fa5)
+
+- **deps:** bump pydantic from 2.13.4 to 2.13.5 (#128) (59b003b)
+
+- **deps:** bump typer from 0.27.1 to 0.27.2 (#129) (5408e2a)
+
+- **deps:** bump filelock from 3.32.3 to 3.32.5 (#139) (3778b99)
+
+- **deps-dev:** bump ruff from 0.16.4 to 0.16.6 (#140) (523701f)
+
+- **deps-dev:** bump types-pyyaml (#141) (4499d61)
+
+- **release:** v0.2.1 (cfd261f)
+
+
+### Documentation
+
+- **all:** synchronize documentation with codebase reality and CI ground truth (8539f7a)
+
+- resolve AGENT-15 tech debt and document protocol boundary pattern (da84469)
+
+
+### Features
+
+- **core:** add spells field to ChannelConfig with tools synchronization (95fb9e6)
+
+
+### Refactoring
+
+- **agent:** collapse MvgeLoop into MvgeHarness deep module (477b0f7)
+
+- **tome:** reset canonical session schema to version 1 (e14ffa2)
+
+- **cli:** align StreamRenderer methods with spell terminology (41a0510)
+
+
 ## [0.2.0] - 2026-09-11
 
 
