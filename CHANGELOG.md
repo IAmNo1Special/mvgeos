@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-09-11
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (058219c)
+
+- **release:** v0.2.2 (48007cd)
+
+
+### Features
+
+- **agent:** consolidate guidelines into system prompt and add APPEND_SYSTEM support (5812024)
+
+- **provider,runes:** decouple realm implementations and add central marketplace installer (fa58679)
+
+- **gui,cli:** implement 4-tier model selector with dynamic contemplation levels (f507d2d)
+
+
+### Refactoring
+
+- **paths:** standardize on .agents protocol sessions and extensions directories (35c87d9)
+
+
 ## [0.2.1] - 2026-09-11
 
 
