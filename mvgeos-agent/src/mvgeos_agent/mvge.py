@@ -42,7 +42,7 @@ from mvgeos_core.loop import StreamFn
 from mvgeos_core.spells import MvgeSpell
 from mvgeos_provider.base import Realm
 from mvgeos_provider.model_registry import ModelRegistry
-from mvgeos_provider.registry import RealmRegistry
+from mvgeos_provider.registry import RealmRegistry, get_default_realm_registry
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     Diagnostic,
@@ -169,6 +169,7 @@ class Mvge:
         strict_resume: bool = False,
         force_fork_resume: bool = False,
         caller_dir: Path | None = None,
+        provider_registry: RealmRegistry | None = None,
     ) -> None:
         resolved_caller_dir: Path | None = (
             caller_dir.resolve() if caller_dir is not None else None
@@ -267,7 +268,11 @@ class Mvge:
             else list(environment.runes_paths)
         )
 
-        self._provider_registry = RealmRegistry()
+        self._provider_registry = (
+            provider_registry
+            if provider_registry is not None
+            else get_default_realm_registry()
+        )
         self._runner: RuneRunner | None = None
         self._rune_lifecycle: RuneLifecycle | None = None
         self._prompt_source = environment.resolved_prompt.source
@@ -993,7 +998,11 @@ class Mvge:
             self._runner = None
 
         if self._realm is not None:
-            await self._realm.close()
+            close_fn = getattr(self._realm, "close", None)
+            if callable(close_fn):
+                res = close_fn()
+                if inspect.isawaitable(res):
+                    await res
             self._realm = None
 
         if self._agent_tome is not None:

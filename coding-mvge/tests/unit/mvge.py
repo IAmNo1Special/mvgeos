@@ -34,6 +34,16 @@ def agent() -> Mvge:
     return Mvge(api_key="test-key")
 
 
+@pytest.fixture
+def _register_mock_openrouter_realm() -> Any:
+    from mvgeos_provider.registry import get_default_realm_registry
+
+    reg = get_default_realm_registry()
+    reg.register_realm_factory("openrouter", lambda **kw: _MockRealm())
+    yield
+    reg.unregister_realm_factory("openrouter")
+
+
 class _MockRealm:
     def __init__(self) -> None:
         self.close: Any = AsyncMock()
@@ -392,6 +402,7 @@ class TestMvgeRun:
             await agent.close()
 
 
+@pytest.mark.usefixtures("_register_mock_openrouter_realm")
 class TestMvgeSwitchModel:
     @pytest.mark.asyncio
     async def test_switch_model_preserves_session(self) -> None:

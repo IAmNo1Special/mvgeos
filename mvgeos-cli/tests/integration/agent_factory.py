@@ -115,16 +115,25 @@ class TestAgentFactoryRegistry:
 
     @pytest.mark.asyncio
     async def test_create_agent_with_default_factory(self) -> None:
-        agent = await create_agent(
-            model="nvidia/nemotron-3-ultra-550b-a55b:free",
-            api_key="sk-or-test-key",
-            spells="read,write",
-        )
+        from unittest.mock import AsyncMock
+
+        from mvgeos_provider.registry import get_default_realm_registry
+
+        registry = get_default_realm_registry()
+        mock_realm = MagicMock()
+        mock_realm.close = AsyncMock()
+        registry.register_realm_factory("openrouter", lambda **kw: mock_realm)
         try:
+            agent = await create_agent(
+                model="nvidia/nemotron-3-ultra-550b-a55b:free",
+                api_key="sk-or-test-key",
+                spells="read,write",
+            )
             assert isinstance(agent, MvgeAgent)
             assert agent.model_id == "nvidia/nemotron-3-ultra-550b-a55b:free"
-        finally:
             await agent.close()
+        finally:
+            registry.unregister_realm_factory("openrouter")
 
 
 class TestCliCommandsDecoupling:

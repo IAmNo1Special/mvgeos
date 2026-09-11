@@ -66,6 +66,7 @@ def default_agent_factory(
             environment=environment,
             strict_resume=strict_resume,
             force_fork_resume=force_fork_resume,
+            provider_registry=kwargs.get("provider_registry"),
         )
     return root_mvge
 
