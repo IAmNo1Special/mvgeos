@@ -45,6 +45,12 @@ def test_curvy_glow_blur_fits_wrapper_padding() -> None:
     assert "blur(30px)" not in CURVY_COMPOSER_CSS
 
 
+def test_composer_input_has_no_own_focus_glow() -> None:
+    """Only the composer container glows on focus, not the textarea."""
+    assert ".mvge-main textarea:focus-visible" in CURVY_COMPOSER_CSS
+    assert "box-shadow: none !important;" in CURVY_COMPOSER_CSS
+
+
 def test_glow_buttons_use_young_newt_glass() -> None:
     """Primary CTAs use the young-newt glass treatment, not a flat fill."""
     assert "--highlight-color-hue: 258deg" in VOID_THEME_CSS

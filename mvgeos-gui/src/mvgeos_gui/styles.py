@@ -754,6 +754,13 @@ CURVY_COMPOSER_CSS = """
 .mvge-main textarea:focus {
     outline: none !important;
 }
+/* Single-glow rule: the composer container owns the focus glow, so the
+   textarea's own focus ring is suppressed and the two never stack. */
+.mvge-main textarea:focus-visible,
+.mvge-main .q-field__control:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+}
 .mvge-input-zone {
     position: relative;
     width: 100%;
