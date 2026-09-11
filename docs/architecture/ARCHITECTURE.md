@@ -54,8 +54,7 @@ Manages the connection to LLM providers (Realms). Defines the `Realm` protocol
 (the OpenRouter provider). The provider handles channeling (streaming),
 authentication resolution, non-channeled completion, and response delivery.
 Channel vocabulary (`Model`, `ChannelConfig`, `RealmResponse`, `StopReason`,
-abort primitives) is canonical in `mvgeos-core`; `mvgeos_provider.types` is a
-deprecated re-export facade for third-party runes.
+abort primitives) is canonical in `mvgeos-core`.
 
 **Entry point**: `Realm.stream(model, invocations, config)`
 → returns async generator of `RealmResponse`
