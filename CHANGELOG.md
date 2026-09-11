@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-09-11
+
+
+### Bug Fixes
+
+- **agent,provider,gui:** classify mid-stream upstream stalls with friendly message (c1472c9)
+
+- **gui:** drop stale view listeners on chat panel re-render (beff9d1)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (1fee317)
+
+- **release:** v2.2.0 (32dd62b)
+
+
+### Features
+
+- **cli:** add skill dedupe command for shadowed skill copies (0704d85)
+
+
 ## [2.1.2] - 2026-09-11
 
 
