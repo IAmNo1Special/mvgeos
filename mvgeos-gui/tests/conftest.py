@@ -1,12 +1,14 @@
 """Pytest configuration and fixtures for mvgeos-gui tests."""
 
 import os
+import shutil as _shutil
 import warnings
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from nicegui.storage import Storage as _Storage
 from nicegui.testing import User
 from nicegui.testing.user_simulation import user_simulation
 
@@ -39,6 +41,22 @@ if not os.path.exists("/dev/shm"):
             _run._pool_context = None
 
     _run.setup = _safe_setup
+
+# On Windows, NTFS delayed file-handle release can cause self.path.rmdir()
+# in Storage.clear() to raise OSError WinError 145 (directory not empty).
+# Gracefully fall back to shutil.rmtree with error suppression.
+_orig_storage_clear = _Storage.clear
+
+
+def _safe_storage_clear(self: _Storage) -> None:
+    try:
+        _orig_storage_clear(self)
+    except OSError:
+        if self.path.exists():
+            _shutil.rmtree(self.path, ignore_errors=True)
+
+
+_Storage.clear = _safe_storage_clear
 
 
 @pytest.fixture(autouse=True)
