@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **release:** v0.1.0 (05d234a)
 
+- update CHANGELOG.md [skip ci] (74fdef6)
+
 
 ### Continuous Integration
 
@@ -23,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Tests
 
 - **core:** add loop and dispatcher integration tests (4c59922)
+
+- **gui:** handle delayed file-handle release in nicegui storage cleanup on windows (2be254c)
 
 
 ## [3.0.0] - 2026-09-11
