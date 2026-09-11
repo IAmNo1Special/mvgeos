@@ -42,6 +42,27 @@ class TestExperienceHarvester:
         assert len(hv.buffer) == 1
         assert hv.buffer[0].spells_used == ["bash"]
 
+    def test_harvest_with_spell_cast_content_blocks(self, tmp_dirs):
+        _, _, hv = tmp_dirs
+        inv = MagicMock()
+        inv.role = "assistant"
+        inv.id = "inv_spell_cast"
+        inv.turn = 1
+        inv.prompt = "run something"
+        inv.content = [
+            {"type": "text", "text": "Casting spell..."},
+            {
+                "type": "spell_cast",
+                "spell_cast": {"id": "c1", "name": "read_file", "arguments": {}},
+            },
+        ]
+        inv.tool_calls = []
+        inv.error = None
+        inv.mana_used = 15
+        hv.harvest(inv)
+        assert len(hv.buffer) == 1
+        assert hv.buffer[0].spells_used == ["read_file"]
+
     def test_ignore_non_assistant(self, tmp_dirs):
         _, _, hv = tmp_dirs
         inv = MagicMock()

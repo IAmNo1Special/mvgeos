@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from mvgeos_core.events import ContentType
 from mvgeos_core.invocations import MvgeInvocation
 
 
@@ -46,6 +47,17 @@ class ExperienceHarvester:
 
         spells_used: list[str] = []
         spell_results: list[dict[str, Any]] = []
+
+        if isinstance(invocation.content, list):
+            for block in invocation.content:
+                if isinstance(block, dict):
+                    block_type = block.get("type")
+                    if block_type in ("spell_cast", ContentType.SPELL_CAST):
+                        sc = block.get("spell_cast")
+                        if isinstance(sc, dict) and "name" in sc:
+                            spells_used.append(str(sc["name"]))
+                        elif "name" in block:
+                            spells_used.append(str(block["name"]))
 
         if hasattr(invocation, "tool_calls") and invocation.tool_calls:
             for tc in invocation.tool_calls:
