@@ -3,7 +3,11 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from mvgeos_agent.truncate import (
+from mvgeos_core.spells import (
+    SpellResult,
+    SpellStatus,
+)
+from mvgeos_core.truncate import (
     DEFAULT_MAX_BYTES,
     MAX_LIST_ENTRIES,
     MAX_LIST_RESULTS,
@@ -12,7 +16,6 @@ from mvgeos_agent.truncate import (
     truncate_head,
     truncation_details,
 )
-from mvgeos_agent.types import SpellResult, SpellStatus
 
 
 def _list_entries(base: Path) -> list[str]:

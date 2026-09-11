@@ -3,11 +3,16 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from mvgeos_core.abort import AbortSignal
+from mvgeos_core.channel import Model
+from mvgeos_core.invocations import (
+    MvgeInvocation,
+    SummonerRequest,
+)
+from mvgeos_core.loop import LoopCallbacks, StreamFn
 from mvgeos_provider.base import Realm
-from mvgeos_provider.types import Model
 
 from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.core_loop import LoopCallbacks, StreamFn
 from mvgeos_agent.harness.compaction.compaction import (
     DEFAULT_COMPACTION_SETTINGS,
     CompactionSettings,
@@ -16,7 +21,7 @@ from mvgeos_agent.harness.compaction.compaction import (
 )
 from mvgeos_agent.harness.compaction.compaction_runner import CompactionRunner
 from mvgeos_agent.mvge_loop import MvgeLoop
-from mvgeos_agent.types import AbortSignal, MvgeInvocation, MvgeState, SummonerRequest
+from mvgeos_agent.types import MvgeState
 
 logger = logging.getLogger(__name__)
 

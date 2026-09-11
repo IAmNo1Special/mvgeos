@@ -7,6 +7,20 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from mvgeos_core.channel import (
+    MvgeResponse,
+    StopReason,
+)
+from mvgeos_core.errors import (
+    TomeIncompatibleError,
+    TomeResumeError,
+)
+from mvgeos_core.events import ContentType
+from mvgeos_core.invocations import (
+    MvgeInvocation,
+    SummonerRequest,
+)
+from mvgeos_core.spells import SpellResultMessage
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import SigilHook
 from mvgeos_tome.ledger import TomeLedger
@@ -20,16 +34,6 @@ from mvgeos_tome.types import (
 from mvgeos_agent.compatibility import (
     SessionCompatibilityReport,
     validate_session_compatibility,
-)
-from mvgeos_agent.types import (
-    ContentType,
-    MvgeInvocation,
-    MvgeResponse,
-    SpellResultMessage,
-    StopReason,
-    SummonerRequest,
-    TomeIncompatibleError,
-    TomeResumeError,
 )
 
 logger = logging.getLogger(__name__)

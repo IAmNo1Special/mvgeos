@@ -119,7 +119,7 @@ The session-aware operational owner of the agent loop. Wraps `MvgeLoop`, `MvgeTo
 The single async channel out of the core: `Callable[[MvgeEvent], Awaitable[None]]`. `MvgeLoop._emit` fans one event out to four effects — `MvgeState` reduction, the event bus, the mapped Sigil, and Tome recording. Recording happens only on `MESSAGE_END`, which the core emits for Summoner, Mvge, and Spell-result Invocations alike (Pi's one-recording-point model).
 
 **Spell Dispatcher** (`SpellDispatcher`):
-The deep module responsible for executing tool call batches concurrently (`asyncio.gather`) or fallback sequential execution (`mvgeos_agent/dispatcher.py`). Evaluates `before_spell_cast` vetoes and `after_spell_result` transforms per task, preserves assistant request order, isolates exceptions into `SpellResultMessage(is_error=True)`, and evaluates batch termination (`terminate` flag) matching Pi's `executeToolCalls`.
+The deep module responsible for executing tool call batches concurrently (`asyncio.gather`) or fallback sequential execution (`mvgeos_core/dispatcher.py`). Evaluates `before_spell_cast` vetoes and `after_spell_result` transforms per task, preserves assistant request order, isolates exceptions into `SpellResultMessage(is_error=True)`, and evaluates batch termination (`terminate` flag) matching Pi's `executeToolCalls`.
 
 **MvgeEnvironment**:
 The deep module responsible for resolving agent configuration, system prompts, guidelines, and runtime snapshot introspection (`mvgeos_agent/environment.py`). Consolidates layered config loading, prompt resolution, and diagnostic collection behind a single `resolve()` seam. Mirrors Pi's `AgentSessionServices` + `ResourceLoader`.

@@ -7,8 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-
-from mvgeos_provider.types import Model
+from mvgeos_core.channel import Model
 
 logger = logging.getLogger(__name__)
 

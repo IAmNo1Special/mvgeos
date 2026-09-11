@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from mvgeos_agent.constants import DEFAULT_TOME_DIR
+from mvgeos_core.constants import DEFAULT_TOME_DIR
 from mvgeos_tome.ledger import TomeLedger
 from mvgeos_tome.types import TomeEntryType
 

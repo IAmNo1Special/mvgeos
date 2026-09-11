@@ -7,13 +7,16 @@ from io import StringIO
 from pathlib import Path
 
 import typer
-from mvgeos_agent.constants import DEFAULT_AGENT_NAME
+from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_runes.loader import (
     discover_plugin_skill_paths,
     get_default_skill_paths,
     load_skills_from_paths,
 )
-from mvgeos_runes.types import SkillDiagnosticKind, SkillScope
+from mvgeos_runes.types import (
+    SkillDiagnosticKind,
+    SkillScope,
+)
 from rich import box
 from rich.console import Console
 from rich.table import Table

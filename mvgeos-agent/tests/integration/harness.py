@@ -1,14 +1,14 @@
 import pytest
+from mvgeos_core.channel import (
+    MvgeResponse,
+    StopReason,
+)
+from mvgeos_core.events import ContemplationLevel
+from mvgeos_core.invocations import SummonerRequest
 
 from mvgeos_agent.harness import MvgeHarness
 from mvgeos_agent.mvge_loop import MvgeLoop
-from mvgeos_agent.types import (
-    ContemplationLevel,
-    MvgeResponse,
-    MvgeState,
-    StopReason,
-    SummonerRequest,
-)
+from mvgeos_agent.types import MvgeState
 
 
 @pytest.mark.asyncio
@@ -23,7 +23,10 @@ async def test_full_harness_loop_integration() -> None:
     harness = MvgeHarness(loop)
 
     async def mock_stream_fn(invocations, signal=None):
-        from mvgeos_provider.types import Model, RealmResponse
+        from mvgeos_core.channel import (
+            Model,
+            RealmResponse,
+        )
 
         dummy_model = Model(
             id="test-model",

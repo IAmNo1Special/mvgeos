@@ -11,7 +11,10 @@ from typing import Any
 
 from mvgeos_agent import Mvge
 from mvgeos_runes.rune_api import RuneAPI
-from mvgeos_runes.types import RuneContext, SigilHook
+from mvgeos_runes.types import (
+    RuneContext,
+    SigilHook,
+)
 
 from coding_mvge.runes.skill_evolution.consolidator.consolidator import (
     ExperienceConsolidator,

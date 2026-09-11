@@ -4,10 +4,11 @@
 
 ```text
 mvgeos/
-├── mvgeos-agent/         # Core Mvge loop, invocations, state, spell execution
-├── mvgeos-provider/      # Realm protocol + repository of realms
-├── mvgeos-tome/          # JSONL session persistence with locking + index
-├── mvgeos-runes/         # Extension manifest, loader, sigil hooks
+├── mvgeos-core/            # Canonical loop vocabulary: abort, invocations, spells, events, pure turn loop (zero first-party deps)
+├── mvgeos-agent/         # Mvge class, session lifecycle, harness, environment (depends on core + leafs)
+├── mvgeos-provider/      # Realm protocol + repository of realms (depends on core)
+├── mvgeos-tome/          # JSONL session persistence with locking + index (zero first-party deps)
+├── mvgeos-runes/         # Extension manifest, loader, sigil hooks (depends on core)
 ├── mvgeos-cli/           # CLI entry point (mvgeos command)
 ├── mvgeos-gui/           # Desktop GUI application (NiceGUI + PyWebView)
 ├── coding-mvge/         # Coding agent package (BaseMvge subclass)
@@ -20,17 +21,31 @@ mvgeos/
 
 ## Component Map
 
+### mvgeos-core
+
+Zero-dependency canonical vocabulary. Owns abort primitives, invocation
+transcript types, spell definitions, events, constants, errors, the
+`SpellDispatcher`, the `EventBus`, and the pure turn loop (`run_loop` with
+injected `StreamFn` and `emit` sink). Leaf packages and the agent depend on
+core, never the reverse (enforced by `dependency_direction` guards).
+
+**Entry point**: `run_loop(context, stream_fn, emit, callbacks)`
+→ channels `RealmResponse`s → casts Spells → returns new Invocations
+
+**Dependencies**: pydantic only
+
 ### mvgeos-agent
 
-The heartbeat of MvgeOS. Contains the `Mvge` class (the agent),
-`MvgeLoop` (the event loop), `MvgeState` (mutable state),
-`MvgeSpell` (tool definition), `MvgeEvent` (lifecycle events),
-`EventBus` (event propagation), and `Sigil` (hook/callback system).
+Session-aware agent engine. Contains the `Mvge` class (the agent),
+`MvgeLoop` (stateful wrapper around the core loop), `MvgeState` (mutable
+session state), `MvgeHarness` (lifecycle owner), `MvgeEnvironment`
+(configuration and prompt scaffolding), and `FunctionSpell` (callable tool
+coercion and discovery).
 
 **Entry point**: `BaseMvge.run(prompt)` → `MvgeLoop.run()`
 → invoke `StreamFunction` → process events → return `MvgeResponse`
 
-**Dependencies**: mvgeos-provider, mvgeos-tome, mvgeos-runes
+**Dependencies**: mvgeos-core, mvgeos-provider, mvgeos-tome, mvgeos-runes
 
 ### mvgeos-provider
 
@@ -38,11 +53,14 @@ Manages the connection to LLM providers (Realms). Defines the `Realm` protocol
 (the provider interface) and implements `OpenRouterRealm`
 (the OpenRouter provider). The provider handles channeling (streaming),
 authentication resolution, non-channeled completion, and response delivery.
+Channel vocabulary (`Model`, `ChannelConfig`, `RealmResponse`, `StopReason`,
+abort primitives) is canonical in `mvgeos-core`; `mvgeos_provider.types` is a
+deprecated re-export facade for third-party runes.
 
 **Entry point**: `Realm.stream(model, invocations, config)`
 → returns async generator of `RealmResponse`
 
-**Dependencies**: httpx, filelock
+**Dependencies**: mvgeos-core, httpx, filelock
 
 ### mvgeos-tome
 
@@ -67,7 +85,8 @@ points where runes can register Sigil callbacks.
 **Entry point**: `load_runes_from_paths()` → discovers manifests
 → registers sigils → emits MvgeEvents on hooks
 
-**Dependencies**: importlib.util, watchdog
+**Dependencies**: mvgeos-core (`ExecutionMode` is canonical there),
+importlib.util, watchdog
 
 ### mvgeos-cli
 
@@ -83,7 +102,7 @@ orchestrating the other packages.
 - `mvgeos tome <command>` → Manage tomes (list, show, export, create, fork)
 - `mvgeos config <command>` → Manage configuration (show, set, get, reset, path)
 
-**Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-tome,
+**Dependencies**: mvgeos-agent, mvgeos-core, mvgeos-provider, mvgeos-tome,
 mvgeos-runes, rich, typer, prompt_toolkit
 
 ### mvgeos-gui
@@ -97,7 +116,7 @@ git diff viewer, and slide-over artifact markdown inspector.
 **Entry point**: `mvgeos-gui` command → `mvgeos_gui.main:main`
 
 **Dependencies**: nicegui, pywebview, pathspec, coding-mvge, mvgeos-agent,
-mvgeos-provider, mvgeos-runes, mvgeos-tome
+mvgeos-core, mvgeos-provider, mvgeos-runes, mvgeos-tome
 
 ### coding-mvge
 
@@ -109,7 +128,7 @@ self-modification and zero-boilerplate instantiation.
 
 **Entry point**: `from coding_mvge import root_mvge` → `root_mvge.run(prompt)`
 
-**Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-runes
+**Dependencies**: mvgeos-agent, mvgeos-core, mvgeos-provider, mvgeos-runes
 
 ## Data Flow
 

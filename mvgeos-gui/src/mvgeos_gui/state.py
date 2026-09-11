@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-from mvgeos_agent.constants import DEFAULT_AGENT_NAME
+from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_runes.loader import get_default_skill_paths, load_skills_from_paths
 from mvgeos_runes.types import SkillManifest
 from mvgeos_tome.types import TomeEntryType

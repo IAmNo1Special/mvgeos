@@ -1,14 +1,17 @@
 from typing import Any
 
-from mvgeos_agent.types import (
-    ContentType,
+from mvgeos_core.channel import (
     MvgeResponse,
-    MvgeSpell,
-    MvgeState,
-    QueueMode,
     StopReason,
-    SummonerRequest,
 )
+from mvgeos_core.events import (
+    ContentType,
+    QueueMode,
+)
+from mvgeos_core.invocations import SummonerRequest
+from mvgeos_core.spells import MvgeSpell
+
+from mvgeos_agent.types import MvgeState
 
 
 def test_content_type_values() -> None:

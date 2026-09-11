@@ -63,7 +63,8 @@ Test paths follow pattern: `mvgeos-cli/tests/unit/<module>.py` and `mvgeos-cli/t
 - `typer` — CLI framework
 - `rich` — console rendering
 - `prompt_toolkit` — TUI framework
-- `mvgeos-agent` — core agent loop
+- `mvgeos-core` — loop vocabulary, constants, errors
+- `mvgeos-agent` — Mvge, harness, environment
 - `mvgeos-provider` — Realm protocol and providers
 - `mvgeos-runes` — Rune system
 - `coding-mvge` — Concrete coding agent

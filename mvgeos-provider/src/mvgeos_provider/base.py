@@ -3,7 +3,11 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any, Protocol, runtime_checkable
 
-from mvgeos_provider.types import AbortSignal, ChannelConfig, Model
+from mvgeos_core.abort import AbortSignal
+from mvgeos_core.channel import (
+    ChannelConfig,
+    Model,
+)
 
 
 class Realm:

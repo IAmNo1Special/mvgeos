@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from mvgeos_core.constants import DEFAULT_AGENT_NAME
 
 from mvgeos_agent.config_manager import (
     ConfigLayer,
@@ -11,7 +12,6 @@ from mvgeos_agent.config_manager import (
     is_known_agent,
     validate_agent_name,
 )
-from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 
 
 def _make_mgr(tmp_path: Path, agent_name: str = "test-agent") -> ConfigManager:

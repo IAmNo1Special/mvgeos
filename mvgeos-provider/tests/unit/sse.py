@@ -7,16 +7,18 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
-
-from mvgeos_provider.sse import SSEChunk, SSEStreamingRealm
-from mvgeos_provider.types import (
+from mvgeos_core.abort import (
     AbortController,
     AbortError,
+)
+from mvgeos_core.channel import (
     ChannelConfig,
     Model,
     RealmResponse,
     StopReason,
 )
+
+from mvgeos_provider.sse import SSEChunk, SSEStreamingRealm
 
 
 class MockStreamResponse:

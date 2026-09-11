@@ -693,7 +693,10 @@ def _make_manifest(
     description: str = "Review code",
 ) -> Any:
     """Build a minimal SkillManifest for testing."""
-    from mvgeos_runes.types import SkillManifest, SkillScope
+    from mvgeos_runes.types import (
+        SkillManifest,
+        SkillScope,
+    )
 
     return SkillManifest(
         name=name,

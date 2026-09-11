@@ -1,3 +1,3 @@
-from mvgeos_agent.constants import DEFAULT_MODEL
+from mvgeos_core.constants import DEFAULT_MODEL
 
 __all__ = ["DEFAULT_MODEL"]

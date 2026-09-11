@@ -6,15 +6,18 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from mvgeos_agent import FunctionSpell, Mvge
-from mvgeos_agent.constants import DEFAULT_MODEL
+from mvgeos_agent import (
+    FunctionSpell,
+    Mvge,
+)
 from mvgeos_agent.environment import MvgeEnvironment
-from mvgeos_agent.types import (
-    ContemplationLevel,
+from mvgeos_agent.types import MvgeState
+from mvgeos_core.channel import (
     MvgeResponse,
-    MvgeState,
     StopReason,
 )
+from mvgeos_core.constants import DEFAULT_MODEL
+from mvgeos_core.events import ContemplationLevel
 from mvgeos_runes.types import SpellDefinition
 
 from coding_mvge import root_mvge
@@ -44,7 +47,7 @@ def _make_mock_realm(text: str = "Hello") -> _MockRealm:
 
 
 def _install_mock(agent: Mvge, text: str = "Hello") -> _MockRealm:
-    from mvgeos_provider.types import Model
+    from mvgeos_core.channel import Model
 
     mock_realm = _make_mock_realm(text)
     agent._realm = mock_realm  # type: ignore[assignment]
@@ -81,7 +84,10 @@ def _install_mock(agent: Mvge, text: str = "Hello") -> _MockRealm:
 
 class _Iter:
     def __aiter__(self) -> object:
-        from mvgeos_provider.types import Model, RealmResponse
+        from mvgeos_core.channel import (
+            Model,
+            RealmResponse,
+        )
 
         model = Model(
             id="test-model",
@@ -460,8 +466,8 @@ class TestMvgeToolCalls:
     @pytest.mark.asyncio
     async def test_agent_executes_spell_and_continues_turn(self) -> None:
         from mvgeos_agent.function_spell import FunctionSpell
-        from mvgeos_agent.types import SpellResultMessage, StopReason
-        from mvgeos_provider.types import RealmResponse
+        from mvgeos_core.channel import RealmResponse, StopReason
+        from mvgeos_core.spells import SpellResultMessage
 
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = Mvge(

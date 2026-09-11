@@ -3,29 +3,36 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from mvgeos_runes.types import SigilHook, SpellDefinition
-
-from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.core_loop import (
+from mvgeos_core.abort import AbortSignal
+from mvgeos_core.channel import MvgeResponse
+from mvgeos_core.events import (
+    ContemplationLevel,
+    MvgeEvent,
+    MvgeEventType,
+    QueueMode,
+)
+from mvgeos_core.invocations import (
+    MvgeInvocation,
+    SummonerRequest,
+)
+from mvgeos_core.loop import (
     EmitSink,
     LoopCallbacks,
     LoopContext,
     StreamFn,
     run_loop,
 )
-from mvgeos_agent.types import (
-    AbortSignal,
-    ContemplationLevel,
-    MvgeEvent,
-    MvgeEventType,
-    MvgeInvocation,
-    MvgeResponse,
+from mvgeos_core.spells import (
     MvgeSpell,
-    MvgeState,
-    QueueMode,
     SpellResultMessage,
-    SummonerRequest,
 )
+from mvgeos_runes.types import (
+    SigilHook,
+    SpellDefinition,
+)
+
+from mvgeos_agent.agent_session import MvgeTome
+from mvgeos_agent.types import MvgeState
 
 
 class _RuneSpellWrapper(MvgeSpell):

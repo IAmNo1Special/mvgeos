@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from mvgeos_agent.constants import DEFAULT_AGENT_NAME, DEFAULT_MODEL
+from mvgeos_core.constants import DEFAULT_AGENT_NAME, DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 

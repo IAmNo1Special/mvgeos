@@ -1,3 +1,9 @@
+from mvgeos_core.channel import (
+    ChannelConfig,
+    Model,
+    RealmResponse,
+)
+
 from mvgeos_provider.base import Realm, RealmFactory
 from mvgeos_provider.model_registry import ModelRegistry, list_models
 from mvgeos_provider.openrouter import OpenRouterRealm
@@ -9,7 +15,6 @@ from mvgeos_provider.registry import (
     refresh_models,
 )
 from mvgeos_provider.sse import SSEChunk, SSEStreamingRealm
-from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 
 __all__ = [
     "ChannelConfig",

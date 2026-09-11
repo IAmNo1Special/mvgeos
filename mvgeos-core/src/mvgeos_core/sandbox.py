@@ -6,7 +6,10 @@ import multiprocessing
 import types
 from typing import Any, cast
 
-from mvgeos_agent.types import SandboxTimeoutError
+
+class SandboxTimeoutError(Exception):
+    """Raised when sandbox code execution exceeds the timeout threshold."""
+
 
 FORBIDDEN_NAMES = {
     "os",

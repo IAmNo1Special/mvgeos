@@ -4,15 +4,18 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-from mvgeos_agent import Mvge, MvgeAgent
-from mvgeos_agent.environment import MvgeEnvironment
-from mvgeos_agent.types import (
+from mvgeos_core.channel import MvgeResponse
+from mvgeos_core.events import (
     ContemplationLevel,
-    MvgeInvocation,
-    MvgeResponse,
     QueueMode,
 )
+from mvgeos_core.invocations import MvgeInvocation
+
+from mvgeos_agent import (
+    Mvge,
+    MvgeAgent,
+)
+from mvgeos_agent.environment import MvgeEnvironment
 
 
 class DummyAgent:

@@ -7,6 +7,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from mvgeos_core.spells import MvgeSpell
 from mvgeos_runes.types import (
     Diagnostic,
     RuneManifest,
@@ -16,7 +17,6 @@ from mvgeos_runes.types import (
 )
 
 from mvgeos_agent.config_manager import ConfigLayer, ConfigValue
-from mvgeos_agent.types import MvgeSpell
 
 if TYPE_CHECKING:
     from mvgeos_agent.environment import (

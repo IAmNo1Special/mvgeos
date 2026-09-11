@@ -9,7 +9,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from mvgeos_runes.types import SkillManifest, SkillScope
+from mvgeos_runes.types import (
+    SkillManifest,
+    SkillScope,
+)
 from nicegui import ui
 from nicegui.testing import User
 

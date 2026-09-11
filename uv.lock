@@ -339,6 +339,7 @@ version = "2.2.0"
 source = { editable = "coding-mvge" }
 dependencies = [
     { name = "mvgeos-agent" },
+    { name = "mvgeos-core" },
     { name = "mvgeos-provider" },
     { name = "mvgeos-runes" },
 ]
@@ -346,6 +347,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "mvgeos-agent", editable = "mvgeos-agent" },
+    { name = "mvgeos-core", editable = "mvgeos-core" },
     { name = "mvgeos-provider", editable = "mvgeos-provider" },
     { name = "mvgeos-runes", editable = "mvgeos-runes" },
 ]
@@ -1048,6 +1050,7 @@ name = "mvgeos-agent"
 version = "2.2.0"
 source = { editable = "mvgeos-agent" }
 dependencies = [
+    { name = "mvgeos-core" },
     { name = "mvgeos-provider" },
     { name = "mvgeos-runes" },
     { name = "mvgeos-tome" },
@@ -1056,6 +1059,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "mvgeos-core", editable = "mvgeos-core" },
     { name = "mvgeos-provider", editable = "mvgeos-provider" },
     { name = "mvgeos-runes", editable = "mvgeos-runes" },
     { name = "mvgeos-tome", editable = "mvgeos-tome" },
@@ -1069,6 +1073,7 @@ source = { editable = "mvgeos-cli" }
 dependencies = [
     { name = "coding-mvge" },
     { name = "mvgeos-agent" },
+    { name = "mvgeos-core" },
     { name = "mvgeos-provider" },
     { name = "mvgeos-runes" },
     { name = "mvgeos-tome" },
@@ -1081,6 +1086,7 @@ dependencies = [
 requires-dist = [
     { name = "coding-mvge", editable = "coding-mvge" },
     { name = "mvgeos-agent", editable = "mvgeos-agent" },
+    { name = "mvgeos-core", editable = "mvgeos-core" },
     { name = "mvgeos-provider", editable = "mvgeos-provider" },
     { name = "mvgeos-runes", editable = "mvgeos-runes" },
     { name = "mvgeos-tome", editable = "mvgeos-tome" },
@@ -1108,6 +1114,7 @@ dependencies = [
     { name = "coding-mvge" },
     { name = "keyring" },
     { name = "mvgeos-agent" },
+    { name = "mvgeos-core" },
     { name = "mvgeos-provider" },
     { name = "mvgeos-runes" },
     { name = "mvgeos-tome" },
@@ -1121,6 +1128,7 @@ requires-dist = [
     { name = "coding-mvge", editable = "coding-mvge" },
     { name = "keyring", specifier = ">=24.0" },
     { name = "mvgeos-agent", editable = "mvgeos-agent" },
+    { name = "mvgeos-core", editable = "mvgeos-core" },
     { name = "mvgeos-provider", editable = "mvgeos-provider" },
     { name = "mvgeos-runes", editable = "mvgeos-runes" },
     { name = "mvgeos-tome", editable = "mvgeos-tome" },
@@ -1135,22 +1143,28 @@ version = "2.2.0"
 source = { editable = "mvgeos-provider" }
 dependencies = [
     { name = "httpx" },
+    { name = "mvgeos-core" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "httpx", specifier = ">=0.27" }]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "mvgeos-core", editable = "mvgeos-core" },
+]
 
 [[package]]
 name = "mvgeos-runes"
 version = "2.2.0"
 source = { editable = "mvgeos-runes" }
 dependencies = [
+    { name = "mvgeos-core" },
     { name = "pyyaml" },
     { name = "watchdog" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "mvgeos-core", editable = "mvgeos-core" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "watchdog", specifier = ">=6.0.0" },
 ]

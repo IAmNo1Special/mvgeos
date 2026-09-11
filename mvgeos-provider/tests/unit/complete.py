@@ -5,9 +5,12 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from mvgeos_core.channel import (
+    ChannelConfig,
+    Model,
+)
 
 from mvgeos_provider.openrouter import OpenRouterRealm
-from mvgeos_provider.types import ChannelConfig, Model
 
 
 def _model() -> Model:

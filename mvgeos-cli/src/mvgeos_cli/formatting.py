@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from mvgeos_agent.errors import AuthenticationError, RateLimitError
 from mvgeos_agent.protocol import MvgeAgent
+from mvgeos_core.errors import AuthenticationError, RateLimitError
 from rich.console import Console
 
 _console = Console()

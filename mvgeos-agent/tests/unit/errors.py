@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mvgeos_agent.errors import (
+from mvgeos_core.errors import (
     AuthenticationError,
     MaxTurnsExceededError,
     MvgeError,
@@ -97,7 +97,7 @@ def test_authentication_error() -> None:
 
 
 def test_upstream_timeout_error() -> None:
-    from mvgeos_agent.errors import UpstreamTimeoutError
+    from mvgeos_core.errors import UpstreamTimeoutError
 
     err = UpstreamTimeoutError("Upstream idle timeout exceeded")
     assert err.code == "upstream_idle_timeout"

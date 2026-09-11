@@ -5,11 +5,12 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mvgeos_provider.types import Model
+from mvgeos_core.channel import Model
+from mvgeos_core.errors import TomeResumeError
+from mvgeos_core.spells import MvgeSpell
 from mvgeos_tome.ledger import TomeLedger
 
 from mvgeos_agent.mvge import Mvge
-from mvgeos_agent.types import MvgeSpell, TomeResumeError
 
 
 def _mock_model() -> Model:
@@ -254,7 +255,7 @@ async def test_resume_mismatched_model_non_strict_emits_diagnostic() -> None:
 
 @pytest.mark.asyncio
 async def test_resume_mismatched_model_strict_raises_tome_incompatible() -> None:
-    from mvgeos_agent.errors import TomeIncompatibleError
+    from mvgeos_core.errors import TomeIncompatibleError
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tome_dir = Path(tmp_dir)
@@ -294,7 +295,7 @@ async def test_resume_mismatched_model_strict_raises_tome_incompatible() -> None
 
 @pytest.mark.asyncio
 async def test_resume_missing_spells_strict_raises_tome_incompatible() -> None:
-    from mvgeos_agent.errors import TomeIncompatibleError
+    from mvgeos_core.errors import TomeIncompatibleError
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tome_dir = Path(tmp_dir)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mvgeos_agent.errors import AuthenticationError, RateLimitError
+from mvgeos_core.errors import AuthenticationError, RateLimitError
 
 from mvgeos_cli.formatting import format_error
 

@@ -5,7 +5,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from mvgeos_runes.types import ExecutionMode, RuneManifest, RuneShortcut, SigilHook
+from mvgeos_core.spells import ExecutionMode
+
+from mvgeos_runes.types import (
+    RuneManifest,
+    RuneShortcut,
+    SigilHook,
+)
 
 
 def _extract_string_list(data: dict[str, Any], key: str) -> list[str]:

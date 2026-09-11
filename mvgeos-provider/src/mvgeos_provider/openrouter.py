@@ -4,18 +4,20 @@ import json
 from typing import Any
 
 import httpx
-
-from mvgeos_provider.retry import retry_realm_request
-from mvgeos_provider.sse import SSEChunk, SSEStreamingRealm
-from mvgeos_provider.types import (
+from mvgeos_core.abort import (
     AbortError,
     AbortSignal,
+)
+from mvgeos_core.channel import (
     ChannelConfig,
     Model,
     MvgeResponse,
     RealmResponse,
     StopReason,
 )
+
+from mvgeos_provider.retry import retry_realm_request
+from mvgeos_provider.sse import SSEChunk, SSEStreamingRealm
 
 _REASONING_MODELS = ("openai/o1", "openai/o3")
 

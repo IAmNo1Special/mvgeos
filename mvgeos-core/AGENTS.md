@@ -32,15 +32,13 @@ Test paths follow pattern: `mvgeos-core/tests/unit/<module>.py` and `mvgeos-core
 | `StopReason` | Realm stop reasons (`pending`, `stop`, `spellUse`, ...) |
 | `MvgeResponse` / `SummonerRequest` / `SpellResultMessage` | Invocation transcript types |
 | `MvgeSpell` / `SpellResult` / `SpellStatus` | Spell definition and outcome |
-| `MvgeState` / `MvgeEvent` / `MvgeEventType` | Mutable state and lifecycle events |
+| `MvgeState` | Mutable session state — lives in `mvgeos-agent`, which reduces core events into it |
 | `LoopContext` / `LoopCallbacks` | Frozen loop input and extension points |
 | `StreamFn` / `EmitSink` / `run_loop` | Injected Realm caller, event sink, pure turn loop |
 | `SpellDispatcher` / `EventBus` | Tool-call execution and event propagation |
 
-## Migration Status
+## Dependency Direction
 
-Scaffold only. Canonical types and the pure loop still live in `mvgeos-agent`
-(`types.py`, `core_loop.py`, `dispatcher.py`, `event_bus.py`, `errors.py`,
-`constants.py`) and in leaf type modules (`mvgeos-provider/types.py`,
-`mvgeos-runes/types.py`). Migration moves them here first, then inverts leaf
-imports to depend on core.
+`mvgeos-provider`, `mvgeos-runes`, and `mvgeos-agent` depend on core.
+`mvgeos-tome` is dependency-free (JSON payloads only). Enforced by
+`dependency_direction` guard tests in core and provider.

@@ -5,13 +5,13 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from mvgeos_core.errors import TomeResumeError
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import SigilHook
 from mvgeos_tome.ledger import TomeLedger
 from mvgeos_tome.types import TomeMetadata
 
 from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.types import TomeResumeError
 
 
 @pytest.fixture
@@ -460,7 +460,7 @@ async def test_session_resume_with_matching_configuration_persisted_to_disk(
 async def test_session_resume_strict_raises_tome_incompatible_on_mismatched_model(
     tome_ledger: TomeLedger, runner: RuneRunner
 ) -> None:
-    from mvgeos_agent.errors import TomeIncompatibleError
+    from mvgeos_core.errors import TomeIncompatibleError
 
     tome1 = await MvgeTome.create(
         tome_ledger,

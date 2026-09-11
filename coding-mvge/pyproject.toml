@@ -6,12 +6,14 @@ requires-python = ">=3.13"
 license = "MIT"
 dependencies = [
     "mvgeos-agent",
+    "mvgeos-core",
     "mvgeos-provider",
     "mvgeos-runes",
 ]
 
 [tool.uv.sources]
 mvgeos-agent = { workspace = true }
+mvgeos-core = { workspace = true }
 mvgeos-provider = { workspace = true }
 mvgeos-runes = { workspace = true }
 

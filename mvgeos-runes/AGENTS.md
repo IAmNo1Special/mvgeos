@@ -66,6 +66,7 @@ Runes are user-installed extensions (not built-in). They are loaded from three s
 
 ## Dependencies
 
+- `mvgeos-core` — canonical `ExecutionMode`, invocation and abort types
 - `importlib.util` — dynamic module loading
 - `watchdog` — file system events for hot reload
 

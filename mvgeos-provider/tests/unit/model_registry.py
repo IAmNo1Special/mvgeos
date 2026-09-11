@@ -4,13 +4,13 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mvgeos_core.channel import Model
 
 from mvgeos_provider.model_registry import (
     CACHE_TTL_SECONDS,
     ModelRegistry,
     _is_free_entry,
 )
-from mvgeos_provider.types import Model
 
 
 def test_is_free_entry_free_suffix() -> None:

@@ -3,7 +3,10 @@
 from pathlib import Path
 
 import pytest
-from mvgeos_agent.types import MvgeEvent, MvgeEventType
+from mvgeos_core.events import (
+    MvgeEvent,
+    MvgeEventType,
+)
 from nicegui import ui
 from nicegui.testing import User
 

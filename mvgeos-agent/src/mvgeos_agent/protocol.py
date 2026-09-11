@@ -3,17 +3,17 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any, Protocol, runtime_checkable
 
+from mvgeos_core.events import (
+    ContemplationLevel,
+    MvgeEvent,
+    MvgeEventType,
+    QueueMode,
+)
+from mvgeos_core.invocations import MvgeInvocation
 from mvgeos_provider.model_registry import ModelRegistry
 
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.snapshot import RuntimeSnapshot
-from mvgeos_agent.types import (
-    ContemplationLevel,
-    MvgeEvent,
-    MvgeEventType,
-    MvgeInvocation,
-    QueueMode,
-)
 
 
 @runtime_checkable

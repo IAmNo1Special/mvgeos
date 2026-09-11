@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from mvgeos_runes.types import ExecutionMode, SpellDefinition
+from mvgeos_core.spells import ExecutionMode
+from mvgeos_runes.types import SpellDefinition
 
 
 def make_consolidate_spell(consolidator: Any) -> SpellDefinition:

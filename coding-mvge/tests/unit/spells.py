@@ -5,7 +5,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from mvgeos_agent.types import SpellResult, SpellStatus
+from mvgeos_core.spells import (
+    SpellResult,
+    SpellStatus,
+)
 
 import coding_mvge.spells as pkg_spells
 from coding_mvge.spells import (

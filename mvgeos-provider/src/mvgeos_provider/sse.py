@@ -9,6 +9,17 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from mvgeos_core.abort import (
+    AbortError,
+    AbortSignal,
+)
+from mvgeos_core.channel import (
+    ChannelConfig,
+    Model,
+    MvgeResponse,
+    RealmResponse,
+    StopReason,
+)
 
 from mvgeos_provider.base import Realm
 from mvgeos_provider.retry import (
@@ -17,15 +28,6 @@ from mvgeos_provider.retry import (
     is_retryable_realm_response,
     is_retryable_status,
     realm_request_delay_ms,
-)
-from mvgeos_provider.types import (
-    AbortError,
-    AbortSignal,
-    ChannelConfig,
-    Model,
-    MvgeResponse,
-    RealmResponse,
-    StopReason,
 )
 
 

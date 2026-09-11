@@ -6,7 +6,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mvgeos_agent.types import MvgeEvent, MvgeEventType
+from mvgeos_core.events import (
+    MvgeEvent,
+    MvgeEventType,
+)
 from rich.markup import render as render_markup
 
 from mvgeos_cli.commands.repl import StreamRenderer

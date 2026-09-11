@@ -22,13 +22,16 @@ from mvgeos_agent.commands import (
     CommandOutcome,
 )
 from mvgeos_agent.environment import MvgeEnvironment
-from mvgeos_agent.errors import (
+from mvgeos_agent.protocol import MvgeAgent
+from mvgeos_core.errors import (
     AuthenticationError,
     RateLimitError,
     UpstreamTimeoutError,
 )
-from mvgeos_agent.protocol import MvgeAgent
-from mvgeos_agent.types import MvgeEvent, MvgeEventType
+from mvgeos_core.events import (
+    MvgeEvent,
+    MvgeEventType,
+)
 from mvgeos_provider.model_registry import ModelRegistry
 
 from mvgeos_gui.models import (

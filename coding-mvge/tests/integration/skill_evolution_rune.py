@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from mvgeos_agent.sandbox import MvgeSandbox
+from mvgeos_core.sandbox import MvgeSandbox
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import RuneContext
 
@@ -77,7 +77,10 @@ class TestSkillEvolutionRuneIntegration:
 
     @pytest.mark.asyncio
     async def test_system_prompt_not_polluted(self, skill_evolution_rune_loaded):
-        from mvgeos_runes.types import BeforeMvgeStartData, SigilHook
+        from mvgeos_runes.types import (
+            BeforeMvgeStartData,
+            SigilHook,
+        )
 
         data = BeforeMvgeStartData(
             base_prompt="Base system prompt.",
@@ -122,7 +125,7 @@ class TestSkillEvolutionRuneIntegration:
         import shutil
         from pathlib import Path
 
-        from mvgeos_agent.types import SpellStatus
+        from mvgeos_core.spells import SpellStatus
 
         from coding_mvge.runes.skill_evolution.proposer_mvge.mvge import (
             scoped_proposer_context,

@@ -1,10 +1,10 @@
 """Architecture guard: the provider layer must not depend on the agent layer.
 
-mvgeos-provider sits below mvgeos-agent in the workspace dependency graph
-(agent declares provider as a runtime dependency). Any import of
-``mvgeos_agent`` from provider source recreates a circular dependency that
-only resolves because the monorepo installs everything editable into one
-environment.
+mvgeos-provider sits above mvgeos-core and below mvgeos-agent in the
+workspace dependency graph (provider declares core as a runtime dependency;
+agent declares provider). Any import of ``mvgeos_agent`` from provider
+source recreates a circular dependency that only resolves because the
+monorepo installs everything editable into one environment.
 """
 
 from __future__ import annotations
@@ -51,7 +51,6 @@ def test_provider_package_importable_without_agent_side_effects() -> None:
                 "import mvgeos_provider.registry\n"
                 "import mvgeos_provider.retry\n"
                 "import mvgeos_provider.sse\n"
-                "import mvgeos_provider.types\n"
                 "assert 'mvgeos_agent' not in sys.modules, "
                 "'provider imports pulled in mvgeos_agent'\n"
             ),

@@ -3,7 +3,8 @@ from unittest.mock import MagicMock
 
 import pytest
 from mvgeos_agent import MvgeAgent
-from mvgeos_agent.types import MvgeResponse, QueueMode
+from mvgeos_core.channel import MvgeResponse
+from mvgeos_core.events import QueueMode
 
 from mvgeos_cli.agent_factory import (
     create_agent,

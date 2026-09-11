@@ -4,30 +4,25 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from mvgeos_provider.types import RealmResponse
-
-from mvgeos_agent.dispatcher import SpellDispatcher
-from mvgeos_agent.environment import PromptSource
-from mvgeos_agent.errors import (
+from mvgeos_core.abort import AbortError, AbortSignal
+from mvgeos_core.channel import MvgeResponse, RealmResponse, StopReason
+from mvgeos_core.dispatcher import SpellDispatcher
+from mvgeos_core.errors import (
     AuthenticationError,
     MaxTurnsExceededError,
     RateLimitError,
     UpstreamTimeoutError,
 )
-from mvgeos_agent.types import (
-    AbortError,
-    AbortSignal,
+from mvgeos_core.events import (
     ContemplationLevel,
     ContentType,
     MvgeEvent,
     MvgeEventType,
-    MvgeInvocation,
-    MvgeResponse,
-    MvgeSpell,
+    PromptSource,
     QueueMode,
-    StopReason,
-    SummonerRequest,
 )
+from mvgeos_core.invocations import MvgeInvocation, SummonerRequest
+from mvgeos_core.spells import MvgeSpell
 
 EmitSink = Callable[[MvgeEvent], Awaitable[None]]
 StreamFn = Callable[

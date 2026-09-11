@@ -6,8 +6,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from mvgeos_agent import Mvge
-from mvgeos_agent.types import MvgeEventType, SpellStatus
-from mvgeos_runes.types import SkillManifest, SkillScope
+from mvgeos_core.events import MvgeEventType
+from mvgeos_core.spells import SpellStatus
+from mvgeos_runes.types import (
+    SkillManifest,
+    SkillScope,
+)
 
 from coding_mvge.runes.skill_evolution.proposer_mvge import (
     create_proposer_mvge,

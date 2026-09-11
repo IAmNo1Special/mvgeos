@@ -2,10 +2,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
+from mvgeos_core.channel import Model
 
 from mvgeos_provider.openrouter import OpenRouterRealm
 from mvgeos_provider.registry import RealmRegistry
-from mvgeos_provider.types import Model
 
 
 @pytest.mark.asyncio
@@ -85,7 +85,7 @@ async def test_openrouter_realm_request_url_and_headers() -> None:
         base_url="https://openrouter.ai/api/v1",
         api_key="test_key",
     )
-    from mvgeos_provider.types import ChannelConfig
+    from mvgeos_core.channel import ChannelConfig
 
     config = ChannelConfig(model=model)
 

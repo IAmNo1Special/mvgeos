@@ -6,6 +6,12 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mvgeos_core.constants import (
+    DEFAULT_AGENT_NAME,
+    DEFAULT_MODEL,
+    resolve_rune_paths,
+)
+from mvgeos_core.events import QueueMode
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     BeforeMvgeStartData,
@@ -16,11 +22,6 @@ from mvgeos_runes.types import (
 )
 
 from mvgeos_agent.config_manager import ConfigLayer, ConfigManager, ConfigValue
-from mvgeos_agent.constants import (
-    DEFAULT_AGENT_NAME,
-    DEFAULT_MODEL,
-    resolve_rune_paths,
-)
 from mvgeos_agent.environment import (
     DEFAULT_GUIDELINES,
     DEFAULT_GUIDELINES_MD,
@@ -40,7 +41,6 @@ from mvgeos_agent.environment import (
 )
 from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.snapshot import RuntimeSnapshot
-from mvgeos_agent.types import QueueMode
 
 
 def _cfg(**kwargs: Any) -> dict[str, ConfigValue]:

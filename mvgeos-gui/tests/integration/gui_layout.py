@@ -6,7 +6,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from mvgeos_runes.types import SkillManifest, SkillScope
+from mvgeos_runes.types import (
+    SkillManifest,
+    SkillScope,
+)
 from mvgeos_tome.ledger import TomeLedger
 from nicegui import ui
 

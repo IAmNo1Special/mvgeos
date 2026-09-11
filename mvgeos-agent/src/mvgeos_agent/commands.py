@@ -5,10 +5,10 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from mvgeos_core.events import QueueMode
 from mvgeos_provider.model_registry import ModelRegistry
 
 from mvgeos_agent.protocol import MvgeAgent
-from mvgeos_agent.types import QueueMode
 
 logger = logging.getLogger(__name__)
 

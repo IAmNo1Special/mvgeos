@@ -4,11 +4,11 @@ import inspect
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
-if TYPE_CHECKING:
-    from mvgeos_agent.types import MvgeInvocation
-    from mvgeos_provider.types import AbortSignal
+from mvgeos_core.abort import AbortSignal
+from mvgeos_core.invocations import MvgeInvocation
+from mvgeos_core.spells import ExecutionMode
 
 
 @runtime_checkable
@@ -345,11 +345,6 @@ class SkillDiagnostic:
     message: str
     scope: SkillScope | None = None
     path: str = ""
-
-
-class ExecutionMode(StrEnum):
-    SEQUENTIAL = "sequential"
-    PARALLEL = "parallel"
 
 
 @dataclass

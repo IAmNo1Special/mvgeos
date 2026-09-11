@@ -1,6 +1,6 @@
 from typing import Any
 
-from mvgeos_agent.spell_schema import generate_spell_schema
+from mvgeos_core.spell_schema import generate_spell_schema
 
 
 def test_generate_empty_params() -> None:

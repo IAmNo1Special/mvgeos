@@ -7,8 +7,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
+from mvgeos_core.abort import AbortSignal
+from mvgeos_core.channel import (
+    ChannelConfig,
+    Model,
+)
 from mvgeos_provider.openrouter import OpenRouterRealm
-from mvgeos_provider.types import AbortSignal, ChannelConfig, Model
 
 from coding_mvge.runes.skill_evolution.consolidator.harvester import ExperienceHarvester
 from coding_mvge.runes.skill_evolution.consolidator.prompts import (

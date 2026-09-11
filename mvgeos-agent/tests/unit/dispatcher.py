@@ -4,19 +4,23 @@ import asyncio
 from typing import Any
 
 import pytest
-
-from mvgeos_agent.core_loop import LoopCallbacks, LoopContext
-from mvgeos_agent.dispatcher import BatchResult, SpellDispatcher
-from mvgeos_agent.function_spell import FunctionSpell
-from mvgeos_agent.types import (
+from mvgeos_core.channel import (
+    MvgeResponse,
+    StopReason,
+)
+from mvgeos_core.dispatcher import BatchResult, SpellDispatcher
+from mvgeos_core.events import (
     MvgeEvent,
     MvgeEventType,
-    MvgeResponse,
+)
+from mvgeos_core.loop import LoopCallbacks, LoopContext
+from mvgeos_core.spells import (
     MvgeSpell,
     SpellExecutionMode,
     SpellResult,
-    StopReason,
 )
+
+from mvgeos_agent.function_spell import FunctionSpell
 
 
 class SlowMockSpell(MvgeSpell):

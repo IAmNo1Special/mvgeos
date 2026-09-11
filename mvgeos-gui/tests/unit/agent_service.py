@@ -7,8 +7,11 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mvgeos_agent.errors import AuthenticationError, RateLimitError
-from mvgeos_agent.types import MvgeEvent, MvgeEventType
+from mvgeos_core.errors import AuthenticationError, RateLimitError
+from mvgeos_core.events import (
+    MvgeEvent,
+    MvgeEventType,
+)
 
 from mvgeos_gui.models import ChatMessage, StepType, TaskStatus
 from mvgeos_gui.services.agent_service import AgentService, resolve_api_key
@@ -825,7 +828,7 @@ async def test_run_prompt_upstream_timeout(
     agent_service: AgentService, app_state: AppState
 ) -> None:
     """Verify run_prompt renders stall guidance for UpstreamTimeoutError."""
-    from mvgeos_agent.errors import UpstreamTimeoutError
+    from mvgeos_core.errors import UpstreamTimeoutError
 
     mock_agent = MagicMock()
     mock_agent.run = AsyncMock(
@@ -886,7 +889,10 @@ def _make_skill_manifest(
     description: str = "Review code",
 ) -> Any:
     """Build a minimal SkillManifest for testing."""
-    from mvgeos_runes.types import SkillManifest, SkillScope
+    from mvgeos_runes.types import (
+        SkillManifest,
+        SkillScope,
+    )
 
     return SkillManifest(
         name=name,

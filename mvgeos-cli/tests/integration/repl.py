@@ -4,9 +4,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from mvgeos_agent.constants import DEFAULT_MODEL
 from mvgeos_agent.mvge import Mvge
-from mvgeos_agent.types import MvgeEvent, MvgeEventType
+from mvgeos_core.constants import DEFAULT_MODEL
+from mvgeos_core.events import (
+    MvgeEvent,
+    MvgeEventType,
+)
 from mvgeos_provider.model_registry import ModelRegistry
 
 from mvgeos_cli.commands.dispatcher import CliCommandDispatcher
@@ -118,7 +121,7 @@ class TestSlashCommands:
 
 class TestReplHelpers:
     def test_format_error_rate_limit_friendly(self) -> None:
-        from mvgeos_agent.errors import RateLimitError
+        from mvgeos_core.errors import RateLimitError
 
         from mvgeos_cli.console import format_error
 
@@ -143,7 +146,7 @@ class TestReplHelpers:
 
     @pytest.mark.asyncio
     async def test_render_live_rate_limit_countdown(self) -> None:
-        from mvgeos_agent.errors import RateLimitError
+        from mvgeos_core.errors import RateLimitError
 
         from mvgeos_cli.formatting import render_live_rate_limit
 
@@ -161,7 +164,7 @@ class TestReplHelpers:
 
     @pytest.mark.asyncio
     async def test_render_live_rate_limit_daily_quota_skips_countdown(self) -> None:
-        from mvgeos_agent.errors import RateLimitError
+        from mvgeos_core.errors import RateLimitError
 
         from mvgeos_cli.formatting import render_live_rate_limit
 
@@ -181,7 +184,7 @@ class TestReplHelpers:
         assert "Daily free-model quota exhausted" in outputs[0]
 
     def test_format_error_rate_limit_with_retry_after(self) -> None:
-        from mvgeos_agent.errors import RateLimitError
+        from mvgeos_core.errors import RateLimitError
 
         from mvgeos_cli.console import format_error
 
@@ -194,7 +197,7 @@ class TestReplHelpers:
         assert format_error(RuntimeError("boom")) == "[red]Error: boom[/red]"
 
     def test_format_error_auth_friendly(self) -> None:
-        from mvgeos_agent.errors import AuthenticationError
+        from mvgeos_core.errors import AuthenticationError
 
         from mvgeos_cli.console import format_error
 
@@ -307,7 +310,10 @@ class TestReplHelpers:
         assert completions == []
 
     def test_display_response(self) -> None:
-        from mvgeos_agent.types import MvgeResponse, StopReason
+        from mvgeos_core.channel import (
+            MvgeResponse,
+            StopReason,
+        )
 
         from mvgeos_cli.commands.repl import _display_response
 
@@ -354,7 +360,7 @@ class TestReplHelpers:
     async def test_handle_command_mode_toggle(self) -> None:
         from unittest.mock import MagicMock
 
-        from mvgeos_agent.types import QueueMode
+        from mvgeos_core.events import QueueMode
         from mvgeos_provider.model_registry import ModelRegistry
 
         agent = MagicMock()
@@ -506,7 +512,10 @@ class TestStreamRenderer:
         assert "Result text" in captured.out
 
     def test_turn_start_resets_contemplation_buffer(self) -> None:
-        from mvgeos_agent.types import MvgeEvent, MvgeEventType
+        from mvgeos_core.events import (
+            MvgeEvent,
+            MvgeEventType,
+        )
 
         from mvgeos_cli.commands.repl import StreamRenderer
         from mvgeos_cli.commands.tui import TuiSink

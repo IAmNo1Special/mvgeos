@@ -5,12 +5,16 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mvgeos_core.channel import (
+    ChannelConfig,
+    Model,
+    RealmResponse,
+)
 
 from mvgeos_provider.base import Realm, RealmFactory
 from mvgeos_provider.model_registry import ModelRegistry
 from mvgeos_provider.openrouter import OpenRouterRealm
 from mvgeos_provider.registry import RealmRegistry
-from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 
 
 def test_register_provider() -> None:

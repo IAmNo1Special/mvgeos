@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from mvgeos_agent.types import MvgeEvent, MvgeEventType
+from mvgeos_core.events import MvgeEvent, MvgeEventType
 
 
 class EventBus:

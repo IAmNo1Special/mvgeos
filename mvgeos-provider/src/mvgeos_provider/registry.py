@@ -4,11 +4,11 @@ import asyncio
 from typing import Any
 
 import httpx
+from mvgeos_core.channel import Model
 
 from mvgeos_provider.base import Realm, RealmFactory
 from mvgeos_provider.model_registry import ModelRegistry
 from mvgeos_provider.openrouter import OpenRouterRealm
-from mvgeos_provider.types import Model
 
 
 class RealmRegistry:

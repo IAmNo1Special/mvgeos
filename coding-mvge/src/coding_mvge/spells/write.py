@@ -3,7 +3,10 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from mvgeos_agent.types import SpellResult, SpellStatus
+from mvgeos_core.spells import (
+    SpellResult,
+    SpellStatus,
+)
 
 
 def _write_file(path: Path, content: str) -> None:

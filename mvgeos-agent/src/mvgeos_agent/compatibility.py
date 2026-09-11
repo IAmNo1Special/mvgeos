@@ -3,7 +3,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from mvgeos_runes.types import Diagnostic, DiagnosticKind
+from mvgeos_runes.types import (
+    Diagnostic,
+    DiagnosticKind,
+)
 from mvgeos_tome.types import TomeEntry, TomeMetadata
 
 

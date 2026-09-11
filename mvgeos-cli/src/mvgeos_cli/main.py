@@ -11,11 +11,11 @@ from mvgeos_agent.auth import (
     load_api_key_from_auth,
     save_api_key_to_auth,
 )
-from mvgeos_agent.constants import (
-    DEFAULT_AGENT_NAME,
-)
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.protocol import AgentFactory, MvgeAgent
+from mvgeos_core.constants import (
+    DEFAULT_AGENT_NAME,
+)
 from typer._click.parser import _split_opt
 from typer.core import TyperGroup
 

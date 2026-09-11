@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from mvgeos_core.constants import DEFAULT_MODEL
+from mvgeos_core.spells import MvgeSpell
 from mvgeos_runes.types import (
     Diagnostic,
     DiagnosticKind,
@@ -16,7 +18,6 @@ from mvgeos_runes.types import (
 )
 
 from mvgeos_agent.config_manager import ConfigLayer, ConfigValue
-from mvgeos_agent.constants import DEFAULT_MODEL
 from mvgeos_agent.environment import (
     DEFAULT_GUIDELINES,
     DEFAULT_SYSTEM_PROMPT,
@@ -39,7 +40,6 @@ from mvgeos_agent.snapshot import (
     to_snapshot_skill,
     to_snapshot_spell,
 )
-from mvgeos_agent.types import MvgeSpell
 
 
 class TestSnapshotSpell:

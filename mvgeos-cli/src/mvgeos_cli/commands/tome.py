@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import typer
-from mvgeos_agent.constants import DEFAULT_TOME_DIR
+from mvgeos_core.constants import DEFAULT_TOME_DIR
 from mvgeos_tome.ledger import TomeLedger
 from mvgeos_tome.types import TomeEntry, TomeMetadata
 from rich import box

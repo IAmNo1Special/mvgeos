@@ -5,7 +5,10 @@ from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from typing import Any
 
-from mvgeos_agent.types import SpellResult, SpellStatus
+from mvgeos_core.spells import (
+    SpellResult,
+    SpellStatus,
+)
 
 from coding_mvge.runes.skill_evolution.engine import SkillEvolutionEngine
 

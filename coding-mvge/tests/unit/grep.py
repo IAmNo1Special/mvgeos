@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from mvgeos_agent.types import SpellStatus
+from mvgeos_core.spells import SpellStatus
 
 from coding_mvge.spells import grep
 

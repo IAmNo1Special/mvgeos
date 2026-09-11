@@ -4,22 +4,28 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from mvgeos_core.channel import (
+    MvgeResponse,
+    StopReason,
+)
+from mvgeos_core.errors import (
+    TomeIncompatibleError,
+    TomeResumeError,
+)
+from mvgeos_core.events import ContentType
+from mvgeos_core.invocations import SummonerRequest
+from mvgeos_core.spells import SpellResultMessage
 from mvgeos_runes.rune_runner import RuneRunner
-from mvgeos_runes.types import Diagnostic, DiagnosticKind, SigilHook
+from mvgeos_runes.types import (
+    Diagnostic,
+    DiagnosticKind,
+    SigilHook,
+)
 from mvgeos_tome.ledger import TomeLedger
 from mvgeos_tome.types import TomeEntryType, TomeMetadata
 
 from mvgeos_agent.agent_session import MvgeTome, _serialise_invocation
 from mvgeos_agent.compatibility import SessionCompatibilityReport
-from mvgeos_agent.types import (
-    ContentType,
-    MvgeResponse,
-    SpellResultMessage,
-    StopReason,
-    SummonerRequest,
-    TomeIncompatibleError,
-    TomeResumeError,
-)
 
 
 def _temp_tome(tmp: str) -> tuple[MvgeTome, TomeLedger]:
@@ -348,7 +354,7 @@ class TestSwitch:
 class TestCompatibility:
     @pytest.mark.asyncio
     async def test_open_strict_raises_when_incompatible(self) -> None:
-        from mvgeos_agent.errors import TomeIncompatibleError
+        from mvgeos_core.errors import TomeIncompatibleError
 
         meta = TomeMetadata(
             id="a" * 32,
@@ -491,14 +497,11 @@ class TestMigrationAndReconstruction:
 
     @pytest.mark.asyncio
     async def test_reconstruct_invocations_various_entry_types(self) -> None:
+        from mvgeos_core.channel import MvgeResponse
+        from mvgeos_core.events import ContentType
+        from mvgeos_core.invocations import SummonerRequest
+        from mvgeos_core.spells import SpellResultMessage
         from mvgeos_tome.types import TomeEntry, TomeEntryType
-
-        from mvgeos_agent.types import (
-            ContentType,
-            MvgeResponse,
-            SpellResultMessage,
-            SummonerRequest,
-        )
 
         entries = [
             TomeEntry(
@@ -567,9 +570,8 @@ class TestMigrationAndReconstruction:
 
     @pytest.mark.asyncio
     async def test_reconstruct_invocations_with_compaction(self) -> None:
+        from mvgeos_core.invocations import SummonerRequest
         from mvgeos_tome.types import TomeEntry, TomeEntryType
-
-        from mvgeos_agent.types import SummonerRequest
 
         entries = [
             TomeEntry(

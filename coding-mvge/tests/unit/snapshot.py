@@ -7,8 +7,8 @@ from typing import Any
 import pytest
 from mvgeos_agent import Mvge
 from mvgeos_agent.config_manager import ConfigManager
-from mvgeos_agent.constants import DEFAULT_MODEL
 from mvgeos_agent.environment import MvgeEnvironment, PromptSource
+from mvgeos_core.constants import DEFAULT_MODEL
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     Diagnostic,

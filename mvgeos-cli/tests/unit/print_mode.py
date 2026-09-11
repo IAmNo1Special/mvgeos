@@ -3,8 +3,8 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from mvgeos_agent.errors import AuthenticationError, RateLimitError
-from mvgeos_agent.types import MvgeResponse
+from mvgeos_core.channel import MvgeResponse
+from mvgeos_core.errors import AuthenticationError, RateLimitError
 
 from mvgeos_cli.main import _run_print_mode
 

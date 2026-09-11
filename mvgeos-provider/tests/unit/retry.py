@@ -3,6 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from mvgeos_core.channel import (
+    Model,
+    RealmResponse,
+)
 
 from mvgeos_provider.retry import (
     DEFAULT_MAX_RETRY_DELAY_MS,
@@ -16,7 +20,6 @@ from mvgeos_provider.retry import (
     retry_invocation,
     retry_realm_request,
 )
-from mvgeos_provider.types import Model, RealmResponse
 
 
 def _model() -> Model:
@@ -405,7 +408,10 @@ class TestRetryRealmRequest:
 
     @pytest.mark.asyncio
     async def test_retry_invocation_aborted_before_start(self) -> None:
-        from mvgeos_provider.types import AbortController, AbortError
+        from mvgeos_core.abort import (
+            AbortController,
+            AbortError,
+        )
 
         controller = AbortController()
         controller.abort()
@@ -420,7 +426,10 @@ class TestRetryRealmRequest:
     async def test_retry_invocation_aborted_during_sleep(self) -> None:
         import asyncio
 
-        from mvgeos_provider.types import AbortController, AbortError
+        from mvgeos_core.abort import (
+            AbortController,
+            AbortError,
+        )
 
         controller = AbortController()
 

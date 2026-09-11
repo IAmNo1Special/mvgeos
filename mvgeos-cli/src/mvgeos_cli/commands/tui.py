@@ -8,9 +8,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from mvgeos_agent.constants import DEFAULT_AGENT_NAME
-from mvgeos_agent.errors import RateLimitError
 from mvgeos_agent.protocol import AgentFactory, MvgeAgent
+from mvgeos_core.constants import DEFAULT_AGENT_NAME
+from mvgeos_core.errors import RateLimitError
 from mvgeos_provider.model_registry import ModelRegistry
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer

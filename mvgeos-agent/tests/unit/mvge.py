@@ -5,11 +5,13 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from mvgeos_runes.types import ExecutionMode, SpellDefinition
+from mvgeos_core.abort import AbortSignal
+from mvgeos_core.events import QueueMode
+from mvgeos_core.spells import ExecutionMode
+from mvgeos_runes.types import SpellDefinition
 
 from mvgeos_agent import Mvge
 from mvgeos_agent.mvge import _validate_spell_name
-from mvgeos_agent.types import AbortSignal, QueueMode
 
 
 def dummy_built_in(command: str) -> str:
@@ -379,7 +381,7 @@ class TestMvgeBuildSpellsNameValidation:
         assert "Spell 'invalid.spell.name' has an invalid name" in caplog.text
 
     def test_make_stream_fn_passes_system_prompt_to_channel_config(self) -> None:
-        from mvgeos_provider.types import Model
+        from mvgeos_core.channel import Model
 
         from mvgeos_agent.types import MvgeState
 

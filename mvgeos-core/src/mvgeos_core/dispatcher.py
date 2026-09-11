@@ -4,32 +4,28 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from mvgeos_agent.errors import (
+from mvgeos_core.abort import AbortError, AbortSignal
+from mvgeos_core.channel import MvgeResponse, StopReason
+from mvgeos_core.errors import (
     MvgeError,
     SpellNotFoundError,
     SpellTimeoutError,
     to_error,
 )
-from mvgeos_agent.truncate import (
+from mvgeos_core.events import ContentType, MvgeEvent, MvgeEventType
+from mvgeos_core.spells import (
+    SpellExecutionMode,
+    SpellResult,
+    SpellResultMessage,
+)
+from mvgeos_core.truncate import (
     MAX_SPELL_RESULT_BYTES,
     format_size,
     truncate_head,
 )
-from mvgeos_agent.types import (
-    AbortError,
-    AbortSignal,
-    ContentType,
-    MvgeEvent,
-    MvgeEventType,
-    MvgeResponse,
-    SpellExecutionMode,
-    SpellResult,
-    SpellResultMessage,
-    StopReason,
-)
 
 if TYPE_CHECKING:
-    from mvgeos_agent.core_loop import EmitSink, LoopCallbacks, LoopContext
+    from mvgeos_core.loop import EmitSink, LoopCallbacks, LoopContext
 
 _TRUNCATED_SPELL_CALL = (
     "Spell '{name}' was not cast: the response hit the output Mana limit, so its "

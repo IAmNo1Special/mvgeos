@@ -3,7 +3,11 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mvgeos_runes.types import Diagnostic, DiagnosticKind, RuneScope
+from mvgeos_runes.types import (
+    Diagnostic,
+    DiagnosticKind,
+    RuneScope,
+)
 
 from mvgeos_cli.commands.repl import run_repl
 from mvgeos_cli.commands.tui import run_tui

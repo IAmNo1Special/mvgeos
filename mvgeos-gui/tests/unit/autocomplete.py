@@ -5,7 +5,10 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from mvgeos_runes.types import SkillManifest, SkillScope
+from mvgeos_runes.types import (
+    SkillManifest,
+    SkillScope,
+)
 
 from mvgeos_gui.autocomplete import (
     AutocompleteMode,

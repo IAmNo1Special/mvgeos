@@ -3,7 +3,11 @@ import tempfile
 from pathlib import Path
 
 from mvgeos_runes.loader import load_factory_from_manifest
-from mvgeos_runes.types import DiagnosticKind, RuneManifest, RuneScope
+from mvgeos_runes.types import (
+    DiagnosticKind,
+    RuneManifest,
+    RuneScope,
+)
 
 
 def test_auto_discover_venv_site_packages_windows() -> None:

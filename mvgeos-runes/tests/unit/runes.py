@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 import pytest
+from mvgeos_core.spells import ExecutionMode
 
 from mvgeos_runes.loader import (
     clear_skill_manifest_cache,
@@ -19,7 +20,6 @@ from mvgeos_runes.loader import (
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.types import (
     DiagnosticKind,
-    ExecutionMode,
     RuneManifest,
     RuneScope,
     SigilHook,

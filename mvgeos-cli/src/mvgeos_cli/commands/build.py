@@ -4,11 +4,11 @@ import asyncio
 from pathlib import Path
 
 import typer
-from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.protocol import AgentFactory, MvgeAgent
 from mvgeos_agent.snapshot import RuntimeSnapshot
+from mvgeos_core.constants import DEFAULT_AGENT_NAME
 
 from mvgeos_cli.console import format_error, get_console
 

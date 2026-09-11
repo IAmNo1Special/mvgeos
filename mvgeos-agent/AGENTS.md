@@ -1,6 +1,6 @@
 # mvgeos-agent — Agent Instructions
 
-This package implements the core agent engine: the `Mvge` class, `MvgeLoop` (turn loop), `MvgeState` (mutable state), `MvgeEvent` (lifecycle events), `EventBus` (pub/sub), `Sigil` (hook protocol), `MvgeEnvironment` (Two-Layer Invariant Scaffolding & dynamic prompt rendering), and `FunctionSpell` (callable tool coercion & discovery).
+This package implements the session-aware agent engine: the `Mvge` class, `MvgeLoop` (stateful wrapper around the core loop), `MvgeState` (mutable session state), `MvgeHarness` (lifecycle owner), `MvgeEnvironment` (Two-Layer Invariant Scaffolding & dynamic prompt rendering), and `FunctionSpell` (callable tool coercion & discovery). Loop vocabulary (invocations, spells, events, `run_loop`) is canonical in `mvgeos-core`.
 
 ## Package-Specific Conventions
 
@@ -31,15 +31,9 @@ Test paths follow pattern: `mvgeos-agent/tests/unit/<module>.py` and `mvgeos-age
 | Type | Purpose |
 | --- | --- |
 | `MvgeState` | Mutable agent state (prompt, model, spells, invocations, mana, events, queues) |
-| `MvgeEvent` / `MvgeEventType` | Lifecycle event (type + data dict) |
-| `MvgeSpell` / `FunctionSpell` | Tool base class and auto-coerced Python function spell |
-| `SpellResult` | Result of a spell execution (status, content, details, error) |
-| `SpellStatus` | Enum (SUCCESS, ERROR, PARTIAL) |
-| `SpellResultMessage` | Transcript message for spell results (role="spellResult") |
-| `MvgeInvocation` | Union alias: `SummonerRequest \| MvgeResponse \| SpellResultMessage` |
-| `ContemplationLevel` | Reasoning-effort enum (maps to OpenRouter `reasoning.effort`) |
+| `FunctionSpell` | Auto-coerced Python function spell (base `MvgeSpell` lives in core) |
 | `Mvge` | Concrete agent with zero-config auto-discovery (`run()` → `_run_impl()`) |
-| `MvgeLoop` | The turn loop: channels realm responses, executes spells, emits events/sigils |
+| `MvgeLoop` | Stateful wrapper around core `run_loop`: owns runner, bus, tome; reduces events into `MvgeState` |
 | `MvgeHarness` | Session-aware operational owner of the agent loop, compaction, and turns |
 | `MvgeEnvironment` | Two-layer invariant scaffolding, layered config, and diagnostic introspection |
 | `CompactionRunner` | Orchestrates transcript compaction and summary generation |
@@ -47,13 +41,18 @@ Test paths follow pattern: `mvgeos-agent/tests/unit/<module>.py` and `mvgeos-age
 | `MvgeTome` | Deep session manager over `TomeLedger`; open/create/fork/switch; emits session sigils |
 | `RuneLifecycle` | Loads runes/skills into a RuneRunner and owns hot-reload watchers |
 
+Core vocabulary (`MvgeEvent`, `MvgeSpell`, `MvgeInvocation`, `ContemplationLevel`,
+`SpellDispatcher`, `run_loop`, ...) is documented in `mvgeos-core/AGENTS.md`.
+
 ## Spell Schema
 
-- `generate_spell_schema()` in `mvgeos_agent/spell_schema.py` — generates JSON schema from function signatures
+- `generate_spell_schema()` in `mvgeos_core/spell_schema.py` — generates JSON schema from function signatures
 
 ## Dependencies
 
-- `mvgeos-provider` (Realm protocol, Model, ChannelConfig, RealmResponse)
+- `mvgeos-core` (loop vocabulary: abort, invocations, spells, events, loop)
+- `mvgeos-provider` (Realm protocol, registries, OpenRouter realm)
+- `mvgeos-tome` (TomeLedger persistence)
 - `mvgeos-runes` (RuneRunner, RuneContext, SigilHook)
 
 ## Architecture
@@ -63,7 +62,7 @@ The core loop flows:
 2. `BaseMvge.initialize()` creates `MvgeHarness` (wraps `MvgeLoop`, owns lifecycle)
 3. `BaseMvge._run_impl()` delegates to `MvgeHarness.run()`
 4. `MvgeHarness.run()` delegates to `MvgeLoop.run()` (nested outer/inner loops)
-5. `MvgeLoop.run()` channels `RealmResponse`s from the Realm
+5. `MvgeLoop.run()` drives core `run_loop()` (nested outer/inner loops), channeling `RealmResponse`s from the Realm
 6. On `StopReason.SPELL_USE`: fires `BEFORE_SPELL_CAST` sigil, executes spell, fires `AFTER_SPELL_RESULT`
 7. On `STOP/LENGTH/ERROR`: appends response, emits `MESSAGE_END`, `TURN_END`, `AGENT_END`
 

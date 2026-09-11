@@ -3,14 +3,17 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from mvgeos_agent.truncate import (
+from mvgeos_core.spells import (
+    SpellResult,
+    SpellStatus,
+)
+from mvgeos_core.truncate import (
     DEFAULT_MAX_BYTES,
     GREP_MAX_LINE_LENGTH,
     format_size,
     truncate_head,
     truncation_details,
 )
-from mvgeos_agent.types import SpellResult, SpellStatus
 
 _BINARY_PROBE_BYTES = 8192
 

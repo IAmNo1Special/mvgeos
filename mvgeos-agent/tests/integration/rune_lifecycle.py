@@ -11,7 +11,10 @@ from mvgeos_runes.loader import (
     load_skills_from_paths,
 )
 from mvgeos_runes.rune_runner import RuneRunner
-from mvgeos_runes.types import RuneContext, RuneScope
+from mvgeos_runes.types import (
+    RuneContext,
+    RuneScope,
+)
 
 from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.rune_lifecycle import RuneLifecycle
@@ -258,7 +261,10 @@ async def test_rune_resources_discover_dynamic_skills(tmp_path: Path) -> None:
     path_escaped = str(dynamic_skill).replace("\\", "\\\\")
     (disc_rune / "rune.py").write_text(
         f"""
-from mvgeos_runes.types import ResourcesDiscoverData, SigilHook
+from mvgeos_runes.types import (
+    ResourcesDiscoverData,
+    SigilHook,
+)
 
 def rune_factory(api):
     async def on_discover(data: ResourcesDiscoverData) -> ResourcesDiscoverData:

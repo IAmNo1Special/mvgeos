@@ -6,8 +6,11 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mvgeos_core.channel import (
+    ChannelConfig,
+    Model,
+)
 from mvgeos_provider.base import Realm
-from mvgeos_provider.types import ChannelConfig, Model
 
 # Ensure runes path is in sys.path when installed
 RUNES_DIR = Path("~/.agents/.mvgeos/runes").expanduser()

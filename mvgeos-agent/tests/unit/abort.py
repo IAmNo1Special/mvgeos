@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-
-from mvgeos_agent.types import AbortController, AbortError
+from mvgeos_core.abort import (
+    AbortController,
+    AbortError,
+)
 
 
 class TestAbortSignal:

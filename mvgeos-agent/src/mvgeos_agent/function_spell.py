@@ -8,12 +8,18 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from mvgeos_provider.types import AbortError, AbortSignal
+from mvgeos_core.abort import (
+    AbortError,
+    AbortSignal,
+)
+from mvgeos_core.errors import SpellDiscoveryError
+from mvgeos_core.spell_schema import generate_spell_schema
+from mvgeos_core.spells import (
+    MvgeSpell,
+    SpellExecutionMode,
+    SpellResult,
+)
 from pydantic import BaseModel
-
-from mvgeos_agent.errors import SpellDiscoveryError
-from mvgeos_agent.spell_schema import generate_spell_schema
-from mvgeos_agent.types import MvgeSpell, SpellExecutionMode, SpellResult
 
 type SpellUnion = Callable[..., Any] | MvgeSpell
 

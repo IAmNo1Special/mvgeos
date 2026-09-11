@@ -4,7 +4,21 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from mvgeos_provider.types import Model, RealmResponse
+from mvgeos_core.channel import (
+    Model,
+    MvgeResponse,
+    RealmResponse,
+    StopReason,
+)
+from mvgeos_core.events import (
+    MvgeEvent,
+    MvgeEventType,
+)
+from mvgeos_core.invocations import (
+    MvgeInvocation,
+    SummonerRequest,
+)
+from mvgeos_core.spells import SpellResultMessage
 
 from mvgeos_agent.harness.compaction import (
     DEFAULT_COMPACTION_SETTINGS,
@@ -18,15 +32,6 @@ from mvgeos_agent.harness.compaction import (
     generate_summary,
     prepare_compaction,
     should_compact,
-)
-from mvgeos_agent.types import (
-    MvgeEvent,
-    MvgeEventType,
-    MvgeInvocation,
-    MvgeResponse,
-    SpellResultMessage,
-    StopReason,
-    SummonerRequest,
 )
 
 
@@ -572,8 +577,10 @@ class TestTomePersistence:
         """The runner must actually swap the transcript during a real run."""
         from collections.abc import AsyncIterator
 
+        from mvgeos_core.spells import MvgeSpell
+
         from mvgeos_agent.mvge_loop import MvgeLoop
-        from mvgeos_agent.types import MvgeSpell, MvgeState
+        from mvgeos_agent.types import MvgeState
 
         spell = MagicMock(spec=MvgeSpell)
         spell.name = "x"

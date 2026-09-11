@@ -4,7 +4,12 @@ import json
 from pathlib import Path
 
 from mvgeos_runes.loader import load_factory_from_manifest, load_runes_from_paths
-from mvgeos_runes.types import Diagnostic, DiagnosticKind, RuneManifest, RuneScope
+from mvgeos_runes.types import (
+    Diagnostic,
+    DiagnosticKind,
+    RuneManifest,
+    RuneScope,
+)
 
 
 def _write_rune(

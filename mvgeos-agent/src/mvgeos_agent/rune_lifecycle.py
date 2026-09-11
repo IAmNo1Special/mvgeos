@@ -14,6 +14,7 @@ import logging
 from collections.abc import Sequence
 from pathlib import Path
 
+from mvgeos_core.sandbox import MvgeSandbox
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_runes.loader import (
     discover_plugin_skill_paths,
@@ -33,7 +34,6 @@ from mvgeos_runes.types import (
 from mvgeos_runes.watcher import RuneWatcher
 
 from mvgeos_agent.environment import MvgeEnvironment
-from mvgeos_agent.sandbox import MvgeSandbox
 
 logger = logging.getLogger(__name__)
 

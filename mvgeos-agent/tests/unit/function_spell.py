@@ -5,10 +5,19 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from mvgeos_core import MissingApiKeyError
+from mvgeos_core.spells import (
+    MvgeSpell,
+    SpellResult,
+    SpellStatus,
+)
 from pydantic import BaseModel
 
-from mvgeos_agent import FunctionSpell, MissingApiKeyError, Mvge, coerce_spell
-from mvgeos_agent.types import MvgeSpell, SpellResult, SpellStatus
+from mvgeos_agent import (
+    FunctionSpell,
+    Mvge,
+    coerce_spell,
+)
 
 
 def sample_sync_func(query: str, limit: int = 10) -> str:
@@ -262,7 +271,9 @@ class TestSpellDirectoryDiscovery:
     def test_discovery_ambiguous_raises_spell_discovery_error(
         self, tmp_path: Path
     ) -> None:
-        from mvgeos_agent import SpellDiscoveryError, discover_spells_from_dir
+        from mvgeos_core import SpellDiscoveryError
+
+        from mvgeos_agent import discover_spells_from_dir
 
         spells_dir = tmp_path / "spells"
         spells_dir.mkdir()
@@ -281,8 +292,9 @@ class TestSpellDirectoryDiscovery:
 
     @pytest.mark.asyncio
     async def test_execute_injects_signal_when_supported(self) -> None:
+        from mvgeos_core.abort import AbortController
+
         from mvgeos_agent.function_spell import FunctionSpell
-        from mvgeos_agent.types import AbortController
 
         received_signal = None
 

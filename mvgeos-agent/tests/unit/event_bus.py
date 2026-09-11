@@ -3,9 +3,11 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-
-from mvgeos_agent.event_bus import EventBus
-from mvgeos_agent.types import MvgeEvent, MvgeEventType
+from mvgeos_core.event_bus import EventBus
+from mvgeos_core.events import (
+    MvgeEvent,
+    MvgeEventType,
+)
 
 
 class TestEventBus:
@@ -79,16 +81,17 @@ class TestEventBus:
 class TestEventBusIntegration:
     @pytest.mark.asyncio
     async def test_loop_emits_to_event_bus(self) -> None:
-        from mvgeos_provider.types import Model, RealmResponse
+        from mvgeos_core.channel import (
+            Model,
+            MvgeResponse,
+            RealmResponse,
+            StopReason,
+        )
+        from mvgeos_core.events import ContemplationLevel
+        from mvgeos_core.invocations import SummonerRequest
 
         from mvgeos_agent.mvge_loop import MvgeLoop
-        from mvgeos_agent.types import (
-            ContemplationLevel,
-            MvgeResponse,
-            MvgeState,
-            StopReason,
-            SummonerRequest,
-        )
+        from mvgeos_agent.types import MvgeState
 
         bus = EventBus()
         handler = MagicMock()
@@ -148,16 +151,17 @@ class TestEventBusIntegration:
 
     @pytest.mark.asyncio
     async def test_loop_no_event_bus_no_crash(self) -> None:
-        from mvgeos_provider.types import Model, RealmResponse
+        from mvgeos_core.channel import (
+            Model,
+            MvgeResponse,
+            RealmResponse,
+            StopReason,
+        )
+        from mvgeos_core.events import ContemplationLevel
+        from mvgeos_core.invocations import SummonerRequest
 
         from mvgeos_agent.mvge_loop import MvgeLoop
-        from mvgeos_agent.types import (
-            ContemplationLevel,
-            MvgeResponse,
-            MvgeState,
-            StopReason,
-            SummonerRequest,
-        )
+        from mvgeos_agent.types import MvgeState
 
         state = MvgeState(
             system_prompt="test",

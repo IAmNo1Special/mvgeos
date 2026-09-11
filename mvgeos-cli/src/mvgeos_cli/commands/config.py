@@ -4,7 +4,7 @@ import json
 
 import typer
 from mvgeos_agent.config_manager import ConfigManager, validate_agent_name
-from mvgeos_agent.constants import DEFAULT_AGENT_NAME
+from mvgeos_core.constants import DEFAULT_AGENT_NAME
 
 from mvgeos_cli.console import format_error, get_console
 

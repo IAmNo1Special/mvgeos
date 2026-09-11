@@ -10,13 +10,29 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from mvgeos_core.channel import (
+    ChannelConfig,
+    Model,
+    RealmResponse,
+)
 from mvgeos_provider.base import Realm
 from mvgeos_provider.retry import DEFAULT_RETRY_POLICY, RetryPolicy, retry_invocation
-from mvgeos_provider.types import ChannelConfig, Model, RealmResponse
 
 if TYPE_CHECKING:
+    from mvgeos_core.loop import EmitSink
+
     from mvgeos_agent.agent_session import MvgeTome
-    from mvgeos_agent.core_loop import EmitSink
+
+from mvgeos_core.abort import AbortSignal
+from mvgeos_core.events import (
+    ContentType,
+    MvgeEvent,
+    MvgeEventType,
+)
+from mvgeos_core.invocations import (
+    MvgeInvocation,
+    SummonerRequest,
+)
 
 from mvgeos_agent.harness.compaction.compaction import (
     DEFAULT_COMPACTION_SETTINGS,
@@ -25,14 +41,6 @@ from mvgeos_agent.harness.compaction.compaction import (
     generate_summary,
     prepare_compaction,
     should_compact,
-)
-from mvgeos_agent.types import (
-    AbortSignal,
-    ContentType,
-    MvgeEvent,
-    MvgeEventType,
-    MvgeInvocation,
-    SummonerRequest,
 )
 
 logger = logging.getLogger(__name__)

@@ -1,7 +1,5 @@
 import pytest
-
-from mvgeos_agent.sandbox import MvgeSandbox
-from mvgeos_agent.types import SandboxTimeoutError
+from mvgeos_core.sandbox import MvgeSandbox, SandboxTimeoutError
 
 
 def test_validate_ast_allows_safe_code() -> None:

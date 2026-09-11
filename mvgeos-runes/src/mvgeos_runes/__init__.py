@@ -1,3 +1,5 @@
+from mvgeos_core.spells import ExecutionMode
+
 from mvgeos_runes.loader import (
     discover_plugin_skill_paths,
     get_default_skill_paths,
@@ -14,7 +16,6 @@ from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     Diagnostic,
     DiagnosticKind,
-    ExecutionMode,
     RegisteredCommand,
     ResourcesDiscoverData,
     RuneContext,

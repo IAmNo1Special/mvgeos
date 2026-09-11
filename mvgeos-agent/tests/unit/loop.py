@@ -8,26 +8,31 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from mvgeos_provider.types import Model, RealmResponse
-from mvgeos_runes.rune_runner import RuneRunner
-from mvgeos_runes.types import SigilHook
-
-from mvgeos_agent.environment import PromptSource
-from mvgeos_agent.event_bus import EventBus
-from mvgeos_agent.mvge_loop import MvgeLoop
-from mvgeos_agent.types import (
+from mvgeos_core.channel import (
+    Model,
+    MvgeResponse,
+    RealmResponse,
+    StopReason,
+)
+from mvgeos_core.event_bus import EventBus
+from mvgeos_core.events import (
     ContemplationLevel,
     ContentType,
     MvgeEvent,
     MvgeEventType,
-    MvgeResponse,
-    MvgeSpell,
-    MvgeState,
     QueueMode,
-    SpellResultMessage,
-    StopReason,
-    SummonerRequest,
 )
+from mvgeos_core.invocations import SummonerRequest
+from mvgeos_core.spells import (
+    MvgeSpell,
+    SpellResultMessage,
+)
+from mvgeos_runes.rune_runner import RuneRunner
+from mvgeos_runes.types import SigilHook
+
+from mvgeos_agent.environment import PromptSource
+from mvgeos_agent.mvge_loop import MvgeLoop
+from mvgeos_agent.types import MvgeState
 
 
 class TestMvgeLoop:
@@ -316,7 +321,8 @@ class TestMvgeLoop:
 
     @pytest.mark.asyncio
     async def test_loop_raises_rate_limit_error(self, state: MvgeState) -> None:
-        from mvgeos_agent.errors import RateLimitError
+        from mvgeos_core.errors import RateLimitError
+
         from mvgeos_agent.mvge_loop import MvgeLoop
 
         model_obj = Model(
@@ -342,7 +348,8 @@ class TestMvgeLoop:
 
     @pytest.mark.asyncio
     async def test_loop_raises_auth_error(self, state: MvgeState) -> None:
-        from mvgeos_agent.errors import AuthenticationError
+        from mvgeos_core.errors import AuthenticationError
+
         from mvgeos_agent.mvge_loop import MvgeLoop
 
         model_obj = Model(
@@ -814,13 +821,13 @@ class TestPromptSourceIntrospection:
         assert state.prompt_source == PromptSource.AGENT_MD
 
     def test_loop_context_has_prompt_source_default(self) -> None:
-        from mvgeos_agent.core_loop import LoopContext
+        from mvgeos_core.loop import LoopContext
 
         ctx = LoopContext(system_prompt="test")
         assert ctx.prompt_source == PromptSource.BUILTIN
 
     def test_loop_context_prompt_source_from_state(self) -> None:
-        from mvgeos_agent.core_loop import LoopContext
+        from mvgeos_core.loop import LoopContext
 
         ctx = LoopContext(system_prompt="test", prompt_source=PromptSource.PROJECT_MD)
         assert ctx.prompt_source == PromptSource.PROJECT_MD
@@ -829,7 +836,8 @@ class TestPromptSourceIntrospection:
     async def test_loop_passes_prompt_source_to_context(self) -> None:
         from unittest.mock import patch
 
-        from mvgeos_agent.core_loop import LoopContext
+        from mvgeos_core.loop import LoopContext
+
         from mvgeos_agent.mvge_loop import MvgeLoop
 
         state = MvgeState(
@@ -978,11 +986,14 @@ async def test_loop_streaming_deduplication_and_contemplation() -> None:
 async def test_record_invocation_spell_result_serializes_structured_json() -> None:
     import json
 
+    from mvgeos_core.events import (
+        MvgeEvent,
+        MvgeEventType,
+    )
     from mvgeos_tome.ledger import TomeLedger
 
     from mvgeos_agent.agent_session import MvgeTome
     from mvgeos_agent.mvge_loop import MvgeLoop
-    from mvgeos_agent.types import MvgeEvent, MvgeEventType
 
     with tempfile.TemporaryDirectory() as tmp:
         ledger = TomeLedger(Path(tmp))

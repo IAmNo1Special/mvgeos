@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
-from mvgeos_agent.types import SpellResult, SpellStatus
+from mvgeos_core.spells import (
+    SpellResult,
+    SpellStatus,
+)
 
 from coding_mvge.runes.skill_evolution.engine import SkillEvolutionEngine
 from coding_mvge.runes.skill_evolution.proposer_mvge.spells.finish import (

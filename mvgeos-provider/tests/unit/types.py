@@ -1,7 +1,7 @@
 import pytest
+from mvgeos_core.channel import Model
 
 from mvgeos_provider.base import Realm
-from mvgeos_provider.types import Model
 
 
 def test_realm_protocol_has_stream_method() -> None:
@@ -39,7 +39,7 @@ def test_model_supported_parameters() -> None:
 
 
 def test_channel_config_system_prompt() -> None:
-    from mvgeos_provider.types import ChannelConfig
+    from mvgeos_core.channel import ChannelConfig
 
     model = Model(
         id="openrouter/test-model",
@@ -56,7 +56,7 @@ def test_channel_config_system_prompt() -> None:
 
 
 def test_realm_response_has_diagnostic_fields() -> None:
-    from mvgeos_provider.types import RealmResponse
+    from mvgeos_core.channel import RealmResponse
 
     model = Model(
         id="openrouter/test-model",
@@ -88,7 +88,10 @@ def test_realm_response_has_diagnostic_fields() -> None:
 async def test_abort_controller_and_signal() -> None:
     import asyncio
 
-    from mvgeos_provider.types import AbortController, AbortError
+    from mvgeos_core.abort import (
+        AbortController,
+        AbortError,
+    )
 
     controller = AbortController()
     signal = controller.signal
@@ -136,8 +139,9 @@ async def test_abort_controller_and_signal() -> None:
 
 @pytest.mark.asyncio
 async def test_realm_base_protocol() -> None:
+    from mvgeos_core.channel import ChannelConfig
+
     from mvgeos_provider.base import Realm
-    from mvgeos_provider.types import ChannelConfig
 
     realm = Realm()
     model = Model(

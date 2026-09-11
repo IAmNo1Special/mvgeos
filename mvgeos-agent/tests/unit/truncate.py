@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mvgeos_agent.truncate import (
+from mvgeos_core.truncate import (
     DEFAULT_MAX_BYTES,
     DEFAULT_MAX_LINES,
     GREP_MAX_LINE_LENGTH,

@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from mvgeos_agent.protocol import MvgeAgent
-from mvgeos_agent.types import QueueMode
+from mvgeos_core.channel import Model
+from mvgeos_core.events import QueueMode
 from mvgeos_provider.model_registry import ModelRegistry
-from mvgeos_provider.types import Model
 
 from mvgeos_cli.commands.dispatcher import CliCommandDispatcher
 

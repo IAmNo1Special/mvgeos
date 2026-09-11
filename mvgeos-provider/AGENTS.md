@@ -28,9 +28,9 @@ Test paths follow pattern: `mvgeos-provider/tests/unit/<module>.py` and `mvgeos-
 | `Realm` | Abstract provider protocol (`stream()`, `complete()`, `close()`) |
 | `RealmFactory` | Protocol for pluggable realm constructors (`(api_key, base_url, **kwargs) -> Realm`) |
 | `OpenRouterRealm` | OpenRouter SSE channeling implementation |
-| `Model` | Model descriptor (has `realm`, `max_completion_mana`, `context_window`, `is_free`) |
-| `ChannelConfig` | Per-request config (temperature, `max_tokens`, `max_output_mana`, contemplation, tools) |
-| `RealmResponse` | Stream chunk wrapper (`invocation`, `mana_used`, error fields) |
+| `Model` | Model descriptor, canonical in `mvgeos-core` (has `realm`, `max_completion_mana`, `context_window`, `is_free`) |
+| `ChannelConfig` | Per-request config, canonical in `mvgeos-core` (temperature, `max_tokens`, `max_output_mana`, contemplation, tools) |
+| `RealmResponse` | Stream chunk wrapper, canonical in `mvgeos-core` (`invocation`, `mana_used`, error fields) |
 | `RealmRegistry` | Factory for realms; dynamic factory registration; extension-provider configs |
 | `ModelRegistry` | Model catalog with disk cache + OpenRouter refresh |
 
@@ -48,6 +48,7 @@ Test paths follow pattern: `mvgeos-provider/tests/unit/<module>.py` and `mvgeos-
 
 ## Dependencies
 
+- `mvgeos-core` — canonical channel vocabulary (`Model`, `ChannelConfig`, `RealmResponse`, abort primitives)
 - `httpx` — HTTP client for OpenRouter API
 - `filelock` — cross-process locking
 

@@ -5,21 +5,27 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from mvgeos_provider.types import Model, RealmResponse
-
-from mvgeos_agent.core_loop import LoopCallbacks, LoopContext, run_loop
-from mvgeos_agent.errors import MaxTurnsExceededError
-from mvgeos_agent.types import (
+from mvgeos_core.channel import (
+    Model,
+    MvgeResponse,
+    RealmResponse,
+    StopReason,
+)
+from mvgeos_core.errors import MaxTurnsExceededError
+from mvgeos_core.events import (
     ContemplationLevel,
     MvgeEvent,
     MvgeEventType,
-    MvgeInvocation,
-    MvgeResponse,
-    MvgeSpell,
     QueueMode,
-    SpellResultMessage,
-    StopReason,
+)
+from mvgeos_core.invocations import (
+    MvgeInvocation,
     SummonerRequest,
+)
+from mvgeos_core.loop import LoopCallbacks, LoopContext, run_loop
+from mvgeos_core.spells import (
+    MvgeSpell,
+    SpellResultMessage,
 )
 
 
@@ -481,7 +487,7 @@ class TestRunLoopCallbacks:
     async def test_core_never_imports_rune_runner(self) -> None:
         import inspect
 
-        from mvgeos_agent.core_loop import run_loop
+        from mvgeos_core.loop import run_loop
 
         source = inspect.getsource(run_loop)
         assert "RuneRunner" not in source
@@ -521,7 +527,7 @@ class TestRunLoopSpellExecution:
 class TestRunLoopErrors:
     @pytest.mark.asyncio
     async def test_rate_limit_error_raised(self, context: LoopContext) -> None:
-        from mvgeos_agent.errors import RateLimitError
+        from mvgeos_core.errors import RateLimitError
 
         emit = Recorder()
         responses = [
@@ -539,7 +545,7 @@ class TestRunLoopErrors:
     async def test_rate_limit_error_propagates_diagnostics(
         self, context: LoopContext
     ) -> None:
-        from mvgeos_agent.errors import RateLimitError
+        from mvgeos_core.errors import RateLimitError
 
         emit = Recorder()
         responses = [
@@ -571,7 +577,7 @@ class TestRunLoopErrors:
     async def test_upstream_idle_timeout_raises_and_emits_provider_error(
         self, context: LoopContext
     ) -> None:
-        from mvgeos_agent.errors import UpstreamTimeoutError
+        from mvgeos_core.errors import UpstreamTimeoutError
 
         emit = Recorder()
         responses = [
@@ -594,7 +600,7 @@ class TestRunLoopErrors:
 
     @pytest.mark.asyncio
     async def test_auth_error_raised(self, context: LoopContext) -> None:
-        from mvgeos_agent.errors import AuthenticationError
+        from mvgeos_core.errors import AuthenticationError
 
         emit = Recorder()
         responses = [
@@ -809,7 +815,7 @@ class TestCoreStaysDecoupled:
     def test_core_does_not_import_realm(self) -> None:
         import inspect
 
-        from mvgeos_agent.core_loop import run_loop
+        from mvgeos_core.loop import run_loop
 
         source = inspect.getsource(run_loop)
         assert "Realm(" not in source

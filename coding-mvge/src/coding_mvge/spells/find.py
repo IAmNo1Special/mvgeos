@@ -3,7 +3,11 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from mvgeos_agent.truncate import (
+from mvgeos_core.spells import (
+    SpellResult,
+    SpellStatus,
+)
+from mvgeos_core.truncate import (
     DEFAULT_MAX_BYTES,
     MAX_FIND_ENTRIES,
     TruncationResult,
@@ -11,7 +15,6 @@ from mvgeos_agent.truncate import (
     truncate_head,
     truncation_details,
 )
-from mvgeos_agent.types import SpellResult, SpellStatus
 
 from coding_mvge.spells._ignore import IsExcluded, default_is_excluded
 

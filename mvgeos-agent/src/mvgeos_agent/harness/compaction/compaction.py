@@ -13,15 +13,17 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from mvgeos_agent.types import (
-    AbortSignal,
-    ContentType,
-    MvgeInvocation,
+from mvgeos_core.abort import AbortSignal
+from mvgeos_core.channel import (
     MvgeResponse,
-    SpellResultMessage,
     StopReason,
+)
+from mvgeos_core.events import ContentType
+from mvgeos_core.invocations import (
+    MvgeInvocation,
     SummonerRequest,
 )
+from mvgeos_core.spells import SpellResultMessage
 
 logger = logging.getLogger(__name__)
 

@@ -6,8 +6,8 @@ from io import StringIO
 from pathlib import Path
 
 import typer
-from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_agent.snapshot import RuntimeSnapshot
+from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from rich import box
 from rich.console import Console
 from rich.table import Table

@@ -5,7 +5,11 @@ import re
 from pathlib import Path
 from typing import TypedDict
 
-from mvgeos_agent.truncate import (
+from mvgeos_core.spells import (
+    SpellResult,
+    SpellStatus,
+)
+from mvgeos_core.truncate import (
     DEFAULT_MAX_BYTES,
     GREP_MAX_LINE_LENGTH,
     MAX_GREP_MATCHES,
@@ -14,7 +18,6 @@ from mvgeos_agent.truncate import (
     truncate_line_around_match,
     truncation_details,
 )
-from mvgeos_agent.types import SpellResult, SpellStatus
 
 from coding_mvge.spells._ignore import IsExcluded, default_is_excluded
 

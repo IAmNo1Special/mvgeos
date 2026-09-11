@@ -6,9 +6,9 @@ from typing import Any
 
 from coding_mvge import root_mvge
 from mvgeos_agent import Mvge
-from mvgeos_agent.constants import DEFAULT_AGENT_NAME
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.protocol import AgentFactory, MvgeAgent
+from mvgeos_core.constants import DEFAULT_AGENT_NAME
 
 _global_default_factory: AgentFactory | None = None
 

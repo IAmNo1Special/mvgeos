@@ -4,7 +4,14 @@ import urllib.parse
 from html.parser import HTMLParser
 
 import httpx
-from mvgeos_agent.types import AbortError, AbortSignal, SpellResult, SpellStatus
+from mvgeos_core.abort import (
+    AbortError,
+    AbortSignal,
+)
+from mvgeos_core.spells import (
+    SpellResult,
+    SpellStatus,
+)
 
 
 class _DuckDuckGoHTMLParser(HTMLParser):

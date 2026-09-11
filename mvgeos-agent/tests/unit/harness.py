@@ -1,19 +1,21 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from mvgeos_provider.types import Model
+from mvgeos_core.channel import (
+    Model,
+    MvgeResponse,
+    StopReason,
+)
+from mvgeos_core.invocations import (
+    MvgeInvocation,
+    SummonerRequest,
+)
+from mvgeos_core.loop import LoopCallbacks
 
-from mvgeos_agent.core_loop import LoopCallbacks
 from mvgeos_agent.harness import MvgeHarness
 from mvgeos_agent.harness.compaction.compaction import DEFAULT_COMPACTION_SETTINGS
 from mvgeos_agent.mvge_loop import MvgeLoop
-from mvgeos_agent.types import (
-    MvgeInvocation,
-    MvgeResponse,
-    MvgeState,
-    StopReason,
-    SummonerRequest,
-)
+from mvgeos_agent.types import MvgeState
 
 
 @pytest.mark.asyncio

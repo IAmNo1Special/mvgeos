@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from mvgeos_agent.types import AbortController, AbortError, SpellStatus
+from mvgeos_core.abort import (
+    AbortController,
+    AbortError,
+)
+from mvgeos_core.spells import SpellStatus
 
 from coding_mvge.spells.read_url import read_url
 from coding_mvge.spells.search_web import search_web

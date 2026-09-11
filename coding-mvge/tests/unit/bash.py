@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mvgeos_agent.function_spell import FunctionSpell
-from mvgeos_agent.types import SpellStatus
+from mvgeos_core.spells import SpellStatus
 
 from coding_mvge.spells._process_tree import (
     DEFAULT_BASH_TIMEOUT_MS,

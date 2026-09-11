@@ -2,11 +2,15 @@ import asyncio
 from pathlib import Path
 
 import pytest
+from mvgeos_core.spells import ExecutionMode
 
 from mvgeos_runes.loader import load_factory_from_manifest
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_runner import _safe_call_handler_async
-from mvgeos_runes.types import ExecutionMode, RuneManifest, SigilHook
+from mvgeos_runes.types import (
+    RuneManifest,
+    SigilHook,
+)
 
 
 @pytest.mark.asyncio

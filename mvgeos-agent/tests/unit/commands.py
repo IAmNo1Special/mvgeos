@@ -3,8 +3,9 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from mvgeos_core.channel import Model
+from mvgeos_core.events import QueueMode
 from mvgeos_provider.model_registry import ModelRegistry
-from mvgeos_provider.types import Model
 
 from mvgeos_agent.commands import (
     SLASH_COMMANDS,
@@ -12,7 +13,6 @@ from mvgeos_agent.commands import (
     CommandDispatcher,
 )
 from mvgeos_agent.protocol import MvgeAgent
-from mvgeos_agent.types import QueueMode
 
 
 def _create_mock_agent(

@@ -6,7 +6,11 @@ import tempfile
 from pathlib import Path
 from typing import BinaryIO
 
-from mvgeos_agent.truncate import (
+from mvgeos_core.spells import (
+    SpellResult,
+    SpellStatus,
+)
+from mvgeos_core.truncate import (
     DEFAULT_MAX_BYTES,
     DEFAULT_MAX_LINES,
     MAX_BASH_BYTES,
@@ -14,7 +18,6 @@ from mvgeos_agent.truncate import (
     format_size,
     truncation_details,
 )
-from mvgeos_agent.types import SpellResult, SpellStatus
 
 from coding_mvge.spells._process_tree import (
     kill_process_tree,
