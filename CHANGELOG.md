@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-09-11
+
+
+### Bug Fixes
+
+- **agent:** use default realm registry and hermetic mocks in tests (67c191d)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (523f552)
+
+- **release:** v0.2.4 (38bc2b8)
+
+
+### Features
+
+- **provider:** remove OpenRouterRealm and decouple provider registry (dc0e038)
+
+
 ## [0.2.3] - 2026-09-11
 
 
