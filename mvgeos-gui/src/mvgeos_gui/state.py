@@ -80,6 +80,12 @@ class AppState:
     _streaming_listeners: list[Callable[[], Any]] = field(
         default_factory=list, repr=False, compare=False
     )
+    _view_listeners: dict[str, list[Callable[[], Any]]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    _streaming_view_listeners: dict[str, list[Callable[[], Any]]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
     _selected_diff_path: str | None = field(default=None, repr=False, compare=False)
     changed_files: list[ChangedFile] = field(default_factory=list)
     _selected_artifact_id: str | None = field(default=None, repr=False, compare=False)
@@ -147,6 +153,59 @@ class AppState:
         """Unsubscribe a listener callback from streaming token updates."""
         if listener in self._streaming_listeners:
             self._streaming_listeners.remove(listener)
+
+    def subscribe_view(self, key: str, listener: Callable[[], Any]) -> None:
+        """Subscribe a view-scoped listener tracked under *key*.
+
+        View listeners render a specific panel; they are dropped via
+        :meth:`clear_view_listeners` when the panel re-renders so stale
+        refreshables on deleted elements never accumulate.
+        """
+        tracked = self._view_listeners.setdefault(key, [])
+        if listener not in tracked:
+            tracked.append(listener)
+        self.subscribe(listener)
+
+    def subscribe_streaming_view(self, key: str, listener: Callable[[], Any]) -> None:
+        """Subscribe a streaming view-scoped listener tracked under *key*."""
+        tracked = self._streaming_view_listeners.setdefault(key, [])
+        if listener not in tracked:
+            tracked.append(listener)
+        self.subscribe_streaming(listener)
+
+    def clear_view_listeners(self, key: str) -> None:
+        """Detach all view-scoped listeners tracked under *key*."""
+        for listener in self._view_listeners.pop(key, []):
+            self.unsubscribe(listener)
+        for listener in self._streaming_view_listeners.pop(key, []):
+            self.unsubscribe_streaming(listener)
+
+    def clear_all_view_listeners(self) -> None:
+        """Detach every view-scoped listener from all keys.
+
+        Call at the top of a panel render: the previous render pass owned
+        the tracked listeners, and its elements are about to be replaced.
+        """
+        for key in list(self._view_listeners):
+            self.clear_view_listeners(key)
+        for key in list(self._streaming_view_listeners):
+            self.clear_view_listeners(key)
+        autocomplete = self._autocomplete_service
+        if autocomplete is not None:
+            autocomplete.clear_items_changed_listeners()
+
+    def view_listener_count(self, key: str | None = None) -> int:
+        """Return the number of tracked view-scoped listeners."""
+        if key is not None:
+            return len(self._view_listeners.get(key, [])) + len(
+                self._streaming_view_listeners.get(key, [])
+            )
+        total = sum(len(v) for v in self._view_listeners.values())
+        total += sum(len(v) for v in self._streaming_view_listeners.values())
+        autocomplete = self._autocomplete_service
+        if autocomplete is not None:
+            total += autocomplete.items_changed_listener_count
+        return total
 
     def notify_streaming(self) -> None:
         """Notify streaming listeners of rapid token updates.

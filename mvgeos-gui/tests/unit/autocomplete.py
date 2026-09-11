@@ -744,3 +744,28 @@ def test_autocomplete_create_chip_unknown_item() -> None:
     service = _make_service()
     chip = service.create_chip("not-an-item")
     assert chip is None
+
+
+def test_autocomplete_unsubscribe_items_changed() -> None:
+    service = _make_service()
+    notified: list[int] = []
+
+    def cb() -> None:
+        notified.append(1)
+
+    service.subscribe_items_changed(cb)
+    service._notify_items_changed()
+    assert notified == [1]
+
+    service.unsubscribe_items_changed(cb)
+    service._notify_items_changed()
+    assert notified == [1]
+
+
+def test_autocomplete_clear_items_changed_listeners() -> None:
+    service = _make_service()
+    service.subscribe_items_changed(lambda: None)
+    service.subscribe_items_changed(lambda: None)
+    assert service.items_changed_listener_count == 2
+    service.clear_items_changed_listeners()
+    assert service.items_changed_listener_count == 0

@@ -411,6 +411,20 @@ class AutocompleteService:
         if listener not in self._items_change_listeners:
             self._items_change_listeners.append(listener)
 
+    def unsubscribe_items_changed(self, listener: ChangeListener) -> None:
+        """Unsubscribe a listener from items list changes."""
+        if listener in self._items_change_listeners:
+            self._items_change_listeners.remove(listener)
+
+    def clear_items_changed_listeners(self) -> None:
+        """Detach all items-change listeners (e.g. before a panel re-renders)."""
+        self._items_change_listeners.clear()
+
+    @property
+    def items_changed_listener_count(self) -> int:
+        """Return the number of registered items-change listeners."""
+        return len(self._items_change_listeners)
+
     def _notify_listeners(self) -> None:
         """Notify all change listeners, swallowing exceptions."""
         for listener in self._change_listeners:

@@ -236,6 +236,25 @@ async def test_chat_panel_composer_uses_curvy_style(user: User) -> None:
 
 
 @pytest.mark.asyncio
+async def test_chat_panel_rerender_does_not_accumulate_listeners(
+    user: User,
+) -> None:
+    """Verify re-rendering the chat panel keeps view listeners stable."""
+    state = AppState()
+
+    @ui.page("/test_chat_panel_rerender")
+    def page() -> None:
+        render_chat_panel(state)
+        first = state.view_listener_count()
+        assert first > 0
+        render_chat_panel(state)
+        assert state.view_listener_count() == first
+
+    await user.open("/test_chat_panel_rerender")
+    await user.should_see("What should Mvge work on?")
+
+
+@pytest.mark.asyncio
 async def test_chat_panel_shows_diff_side_panel(user: User, tmp_path) -> None:
     state = AppState(project_path=tmp_path)
     state.chat_side_panel = "diff"

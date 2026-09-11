@@ -1150,3 +1150,59 @@ class TestStreamingListeners:
         state.unsubscribe_streaming(cb)
         state.notify_streaming()
         assert notified == [1]
+
+
+class TestViewListeners:
+    def test_subscribe_view_registers_globally(self) -> None:
+        state = AppState()
+        notified: list[int] = []
+        state.subscribe_view("panel", lambda: notified.append(1))
+        state.notify()
+        assert notified == [1]
+        assert state.view_listener_count("panel") == 1
+        assert state.view_listener_count() == 1
+
+    def test_subscribe_view_dedupes(self) -> None:
+        state = AppState()
+
+        def cb() -> None:
+            pass
+
+        state.subscribe_view("panel", cb)
+        state.subscribe_view("panel", cb)
+        assert state.view_listener_count("panel") == 1
+
+    def test_subscribe_streaming_view_targets_streaming(self) -> None:
+        state = AppState()
+        notified: list[int] = []
+        state.subscribe_streaming_view("bubble", lambda: notified.append(1))
+        state.notify_streaming()
+        assert notified == [1]
+        assert state.view_listener_count("bubble") == 1
+
+    def test_clear_view_listeners_detaches_key(self) -> None:
+        state = AppState()
+        notified: list[int] = []
+        state.subscribe_view("panel", lambda: notified.append(1))
+        state.subscribe_view("other", lambda: notified.append(1))
+        state.clear_view_listeners("panel")
+        state.notify()
+        assert notified == [1]
+        assert state.view_listener_count("panel") == 0
+        assert state.view_listener_count() == 1
+
+    def test_clear_view_listeners_missing_key_is_noop(self) -> None:
+        state = AppState()
+        state.clear_view_listeners("absent")
+        assert state.view_listener_count() == 0
+
+    def test_clear_all_view_listeners(self) -> None:
+        state = AppState()
+        state.subscribe_view("a", lambda: None)
+        state.subscribe_streaming_view("b", lambda: None)
+        state.clear_all_view_listeners()
+        assert state.view_listener_count() == 0
+        notified: list[int] = []
+        state.subscribe(lambda: notified.append(1))
+        state.notify()
+        assert notified == [1]

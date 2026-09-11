@@ -26,6 +26,10 @@ EXAMPLE_PROMPTS = [
 
 def render_chat_panel(state: AppState) -> ui.column:
     """Render the main chat panel with toolbar, messages, side panel, and composer."""
+    # Drop the previous render pass's view listeners first: this render
+    # replaces those elements, and stale refreshables would otherwise keep
+    # firing against deleted elements on every state notification.
+    state.clear_all_view_listeners()
     container = ui.column().classes(
         "flex-1 w-full h-full flex flex-col overflow-hidden"
     )
@@ -121,7 +125,7 @@ def render_chat_panel(state: AppState) -> ui.column:
                 last_toolbar_state[0] = cur
                 toolbar_view.refresh()
 
-        state.subscribe(_on_toolbar_check)
+        state.subscribe_view("chat_panel_toolbar", _on_toolbar_check)
 
         # Body: messages + side panel
         with ui.row().classes("flex-1 w-full overflow-hidden"):
@@ -185,9 +189,15 @@ def render_chat_panel(state: AppState) -> ui.column:
                     ui.tooltip("Scroll to bottom")
 
                 # Subscribe to state changes to refresh views
-                state.subscribe(static_messages_view.refresh)
-                state.subscribe(streaming_bubble_view.refresh)
-                state.subscribe_streaming(streaming_bubble_view.refresh)
+                state.subscribe_view(
+                    "chat_panel_messages", static_messages_view.refresh
+                )
+                state.subscribe_view(
+                    "chat_panel_messages", streaming_bubble_view.refresh
+                )
+                state.subscribe_streaming_view(
+                    "chat_panel_messages", streaming_bubble_view.refresh
+                )
 
                 # Composer
                 _render_composer(state)
@@ -228,7 +238,7 @@ def render_chat_panel(state: AppState) -> ui.column:
                     last_side_panel_state[0] = state.chat_side_panel
                     side_panel_view.refresh()
 
-            state.subscribe(_on_side_panel_check)
+            state.subscribe_view("chat_side_panel", _on_side_panel_check)
 
     return container
 
@@ -378,7 +388,7 @@ def _render_composer(state: AppState) -> None:
                         last_chips_state[0] = cur
                         chips_view.refresh()
 
-                state.subscribe(_on_chips_check)
+                state.subscribe_view("composer_chips", _on_chips_check)
 
                 # Input zone: textarea + glow masks + send button
                 # (no search icon; filter slot is the send/stop button).
@@ -410,7 +420,7 @@ def _render_composer(state: AppState) -> None:
                             prompt_input.value = state.active_prompt
                             state.active_prompt = ""
 
-                    state.subscribe(_on_prompt_check)
+                    state.subscribe_view("composer_prompt", _on_prompt_check)
 
                     # Bind input to autocomplete service
                     def handle_input_change(e: Any) -> None:
@@ -568,7 +578,7 @@ def _render_composer(state: AppState) -> None:
                             last_action_state[0] = state.is_channeling
                             action_btn_view.refresh()
 
-                    state.subscribe(_on_action_check)
+                    state.subscribe_view("composer_actions", _on_action_check)
 
                 # Toolbar row below the input (model + context actions)
                 with ui.row().classes(
