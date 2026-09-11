@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mock_realm import MockStreamingRealm
 from mvgeos_core.channel import (
     ChannelConfig,
     Model,
@@ -17,7 +18,6 @@ from mvgeos_provider.base import (
     RealmFactory,
 )
 from mvgeos_provider.model_registry import ModelRegistry
-from mvgeos_provider.openrouter import OpenRouterRealm
 from mvgeos_provider.registry import RealmRegistry
 
 
@@ -58,6 +58,13 @@ def test_get_registered_providers() -> None:
 
 def test_has_provider_builtin() -> None:
     reg = RealmRegistry()
+    assert not reg.has_provider("openrouter")
+    reg.register_realm_factory(
+        "openrouter",
+        lambda api_key="", base_url="", **kw: MockStreamingRealm(
+            api_key=api_key, base_url=base_url
+        ),
+    )
     assert reg.has_provider("openrouter")
 
 
@@ -105,8 +112,11 @@ def test_create_realm_default_openrouter() -> None:
         base_url="https://openrouter.ai/api/v1",
         api_key="test-key",
     )
-    realm = reg.create_realm(model, api_key="test-key")
-    assert isinstance(realm, OpenRouterRealm)
+    with pytest.raises(NoRealmRegisteredError) as exc_info:
+        reg.create_realm(model, api_key="test-key")
+    msg = str(exc_info.value)
+    assert "No Realm factory registered for model 'test-model'" in msg
+    assert "Run 'mvgeos rune install openrouter-realm'" in msg
 
 
 def test_compose_model_prioritizes_realm_over_provider() -> None:
@@ -123,6 +133,12 @@ def test_compose_model_prioritizes_realm_over_provider() -> None:
 
 def test_create_realm_prioritizes_realm_over_provider() -> None:
     reg = RealmRegistry()
+    reg.register_realm_factory(
+        "openrouter",
+        lambda api_key="", base_url="", **kw: MockStreamingRealm(
+            api_key=api_key, base_url=base_url
+        ),
+    )
     reg.register_provider(
         "openrouter",
         {"apiKey": "openrouter-key", "baseUrl": "https://openrouter.ai/api/v1"},
@@ -135,7 +151,7 @@ def test_create_realm_prioritizes_realm_over_provider() -> None:
         api_key="cli-key",
     )
     realm = reg.create_realm(model, api_key="cli-key")
-    assert isinstance(realm, OpenRouterRealm)
+    assert isinstance(realm, MockStreamingRealm)
     assert realm._api_key == "openrouter-key"
     assert realm._base_url == "https://openrouter.ai/api/v1"
 
@@ -167,11 +183,17 @@ def test_compose_model_fallback_with_explicit_provider_name() -> None:
 
 def test_resolve_returns_model_and_realm() -> None:
     reg = RealmRegistry()
+    reg.register_realm_factory(
+        "openrouter",
+        lambda api_key="", base_url="", **kw: MockStreamingRealm(
+            api_key=api_key, base_url=base_url
+        ),
+    )
     model, realm = reg.resolve("openai/gpt-oss-20b:free", api_key="test-key")
     assert isinstance(model, Model)
     assert model.id == "openai/gpt-oss-20b:free"
     assert model.api_key == "test-key"
-    assert isinstance(realm, OpenRouterRealm)
+    assert isinstance(realm, MockStreamingRealm)
 
 
 def test_resolve_unknown_model_raises() -> None:
@@ -182,6 +204,7 @@ def test_resolve_unknown_model_raises() -> None:
 
 def test_resolve_unlisted_model_with_registered_prefix() -> None:
     reg = RealmRegistry()
+    reg.register_realm_factory("ollama", DummyCustomRealm)
     reg.register_provider(
         "ollama", {"baseUrl": "http://localhost:11434", "apiKey": "ollama-key"}
     )
@@ -195,6 +218,7 @@ def test_resolve_unlisted_model_with_registered_prefix() -> None:
 
 def test_resolve_with_explicit_provider_name() -> None:
     reg = RealmRegistry()
+    reg.register_realm_factory("vllm", DummyCustomRealm)
     reg.register_provider("vllm", {"baseUrl": "http://localhost:8000"})
     model, realm = reg.resolve(
         "custom-model-id", api_key="cli-key", provider_name="vllm"
@@ -207,6 +231,12 @@ def test_resolve_with_explicit_provider_name() -> None:
 
 def test_resolve_extension_overrides_apply_to_model_and_realm() -> None:
     reg = RealmRegistry()
+    reg.register_realm_factory(
+        "openrouter",
+        lambda api_key="", base_url="", **kw: MockStreamingRealm(
+            api_key=api_key, base_url=base_url
+        ),
+    )
     reg.register_provider(
         "openai",
         {"baseUrl": "https://custom.openai.com", "apiKey": "ext-key"},
@@ -214,7 +244,7 @@ def test_resolve_extension_overrides_apply_to_model_and_realm() -> None:
     model, realm = reg.resolve("openai/gpt-4", api_key="cli-key")
     assert model.api_key == "ext-key"
     assert model.base_url == "https://custom.openai.com"
-    assert isinstance(realm, OpenRouterRealm)
+    assert isinstance(realm, MockStreamingRealm)
 
 
 def test_resolve_cached_model(tmp_path: Path) -> None:
@@ -236,6 +266,12 @@ def test_resolve_cached_model(tmp_path: Path) -> None:
     model_reg = ModelRegistry(cache_path=cache_file)
     with patch("time.time", return_value=1050.0):
         reg = RealmRegistry(model_registry=model_reg)
+        reg.register_realm_factory(
+            "openrouter",
+            lambda api_key="", base_url="", **kw: MockStreamingRealm(
+                api_key=api_key, base_url=base_url
+            ),
+        )
         model, realm = reg.resolve("community/cached-model-99b", api_key="test-key")
 
     assert model.id == "community/cached-model-99b"
@@ -243,7 +279,7 @@ def test_resolve_cached_model(tmp_path: Path) -> None:
     assert model.context_window == 32768
     assert model.supported_parameters == ["tools", "temperature"]
     assert model.api_key == "test-key"
-    assert isinstance(realm, OpenRouterRealm)
+    assert isinstance(realm, MockStreamingRealm)
 
 
 def test_realm_registry_get_model_options_and_flat_ids() -> None:
@@ -550,13 +586,12 @@ def test_realm_is_router_property() -> None:
     base_realm = Realm()
     assert base_realm.is_router is False
 
-    openrouter_realm = OpenRouterRealm(api_key="test-key")
-    assert openrouter_realm.is_router is True
+    mock_realm = MockStreamingRealm(api_key="test-key")
+    assert mock_realm.is_router is True
 
 
 def test_create_realm_raises_no_realm_registered_error() -> None:
     reg = RealmRegistry()
-    reg.unregister_realm_factory("openrouter")
 
     model = Model(
         id="anthropic/claude-3-5-sonnet",
@@ -575,6 +610,12 @@ def test_create_realm_raises_no_realm_registered_error() -> None:
 
 def test_clear_realm_factories() -> None:
     reg = RealmRegistry()
+    reg.register_realm_factory(
+        "openrouter",
+        lambda api_key="", base_url="", **kw: MockStreamingRealm(
+            api_key=api_key, base_url=base_url
+        ),
+    )
     assert "openrouter" in reg.get_registered_realm_factories()
 
     reg.clear_realm_factories()

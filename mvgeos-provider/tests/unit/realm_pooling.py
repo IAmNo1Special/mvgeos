@@ -2,9 +2,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
+from mock_realm import MockStreamingRealm
 from mvgeos_core.channel import Model
 
-from mvgeos_provider.openrouter import OpenRouterRealm
 from mvgeos_provider.registry import RealmRegistry
 
 
@@ -23,12 +23,12 @@ async def test_realm_registry_shared_client() -> None:
 
 
 @pytest.mark.asyncio
-async def test_openrouter_realm_shared_client_lifecycle() -> None:
-    """Verify OpenRouterRealm uses shared client and does not close unowned client."""
+async def test_mock_streaming_realm_shared_client_lifecycle() -> None:
+    """Verify MockStreamingRealm does not close unowned shared client."""
     mock_client = AsyncMock(spec=httpx.AsyncClient)
     mock_client.is_closed = False
 
-    realm = OpenRouterRealm(
+    realm = MockStreamingRealm(
         api_key="test_key",
         base_url="https://openrouter.ai/api/v1",
         client=mock_client,
@@ -41,8 +41,16 @@ async def test_openrouter_realm_shared_client_lifecycle() -> None:
 
 @pytest.mark.asyncio
 async def test_realm_registry_create_realm_reuses_client() -> None:
-    """Verify create_realm passes shared client to OpenRouterRealm."""
+    """Verify create_realm passes shared client to MockStreamingRealm."""
     registry = RealmRegistry()
+    registry.register_realm_factory(
+        "openrouter",
+        lambda api_key="", base_url="", **kw: MockStreamingRealm(
+            api_key=api_key,
+            base_url=base_url,
+            client=registry.get_shared_client(),
+        ),
+    )
     model = Model(
         id="nvidia/nemotron-3-ultra-550b-a55b:free",
         name="Nemotron",
@@ -52,14 +60,14 @@ async def test_realm_registry_create_realm_reuses_client() -> None:
     )
 
     realm = registry.create_realm(model, api_key="test_key")
-    assert isinstance(realm, OpenRouterRealm)
+    assert isinstance(realm, MockStreamingRealm)
     assert realm._client is registry.get_shared_client()
 
     await registry.close()
 
 
 @pytest.mark.asyncio
-async def test_openrouter_realm_request_url_and_headers() -> None:
+async def test_mock_streaming_realm_request_url_and_headers() -> None:
     """Verify stream and complete send absolute HTTPS URLs and auth headers."""
     mock_client = AsyncMock(spec=httpx.AsyncClient)
     mock_client.is_closed = False
@@ -73,7 +81,7 @@ async def test_openrouter_realm_request_url_and_headers() -> None:
     }
     mock_client.post.return_value = mock_resp
 
-    realm = OpenRouterRealm(
+    realm = MockStreamingRealm(
         api_key="test_key",
         base_url="https://openrouter.ai/api/v1",
         client=mock_client,

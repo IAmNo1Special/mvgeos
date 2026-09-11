@@ -2,12 +2,11 @@ import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+from mock_realm import MockStreamingRealm
 from mvgeos_core.channel import (
     ChannelConfig,
     Model,
 )
-
-from mvgeos_provider.openrouter import OpenRouterRealm
 
 
 async def _async_iter(items):
@@ -73,7 +72,7 @@ def test_error_from_response_preserves_internal_newlines() -> None:
 def test_openrouter_realm_stream_builds_correct_messages() -> None:
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = Model(
         id="openrouter/test-model",
         name="Test Model",
@@ -107,7 +106,7 @@ def test_openrouter_realm_stream_builds_correct_messages() -> None:
 def test_openrouter_realm_stream_handles_empty_choices_chunk() -> None:
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = Model(
         id="openrouter/test-model",
         name="Test Model",
@@ -147,7 +146,7 @@ def test_openrouter_realm_stream_handles_empty_choices_chunk() -> None:
 def test_openrouter_realm_stream_handles_tool_calls() -> None:
     from mvgeos_core.channel import MvgeResponse
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = Model(
         id="openrouter/test-model",
         name="Test Model",
@@ -198,7 +197,7 @@ def test_openrouter_realm_stream_handles_tool_calls() -> None:
 def test_openrouter_realm_stream_retries_on_429_then_succeeds() -> None:
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = Model(
         id="openrouter/test-model",
         name="Test Model",
@@ -235,7 +234,7 @@ def test_openrouter_realm_stream_retries_on_429_then_succeeds() -> None:
 def test_openrouter_realm_stream_retries_on_5xx() -> None:
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = _make_model()
     config = ChannelConfig(model=model)
     invocations = [SummonerRequest(role="user", content="Hello")]
@@ -267,7 +266,7 @@ def test_openrouter_realm_stream_uses_retry_after_header() -> None:
 
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = _make_model()
     config = ChannelConfig(model=model)
     invocations = [SummonerRequest(role="user", content="Hello")]
@@ -300,7 +299,7 @@ def test_openrouter_realm_stream_uses_retry_after_header() -> None:
 def test_openrouter_realm_stream_rejects_excessive_retry_after() -> None:
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = _make_model()
     config = ChannelConfig(model=model)
     invocations = [SummonerRequest(role="user", content="Hello")]
@@ -318,7 +317,7 @@ def test_openrouter_realm_stream_rejects_excessive_retry_after() -> None:
 def test_openrouter_realm_stream_honours_x_should_retry_false() -> None:
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = _make_model()
     config = ChannelConfig(model=model)
     invocations = [SummonerRequest(role="user", content="Hello")]
@@ -342,7 +341,7 @@ def test_openrouter_realm_stream_backoff_is_jittered_and_capped() -> None:
 
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = _make_model()
     config = ChannelConfig(model=model)
     invocations = [SummonerRequest(role="user", content="Hello")]
@@ -375,7 +374,7 @@ def test_openrouter_realm_stream_exhausts_retries_yields_rate_limited() -> None:
 
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = _make_model()
     config = ChannelConfig(model=model)
     invocations = [SummonerRequest(role="user", content="Hello")]
@@ -403,7 +402,7 @@ def test_openrouter_realm_stream_exhausts_retries_yields_rate_limited() -> None:
 def test_openrouter_realm_stream_non_retryable_no_retry() -> None:
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = _make_model()
     config = ChannelConfig(model=model)
     invocations = [SummonerRequest(role="user", content="Hello")]
@@ -422,7 +421,7 @@ def test_openrouter_realm_stream_non_retryable_no_retry() -> None:
 def test_openrouter_realm_stream_400_yields_generic_error() -> None:
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = _make_model()
     config = ChannelConfig(model=model)
     invocations = [SummonerRequest(role="user", content="Hello")]
@@ -439,7 +438,7 @@ def test_openrouter_realm_stream_400_yields_generic_error() -> None:
 
 
 def test_openrouter_realm_close() -> None:
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     asyncio.run(realm.close())
     # Should not raise
 
@@ -476,7 +475,7 @@ def _make_capture_stream(captured_payload: dict[str, Any]) -> type:
 def test_reasoning_sent_when_contemplation_level_set() -> None:
     from mvgeos_core.channel import MvgeResponse
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = Model(
         id="openrouter/openai/o1",
         name="Test Model",
@@ -506,7 +505,7 @@ def test_reasoning_sent_when_contemplation_level_set() -> None:
 def test_reasoning_not_sent_when_exclude_contemplation() -> None:
     from mvgeos_core.channel import MvgeResponse
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = Model(
         id="openrouter/openai/o1",
         name="Test Model",
@@ -537,7 +536,7 @@ def test_reasoning_not_sent_when_exclude_contemplation() -> None:
 def test_reasoning_not_sent_for_non_reasoning_model() -> None:
     from mvgeos_core.channel import MvgeResponse
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = Model(
         id="openrouter/anthropic/claude-3.5-sonnet",
         name="Test Model",
@@ -566,7 +565,7 @@ def test_reasoning_not_sent_for_non_reasoning_model() -> None:
 def test_reasoning_sent_for_model_with_supported_parameters() -> None:
     from mvgeos_core.channel import MvgeResponse
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = Model(
         id="google/gemini-2.5-flash",
         name="Gemini 2.5 Flash",
@@ -673,7 +672,7 @@ def _make_model(
 def test_stream_sends_tools_in_payload() -> None:
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = _make_model()
     tools = [
         {
@@ -709,7 +708,7 @@ def test_stream_accumulates_text_into_final_invocation() -> None:
     from mvgeos_core.channel import StopReason
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = _make_model()
     config = ChannelConfig(model=model)
     invocations = [SummonerRequest(role="user", content="Hello")]
@@ -740,7 +739,7 @@ def test_stream_accumulates_text_into_final_invocation() -> None:
 def test_stream_surfaces_contemplation_deltas() -> None:
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = _make_model()
     config = ChannelConfig(model=model)
     invocations = [SummonerRequest(role="user", content="Think")]
@@ -770,7 +769,7 @@ def test_stream_surfaces_contemplation_deltas() -> None:
 def test_stream_keeps_contemplation_out_of_final_text() -> None:
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = _make_model()
     config = ChannelConfig(model=model)
     invocations = [SummonerRequest(role="user", content="Think")]
@@ -798,7 +797,7 @@ def test_stream_keeps_contemplation_out_of_final_text() -> None:
 def test_stream_includes_contemplation_in_final_invocation() -> None:
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = _make_model()
     config = ChannelConfig(model=model)
     invocations = [SummonerRequest(role="user", content="Think")]
@@ -830,7 +829,7 @@ def test_stream_includes_contemplation_in_final_invocation() -> None:
 def test_stream_attaches_mana_usage_to_final_invocation() -> None:
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = _make_model()
     config = ChannelConfig(model=model)
     invocations = [SummonerRequest(role="user", content="Hello")]
@@ -860,7 +859,7 @@ def test_stream_tool_calls_produce_spell_use_invocation() -> None:
     from mvgeos_core.channel import StopReason
     from mvgeos_core.invocations import SummonerRequest
 
-    realm = OpenRouterRealm(api_key="test-key")
+    realm = MockStreamingRealm(api_key="test-key")
     model = _make_model()
     config = ChannelConfig(model=model)
     invocations = [SummonerRequest(role="user", content="Run echo")]
@@ -890,10 +889,9 @@ def test_stream_tool_calls_produce_spell_use_invocation() -> None:
 
 
 def test_invocations_to_messages_serializes_tool_calls() -> None:
+    from mock_realm import _invocations_to_messages
     from mvgeos_core.channel import MvgeResponse
     from mvgeos_core.spells import SpellResultMessage
-
-    from mvgeos_provider.openrouter import _invocations_to_messages
 
     invocations = [
         MvgeResponse(

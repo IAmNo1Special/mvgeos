@@ -252,15 +252,16 @@ async def test_bug4_single_registry_and_rune_providers(tmp_path: Path) -> None:
     }
     (rune_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     index_code = (
+        "from unittest.mock import MagicMock\n"
         "def rune_factory(api):\n"
         "    api.register_provider('custom_rune_prov', {'base_url': 'http://localhost'})\n"
+        "    api.register_realm_factory('openrouter', lambda **kw: MagicMock())\n"
     )
     (rune_dir / "index.py").write_text(index_code, encoding="utf-8")
 
     tome_dir = tmp_path / "tomes"
 
     with (
-        patch("mvgeos_provider.openrouter.OpenRouterRealm.stream"),
         patch("mvgeos_runes.watcher.RuneWatcher.start", new_callable=AsyncMock),
         patch("mvgeos_runes.watcher.RuneWatcher.stop", new_callable=AsyncMock),
     ):

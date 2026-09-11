@@ -12,7 +12,6 @@ from mvgeos_provider.base import (
     RealmFactory,
 )
 from mvgeos_provider.model_registry import ModelRegistry
-from mvgeos_provider.openrouter import OpenRouterRealm
 
 
 class RealmRegistry:
@@ -30,14 +29,6 @@ class RealmRegistry:
         self._model_registry.load_cache()
         self._extension_providers: dict[str, dict[str, Any]] = {}
         self._realm_factories: dict[str, RealmFactory] = {}
-        self._default_realm_factory: RealmFactory = (
-            lambda api_key="", base_url="", **kwargs: OpenRouterRealm(
-                api_key=api_key,
-                base_url=base_url or "https://openrouter.ai/api/v1",
-                client=self.get_shared_client(),
-            )
-        )
-        self._realm_factories["openrouter"] = self._default_realm_factory
 
     @property
     def cache_ttl_seconds(self) -> int:
@@ -127,7 +118,7 @@ class RealmRegistry:
     def get_registered_providers(self) -> list[str]:
         providers = list(self._extension_providers.keys())
         for rf in self._realm_factories:
-            if rf not in providers and rf != "openrouter":
+            if rf not in providers:
                 providers.append(rf)
         return providers
 
@@ -189,16 +180,26 @@ class RealmRegistry:
         self, model: Model, provider_name: str | None = None
     ) -> RealmFactory | None:
         for candidate in self._candidate_keys(model, provider_name):
-            if candidate != "openrouter" and candidate in self._realm_factories:
+            if candidate in self._realm_factories:
                 return self._realm_factories[candidate]
         return None
 
     def create_realm(
         self,
-        model: Model,
-        api_key: str,
+        model: Model | str,
+        api_key: str = "",
         provider_name: str | None = None,
     ) -> Realm:
+        if isinstance(model, str):
+            model = self.compose_model(
+                model, api_key=api_key, provider_name=provider_name
+            ) or Model(
+                id=model,
+                name=model,
+                realm=provider_name or (model.split("/")[0] if "/" in model else model),
+                base_url="",
+                api_key=api_key,
+            )
         ext_config = self._get_extension_config(model, provider_name)
         base_url = (ext_config.get("baseUrl") if ext_config else None) or model.base_url
         key = (
@@ -210,9 +211,6 @@ class RealmRegistry:
         factory = self._find_realm_factory(model, provider_name)
         if factory is not None:
             return factory(api_key=key, base_url=base_url)
-
-        if "openrouter" in self._realm_factories:
-            return self._realm_factories["openrouter"](api_key=key, base_url=base_url)
 
         raise NoRealmRegisteredError(
             f"No Realm factory registered for model '{model.id}'. "
@@ -337,3 +335,6 @@ def get_supported_contemplation_levels(model_id: str) -> list[str]:
 def is_realm_router(realm: str = "openrouter") -> bool:
     """Return True if the realm routes requests across multiple providers."""
     return get_default_realm_registry().is_realm_router(realm)
+
+
+get_registry = get_default_realm_registry

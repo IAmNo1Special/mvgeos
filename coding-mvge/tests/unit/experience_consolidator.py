@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from mvgeos_provider.registry import get_registry
 
 from coding_mvge.runes.skill_evolution.consolidator.consolidator import (
     ExperienceConsolidator,
@@ -250,6 +251,28 @@ class TestExperienceConsolidator:
     @pytest.mark.asyncio
     async def test_consolidate_batch_resolves_complete_fn_from_api_key(self, tmp_dirs):
         store, qs, hv = tmp_dirs
+        reg = get_registry()
+        mock_realm = MagicMock()
+        reg.register_realm_factory("openrouter", lambda **kw: mock_realm)
+        try:
+            ec = ExperienceConsolidator(
+                store=store,
+                queries=qs,
+                harvester=hv,
+                batch_size=1,
+                interval_turns=1,
+                api_key="test-api-key",
+            )
+            fn = ec._get_complete_fn()
+            assert fn is not None
+        finally:
+            reg.unregister_realm_factory("openrouter")
+
+    @pytest.mark.asyncio
+    async def test_consolidate_batch_no_realm_registered_returns_none(self, tmp_dirs):
+        store, qs, hv = tmp_dirs
+        reg = get_registry()
+        reg.unregister_realm_factory("openrouter")
         ec = ExperienceConsolidator(
             store=store,
             queries=qs,
@@ -259,4 +282,4 @@ class TestExperienceConsolidator:
             api_key="test-api-key",
         )
         fn = ec._get_complete_fn()
-        assert fn is not None
+        assert fn is None

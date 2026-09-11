@@ -85,7 +85,7 @@ def _with_system_prompt(
     return messages
 
 
-class OpenRouterRealm(SSEStreamingRealm):
+class MockStreamingRealm(SSEStreamingRealm):
     realm_name: str = "openrouter"
 
     @property
@@ -94,10 +94,12 @@ class OpenRouterRealm(SSEStreamingRealm):
 
     def __init__(
         self,
-        api_key: str,
+        api_key: str = "test-key",
         base_url: str = "https://openrouter.ai/api/v1",
         client: httpx.AsyncClient | None = None,
+        realm_name: str = "openrouter",
     ) -> None:
+        self.realm_name = realm_name
         super().__init__(
             api_key=api_key,
             base_url=base_url or "https://openrouter.ai/api/v1",
@@ -242,6 +244,7 @@ class OpenRouterRealm(SSEStreamingRealm):
 
 
 __all__ = [
-    "OpenRouterRealm",
+    "MockStreamingRealm",
     "_invocations_to_messages",
+    "_with_system_prompt",
 ]

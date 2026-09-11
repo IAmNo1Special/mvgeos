@@ -5,12 +5,11 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from mock_realm import MockStreamingRealm
 from mvgeos_core.channel import (
     ChannelConfig,
     Model,
 )
-
-from mvgeos_provider.openrouter import OpenRouterRealm
 
 
 def _model() -> Model:
@@ -78,7 +77,7 @@ class TestRealmProtocol:
 class TestOpenRouterComplete:
     @pytest.mark.asyncio
     async def test_returns_message_text(self) -> None:
-        realm = OpenRouterRealm(api_key="test-key")
+        realm = MockStreamingRealm(api_key="test-key")
         realm._client.post = AsyncMock(return_value=_Response(payload=_completion()))
 
         result = await realm.complete(
@@ -92,7 +91,7 @@ class TestOpenRouterComplete:
 
     @pytest.mark.asyncio
     async def test_sends_stream_false(self) -> None:
-        realm = OpenRouterRealm(api_key="test-key")
+        realm = MockStreamingRealm(api_key="test-key")
         post = AsyncMock(return_value=_Response(payload=_completion()))
         realm._client.post = post
 
@@ -107,7 +106,7 @@ class TestOpenRouterComplete:
 
     @pytest.mark.asyncio
     async def test_reports_mana_usage(self) -> None:
-        realm = OpenRouterRealm(api_key="test-key")
+        realm = MockStreamingRealm(api_key="test-key")
         realm._client.post = AsyncMock(return_value=_Response(payload=_completion()))
 
         result = await realm.complete(
@@ -124,7 +123,7 @@ class TestOpenRouterComplete:
     @pytest.mark.asyncio
     async def test_does_not_send_tools(self) -> None:
         # Summarization is a standalone call; Spells must not leak into it.
-        realm = OpenRouterRealm(api_key="test-key")
+        realm = MockStreamingRealm(api_key="test-key")
         post = AsyncMock(return_value=_Response(payload=_completion()))
         realm._client.post = post
 
@@ -138,7 +137,7 @@ class TestOpenRouterComplete:
 
     @pytest.mark.asyncio
     async def test_error_status_returns_error_response(self) -> None:
-        realm = OpenRouterRealm(api_key="test-key")
+        realm = MockStreamingRealm(api_key="test-key")
         realm._client.post = AsyncMock(
             return_value=_Response(
                 status_code=401,
@@ -158,7 +157,7 @@ class TestOpenRouterComplete:
 
     @pytest.mark.asyncio
     async def test_rate_limit_maps_to_retryable_code(self) -> None:
-        realm = OpenRouterRealm(api_key="test-key")
+        realm = MockStreamingRealm(api_key="test-key")
         realm._client.post = AsyncMock(
             return_value=_Response(
                 status_code=429,
@@ -176,7 +175,7 @@ class TestOpenRouterComplete:
 
     @pytest.mark.asyncio
     async def test_empty_choices_yields_error(self) -> None:
-        realm = OpenRouterRealm(api_key="test-key")
+        realm = MockStreamingRealm(api_key="test-key")
         realm._client.post = AsyncMock(return_value=_Response(payload={"choices": []}))
 
         result = await realm.complete(
@@ -189,7 +188,7 @@ class TestOpenRouterComplete:
 
     @pytest.mark.asyncio
     async def test_is_awaitable_not_generator(self) -> None:
-        realm = OpenRouterRealm(api_key="test-key")
+        realm = MockStreamingRealm(api_key="test-key")
         realm._client.post = AsyncMock(return_value=_Response(payload=_completion()))
 
         coro = realm.complete(
@@ -202,7 +201,7 @@ class TestOpenRouterComplete:
 
     @pytest.mark.asyncio
     async def test_prepare_request_injects_system_prompt(self) -> None:
-        realm = OpenRouterRealm(api_key="test-key")
+        realm = MockStreamingRealm(api_key="test-key")
         model = _model()
         config = ChannelConfig(model=model, system_prompt="You are a Mvge.")
 
@@ -224,7 +223,7 @@ class TestOpenRouterComplete:
     async def test_prepare_request_does_not_duplicate_existing_system_message(
         self,
     ) -> None:
-        realm = OpenRouterRealm(api_key="test-key")
+        realm = MockStreamingRealm(api_key="test-key")
         model = _model()
         config = ChannelConfig(model=model, system_prompt="You are a Mvge.")
 
@@ -248,7 +247,7 @@ class TestOpenRouterComplete:
 
     @pytest.mark.asyncio
     async def test_complete_injects_system_prompt_when_missing(self) -> None:
-        realm = OpenRouterRealm(api_key="test-key")
+        realm = MockStreamingRealm(api_key="test-key")
         realm._client.post = AsyncMock(return_value=_Response(payload=_completion()))
         config = ChannelConfig(model=_model(), system_prompt="Base sys prompt.")
 

@@ -12,7 +12,8 @@ from mvgeos_core.channel import (
     ChannelConfig,
     Model,
 )
-from mvgeos_provider.openrouter import OpenRouterRealm
+from mvgeos_provider.base import NoRealmRegisteredError
+from mvgeos_provider.registry import get_registry
 
 from coding_mvge.runes.skill_evolution.consolidator.harvester import ExperienceHarvester
 from coding_mvge.runes.skill_evolution.consolidator.prompts import (
@@ -119,9 +120,15 @@ class ExperienceConsolidator:
         if self.complete_fn is not None:
             return self.complete_fn
         if self.api_key:
-            realm = OpenRouterRealm(api_key=self.api_key)
-            self.complete_fn = make_realm_complete_fn(realm, self.llm_model)
-            return self.complete_fn
+            try:
+                realm = get_registry().create_realm(
+                    self.llm_model, api_key=self.api_key
+                )
+                self.complete_fn = make_realm_complete_fn(realm, self.llm_model)
+                return self.complete_fn
+            except NoRealmRegisteredError as exc:
+                logger.warning("Cannot initialize realm for consolidation: %s", exc)
+                return None
         return None
 
     async def consolidate_batch(

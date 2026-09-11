@@ -6,7 +6,6 @@ from mvgeos_core.channel import (
 
 from mvgeos_provider.base import NoRealmRegisteredError, Realm, RealmFactory
 from mvgeos_provider.model_registry import ModelRegistry, list_models
-from mvgeos_provider.openrouter import OpenRouterRealm
 from mvgeos_provider.registry import (
     RealmRegistry,
     get_default_realm_registry,
@@ -14,6 +13,7 @@ from mvgeos_provider.registry import (
     get_model_options,
     get_models_for_provider,
     get_providers_for_realm,
+    get_registry,
     get_supported_contemplation_levels,
     is_realm_router,
     refresh_models,
@@ -25,7 +25,6 @@ __all__ = [
     "Model",
     "ModelRegistry",
     "NoRealmRegisteredError",
-    "OpenRouterRealm",
     "Realm",
     "RealmFactory",
     "RealmRegistry",
@@ -37,6 +36,7 @@ __all__ = [
     "get_model_options",
     "get_models_for_provider",
     "get_providers_for_realm",
+    "get_registry",
     "get_supported_contemplation_levels",
     "is_realm_router",
     "list_models",
