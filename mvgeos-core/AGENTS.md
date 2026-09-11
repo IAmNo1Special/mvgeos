@@ -1,0 +1,46 @@
+# mvgeos-Core — Agent Instructions
+
+This package owns the canonical loop vocabulary for MvgeOS: abort primitives,
+invocations, spells, events, state, and the pure turn loop (`run_loop` with
+injected `StreamFn` and `emit` sink). It has zero first-party dependencies.
+
+## Package-Specific Conventions
+
+- All code follows the red-green-refactor TDD cycle: write failing test first, then implement
+- No inline imports (`await import()`, `import("pkg").Type`). Top-level imports only
+- Use `pathlib.Path` for all file path operations — never raw string concatenation
+- Mock sync methods with `MagicMock()`, async methods with `AsyncMock()` — mixing causes "coroutine never awaited" warnings
+- Zero first-party dependencies: never import `mvgeos-agent`, `mvgeos-provider`,
+  `mvgeos-tome`, `mvgeos-runes`, `mvgeos-cli`, `mvgeos-gui`, or `coding-mvge` from
+  this package. Leaf packages (`provider`, `runes`, `tome`) depend on core, not
+  the reverse.
+
+## Testing
+
+```bash
+# Run this package's tests
+uv run python -m pytest mvgeos-core/tests/
+```
+
+Test paths follow pattern: `mvgeos-core/tests/unit/<module>.py` and `mvgeos-core/tests/integration/<module>.py`
+
+## Key Types (target boundary)
+
+| Type | Purpose |
+| --- | --- |
+| `AbortError` / `AbortSignal` / `AbortController` | Cooperative cancellation primitives |
+| `StopReason` | Realm stop reasons (`pending`, `stop`, `spellUse`, ...) |
+| `MvgeResponse` / `SummonerRequest` / `SpellResultMessage` | Invocation transcript types |
+| `MvgeSpell` / `SpellResult` / `SpellStatus` | Spell definition and outcome |
+| `MvgeState` / `MvgeEvent` / `MvgeEventType` | Mutable state and lifecycle events |
+| `LoopContext` / `LoopCallbacks` | Frozen loop input and extension points |
+| `StreamFn` / `EmitSink` / `run_loop` | Injected Realm caller, event sink, pure turn loop |
+| `SpellDispatcher` / `EventBus` | Tool-call execution and event propagation |
+
+## Migration Status
+
+Scaffold only. Canonical types and the pure loop still live in `mvgeos-agent`
+(`types.py`, `core_loop.py`, `dispatcher.py`, `event_bus.py`, `errors.py`,
+`constants.py`) and in leaf type modules (`mvgeos-provider/types.py`,
+`mvgeos-runes/types.py`). Migration moves them here first, then inverts leaf
+imports to depend on core.

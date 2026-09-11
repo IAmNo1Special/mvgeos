@@ -69,6 +69,5 @@ coding-mvge/src/coding_mvge/
 
 - `mvgeos-agent` — core agent loop, prompt engine, and auto-discovery
 - `mvgeos-provider` — Realm protocol and providers
-- `mvgeos-tome` — Tome persistence
 - `mvgeos-runes` — Rune extension system
 

@@ -97,7 +97,7 @@ git diff viewer, and slide-over artifact markdown inspector.
 **Entry point**: `mvgeos-gui` command → `mvgeos_gui.main:main`
 
 **Dependencies**: nicegui, pywebview, pathspec, coding-mvge, mvgeos-agent,
-mvgeos-cli, mvgeos-provider, mvgeos-runes, mvgeos-tome
+mvgeos-provider, mvgeos-runes, mvgeos-tome
 
 ### coding-mvge
 
@@ -109,7 +109,7 @@ self-modification and zero-boilerplate instantiation.
 
 **Entry point**: `from coding_mvge import root_mvge` → `root_mvge.run(prompt)`
 
-**Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-tome, mvgeos-runes
+**Dependencies**: mvgeos-agent, mvgeos-provider, mvgeos-runes
 
 ## Data Flow
 
