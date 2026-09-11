@@ -26,7 +26,7 @@ def load_manifest(path: Path) -> RuneManifest | None:
     if not manifest_path.exists():
         return None
     try:
-        with manifest_path.open("r", encoding="utf-8") as f:
+        with manifest_path.open("r", encoding="utf-8-sig") as f:
             data = json.load(f)
     except json.JSONDecodeError:
         return None
