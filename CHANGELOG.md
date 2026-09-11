@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-09-11
+
+
+### Bug Fixes
+
+- **runes:** support UTF-8 BOM in manifest loader (a54349e)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (c972afd)
+
+- **release:** v3.0.0 (1db6784)
+
+
+### Documentation
+
+- **coding-mvge:** update spell template import to mvgeos_core (30fd012)
+
+
+### Features
+
+- **core:** scaffold mvgeos-core workspace package (5f81c61)
+
+- **core:** extract mvgeos-core canonical loop package **BREAKING CHANGE** (8e4baa9)
+
+
 ## [2.2.0] - 2026-09-11
 
 
