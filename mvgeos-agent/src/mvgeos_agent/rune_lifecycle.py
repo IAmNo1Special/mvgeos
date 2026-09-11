@@ -88,11 +88,13 @@ class RuneLifecycle:
     def resolve_paths(self) -> list[tuple[Path, RuneScope]]:
         """Resolve configured rune paths to (path, scope) pairs.
 
-        Paths containing ``{agent_name}`` or pointing to ``.mvgeos/{agent_name}/runes``
-        are agent-scoped; ``.mvgeos/runes`` directories are user-scoped;
-        everything else is project-scoped.
+        Paths containing ``{agent_name}`` or pointing to
+        ``agents/{agent_name}/extensions`` are agent-scoped; user-level
+        ``~/.agents/extensions`` directories are user-scoped; everything else
+        is project-scoped.
         """
         result: list[tuple[Path, RuneScope]] = []
+        user_ext_posix = Path("~/.agents/extensions").expanduser().as_posix()
         for path in self._runes_paths:
             path_str = str(path)
             resolved = Path(
@@ -100,10 +102,18 @@ class RuneLifecycle:
             ).expanduser()
             posix_path = resolved.as_posix()
             if "{agent_name}" in path_str or (
-                self._agent_name and f".mvgeos/{self._agent_name}/runes" in posix_path
+                self._agent_name
+                and (
+                    f"agents/{self._agent_name}/extensions" in posix_path
+                    or f".mvgeos/{self._agent_name}/runes" in posix_path
+                )
             ):
                 scope = RuneScope.AGENT
-            elif ".mvgeos/runes" in posix_path:
+            elif (
+                posix_path == user_ext_posix
+                or "~/.agents/extensions" in path_str
+                or ".mvgeos/runes" in posix_path
+            ):
                 scope = RuneScope.USER
             else:
                 scope = RuneScope.PROJECT

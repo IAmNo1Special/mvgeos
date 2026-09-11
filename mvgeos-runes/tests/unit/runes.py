@@ -1097,3 +1097,49 @@ def test_load_skill_manifest_caching() -> None:
         manifest4 = load_skill_manifest(skill_dir)
         assert manifest4 is not None
         assert manifest4.description == "Updated description."
+
+
+def test_load_manifest_runtime_field() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = Path(tmpdir) / "ts_rune"
+        rune_dir.mkdir()
+        manifest_file = rune_dir / "manifest.json"
+        manifest_data = (
+            '{"name": "ts_rune", "version": "1.0.0", '
+            '"description": "TypeScript rune", '
+            '"entry_point": "index.ts", "runtime": "typescript"}'
+        )
+        manifest_file.write_text(manifest_data, encoding="utf-8")
+
+        manifest = load_manifest(rune_dir)
+        assert manifest is not None
+        assert manifest.name == "ts_rune"
+        assert manifest.runtime == "typescript"
+
+
+def test_load_factory_skips_incompatible_runtime() -> None:
+    from mvgeos_runes.types import Diagnostic
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = Path(tmpdir) / "ts_rune"
+        rune_dir.mkdir()
+        ts_file = rune_dir / "index.ts"
+        ts_file.write_text("console.log('hi');", encoding="utf-8")
+
+        manifest = RuneManifest(
+            name="ts_rune",
+            version="1.0.0",
+            description="TypeScript rune",
+            entry_point="index.ts",
+            runtime="typescript",
+        )
+        diagnostics: list[Diagnostic] = []
+        factory = load_factory_from_manifest(
+            manifest, rune_dir, diagnostics=diagnostics
+        )
+
+        assert factory is None
+        assert len(diagnostics) == 1
+        assert diagnostics[0].kind == DiagnosticKind.INCOMPATIBLE_RUNTIME
+        assert "targets 'typescript' runtime" in diagnostics[0].message
+        assert diagnostics[0].rune_name == "ts_rune"

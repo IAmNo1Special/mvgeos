@@ -202,12 +202,12 @@ def render_prompt(
 def resolve_config_dir(name: str, config_dir: Path | None = None) -> Path:
     """The one place a Mvge's configuration lives.
 
-    Defaults to the dotagents path `~/.agents/.mvgeos/{name}/`. An explicit
+    Defaults to the dotagents path `~/.agents/agents/{name}/`. An explicit
     directory overrides it, which is what tests and embedders pass.
     """
     if config_dir is not None:
         return config_dir
-    return Path(f"~/.agents/.mvgeos/{name}").expanduser()
+    return Path(f"~/.agents/agents/{name}").expanduser()
 
 
 def ensure_config_files(name: str, config_dir: Path | None = None) -> Path:
@@ -330,16 +330,11 @@ def resolve_system_prompt(
         )
     else:
         proj_base = project_dir if project_dir is not None else Path.cwd()
-        project_file = proj_base / ".agents" / ".mvgeos" / filename
         std_project_file = proj_base / ".agents" / filename
         agent_dir = resolve_config_dir(agent_name, config_dir)
         agent_file = agent_dir / filename
 
-        if project_file.is_file() and (text := _read_text(project_file)):
-            resolved_base = ResolvedPrompt(
-                text=text, source=PromptSource.PROJECT_MD, path=project_file
-            )
-        elif std_project_file.is_file() and (text := _read_text(std_project_file)):
+        if std_project_file.is_file() and (text := _read_text(std_project_file)):
             resolved_base = ResolvedPrompt(
                 text=text, source=PromptSource.PROJECT_MD, path=std_project_file
             )

@@ -213,8 +213,8 @@ class TestPromptDiscoveryPrecedence:
     def test_custom_literal_wins_over_all(self, tmp_path: Path) -> None:
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        (project_dir / ".agents" / ".mvgeos").mkdir(parents=True)
-        (project_dir / ".agents" / ".mvgeos" / "SYSTEM.md").write_text(
+        (project_dir / ".agents").mkdir(parents=True)
+        (project_dir / ".agents" / "SYSTEM.md").write_text(
             "Project prompt", encoding="utf-8"
         )
 
@@ -235,8 +235,8 @@ class TestPromptDiscoveryPrecedence:
     def test_custom_path_wins_over_project(self, tmp_path: Path) -> None:
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        (project_dir / ".agents" / ".mvgeos").mkdir(parents=True)
-        (project_dir / ".agents" / ".mvgeos" / "SYSTEM.md").write_text(
+        (project_dir / ".agents").mkdir(parents=True)
+        (project_dir / ".agents" / "SYSTEM.md").write_text(
             "Project prompt", encoding="utf-8"
         )
 
@@ -255,8 +255,8 @@ class TestPromptDiscoveryPrecedence:
     def test_project_wins_over_agent(self, tmp_path: Path) -> None:
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        (project_dir / ".agents" / ".mvgeos").mkdir(parents=True)
-        (project_dir / ".agents" / ".mvgeos" / "SYSTEM.md").write_text(
+        (project_dir / ".agents").mkdir(parents=True)
+        (project_dir / ".agents" / "SYSTEM.md").write_text(
             "Project prompt", encoding="utf-8"
         )
 
@@ -271,7 +271,7 @@ class TestPromptDiscoveryPrecedence:
         )
         assert resolved.text == "Project prompt"
         assert resolved.source == PromptSource.PROJECT_MD
-        assert resolved.path == project_dir / ".agents" / ".mvgeos" / "SYSTEM.md"
+        assert resolved.path == project_dir / ".agents" / "SYSTEM.md"
 
     def test_agent_wins_over_builtin(self, tmp_path: Path) -> None:
         agent_dir = tmp_path / "agent"
@@ -409,7 +409,7 @@ class TestConfigDirAndSeeding:
         monkeypatch.setenv("USERPROFILE", str(tmp_path))
 
         resolved = resolve_config_dir("my-mvge")
-        assert resolved == tmp_path / ".agents" / ".mvgeos" / "my-mvge"
+        assert resolved == tmp_path / ".agents" / "agents" / "my-mvge"
 
     def test_resolve_config_dir_explicit_wins(self, tmp_path: Path) -> None:
         assert resolve_config_dir("my-mvge", tmp_path) == tmp_path
@@ -527,7 +527,7 @@ class TestMvgeEnvironmentResolve:
 
     def test_resolve_project_prompt(self, tmp_path: Path) -> None:
         config_dir = tmp_path / "agent_config"
-        agents_dir = tmp_path / ".agents" / ".mvgeos"
+        agents_dir = tmp_path / ".agents"
         agents_dir.mkdir(parents=True)
         (agents_dir / "SYSTEM.md").write_text("Custom Project System Prompt")
 

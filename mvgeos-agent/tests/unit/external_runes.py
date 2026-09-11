@@ -13,13 +13,13 @@ from mvgeos_core.channel import (
 from mvgeos_provider.base import Realm
 
 # Ensure runes path is in sys.path when installed
-RUNES_DIR = Path("~/.agents/.mvgeos/runes").expanduser()
+RUNES_DIR = Path("~/.agents/extensions").expanduser()
 if str(RUNES_DIR) not in sys.path and RUNES_DIR.is_dir():
     sys.path.insert(0, str(RUNES_DIR))
 
 pytestmark = pytest.mark.skipif(
     not RUNES_DIR.is_dir(),
-    reason="External runes in ~/.agents/.mvgeos/runes not installed on host",
+    reason="External runes in ~/.agents/extensions not installed on host",
 )
 
 

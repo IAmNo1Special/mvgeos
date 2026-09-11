@@ -73,23 +73,23 @@ class TestResolvePaths:
     def test_agent_placeholder_maps_to_agent_scope(self) -> None:
         lifecycle = RuneLifecycle(
             agent_name="coder",
-            runes_paths=["~/.agents/.mvgeos/{agent_name}/runes"],
+            runes_paths=["~/.agents/agents/{agent_name}/extensions"],
         )
 
         result = lifecycle.resolve_paths()
 
-        expected = Path("~/.agents/.mvgeos/coder/runes").expanduser()
+        expected = Path("~/.agents/agents/coder/extensions").expanduser()
         assert result == [(expected, RuneScope.AGENT)]
 
     def test_global_mvgeos_dir_maps_to_user_scope(self) -> None:
         lifecycle = RuneLifecycle(
             agent_name="coder",
-            runes_paths=["~/.agents/.mvgeos/runes"],
+            runes_paths=["~/.agents/extensions"],
         )
 
         result = lifecycle.resolve_paths()
 
-        expected = Path("~/.agents/.mvgeos/runes").expanduser()
+        expected = Path("~/.agents/extensions").expanduser()
         assert result == [(expected, RuneScope.USER)]
 
     def test_custom_dir_maps_to_project_scope(self) -> None:
@@ -105,8 +105,8 @@ class TestResolvePaths:
     def test_order_is_preserved(self) -> None:
         paths = [
             "extensions/runes",
-            "~/.agents/.mvgeos/runes",
-            "~/.agents/.mvgeos/{agent_name}/runes",
+            "~/.agents/extensions",
+            "~/.agents/agents/{agent_name}/extensions",
         ]
         lifecycle = RuneLifecycle(agent_name="coder", runes_paths=paths)
 
@@ -118,10 +118,10 @@ class TestResolvePaths:
     def test_already_resolved_agent_path_maps_to_agent_scope(self) -> None:
         lifecycle = RuneLifecycle(
             agent_name="coder",
-            runes_paths=["~/.agents/.mvgeos/coder/runes"],
+            runes_paths=["~/.agents/agents/coder/extensions"],
         )
         result = lifecycle.resolve_paths()
-        expected = Path("~/.agents/.mvgeos/coder/runes").expanduser()
+        expected = Path("~/.agents/agents/coder/extensions").expanduser()
         assert result == [(expected, RuneScope.AGENT)]
 
 

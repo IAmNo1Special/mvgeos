@@ -133,12 +133,7 @@ class TestSkillEvolutionRuneIntegration:
         from coding_mvge.runes.skill_evolution.proposer_mvge.spells.finish import finish
 
         agent_skills = (
-            Path.home()
-            / ".agents"
-            / ".mvgeos"
-            / "coding_mvge"
-            / "skills"
-            / "demo-skill"
+            Path.home() / ".agents" / "agents" / "coding_mvge" / "skills" / "demo-skill"
         )
         agent_skills.mkdir(parents=True, exist_ok=True)
         (agent_skills / "SKILL.md").write_text(
@@ -184,7 +179,7 @@ class TestSkillEvolutionRuneIntegration:
         from pathlib import Path
 
         agent_skills = (
-            Path.home() / ".agents" / ".mvgeos" / "coding_mvge" / "skills" / "export-me"
+            Path.home() / ".agents" / "agents" / "coding_mvge" / "skills" / "export-me"
         )
         agent_skills.mkdir(parents=True, exist_ok=True)
         (agent_skills / "SKILL.md").write_text(

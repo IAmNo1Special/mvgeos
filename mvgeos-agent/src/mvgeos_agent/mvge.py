@@ -57,7 +57,7 @@ from mvgeos_agent.compatibility import (
     SessionCompatibilityReport,
     validate_session_compatibility,
 )
-from mvgeos_agent.environment import MvgeEnvironment
+from mvgeos_agent.environment import MvgeEnvironment, resolve_config_dir
 from mvgeos_agent.function_spell import (
     RuneSpellWrapper,
     SpellUnion,
@@ -243,7 +243,7 @@ class Mvge:
         if environment is None:
             environment = MvgeEnvironment.resolve(
                 name,
-                config_dir=Path(f"~/.agents/.mvgeos/{name}").expanduser(),
+                config_dir=resolve_config_dir(name),
                 caller_dir=caller_dir,
                 extension_dir=extension_dir,
                 runes_paths=resolved_runes_paths if resolved_runes_paths else None,
@@ -294,6 +294,15 @@ class Mvge:
     def session_id(self) -> str | None:
         """Alias for tome_id adhering to standard agent protocol vocabulary."""
         return self.tome_id
+
+    @property
+    def tome_dir(self) -> Path:
+        return self._tome_dir
+
+    @property
+    def session_dir(self) -> Path:
+        """Alias for tome_dir adhering to .agents protocol boundary."""
+        return self._tome_dir
 
     @property
     def model_id(self) -> str:
@@ -364,7 +373,7 @@ class Mvge:
             self._config_manager, "agent_config_path", None
         ):
             return self._config_manager.agent_config_path.parent
-        return Path(f"~/.agents/.mvgeos/{self._name}").expanduser()
+        return resolve_config_dir(self._name)
 
     @property
     def environment(self) -> MvgeEnvironment:

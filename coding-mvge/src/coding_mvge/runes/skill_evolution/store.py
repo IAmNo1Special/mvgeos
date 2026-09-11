@@ -15,7 +15,7 @@ class SkillEvolutionStore:
     """Pure-markdown skill evolution store per paper §3.1.
 
     Layout under evolution_dir
-    (agent scoped `~/.agents/.mvgeos/{agent}/skill_evolution`):
+    (agent scoped `~/.agents/agents/{agent}/skill_evolution`):
       index.md
       logs.md
       skill-impact.md

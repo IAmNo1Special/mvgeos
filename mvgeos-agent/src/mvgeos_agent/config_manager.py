@@ -40,14 +40,14 @@ def is_known_agent(
     base = (
         agent_config_base.expanduser()
         if agent_config_base is not None
-        else Path("~/.agents/.mvgeos").expanduser()
+        else Path("~/.agents/agents").expanduser()
     )
     agent_dir = base / agent_name
     if agent_dir.exists():
         return True
 
     proj_dir = project_dir or Path.cwd()
-    proj_agent_dir = proj_dir / ".agents" / ".mvgeos" / agent_name
+    proj_agent_dir = proj_dir / ".agents" / "agents" / agent_name
     return proj_agent_dir.exists()
 
 
@@ -79,7 +79,7 @@ def validate_agent_name(
     base = (
         agent_config_base.expanduser()
         if agent_config_base is not None
-        else Path("~/.agents/.mvgeos").expanduser()
+        else Path("~/.agents/agents").expanduser()
     )
     agent_dir = base / agent_name
     raise ValueError(
@@ -114,8 +114,8 @@ class ConfigManager:
 
     Precedence (highest to lowest):
     1. Constructor overrides (via ``with_overrides()``)
-    2. Project config (``.agents/.mvgeos/config.json``)
-    3. Agent-scope file (``~/.agents/.mvgeos/{name}/config.json``)
+    2. Project config (``.agents/config.json``)
+    3. Agent-scope file (``~/.agents/agents/{name}/config.json``)
     4. Defaults
 
     Each resolved value carries the layer it came from.
@@ -143,7 +143,7 @@ class ConfigManager:
         self._agent_config_base = (
             agent_config_base.expanduser()
             if agent_config_base is not None
-            else Path("~/.agents/.mvgeos").expanduser()
+            else Path("~/.agents/agents").expanduser()
         )
 
     @property
@@ -154,7 +154,7 @@ class ConfigManager:
     @property
     def project_config_path(self) -> Path:
         """Path to the project config file."""
-        return self._project_dir / ".agents" / ".mvgeos" / "config.json"
+        return self._project_dir / ".agents" / "config.json"
 
     def with_overrides(self, **kwargs: Any) -> ConfigManager:
         """Return a new manager with constructor-level overrides applied.

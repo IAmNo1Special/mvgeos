@@ -14,9 +14,12 @@ from mvgeos_core.channel import (
 )
 from mvgeos_core.constants import (
     DEFAULT_AGENT_NAME,
+    DEFAULT_EXTENSION_PATHS,
     DEFAULT_MODEL,
     DEFAULT_RUNE_PATHS,
+    DEFAULT_SESSION_DIR,
     DEFAULT_TOME_DIR,
+    resolve_extension_paths,
     resolve_rune_paths,
 )
 from mvgeos_core.dispatcher import BatchResult, SpellDispatcher
@@ -74,8 +77,10 @@ __all__ = [
     "ContemplationLevel",
     "ContentType",
     "DEFAULT_AGENT_NAME",
+    "DEFAULT_EXTENSION_PATHS",
     "DEFAULT_MODEL",
     "DEFAULT_RUNE_PATHS",
+    "DEFAULT_SESSION_DIR",
     "DEFAULT_TOME_DIR",
     "EmitSink",
     "EventBus",
@@ -114,6 +119,7 @@ __all__ = [
     "TomeResumeError",
     "UpstreamTimeoutError",
     "generate_spell_schema",
+    "resolve_extension_paths",
     "resolve_rune_paths",
     "run_loop",
 ]

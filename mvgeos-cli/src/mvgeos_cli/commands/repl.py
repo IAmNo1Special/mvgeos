@@ -110,7 +110,7 @@ def _make_bindings() -> KeyBindings:
 
 
 def _get_history_path() -> Path:
-    path = Path(os.path.expanduser("~/.agents/.mvgeos/history"))
+    path = Path(os.path.expanduser("~/.agents/history"))
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 

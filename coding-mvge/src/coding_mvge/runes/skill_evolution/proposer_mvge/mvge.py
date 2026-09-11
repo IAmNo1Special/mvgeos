@@ -39,13 +39,9 @@ def scoped_proposer_context(
     """Context manager for scoping a SkillEvolutionEngine to the current
     async context."""
     if engine is None:
-        evo_dir = (
-            evolution_dir or knowledge_dir or Path(".agents/.mvgeos/skill_evolution")
-        )
+        evo_dir = evolution_dir or knowledge_dir or Path(".agents/skill_evolution")
         raw_dir = (
-            raw_experience_dir
-            or raw_knowledge_dir
-            or Path(".agents/.mvgeos/raw_experience")
+            raw_experience_dir or raw_knowledge_dir or Path(".agents/raw_experience")
         )
         skills_dir = target_skills_dir or Path(".agents/skills")
         engine = SkillEvolutionEngine(
@@ -113,15 +109,11 @@ async def run_proposer(
             if available_skills is not None:
                 engine.available_skills = engine._normalize_skills(available_skills)
         else:
-            evo_dir = (
-                evolution_dir
-                or knowledge_dir
-                or Path(".agents/.mvgeos/skill_evolution")
-            )
+            evo_dir = evolution_dir or knowledge_dir or Path(".agents/skill_evolution")
             raw_dir = (
                 raw_experience_dir
                 or raw_knowledge_dir
-                or Path(".agents/.mvgeos/raw_experience")
+                or Path(".agents/raw_experience")
             )
             skills_dir = target_skills_dir or Path(".agents/skills")
             engine = SkillEvolutionEngine(

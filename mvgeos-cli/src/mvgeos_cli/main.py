@@ -295,8 +295,7 @@ def _repl_callback(
             if prompted_key:
                 save_api_key_to_auth(prompted_key)
                 console.print(
-                    "[green]Saved API key to "
-                    "~/.agents/.mvgeos/auth/openrouter.json[/green]"
+                    "[green]Saved API key to ~/.agents/auth/openrouter.json[/green]"
                 )
                 api_key = prompted_key
         if api_key is None:

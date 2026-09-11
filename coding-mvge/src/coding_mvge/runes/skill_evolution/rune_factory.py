@@ -46,7 +46,7 @@ def rune_factory(api: RuneAPI) -> None:
         if context.mode != "test"
         else None
     )
-    config_base = Path(f"~/.agents/.mvgeos/{agent_name}").expanduser()
+    config_base = Path(f"~/.agents/agents/{agent_name}").expanduser()
 
     # Workspace-aware partitioning in agent scope to prevent cross-project pollution
     cwd_path = Path(context.cwd).resolve() if context.cwd else None

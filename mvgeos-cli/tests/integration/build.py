@@ -61,7 +61,7 @@ def _make_snapshot() -> RuntimeSnapshot:
                 key="model",
                 value="nvidia/nemotron-3-ultra-550b-a55b:free",
                 layer="agent",
-                source_file="/home/user/.agents/.mvgeos/test-agent/config.json",
+                source_file="/home/user/.agents/agents/test-agent/config.json",
             ),
             SnapshotConfigEntry(
                 key="max_tokens",

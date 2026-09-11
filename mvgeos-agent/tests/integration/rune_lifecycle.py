@@ -59,10 +59,12 @@ async def _reference_inline_load(
     registry: Any,
 ) -> RuneRunner:
     """The pre-extraction inline BaseMvge._load_runes() logic, verbatim."""
-    paths_with_scope = []
+    paths_with_scope: list[tuple[Path, RuneScope]] = []
     for path in runes_paths:
         resolved = Path(str(path).replace("{agent_name}", agent_name)).expanduser()
-        if ".mvgeos/runes" in str(path) and "{agent_name}" not in str(path):
+        if (
+            "~/.agents/extensions" in str(path) or ".mvgeos/runes" in str(path)
+        ) and "{agent_name}" not in str(path):
             scope = RuneScope.USER
         elif "{agent_name}" in str(path):
             scope = RuneScope.AGENT

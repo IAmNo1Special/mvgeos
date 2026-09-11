@@ -30,7 +30,7 @@ WORKFLOW:
    - Focus: Repository-specific idioms, local build scripts, monorepo paths, and project test setups.
    - MUST NOT strip or generalize away project-critical constraints.
 2. **Agent Scope (`agent`)**:
-   - Location: `~/.agents/.mvgeos/{agent}/skills/<name>/`
+   - Location: `~/.agents/agents/{agent}/skills/<name>/`
    - Focus: Cross-project agent reasoning, spell sequencing heuristics, and general persona strategies.
    - STRICTLY FORBIDDEN: Hardcoded repo paths, project-specific credentials, branch names, or one-off framework configs.
 3. **User Scope (`user`)**:

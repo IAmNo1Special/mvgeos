@@ -62,7 +62,7 @@ class TestConfigManagerProvenance:
 
     def test_provenance_project(self, tmp_path: Path) -> None:
         mgr = _make_mgr(tmp_path)
-        project_dir = tmp_path / ".agents" / ".mvgeos"
+        project_dir = tmp_path / ".agents"
         project_dir.mkdir(parents=True)
         project_dir.joinpath("config.json").write_text(
             json.dumps({"model": "project-model"}), encoding="utf-8"
@@ -96,7 +96,7 @@ class TestConfigManagerPrecedence:
         mgr.agent_config_path.write_text(
             json.dumps({"model": "agent-model"}), encoding="utf-8"
         )
-        project_dir = tmp_path / ".agents" / ".mvgeos"
+        project_dir = tmp_path / ".agents"
         project_dir.mkdir(parents=True)
         project_dir.joinpath("config.json").write_text(
             json.dumps({"model": "project-model"}), encoding="utf-8"
@@ -111,7 +111,7 @@ class TestConfigManagerPrecedence:
         mgr.agent_config_path.write_text(
             json.dumps({"model": "agent-model"}), encoding="utf-8"
         )
-        project_dir = tmp_path / ".agents" / ".mvgeos"
+        project_dir = tmp_path / ".agents"
         project_dir.mkdir(parents=True)
         project_dir.joinpath("config.json").write_text(
             json.dumps({"model": "project-model"}), encoding="utf-8"
@@ -198,9 +198,7 @@ class TestConfigManagerConfigFileLocations:
 
     def test_project_config_path_in_project(self, tmp_path: Path) -> None:
         mgr = _make_mgr(tmp_path)
-        assert str(mgr.project_config_path) == str(
-            tmp_path / ".agents" / ".mvgeos" / "config.json"
-        )
+        assert str(mgr.project_config_path) == str(tmp_path / ".agents" / "config.json")
 
 
 class TestConfigManagerProjectScope:
@@ -389,7 +387,7 @@ class TestAgentValidation:
         validate_agent_name("custom-agent-2", agent_config_base=fake_base)
 
     def test_is_known_agent_with_project_dir(self, tmp_path: Path) -> None:
-        agent_dir = tmp_path / ".agents" / ".mvgeos" / "my-agent"
+        agent_dir = tmp_path / ".agents" / "agents" / "my-agent"
         agent_dir.mkdir(parents=True)
         assert is_known_agent("my-agent", project_dir=tmp_path) is True
         assert is_known_agent("unknown", project_dir=tmp_path) is False

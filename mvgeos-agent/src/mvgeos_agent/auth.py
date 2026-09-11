@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 
-AUTH_FILE_PATH = Path("~/.agents/.mvgeos/auth/openrouter.json").expanduser()
+AUTH_FILE_PATH = Path("~/.agents/auth/openrouter.json").expanduser()
 AUTH_FILE_PERMS = 0o600
 AUTH_DIR_PERMS = 0o700
 
@@ -26,7 +26,7 @@ def enforce_file_permissions(
 
 
 def load_api_key_from_auth() -> str | None:
-    """Load API key from ~/.agents/.mvgeos/auth/openrouter.json."""
+    """Load API key from ~/.agents/auth/openrouter.json."""
     if AUTH_FILE_PATH.exists():
         if os.name != "nt":
             enforce_file_permissions(AUTH_FILE_PATH)
@@ -38,7 +38,7 @@ def load_api_key_from_auth() -> str | None:
 
 
 def save_api_key_to_auth(api_key: str) -> Path:
-    """Save API key to ~/.agents/.mvgeos/auth/openrouter.json."""
+    """Save API key to ~/.agents/auth/openrouter.json."""
     AUTH_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
     if os.name != "nt":
         with contextlib.suppress(OSError):

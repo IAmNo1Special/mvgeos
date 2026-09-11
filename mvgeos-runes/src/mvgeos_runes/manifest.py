@@ -64,6 +64,8 @@ def load_manifest(path: Path) -> RuneManifest | None:
     if not isinstance(enabled, bool):
         enabled = True
 
+    runtime = str(data.get("runtime", "python")).strip().lower() or "python"
+
     return RuneManifest(
         name=data["name"],
         version=data["version"],
@@ -75,4 +77,5 @@ def load_manifest(path: Path) -> RuneManifest | None:
         python_deps=python_deps,
         execution_mode=execution_mode,
         enabled=enabled,
+        runtime=runtime,
     )

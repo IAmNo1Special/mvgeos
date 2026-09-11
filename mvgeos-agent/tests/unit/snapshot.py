@@ -285,7 +285,7 @@ class TestRuntimeSnapshotSerialisation:
                     key="model",
                     value="nvidia/nemotron",
                     layer="agent",
-                    source_file="/home/user/.agents/.mvgeos/test-agent/config.json",
+                    source_file="/home/user/.agents/agents/test-agent/config.json",
                 ),
                 SnapshotConfigEntry(
                     key="max_tokens",

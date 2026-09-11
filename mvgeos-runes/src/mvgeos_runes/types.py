@@ -361,6 +361,7 @@ class RuneManifest:
     python_deps: list[str] = field(default_factory=list)
     execution_mode: ExecutionMode = ExecutionMode.PARALLEL
     enabled: bool = True
+    runtime: str = "python"
 
 
 @dataclass(frozen=True)
@@ -398,6 +399,7 @@ class DiagnosticKind(StrEnum):
     MODEL_MISMATCH = "model_mismatch"
     MISSING_SPELL = "missing_spell"
     CONTEMPLATION_MISMATCH = "contemplation_mismatch"
+    INCOMPATIBLE_RUNTIME = "incompatible_runtime"
 
 
 @dataclass

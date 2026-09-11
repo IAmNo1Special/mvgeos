@@ -71,7 +71,7 @@ async def test_workspace_settings_persists_to_file(tmp_path: Path) -> None:
         ),
     )
 
-    config_path = project_dir / ".agents" / ".mvgeos" / "config.json"
+    config_path = project_dir / ".agents" / "config.json"
     assert config_path.exists()
 
     loaded = service.load_workspace_settings(project_dir)

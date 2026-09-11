@@ -113,9 +113,9 @@ class TestConfigService:
             ),
         )
 
-        config_file = project_dir / ".agents" / ".mvgeos" / "config.json"
+        config_file = project_dir / ".agents" / "config.json"
         assert config_file.exists()
-        assert not (project_dir / ".agents" / ".mvgeos" / "workspace.json").exists()
+        assert not (project_dir / ".agents" / "workspace.json").exists()
 
         data = json.loads(config_file.read_text(encoding="utf-8"))
         assert data["project_name"] == "test-proj"
@@ -160,7 +160,7 @@ class TestConfigService:
         service = ConfigService(config_dir=tmp_path)
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        expected = project_dir / ".agents" / ".mvgeos" / "config.json"
+        expected = project_dir / ".agents" / "config.json"
         assert service.workspace_settings_path(project_dir) == expected
 
     def test_partial_update_preserves_other_keys(self, tmp_path: Path) -> None:

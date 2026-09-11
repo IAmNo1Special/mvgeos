@@ -100,6 +100,31 @@ def load_factory_from_manifest(
     if not manifest.entry_point:
         return None
 
+    # Check for non-Python runtime (e.g., TypeScript/JavaScript extensions for Pi)
+    if getattr(manifest, "runtime", "").lower() in (
+        "typescript",
+        "ts",
+        "javascript",
+        "js",
+        "node",
+        "bun",
+    ) or manifest.entry_point.endswith((".ts", ".js", ".mjs", ".cjs")):
+        if diagnostics is not None:
+            diagnostics.append(
+                Diagnostic(
+                    kind=DiagnosticKind.INCOMPATIBLE_RUNTIME,
+                    rune_name=manifest.name,
+                    message=(
+                        f"Skipping extension '{manifest.name}': targets "
+                        f"'{getattr(manifest, 'runtime', 'typescript')}' runtime"
+                        " (Python host)"
+                    ),
+                    scope=manifest.scope,
+                    path=manifest.path,
+                )
+            )
+        return None
+
     entry = (rune_dir / manifest.entry_point).resolve()
 
     # Inject rune-local import roots (including any bundled venv) BEFORE
@@ -288,7 +313,7 @@ def load_runes_from_paths(
 SKILL_SCOPES = [
     (SkillScope.PROJECT, Path(".agents/skills")),
     (SkillScope.USER, Path("~/.agents/skills")),
-    (SkillScope.AGENT, Path("~/.agents/.mvgeos/{agent_name}/skills")),
+    (SkillScope.AGENT, Path("~/.agents/agents/{agent_name}/skills")),
 ]
 
 NAME_REGEX = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -489,7 +514,6 @@ def discover_plugin_skill_paths(
     plugin_candidates: list[tuple[Path, SkillScope]] = [
         (base_cwd / ".agents" / "plugins", SkillScope.PROJECT),
         (Path("~/.agents/plugins").expanduser(), SkillScope.USER),
-        (Path("~/.agents/.mvgeos/plugins").expanduser(), SkillScope.USER),
     ]
 
     for pdir, scope in plugin_candidates:

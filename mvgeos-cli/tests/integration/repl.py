@@ -103,7 +103,7 @@ class TestSlashCommands:
     @pytest.mark.asyncio
     async def test_resume_with_args(self, agent: Mvge, registry: ModelRegistry) -> None:
         dispatcher = CliCommandDispatcher(agent, registry)
-        result = await dispatcher.dispatch("/resume .agents/.mvgeos/tomes/test.jsonl")
+        result = await dispatcher.dispatch("/resume .agents/sessions/test.jsonl")
         assert result is False
 
     @pytest.mark.asyncio

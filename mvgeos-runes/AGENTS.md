@@ -60,9 +60,9 @@ Test paths follow pattern: `mvgeos-runes/tests/unit/<module>.py` and `mvgeos-run
 
 Runes are user-installed extensions (not built-in). They are loaded from three scopes (in precedence order):
 
-1. **Project**: `./.agents/.mvgeos/runes/`
-2. **User**: `~/.agents/.mvgeos/runes/`
-3. **Agent**: `~/.agents/.mvgeos/{agent_name}/runes/`
+1. **User**: `~/.agents/extensions/`
+2. **Agent**: `~/.agents/agents/{agent_name}/extensions/`
+3. **Project**: `./.agents/extensions/`
 
 ## Dependencies
 

@@ -46,7 +46,7 @@ class TestTomeCommands:
 
     def test_get_tome_dir(self) -> None:
         result = get_tome_dir()
-        assert result == Path.home() / ".agents" / ".mvgeos" / "tomes"
+        assert result == Path.home() / ".agents" / "sessions"
 
     def test_tome_list_help(self) -> None:
         result = runner.invoke(tome_app, ["list", "--help"])

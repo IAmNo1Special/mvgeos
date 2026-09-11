@@ -72,7 +72,7 @@ def list_models() -> list[Model]:
 
 
 def _default_cache_path() -> Path:
-    return Path("~/.agents/.mvgeos/openrouter_models.json").expanduser()
+    return Path("~/.agents/models.json").expanduser()
 
 
 class ModelRegistry:

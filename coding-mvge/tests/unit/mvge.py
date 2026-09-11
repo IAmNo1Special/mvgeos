@@ -167,7 +167,8 @@ class TestMvgeInit:
 
     def test_default_tome_dir(self) -> None:
         agent = Mvge(api_key="k")
-        assert agent._tome_dir == Path.home() / ".agents" / ".mvgeos" / "tomes"
+        assert agent._tome_dir == Path.home() / ".agents" / "sessions"
+        assert agent.session_dir == Path.home() / ".agents" / "sessions"
 
 
 class TestMvgeBuildSpells:

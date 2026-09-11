@@ -121,7 +121,7 @@ class TestConfigCommands:
         runner = CliRunner()
         mock_mgr = MagicMock()
         mock_mgr.agent_config_path = Path(
-            "/home/user/.agents/.mvgeos/test-agent/config.json"
+            "/home/user/.agents/agents/test-agent/config.json"
         )
         mock_manager_cls.return_value = mock_mgr
 

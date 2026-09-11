@@ -117,10 +117,10 @@ def _set_config_file_permissions(path: Path) -> None:
 
 
 class ConfigService:
-    """Persist and load GUI settings from ~/.agents/.mvgeos/."""
+    """Persist and load GUI settings from ~/.agents/."""
 
     def __init__(self, config_dir: Path | None = None) -> None:
-        base = config_dir or Path("~/.agents/.mvgeos").expanduser()
+        base = config_dir or Path("~/.agents").expanduser()
         self._config_dir = base.resolve()
 
     @property
@@ -128,7 +128,7 @@ class ConfigService:
         return self._config_dir / "gui.json"
 
     def workspace_settings_path(self, project_dir: Path) -> Path:
-        return (project_dir / ".agents" / ".mvgeos" / "config.json").resolve()
+        return (project_dir / ".agents" / "config.json").resolve()
 
     def load_app_settings(self) -> AppSettings:
         if not self.app_settings_path.exists():
