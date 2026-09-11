@@ -62,9 +62,16 @@ class ChannelConfig:
     contemplation_level: str = "medium"
     contemplation_budget: int | None = None
     exclude_contemplation: bool = False
+    spells: list[dict[str, Any]] = field(default_factory=list)
     tools: list[dict[str, Any]] = field(default_factory=list)
     meta_data: dict[str, Any] = field(default_factory=dict)
     system_prompt: str = ""
+
+    def __post_init__(self) -> None:
+        if self.tools and not self.spells:
+            self.spells = self.tools
+        elif self.spells and not self.tools:
+            self.tools = self.spells
 
 
 @dataclass

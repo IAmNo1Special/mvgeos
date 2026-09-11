@@ -1,5 +1,5 @@
 import pytest
-from mvgeos_core.channel import Model
+from mvgeos_core.channel import ChannelConfig, Model, RealmResponse
 
 from mvgeos_provider.base import Realm
 
@@ -39,8 +39,6 @@ def test_model_supported_parameters() -> None:
 
 
 def test_channel_config_system_prompt() -> None:
-    from mvgeos_core.channel import ChannelConfig
-
     model = Model(
         id="openrouter/test-model",
         name="Test",
@@ -55,8 +53,28 @@ def test_channel_config_system_prompt() -> None:
     assert custom_config.system_prompt == "You are a Mvge."
 
 
+def test_channel_config_spells_and_tools_sync() -> None:
+    model = Model(
+        id="openrouter/test-model",
+        name="Test",
+        realm="openrouter",
+        base_url="",
+        api_key="",
+    )
+    spell_payload = [{"type": "function", "function": {"name": "cast_light"}}]
+
+    # Initializing with spells populates tools
+    cfg_spells = ChannelConfig(model=model, spells=spell_payload)
+    assert cfg_spells.spells == spell_payload
+    assert cfg_spells.tools == spell_payload
+
+    # Initializing with tools populates spells
+    cfg_tools = ChannelConfig(model=model, tools=spell_payload)
+    assert cfg_tools.spells == spell_payload
+    assert cfg_tools.tools == spell_payload
+
+
 def test_realm_response_has_diagnostic_fields() -> None:
-    from mvgeos_core.channel import RealmResponse
 
     model = Model(
         id="openrouter/test-model",

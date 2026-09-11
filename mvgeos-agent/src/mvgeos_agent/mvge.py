@@ -666,7 +666,7 @@ class Mvge:
         temperature: float,
         max_tokens: int,
     ) -> StreamFn:
-        tools = [
+        spells = [
             {
                 "type": "function",
                 "function": {
@@ -693,7 +693,7 @@ class Mvge:
                     contemplation_level=state.contemplation_level.value,
                     contemplation_budget=state.contemplation_budget,
                     exclude_contemplation=state.exclude_contemplation,
-                    tools=tools,
+                    spells=spells,
                     system_prompt=state.system_prompt,
                 ),
                 signal=signal,
