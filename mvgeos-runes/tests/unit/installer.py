@@ -98,6 +98,47 @@ def test_install_rune_marketplace_success(tmp_path: Path) -> None:
     mock_subproc.assert_called_once()
 
 
+def test_install_rune_marketplace_with_subpath_success(tmp_path: Path) -> None:
+    target_dir = tmp_path / "extensions"
+    marketplace_payload = {
+        "runes": {
+            "openrouter-realm": {
+                "name": "openrouter-realm",
+                "git": "https://github.com/IAmNo1Special/mvgeos-marketplace.git",
+                "path": "runes/openrouter-realm",
+                "description": "OpenRouter provider realm",
+            }
+        }
+    }
+
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = marketplace_payload
+    mock_resp.raise_for_status = MagicMock()
+
+    def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
+        if cmd[:2] == ["git", "clone"]:
+            clone_target = Path(cmd[-1])
+            _create_mock_rune_dir(
+                clone_target / "runes" / "openrouter-realm", "openrouter-realm"
+            )
+        return MagicMock(returncode=0)
+
+    with (
+        patch("httpx.get", return_value=mock_resp) as mock_get,
+        patch("subprocess.run", side_effect=fake_git_clone) as mock_subproc,
+    ):
+        dest = install_rune("openrouter-realm", target_dir=target_dir)
+
+    assert dest == target_dir / "openrouter-realm"
+    assert (dest / "manifest.json").is_file()
+    assert (dest / "main.py").is_file()
+    mock_get.assert_called_once_with(DEFAULT_MARKETPLACE_URL, timeout=15.0)
+    mock_subproc.assert_called_once()
+    called_cmd = mock_subproc.call_args[0][0]
+    assert called_cmd[:4] == ["git", "clone", "--depth", "1"]
+
+
 def test_install_rune_marketplace_not_found(tmp_path: Path) -> None:
     mock_resp = MagicMock(spec=httpx.Response)
     mock_resp.status_code = 200

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import httpx
@@ -83,12 +84,25 @@ def install_rune(
                 shutil.rmtree(dest)
             else:
                 dest.unlink()
-        subprocess.run(
-            ["git", "clone", git_url, str(dest)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+
+        subpath = rune_entry.get("path") if isinstance(rune_entry, dict) else None
+        if subpath:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+                subprocess.run(
+                    ["git", "clone", "--depth", "1", git_url, str(tmp_dir)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                source_rune_dir = Path(tmp_dir) / str(subpath).strip().strip("/\\")
+                shutil.copytree(source_rune_dir, dest)
+        else:
+            subprocess.run(
+                ["git", "clone", git_url, str(dest)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
 
     manifest_path = dest / "manifest.json"
     if not manifest_path.is_file():

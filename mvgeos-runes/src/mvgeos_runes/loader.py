@@ -29,7 +29,13 @@ from mvgeos_runes.types import (
 
 def check_python_dep_installed(module_name: str) -> bool:
     """Return True if a Python module is importable by importlib."""
-    return importlib.util.find_spec(module_name) is not None
+    base_name = re.split(r"[><=!~;\[]", module_name)[0].strip().replace("-", "_")
+    if not base_name:
+        return False
+    try:
+        return importlib.util.find_spec(base_name) is not None
+    except (ModuleNotFoundError, ValueError):
+        return False
 
 
 def _missing_dep_diagnostic(manifest: RuneManifest, dep: str) -> Diagnostic:

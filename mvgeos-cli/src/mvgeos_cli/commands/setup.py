@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import platform
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -114,7 +115,13 @@ def check_tool_installed(tool: str) -> bool:
 
 def check_python_dep(module_name: str) -> bool:
     """Check if a Python package is importable."""
-    return importlib.util.find_spec(module_name) is not None
+    base_name = re.split(r"[><=!~;\[]", module_name)[0].strip().replace("-", "_")
+    if not base_name:
+        return False
+    try:
+        return importlib.util.find_spec(base_name) is not None
+    except (ModuleNotFoundError, ValueError):
+        return False
 
 
 async def install_package(package: str, dry_run: bool = False) -> tuple[bool, str]:

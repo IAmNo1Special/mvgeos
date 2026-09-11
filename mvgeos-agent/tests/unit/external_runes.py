@@ -18,7 +18,7 @@ if str(RUNES_DIR) not in sys.path and RUNES_DIR.is_dir():
     sys.path.insert(0, str(RUNES_DIR))
 
 pytestmark = pytest.mark.skipif(
-    not RUNES_DIR.is_dir(),
+    not (RUNES_DIR / "ollama_realm").is_dir(),
     reason="External runes in ~/.agents/extensions not installed on host",
 )
 
