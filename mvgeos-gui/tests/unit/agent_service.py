@@ -799,6 +799,53 @@ async def test_run_prompt_rate_limit_upstream_overload(
     assert "Service temporarily overloaded" in msg.content
 
 
+def test_handle_provider_error_event(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify PROVIDER_ERROR marks the message and renders stall guidance."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    event = MvgeEvent(
+        type=MvgeEventType.PROVIDER_ERROR,
+        data={
+            "error_code": "upstream_idle_timeout",
+            "error_message": "Upstream idle timeout exceeded",
+        },
+    )
+    agent_service.handle_event(event, msg, app_state)
+    assert msg.is_error is True
+    assert msg.error_message == "Upstream idle timeout exceeded"
+    assert "Upstream Provider Stalled" in msg.content
+    assert "model selector below" in msg.content
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_upstream_timeout(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify run_prompt renders stall guidance for UpstreamTimeoutError."""
+    from mvgeos_agent.errors import UpstreamTimeoutError
+
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(
+        side_effect=UpstreamTimeoutError("Upstream idle timeout exceeded")
+    )
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.on = MagicMock()
+    agent_service._agent = mock_agent
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("Test upstream stall", app_state, msg)
+    assert msg.is_error is True
+    assert "Upstream Provider Stalled" in msg.content
+    assert "Upstream idle timeout exceeded" in msg.content
+    assert msg.is_streaming is False
+    assert app_state.is_channeling is False
+
+
 @pytest.mark.asyncio
 async def test_run_prompt_exception_handling(
     agent_service: AgentService, app_state: AppState

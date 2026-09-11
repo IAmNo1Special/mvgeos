@@ -54,6 +54,18 @@ class AuthenticationError(MvgeError):
         super().__init__("auth_failed", message)
 
 
+class UpstreamTimeoutError(MvgeError):
+    """Raised when the upstream Realm stalls and closes a stream mid-turn.
+
+    Distinct from RateLimitError: the request was accepted and partial
+    content may already have streamed, so the turn cannot be retried
+    without duplicating transcript text.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__("upstream_idle_timeout", message)
+
+
 class MissingApiKeyError(MvgeError):
     def __init__(
         self,

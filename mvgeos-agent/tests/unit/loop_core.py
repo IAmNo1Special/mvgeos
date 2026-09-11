@@ -568,6 +568,31 @@ class TestRunLoopErrors:
         assert err.quota_remaining == 0
 
     @pytest.mark.asyncio
+    async def test_upstream_idle_timeout_raises_and_emits_provider_error(
+        self, context: LoopContext
+    ) -> None:
+        from mvgeos_agent.errors import UpstreamTimeoutError
+
+        emit = Recorder()
+        responses = [
+            RealmResponse(
+                model=_model(),
+                error_message="Upstream idle timeout exceeded",
+                error_code="upstream_idle_timeout",
+            )
+        ]
+
+        with pytest.raises(UpstreamTimeoutError, match="Upstream idle timeout"):
+            await run_loop(context, _stream(responses), emit, LoopCallbacks())
+
+        provider_errors = emit.of_type(MvgeEventType.PROVIDER_ERROR)
+        assert len(provider_errors) == 1
+        assert provider_errors[0].data["error_code"] == "upstream_idle_timeout"
+        assert (
+            provider_errors[0].data["error_message"] == "Upstream idle timeout exceeded"
+        )
+
+    @pytest.mark.asyncio
     async def test_auth_error_raised(self, context: LoopContext) -> None:
         from mvgeos_agent.errors import AuthenticationError
 

@@ -379,6 +379,7 @@ class SSEStreamingRealm(Realm, ABC):
         tool_calls_acc: dict[int, dict[str, Any]] = {}
         usage_acc: dict[str, Any] = {}
         finished: bool = False
+        streamed_any = False
 
         async for line in response.aiter_lines():
             if not line:
@@ -406,7 +407,7 @@ class SSEStreamingRealm(Realm, ABC):
                 meta_hdrs = meta.get("headers", {}) if isinstance(meta, dict) else {}
                 quota_limit, quota_remaining, reset_at = _parse_rate_limits(meta_hdrs)
 
-                yield RealmResponse(
+                error_response = RealmResponse(
                     model=model,
                     error_message=err_msg,
                     error_code=str(err_code) if err_code is not None else None,
@@ -420,6 +421,13 @@ class SSEStreamingRealm(Realm, ABC):
                     quota_remaining=quota_remaining,
                     reset_at=reset_at,
                 )
+                if streamed_any and is_retryable_realm_response(error_response):
+                    # Transient failure after partial content was already
+                    # emitted: the outer retry loop cannot replay the turn
+                    # without duplicating transcript text, so classify for
+                    # friendly handling upstream.
+                    error_response.error_code = "upstream_idle_timeout"
+                yield error_response
                 return
 
             parsed = self._parse_sse_chunk(chunk)
@@ -431,6 +439,7 @@ class SSEStreamingRealm(Realm, ABC):
 
             if parsed.contemplation:
                 contemplation_parts.append(parsed.contemplation)
+                streamed_any = True
                 yield RealmResponse(
                     model=model,
                     invocation=MvgeResponse(
@@ -446,6 +455,7 @@ class SSEStreamingRealm(Realm, ABC):
 
             if parsed.content:
                 text_parts.append(parsed.content)
+                streamed_any = True
                 yield RealmResponse(
                     model=model,
                     invocation=MvgeResponse(

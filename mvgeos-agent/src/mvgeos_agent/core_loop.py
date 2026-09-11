@@ -12,6 +12,7 @@ from mvgeos_agent.errors import (
     AuthenticationError,
     MaxTurnsExceededError,
     RateLimitError,
+    UpstreamTimeoutError,
 )
 from mvgeos_agent.types import (
     AbortError,
@@ -164,6 +165,19 @@ async def _run_turn(
                 )
             if error_code == "auth_failed":
                 raise AuthenticationError(response.error_message)
+            if error_code == "upstream_idle_timeout":
+                await emit(
+                    MvgeEvent(
+                        type=MvgeEventType.PROVIDER_ERROR,
+                        data={
+                            "error_code": error_code,
+                            "error_message": response.error_message,
+                        },
+                    )
+                )
+                raise UpstreamTimeoutError(
+                    response.error_message or "Upstream idle timeout"
+                )
             raise RuntimeError(response.error_message)
 
         state.mana_used += response.mana_used

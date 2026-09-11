@@ -22,7 +22,11 @@ from mvgeos_agent.commands import (
     CommandOutcome,
 )
 from mvgeos_agent.environment import MvgeEnvironment
-from mvgeos_agent.errors import AuthenticationError, RateLimitError
+from mvgeos_agent.errors import (
+    AuthenticationError,
+    RateLimitError,
+    UpstreamTimeoutError,
+)
 from mvgeos_agent.protocol import MvgeAgent
 from mvgeos_agent.types import MvgeEvent, MvgeEventType
 from mvgeos_provider.model_registry import ModelRegistry
@@ -40,6 +44,20 @@ if TYPE_CHECKING:
     from mvgeos_gui.state import AppState
 
 logger = logging.getLogger(__name__)
+
+
+def _upstream_stall_message(detail: str) -> str:
+    """Friendly transcript for an upstream mid-stream stall.
+
+    Suggests retry or model switch only; never switches models automatically.
+    """
+    return (
+        "**Upstream Provider Stalled**: The model host stopped responding "
+        "mid-stream and the connection was closed.\n\n"
+        f"- **Details**: {detail}\n"
+        "- **Suggested actions**: Wait a few moments and try again, or switch "
+        "to another model via the model selector below."
+    )
 
 
 def resolve_api_key(explicit_key: str | None = None) -> str | None:
@@ -347,6 +365,14 @@ class AgentService:
             if target_state is not None:
                 target_state.notify()
 
+        elif event.type == MvgeEventType.PROVIDER_ERROR:
+            detail = str(data.get("error_message", ""))
+            target_message.is_error = True
+            target_message.error_message = detail
+            transcript.set_text(_upstream_stall_message(detail))
+            if target_state is not None:
+                target_state.notify()
+
     def _transcript_for(self, message: ChatMessage) -> InvocationTranscript:
         """Bind (or reuse) the InvocationTranscript assembling this message."""
         if (
@@ -639,6 +665,12 @@ class AgentService:
                     "model selector below, or wait a few moments and try again."
                     f"{retry_hint}"
                 )
+        except UpstreamTimeoutError as exc:
+            logger.warning("Upstream provider stalled mid-stream: %s", exc)
+            message.is_error = True
+            message.error_message = str(exc)
+            if not message.content:
+                self._active_transcript.set_text(_upstream_stall_message(str(exc)))
         except Exception as exc:
             logger.exception("Error executing agent prompt: %s", exc)
             message.is_error = True

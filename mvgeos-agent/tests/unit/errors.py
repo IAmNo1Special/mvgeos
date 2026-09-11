@@ -96,6 +96,14 @@ def test_authentication_error() -> None:
     assert str(err) == "auth failed"
 
 
+def test_upstream_timeout_error() -> None:
+    from mvgeos_agent.errors import UpstreamTimeoutError
+
+    err = UpstreamTimeoutError("Upstream idle timeout exceeded")
+    assert err.code == "upstream_idle_timeout"
+    assert str(err) == "Upstream idle timeout exceeded"
+
+
 def test_spell_timeout_error() -> None:
     err = SpellTimeoutError("bash", 5000)
     assert err.code == "spell_timeout"

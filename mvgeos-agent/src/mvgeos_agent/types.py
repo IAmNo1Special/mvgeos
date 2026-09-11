@@ -91,6 +91,7 @@ class MvgeEventType(StrEnum):
     ARTIFACT_CREATED = "artifact_created"
     COMPACTION_START = "compaction_start"
     COMPACTION_END = "compaction_end"
+    PROVIDER_ERROR = "provider_error"
 
 
 @dataclass

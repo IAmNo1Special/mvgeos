@@ -509,6 +509,43 @@ async def test_stream_chunk_error_retryable_recovers() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stream_mid_stream_retryable_error_classified() -> None:
+    lines = [
+        b'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n',
+        b'data: {"error":{"code":503,"message":"Upstream idle timeout exceeded"}}\n\n',
+    ]
+    realm = DummySSERealm(client=_make_client(lines))
+    model = _test_model()
+    config = ChannelConfig(model=model, max_retries=2)
+
+    with patch("mvgeos_provider.sse.realm_request_delay_ms", return_value=0.0):
+        responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 2
+    assert responses[0].stop_reason == "pending"
+    assert responses[1].error_message == "Upstream idle timeout exceeded"
+    assert responses[1].error_code == "upstream_idle_timeout"
+
+
+@pytest.mark.asyncio
+async def test_stream_mid_stream_non_retryable_error_keeps_code() -> None:
+    lines = [
+        b'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n',
+        b'data: {"id":"gen-1","choices":[],"error":'
+        b'{"code":400,"message":"Invalid tool name"}}\n\n',
+    ]
+    realm = DummySSERealm(client=_make_client(lines))
+    model = _test_model()
+    config = ChannelConfig(model=model, max_retries=2)
+
+    responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 2
+    assert responses[1].error_message == "Invalid tool name"
+    assert responses[1].error_code == "400"
+
+
+@pytest.mark.asyncio
 async def test_stream_chunk_error_retryable_exhausts_retries() -> None:
     err_chunk = (
         b'data: {"error":{"code":503,"message":"Upstream error from Nvidia: '
