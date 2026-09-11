@@ -25,7 +25,7 @@ mvgeos/
 | Package | Module | Purpose |
 | --------- | --------- | --------- |
 | mvgeos-agent | `types.py` | MvgeState, MvgeSpell, MvgeInvocation, MvgeEvent, enums |
-| mvgeos-agent | `loop.py` | MvgeLoop - main agent loop with streaming |
+| mvgeos-agent | `harness/harness.py` | MvgeHarness - operational turn driver, compaction, and lifecycle |
 | mvgeos-provider | `base.py` | Realm protocol (abstract base) |
 | mvgeos-provider | `openrouter.py` | OpenRouterRealm implementation |
 | mvgeos-provider | `types.py` | Model, ChannelConfig, RealmResponse |
@@ -359,15 +359,15 @@ class RuneManifest:
 
 ## Implemented Components
 
-### MvgeLoop (mvgeos-agent/loop.py)
+### MvgeHarness (mvgeos-agent/harness/harness.py)
 
-Main agent loop with:
+Main operational turn driver with:
 
-- Streaming response handling via async iterator
+- Direct driving of `run_loop()` with streaming response channeling
+- Compaction management (pre-turn when crowded and post-turn via `after_invocation`)
+- Event fan-out (`_emit`) to state reduction, event bus, Sigils, and Tome
 - Spell/tool call execution with event emission
-- Mana budget enforcement
-- Event emission: AGENT_START, MESSAGE_UPDATE, SPELL_CASTING_START/END, AGENT_END
-- Error handling with proper cleanup
+- Error handling and queue drainage (steering and follow-up)
 
 Session persistence:
 

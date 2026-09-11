@@ -7,7 +7,6 @@ from mvgeos_core.events import ContemplationLevel
 from mvgeos_core.invocations import SummonerRequest
 
 from mvgeos_agent.harness import MvgeHarness
-from mvgeos_agent.mvge_loop import MvgeLoop
 from mvgeos_agent.types import MvgeState
 
 
@@ -19,8 +18,7 @@ async def test_full_harness_loop_integration() -> None:
         invocations=[SummonerRequest(role="user", content="Hello")],
         contemplation_level=ContemplationLevel.MEDIUM,
     )
-    loop = MvgeLoop(state)
-    harness = MvgeHarness(loop)
+    harness = MvgeHarness(state=state)
 
     async def mock_stream_fn(invocations, signal=None):
         from mvgeos_core.channel import (

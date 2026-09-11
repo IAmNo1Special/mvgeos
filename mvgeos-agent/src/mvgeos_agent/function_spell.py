@@ -19,9 +19,42 @@ from mvgeos_core.spells import (
     SpellExecutionMode,
     SpellResult,
 )
+from mvgeos_runes.types import SpellDefinition
 from pydantic import BaseModel
 
-type SpellUnion = Callable[..., Any] | MvgeSpell
+type SpellUnion = Callable[..., Any] | MvgeSpell | SpellDefinition
+
+
+class RuneSpellWrapper(MvgeSpell):
+    """Adapter converting a Rune SpellDefinition into an executable MvgeSpell."""
+
+    def __init__(self, spell_def: SpellDefinition) -> None:
+        super().__init__(
+            name=spell_def.name,
+            description=spell_def.description,
+            parameters=spell_def.parameters,
+            execution_mode=getattr(
+                spell_def, "execution_mode", SpellExecutionMode.PARALLEL
+            ),
+        )
+        self._spell_def = spell_def
+
+    @property
+    def source_rune(self) -> str | None:
+        return getattr(self._spell_def, "source_rune", None)
+
+    @property
+    def spell_def(self) -> SpellDefinition:
+        return self._spell_def
+
+    async def execute(
+        self,
+        spell_cast_id: str,
+        params: dict[str, Any],
+        signal: AbortSignal | None = None,
+        on_update: Any | None = None,
+    ) -> Any:
+        return await self._spell_def.execute(spell_cast_id, params, signal, on_update)
 
 
 class FunctionSpell(MvgeSpell):
@@ -100,13 +133,19 @@ class FunctionSpell(MvgeSpell):
             return str(result)
 
 
-def coerce_spell(spell: Callable[..., Any] | MvgeSpell) -> MvgeSpell:
-    """Coerce a callable or MvgeSpell instance into an executable MvgeSpell."""
+def coerce_spell(
+    spell: Callable[..., Any] | MvgeSpell | SpellDefinition,
+) -> MvgeSpell:
+    """Coerce a callable, MvgeSpell, or SpellDefinition into an executable MvgeSpell."""
     if isinstance(spell, MvgeSpell):
         return spell
+    if isinstance(spell, SpellDefinition):
+        return RuneSpellWrapper(spell)
     if callable(spell):
         return FunctionSpell(func=spell)
-    raise TypeError(f"Expected Callable or MvgeSpell, got {type(spell).__name__}")
+    raise TypeError(
+        f"Expected Callable, MvgeSpell, or SpellDefinition, got {type(spell).__name__}"
+    )
 
 
 def discover_spells_from_dir(spells_dir: Path) -> list[MvgeSpell]:
@@ -191,3 +230,12 @@ def discover_spells_from_dir(spells_dir: Path) -> list[MvgeSpell]:
             )
 
     return spells
+
+
+__all__ = [
+    "FunctionSpell",
+    "RuneSpellWrapper",
+    "SpellUnion",
+    "coerce_spell",
+    "discover_spells_from_dir",
+]

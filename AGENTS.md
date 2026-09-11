@@ -96,7 +96,7 @@ MvgeOS is a monorepo with uv workspaces:
 | Package | Purpose |
 | --- | --- |
 | mvgeos-core | Canonical loop vocabulary: abort, invocations, spells, events, pure turn loop (zero first-party deps) |
-| mvgeos-agent | Mvge class, session lifecycle (MvgeLoop wrapper, MvgeState, MvgeHarness), environment, spell coercion |
+| mvgeos-agent | Mvge class, session lifecycle (MvgeHarness, MvgeState), environment, spell coercion |
 | mvgeos-provider | Realm protocol + OpenRouter provider (depends on core) |
 | mvgeos-tome | JSONL session persistence with file locking |
 | mvgeos-runes | Rune/Extension manifest, loader, sigil hooks (depends on core) |

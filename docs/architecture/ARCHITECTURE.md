@@ -37,12 +37,12 @@ core, never the reverse (enforced by `dependency_direction` guards).
 ### mvgeos-agent
 
 Session-aware agent engine. Contains the `Mvge` class (the agent),
-`MvgeLoop` (stateful wrapper around the core loop), `MvgeState` (mutable
-session state), `MvgeHarness` (lifecycle owner), `MvgeEnvironment`
+`MvgeState` (mutable session state), `MvgeHarness` (deep operational owner
+of turns, compaction, and lifecycle), `MvgeEnvironment`
 (configuration and prompt scaffolding), and `FunctionSpell` (callable tool
 coercion and discovery).
 
-**Entry point**: `BaseMvge.run(prompt)` → `MvgeLoop.run()`
+**Entry point**: `BaseMvge.run(prompt)` → `MvgeHarness.run()`
 → invoke `StreamFunction` → process events → return `MvgeResponse`
 
 **Dependencies**: mvgeos-core, mvgeos-provider, mvgeos-tome, mvgeos-runes
@@ -136,21 +136,21 @@ self-modification and zero-boilerplate instantiation.
 1. User provides input via CLI or TUI
 2. CLI creates `BaseMvge`/`CodingMvge` instance with configured realms
 3. `BaseMvge.run(prompt)` → normalizes input to `SummonerRequest`
-4. `BaseMvge.initialize()` creates `MvgeHarness` (wraps `MvgeLoop`, owns lifecycle and compaction)
+4. `BaseMvge.initialize()` creates `MvgeHarness` (owns lifecycle, compaction, and turn driving)
 5. `BaseMvge._run_impl()` delegates to `MvgeHarness.run()`
-6. `MvgeHarness.run()` delegates to `MvgeLoop.run()` (nested outer/inner loops)
+6. `MvgeHarness.run()` drives core `run_loop()`, channeling `RealmResponse`s from the Realm
 7. Loop calls `Realm.stream(model, invocations, config)` on configured realm
 8. Provider channels `RealmResponse` events (text deltas, tool calls, etc.)
-9. `MvgeLoop` processes events → updates `MvgeState` → emits `MvgeEvent` to subscribers
+9. `MvgeHarness` processes events → updates `MvgeState` → emits `MvgeEvent` to subscribers
 10. Tool calls detected → `SpellDispatcher.execute_spells()` → `Spell.execute()` → results appended to invocations
 11. Loop continues until no more tool calls and no steering/follow-up invocations
-12. `MvgeHarness` handles compaction (after each invocation), `should_stop_after_turn`,
+12. `MvgeHarness` handles compaction (pre-turn and after each invocation), `should_stop_after_turn`,
     `prepare_next_turn`, steering/follow-up queue drainage
 13. Final `MvgeResponse` emitted with `done` event
 
 ### Tome Persistence Flow
 
-1. `MvgeLoop` emits `turn_end` event
+1. `MvgeHarness` emits `turn_end` / `message_end` event
 2. `TomeLedger` writes each new entry to JSONL file (one JSON object per line)
 3. In-memory index is updated with each new entry
 4. On session resume, `TomeLedger` reads JSONL, rebuilds index, restores MvgeState
@@ -161,7 +161,7 @@ self-modification and zero-boilerplate instantiation.
 1. `load_runes_from_paths()` scans rune discovery paths
    for `manifest.json` files
 2. Each manifest registers sigils (lifecycle hooks) with the `Sigil` system
-3. During `MvgeLoop`, appropriate events are emitted to registered sigils
+3. During `MvgeHarness`, appropriate events are emitted to registered sigils
 4. Sigils intercept, modify, or supplement the mvge's behavior
 
 ## Key Abstractions

@@ -32,7 +32,7 @@ _Avoid_: Context window (as a spoken term)
 The cap on total Mana the Mvge can spend during a single run. **Not currently implemented.** Enforcement was removed from the loop because Pi has no equivalent — Pi handles context pressure with compaction, not by aborting the run. It will return as a user-installed Rune once the loop inversion adds a stop-capable sigil (no sigil can halt a run today; only `BEFORE_SPELL_CAST` can veto). Distinct from Contemplation Budget, which is a per-request Realm parameter, not a run-level cap.
 
 **Mana Used**:
-Cumulative Mana consumed during a run (`mana_used`). Carried on every `MESSAGE_END` and `TURN_END` event; reduced into `MvgeState` by `MvgeLoop`. Read by compaction to size the Mana Pool.
+Cumulative Mana consumed during a run (`mana_used`). Carried on every `MESSAGE_END` and `TURN_END` event; reduced into `MvgeState` by `MvgeHarness`. Read by compaction to size the Mana Pool.
 
 **Tome**:
 A single persisted conversation between a Summoner and a Mvge, recorded as an append-only sequence of Invocations. The on-disk format is a tree of entries (Pi-compatible JSONL v3).
@@ -107,16 +107,16 @@ The stateless heart of the turn cycle. Takes a frozen `LoopContext`, a `StreamFn
 Frozen snapshot of everything the core reads (~9 fields). Diverges from Pi, which passes a mutable `AgentContext`; the frozen dataclass is what enforces the seam.
 
 **Loop Callbacks**:
-The value-returning extension points: `transform_context`, `before_realm_headers`, `before_spell_cast` (veto), `after_spell_result`, `should_stop_after_turn`, `prepare_next_turn`, plus the queue drains `get_steering_messages` and `get_follow_up_messages`. Every callback is optional and must not raise — return a safe fallback instead. `MvgeLoop` honours this contract when building them from a Rune runner. Mirrors Pi's `AgentLoopConfig` callbacks.
+The value-returning extension points: `transform_context`, `before_realm_headers`, `before_spell_cast` (veto), `after_spell_result`, `should_stop_after_turn`, `prepare_next_turn`, plus the queue drains `get_steering_messages` and `get_follow_up_messages`. Every callback is optional and must not raise — return a safe fallback instead. `MvgeHarness` honours this contract when building them from a Rune runner. Mirrors Pi's `AgentLoopConfig` callbacks.
 
 **Steering** / **Follow-up**:
 Steering Invocations are injected between turns while the Mvge is still working; follow-ups resume it after it would otherwise settle. The loop drains `MvgeState.steer_queue` after each turn that cast no Spells, and `followup_queue` at the outer-loop boundary. Each queue's drain strategy is controlled by `MvgeState.queue_mode` (`QueueMode.ALL` drains the entire queue, `QueueMode.ONE_AT_A_TIME` drains one message at a time, leaving the rest queued for subsequent drain points — matching Pi's `PendingMessageQueue.drain()` semantics).
 
 **MvgeHarness**:
-The session-aware operational owner of the agent loop. Wraps `MvgeLoop`, `MvgeTome`, and `CompactionRunner`, orchestrating session startup, prompt dispatch, compaction history synchronization, and turn driving behind a deep interface. Mirrors Pi's `AgentHarness`.
+The session-aware operational owner of the agent loop. Orchestrates session lifecycle, prompt dispatch, compaction history synchronization, event fan-out, and turn driving by executing `run_loop` directly behind a deep interface. Mirrors Pi's `AgentHarness`.
 
 **Emit Sink**:
-The single async channel out of the core: `Callable[[MvgeEvent], Awaitable[None]]`. `MvgeLoop._emit` fans one event out to four effects — `MvgeState` reduction, the event bus, the mapped Sigil, and Tome recording. Recording happens only on `MESSAGE_END`, which the core emits for Summoner, Mvge, and Spell-result Invocations alike (Pi's one-recording-point model).
+The single async channel out of the core: `Callable[[MvgeEvent], Awaitable[None]]`. `MvgeHarness._emit` fans one event out to four effects — `MvgeState` reduction, the event bus, the mapped Sigil, and Tome recording. Recording happens only on `MESSAGE_END`, which the core emits for Summoner, Mvge, and Spell-result Invocations alike (Pi's one-recording-point model).
 
 **Spell Dispatcher** (`SpellDispatcher`):
 The deep module responsible for executing tool call batches concurrently (`asyncio.gather`) or fallback sequential execution (`mvgeos_core/dispatcher.py`). Evaluates `before_spell_cast` vetoes and `after_spell_result` transforms per task, preserves assistant request order, isolates exceptions into `SpellResultMessage(is_error=True)`, and evaluates batch termination (`terminate` flag) matching Pi's `executeToolCalls`.

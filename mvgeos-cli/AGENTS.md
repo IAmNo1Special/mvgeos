@@ -74,5 +74,5 @@ Test paths follow pattern: `mvgeos-cli/tests/unit/<module>.py` and `mvgeos-cli/t
 - One-shot path: `main.py` → creates `CodingMvge` → runs single prompt
 - REPL path: `commands/repl.py` → interactive loop with streaming
 - TUI path: `commands/tui.py` — full-screen interface
-- All paths use `MvgeLoop` for the core turn loop
+- All paths use `MvgeHarness` for the core turn loop
 - Rune-registered commands and shortcuts are exposed via `runner.get_commands()` and `runner.get_shortcuts()`

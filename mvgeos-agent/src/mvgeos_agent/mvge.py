@@ -59,6 +59,7 @@ from mvgeos_agent.compatibility import (
 )
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.function_spell import (
+    RuneSpellWrapper,
     SpellUnion,
     coerce_spell,
     discover_spells_from_dir,
@@ -577,7 +578,7 @@ class Mvge:
                     )
                     continue
 
-                spell_to_add: MvgeSpell = cast(MvgeSpell, rs)
+                spell_to_add: MvgeSpell = RuneSpellWrapper(rs)
                 spell_name = rs.name
                 if spell_name in seen_names:
                     source_rune = getattr(rs, "source_rune", None) or "rune"
@@ -797,6 +798,7 @@ class Mvge:
             realm=self._realm,
             model=self._model,
             compaction=self._compaction,
+            compaction_settings=self._compaction_settings,
         )
         self._compaction = self._harness.compaction
 
@@ -821,12 +823,15 @@ class Mvge:
 
         self._model_id = model_id
         if self._initialized:
-            new_model, _ = self._provider_registry.resolve(
+            new_model, new_realm = self._provider_registry.resolve(
                 model_id, self._api_key, self._provider_name
             )
             self._model = new_model
+            self._realm = new_realm
             if self._state is not None:
                 self._state.model = dataclasses.asdict(new_model)
+            if self._harness is not None:
+                self._harness.set_model_and_realm(new_model, new_realm)
             if self._agent_tome is not None:
                 await self._agent_tome.record_custom_async(
                     "model_switch", {"model": new_model.id}

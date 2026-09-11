@@ -1,6 +1,6 @@
 # mvgeos-agent — Agent Instructions
 
-This package implements the session-aware agent engine: the `Mvge` class, `MvgeLoop` (stateful wrapper around the core loop), `MvgeState` (mutable session state), `MvgeHarness` (lifecycle owner), `MvgeEnvironment` (Two-Layer Invariant Scaffolding & dynamic prompt rendering), and `FunctionSpell` (callable tool coercion & discovery). Loop vocabulary (invocations, spells, events, `run_loop`) is canonical in `mvgeos-core`.
+This package implements the session-aware agent engine: the `Mvge` class, `MvgeState` (mutable session state), `MvgeHarness` (deep operational owner of turns, compaction, and lifecycle), `MvgeEnvironment` (Two-Layer Invariant Scaffolding & dynamic prompt rendering), and `FunctionSpell` (callable tool coercion & discovery). Loop vocabulary (invocations, spells, events, `run_loop`) is canonical in `mvgeos-core`.
 
 ## Package-Specific Conventions
 
@@ -33,8 +33,7 @@ Test paths follow pattern: `mvgeos-agent/tests/unit/<module>.py` and `mvgeos-age
 | `MvgeState` | Mutable agent state (prompt, model, spells, invocations, mana, events, queues) |
 | `FunctionSpell` | Auto-coerced Python function spell (base `MvgeSpell` lives in core) |
 | `Mvge` | Concrete agent with zero-config auto-discovery (`run()` → `_run_impl()`) |
-| `MvgeLoop` | Stateful wrapper around core `run_loop`: owns runner, bus, tome; reduces events into `MvgeState` |
-| `MvgeHarness` | Session-aware operational owner of the agent loop, compaction, and turns |
+| `MvgeHarness` | Deep operational driver of turns, compaction, event fan-out, and session lifecycle |
 | `MvgeEnvironment` | Two-layer invariant scaffolding, layered config, and diagnostic introspection |
 | `CompactionRunner` | Orchestrates transcript compaction and summary generation |
 | `SpellDispatcher` | Executes tool call batches concurrently or sequentially |
@@ -59,12 +58,11 @@ Core vocabulary (`MvgeEvent`, `MvgeSpell`, `MvgeInvocation`, `ContemplationLevel
 
 The core loop flows:
 1. `BaseMvge.run(prompt)` → lazy `initialize()` → appends `SummonerRequest` to `state.invocations`
-2. `BaseMvge.initialize()` creates `MvgeHarness` (wraps `MvgeLoop`, owns lifecycle)
+2. `BaseMvge.initialize()` creates `MvgeHarness` (owns lifecycle, compaction, and turn driving)
 3. `BaseMvge._run_impl()` delegates to `MvgeHarness.run()`
-4. `MvgeHarness.run()` delegates to `MvgeLoop.run()` (nested outer/inner loops)
-5. `MvgeLoop.run()` drives core `run_loop()` (nested outer/inner loops), channeling `RealmResponse`s from the Realm
-6. On `StopReason.SPELL_USE`: fires `BEFORE_SPELL_CAST` sigil, executes spell, fires `AFTER_SPELL_RESULT`
-7. On `STOP/LENGTH/ERROR`: appends response, emits `MESSAGE_END`, `TURN_END`, `AGENT_END`
+4. `MvgeHarness.run()` drives core `run_loop()`, channeling `RealmResponse`s from the Realm
+5. On `StopReason.SPELL_USE`: fires `BEFORE_SPELL_CAST` sigil, executes spell, fires `AFTER_SPELL_RESULT`
+6. On `STOP/LENGTH/ERROR`: appends response, emits `MESSAGE_END`, `TURN_END`, `AGENT_END`
 
 Harness-owned lifecycle (via callbacks):
 - `after_invocation` → compaction (`CompactionRunner.maybe_compact`)

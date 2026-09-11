@@ -74,10 +74,13 @@ def _install_mock(agent: Mvge, text: str = "Hello") -> _MockRealm:
         agent_tome=agent._agent_tome,
     )
     from mvgeos_agent.harness import MvgeHarness
-    from mvgeos_agent.mvge_loop import MvgeLoop
 
-    agent._loop = MvgeLoop(agent._state)
-    agent._harness = MvgeHarness(agent._loop)
+    agent._harness = MvgeHarness(
+        state=agent._state,
+        tome=agent._agent_tome,
+        realm=mock_realm,
+        model=agent._model,
+    )
     agent._initialized = True
     return mock_realm
 

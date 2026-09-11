@@ -4,15 +4,24 @@ import logging
 from typing import Any
 
 from mvgeos_core.abort import AbortSignal
-from mvgeos_core.channel import Model
+from mvgeos_core.channel import Model, MvgeResponse
+from mvgeos_core.events import (
+    ContemplationLevel,
+    MvgeEvent,
+    MvgeEventType,
+    QueueMode,
+)
 from mvgeos_core.invocations import (
     MvgeInvocation,
     SummonerRequest,
 )
-from mvgeos_core.loop import LoopCallbacks, StreamFn
+from mvgeos_core.loop import EmitSink, LoopCallbacks, LoopContext, StreamFn, run_loop
+from mvgeos_core.spells import MvgeSpell, SpellResultMessage
 from mvgeos_provider.base import Realm
+from mvgeos_runes.types import SigilHook
 
 from mvgeos_agent.agent_session import MvgeTome
+from mvgeos_agent.function_spell import RuneSpellWrapper
 from mvgeos_agent.harness.compaction.compaction import (
     DEFAULT_COMPACTION_SETTINGS,
     CompactionSettings,
@@ -20,44 +29,45 @@ from mvgeos_agent.harness.compaction.compaction import (
     should_compact,
 )
 from mvgeos_agent.harness.compaction.compaction_runner import CompactionRunner
-from mvgeos_agent.mvge_loop import MvgeLoop
 from mvgeos_agent.types import MvgeState
 
 logger = logging.getLogger(__name__)
 
+_EVENT_TO_SIGIL: dict[MvgeEventType, SigilHook] = {
+    MvgeEventType.AGENT_START: SigilHook.AGENT_START,
+    MvgeEventType.AGENT_END: SigilHook.AGENT_END,
+    MvgeEventType.COMPACTION_START: SigilHook.COMPACTION_START,
+    MvgeEventType.COMPACTION_END: SigilHook.COMPACTION_END,
+    MvgeEventType.TURN_START: SigilHook.TURN_START,
+    MvgeEventType.TURN_END: SigilHook.TURN_END,
+    MvgeEventType.INPUT: SigilHook.INPUT,
+    MvgeEventType.BEFORE_PROVIDER_REQUEST: SigilHook.BEFORE_PROVIDER_REQUEST,
+    MvgeEventType.AFTER_PROVIDER_RESPONSE: SigilHook.AFTER_PROVIDER_RESPONSE,
+    MvgeEventType.BEFORE_INVOCATION: SigilHook.BEFORE_INVOCATION,
+    MvgeEventType.AFTER_INVOCATION: SigilHook.AFTER_INVOCATION,
+}
+
 
 class MvgeHarness:
-    """Wraps MvgeLoop and owns session lifecycle and compaction.
+    """Session-aware operational owner of the agent loop.
 
-    Matches Pi's AgentHarness architecture.
-
-    Encapsulates:
-    - MvgeTome session lifecycle (startup, shutdown, record_message, record_compaction)
-    - MvgeLoop turn execution and event routing
-    - CompactionRunner execution during after_invocation callbacks
+    Drives run_loop, reduces events into MvgeState, manages Sigil hooks,
+    and orchestrates Tome recording and compaction behind a single deep interface.
+    Mirrors Pi's AgentHarness architecture.
     """
 
     def __init__(
         self,
-        loop: MvgeLoop | None = None,
-        compaction: CompactionRunner | None = None,
-        callbacks: LoopCallbacks | None = None,
         *,
-        state: MvgeState | None = None,
+        state: MvgeState,
         tome: MvgeTome | None = None,
         realm: Realm | None = None,
         model: Model | None = None,
+        compaction: CompactionRunner | None = None,
         compaction_settings: CompactionSettings = DEFAULT_COMPACTION_SETTINGS,
+        callbacks: LoopCallbacks | None = None,
     ) -> None:
-        if loop is not None:
-            self._loop = loop
-            self._state = state or loop.state
-        elif state is not None:
-            self._state = state
-            self._loop = MvgeLoop(state)
-        else:
-            raise ValueError("MvgeHarness requires either 'loop' or 'state'")
-
+        self._state = state
         self._tome: MvgeTome | None = tome or getattr(self._state, "agent_tome", None)
         self._realm = realm
         self._model = model
@@ -67,20 +77,18 @@ class MvgeHarness:
         self._compaction: CompactionRunner | None
         if compaction is not None:
             self._compaction = compaction
+            if getattr(self._compaction, "_emit", None) is None:
+                self._compaction._emit = self._emit
         elif self._realm is not None and self._model is not None:
             self._compaction = CompactionRunner(
                 realm=self._realm,
                 model=self._model,
-                emit=self._loop.emit,
+                emit=self._emit,
                 settings=self._compaction_settings,
                 tome=self._tome,
             )
         else:
             self._compaction = None
-
-    @property
-    def loop(self) -> MvgeLoop:
-        return self._loop
 
     @property
     def state(self) -> MvgeState:
@@ -93,6 +101,11 @@ class MvgeHarness:
     @property
     def compaction(self) -> CompactionRunner | None:
         return self._compaction
+
+    @property
+    def emit(self) -> EmitSink:
+        """The sink that fans an event out to state, bus, Sigils, and Tome."""
+        return self._emit
 
     def switch_tome(self, tome: MvgeTome) -> None:
         """Switch active Tome session reference and update CompactionRunner."""
@@ -110,7 +123,7 @@ class MvgeHarness:
             self._compaction = CompactionRunner(
                 realm=self._realm,
                 model=self._model,
-                emit=self._loop.emit,
+                emit=self._emit,
                 settings=self._compaction_settings,
                 tome=self._tome,
             )
@@ -118,25 +131,40 @@ class MvgeHarness:
             comp._model = model
             comp._realm = realm
 
-    async def run(
-        self,
-        stream_fn: StreamFn,
-        model: dict[str, Any],
-        contemplation_level: str = "medium",
-        signal: AbortSignal | None = None,
-        prompt: str | None = None,
-    ) -> MvgeInvocation:
-        """Run the harness by driving turn processing via MvgeLoop.run()."""
-        if prompt is not None:
-            self._state.invocations.append(SummonerRequest(role="user", content=prompt))
+    def _resolve_spells(self) -> list[MvgeSpell]:
+        spells = list(self._state.spells)
+        runner = self._state.rune_runner
+        if runner is None:
+            return spells
+        known = {spell.name for spell in spells}
+        active = set(runner.get_active_spells())
+        for rune_spell in runner.get_all_registered_spells():
+            if rune_spell.name not in known and rune_spell.name in active:
+                spells.append(RuneSpellWrapper(rune_spell))
+        return spells
 
-        await self._maybe_precompact(signal)
+    async def _drain_steer_queue(self) -> list[MvgeInvocation]:
+        if not self._state.steer_queue:
+            return []
+        if self._state.queue_mode == QueueMode.ONE_AT_A_TIME:
+            return [self._state.steer_queue.pop(0)]
+        queued: list[MvgeInvocation] = list(self._state.steer_queue)
+        self._state.steer_queue.clear()
+        return queued
 
-        # Build effective callbacks and set after_invocation on the loop
-        effective_callbacks = self._callbacks or self._loop._build_callbacks()
-        original_after_invocation = effective_callbacks.after_invocation
+    async def _drain_followup_queue(self) -> list[MvgeInvocation]:
+        if not self._state.followup_queue:
+            return []
+        if self._state.queue_mode == QueueMode.ONE_AT_A_TIME:
+            return [self._state.followup_queue.pop(0)]
+        queued: list[MvgeInvocation] = list(self._state.followup_queue)
+        self._state.followup_queue.clear()
+        return queued
 
-        async def after_invocation_with_compaction(
+    def _build_callbacks(self, signal: AbortSignal | None = None) -> LoopCallbacks:
+        runner = self._state.rune_runner
+
+        async def after_invocation(
             invocations: list[MvgeInvocation],
         ) -> list[MvgeInvocation] | None:
             if self._compaction is not None:
@@ -146,21 +174,270 @@ class MvgeHarness:
                 if replacement is not None:
                     invocations = list(replacement)
                     self._state.invocations = list(replacement)
-            if original_after_invocation is not None:
-                replacement = await original_after_invocation(list(invocations))
+            if (
+                self._callbacks is not None
+                and self._callbacks.after_invocation is not None
+            ):
+                replacement = await self._callbacks.after_invocation(list(invocations))
                 if replacement is not None:
                     invocations = list(replacement)
                     self._state.invocations = list(replacement)
             return invocations
 
-        self._loop.set_after_invocation(after_invocation_with_compaction)
+        if runner is None:
+            return LoopCallbacks(
+                get_steering_messages=(
+                    self._callbacks.get_steering_messages
+                    if self._callbacks and self._callbacks.get_steering_messages
+                    else self._drain_steer_queue
+                ),
+                get_follow_up_messages=(
+                    self._callbacks.get_follow_up_messages
+                    if self._callbacks and self._callbacks.get_follow_up_messages
+                    else self._drain_followup_queue
+                ),
+                after_invocation=after_invocation,
+                transform_context=(
+                    self._callbacks.transform_context if self._callbacks else None
+                ),
+                before_realm_headers=(
+                    self._callbacks.before_realm_headers if self._callbacks else None
+                ),
+                before_spell_cast=(
+                    self._callbacks.before_spell_cast if self._callbacks else None
+                ),
+                after_spell_result=(
+                    self._callbacks.after_spell_result if self._callbacks else None
+                ),
+                should_stop_after_turn=(
+                    self._callbacks.should_stop_after_turn if self._callbacks else None
+                ),
+                prepare_next_turn=(
+                    self._callbacks.prepare_next_turn if self._callbacks else None
+                ),
+            )
 
-        return await self._loop.run(
-            stream_fn=stream_fn,
-            model=model,
-            contemplation_level=contemplation_level,
-            signal=signal,
+        async def transform_context(
+            invocations: list[MvgeInvocation],
+        ) -> list[MvgeInvocation]:
+            try:
+                result = await runner.emit_chain(
+                    SigilHook.CONTEXT_TRANSFORM, invocations
+                )
+            except Exception:
+                result = invocations
+            current = list(result) if result is not None else invocations
+            if self._callbacks is not None and self._callbacks.transform_context:
+                current = await self._callbacks.transform_context(current)
+            return current
+
+        async def before_realm_headers(headers: dict[str, str]) -> dict[str, str]:
+            try:
+                result = await runner.emit_chain(
+                    SigilHook.BEFORE_PROVIDER_HEADERS, headers
+                )
+            except Exception:
+                result = headers
+            current = {**headers, **result} if isinstance(result, dict) else headers
+            if self._callbacks is not None and self._callbacks.before_realm_headers:
+                current = await self._callbacks.before_realm_headers(current)
+            return current
+
+        async def before_spell_cast(data: dict[str, Any]) -> dict[str, Any] | None:
+            if self._callbacks is not None and self._callbacks.before_spell_cast:
+                blocked = await self._callbacks.before_spell_cast(data)
+                if blocked:
+                    return blocked
+            try:
+                return await runner.emit_block(SigilHook.BEFORE_SPELL_CAST, data)
+            except Exception:
+                return None
+
+        async def after_spell_result(data: dict[str, Any]) -> dict[str, Any]:
+            try:
+                result = await runner.emit_chain(SigilHook.AFTER_SPELL_RESULT, data)
+            except Exception:
+                result = data
+            current = result if isinstance(result, dict) else data
+            if self._callbacks is not None and self._callbacks.after_spell_result:
+                current = await self._callbacks.after_spell_result(current)
+            return current
+
+        async def should_stop_after_turn() -> bool:
+            if (
+                self._callbacks is not None
+                and self._callbacks.should_stop_after_turn
+                and await self._callbacks.should_stop_after_turn()
+            ):
+                return True
+            try:
+                result = await runner.emit_first(SigilHook.SHOULD_STOP_AFTER_TURN, {})
+            except Exception:
+                return False
+            return bool(result) if isinstance(result, bool) else False
+
+        async def prepare_next_turn(context: LoopContext) -> LoopContext:
+            try:
+                result = await runner.emit_chain(SigilHook.PREPARE_NEXT_TURN, context)
+            except Exception:
+                result = context
+            current = result if isinstance(result, LoopContext) else context
+            if self._callbacks is not None and self._callbacks.prepare_next_turn:
+                current = await self._callbacks.prepare_next_turn(current)
+            return current
+
+        return LoopCallbacks(
+            transform_context=transform_context,
+            before_realm_headers=before_realm_headers,
+            before_spell_cast=before_spell_cast,
+            after_spell_result=after_spell_result,
+            get_steering_messages=(
+                self._callbacks.get_steering_messages
+                if self._callbacks and self._callbacks.get_steering_messages
+                else self._drain_steer_queue
+            ),
+            get_follow_up_messages=(
+                self._callbacks.get_follow_up_messages
+                if self._callbacks and self._callbacks.get_follow_up_messages
+                else self._drain_followup_queue
+            ),
+            after_invocation=after_invocation,
+            should_stop_after_turn=should_stop_after_turn,
+            prepare_next_turn=prepare_next_turn,
         )
+
+    async def _emit(self, event: MvgeEvent) -> None:
+        self._reduce(event)
+        self._record_event(event)
+
+        bus = self._state.event_bus
+        if bus is not None:
+            bus.emit(event.type, event.data)
+
+        runner = self._state.rune_runner
+        hook = _EVENT_TO_SIGIL.get(event.type)
+        if runner is not None and hook is not None:
+            await runner.emit_async(hook, self._sigil_payload(event))
+
+        if event.type == MvgeEventType.MESSAGE_END:
+            await self._record_invocation(event)
+
+    def _reduce(self, event: MvgeEvent) -> None:
+        mana_used = event.data.get("mana_used")
+        if isinstance(mana_used, int):
+            self._state.mana_used = mana_used
+
+        if event.type == MvgeEventType.BEFORE_PROVIDER_REQUEST:
+            model = event.data.get("model")
+            if isinstance(model, dict) and model.get("headers"):
+                merged = {
+                    **(self._state.model or {}).get("headers", {}),
+                    **model["headers"],
+                }
+                self._state.model = {**(self._state.model or {}), "headers": merged}
+
+        if event.type == MvgeEventType.INPUT:
+            transformed = event.data.get("content")
+            for inv in reversed(self._state.invocations):
+                if isinstance(inv, SummonerRequest):
+                    inv.content = transformed
+                    break
+
+        if event.type == MvgeEventType.MESSAGE_END:
+            invocation = event.data.get("invocation")
+            if invocation is not None and not isinstance(invocation, SummonerRequest):
+                self._state.invocations.append(invocation)
+
+    def _record_event(self, event: MvgeEvent) -> None:
+        if len(self._state.events) >= self._state.max_events:
+            self._state.events = self._state.events[-self._state.max_events // 2 :]
+        self._state.events.append(event)
+
+    def _sigil_payload(self, event: MvgeEvent) -> Any:
+        if event.type == MvgeEventType.AFTER_PROVIDER_RESPONSE:
+            return {"response": event.data.get("response")}
+        return event.data
+
+    async def _record_invocation(self, event: MvgeEvent) -> None:
+        session: MvgeTome | None = self._tome or self._state.agent_tome
+        if session is None:
+            return
+        invocation = event.data.get("invocation")
+        if invocation is None:
+            return
+
+        parent_id = await session.active_leaf_id_async()
+        model = self._state.model or {}
+        if isinstance(invocation, SummonerRequest):
+            await session.record_message_async(
+                role="user",
+                content=invocation.content,
+                parent_id=parent_id,
+            )
+        elif isinstance(invocation, MvgeResponse):
+            await session.record_message_async(
+                role="assistant",
+                content=invocation.content,
+                parent_id=parent_id,
+                model=model.get("id", ""),
+                provider=model.get("id", "").split("/")[0],
+            )
+        elif isinstance(invocation, SpellResultMessage):
+            await session.record_message_async(
+                role="spellResult",
+                content=invocation.content,
+                parent_id=parent_id,
+            )
+
+    async def run(
+        self,
+        stream_fn: StreamFn,
+        model: dict[str, Any],
+        contemplation_level: str = "medium",
+        signal: AbortSignal | None = None,
+        prompt: str | None = None,
+    ) -> MvgeInvocation:
+        """Run the harness turn by turn, driving run_loop directly."""
+        if prompt is not None:
+            self._state.invocations.append(SummonerRequest(role="user", content=prompt))
+
+        await self._maybe_precompact(signal)
+
+        self._state.is_streaming = True
+        self._state.model = model
+        self._state.contemplation_level = ContemplationLevel(contemplation_level)
+
+        context = LoopContext(
+            system_prompt=self._state.system_prompt,
+            prompt_source=self._state.prompt_source,
+            invocations=list(self._state.invocations),
+            spells=self._resolve_spells(),
+            contemplation_level=self._state.contemplation_level,
+            max_tokens=self._state.max_tokens,
+            temperature=self._state.temperature,
+            spell_timeout_ms=self._state.spell_timeout_ms,
+            contemplation_budget=self._state.contemplation_budget,
+            exclude_contemplation=self._state.exclude_contemplation,
+            max_turns=self._state.max_turns,
+            queue_mode=self._state.queue_mode,
+        )
+
+        try:
+            new_invocations = await run_loop(
+                context,
+                stream_fn,
+                self._emit,
+                self._build_callbacks(signal=signal),
+                signal,
+            )
+        finally:
+            self._state.is_streaming = False
+
+        if new_invocations:
+            return new_invocations[-1]
+        if self._state.invocations:
+            return self._state.invocations[-1]
+        raise RuntimeError("No invocations to return")
 
     async def _maybe_precompact(self, signal: AbortSignal | None = None) -> None:
         """Force-compact before the first send when the Mana Pool is crowded.
@@ -172,6 +449,8 @@ class MvgeHarness:
         needs manual rescue (compact / undo / new tome) and future casts are
         bounded by the dispatcher truncation backstop.
         """
+        if signal is not None and signal.aborted:
+            return
         if self._compaction is None or self._model is None:
             return
         try:

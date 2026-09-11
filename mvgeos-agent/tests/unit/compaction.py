@@ -18,7 +18,10 @@ from mvgeos_core.invocations import (
     MvgeInvocation,
     SummonerRequest,
 )
-from mvgeos_core.spells import SpellResultMessage
+from mvgeos_core.spells import (
+    MvgeSpell,
+    SpellResultMessage,
+)
 
 from mvgeos_agent.harness.compaction import (
     DEFAULT_COMPACTION_SETTINGS,
@@ -577,9 +580,7 @@ class TestTomePersistence:
         """The runner must actually swap the transcript during a real run."""
         from collections.abc import AsyncIterator
 
-        from mvgeos_core.spells import MvgeSpell
-
-        from mvgeos_agent.mvge_loop import MvgeLoop
+        from mvgeos_agent.harness import MvgeHarness
         from mvgeos_agent.types import MvgeState
 
         spell = MagicMock(spec=MvgeSpell)
@@ -588,20 +589,37 @@ class TestTomePersistence:
         spell.parameters = {"type": "object", "properties": {}}
         spell.execute = AsyncMock(return_value={"ok": True})
 
+        initial_invocations: list[MvgeInvocation] = []
+        for index in range(4):
+            initial_invocations.append(
+                SummonerRequest(role="user", content=f"ask {index} " * 40)
+            )
+            initial_invocations.append(
+                MvgeResponse(
+                    role="assistant",
+                    content=[{"type": "text", "text": f"reply {index} " * 40}],
+                    stop_reason=StopReason.STOP,
+                    mana_usage={"total": 600},
+                )
+            )
+
         state = MvgeState(
             system_prompt="test",
             model={"id": "test-model"},
             spells=[spell],
-            invocations=_long_transcript(),
+            invocations=initial_invocations,
         )
-        loop = MvgeLoop(state)
         runner = CompactionRunner(
             realm=_realm(),
             model=_model(),
-            emit=loop.emit,
             settings=CompactionSettings(reserve_mana=200, keep_recent_mana=200),
         )
-        loop.set_after_invocation(runner.maybe_compact)
+        harness = MvgeHarness(
+            state=state,
+            compaction=runner,
+            model=_model(),
+            realm=_realm(),
+        )
 
         seen: list[list[MvgeInvocation]] = []
         replies = [
@@ -615,6 +633,7 @@ class TestTomePersistence:
                             "spell_cast": {"id": "1", "name": "x", "arguments": {}},
                         }
                     ],
+                    mana_usage={"total": 950},
                     stop_reason=StopReason.SPELL_USE,
                 ),
             ),
@@ -642,7 +661,7 @@ class TestTomePersistence:
 
             return gen()
 
-        await loop.run(stream_fn, {"id": "test-model"}, "none")
+        await harness.run(stream_fn, {"id": "test-model"}, "none")
 
         # Turn two must be shorter: compaction replaced the history.
         assert len(seen) == 2

@@ -55,7 +55,7 @@ class CompactionRunner:
         self,
         realm: Realm,
         model: Model,
-        emit: EmitSink,
+        emit: EmitSink | None = None,
         settings: CompactionSettings = DEFAULT_COMPACTION_SETTINGS,
         tome: MvgeTome | None = None,
         retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
@@ -67,6 +67,10 @@ class CompactionRunner:
         self._tome = tome
         self._retry_policy = retry_policy
         self._previous_summary: str | None = None
+
+    async def _send_event(self, event: MvgeEvent) -> None:
+        if self._emit is not None:
+            await self._emit(event)
 
     async def maybe_compact(
         self,
@@ -92,7 +96,7 @@ class CompactionRunner:
         if prepared is None:
             return None
 
-        await self._emit(
+        await self._send_event(
             MvgeEvent(
                 type=MvgeEventType.COMPACTION_START,
                 data={
@@ -106,7 +110,7 @@ class CompactionRunner:
             prepared.to_summarize, self._summarize, prepared.previous_summary, signal
         )
         if summary is None:
-            await self._emit(
+            await self._send_event(
                 MvgeEvent(
                     type=MvgeEventType.COMPACTION_END,
                     data={"error": "Summarization failed"},
@@ -122,7 +126,7 @@ class CompactionRunner:
 
         self._record(summary, prepared.mana_before, prepared.retained_tail)
 
-        await self._emit(
+        await self._send_event(
             MvgeEvent(
                 type=MvgeEventType.COMPACTION_END,
                 data={
@@ -149,7 +153,7 @@ class CompactionRunner:
         if prepared is None:
             return None
 
-        await self._emit(
+        await self._send_event(
             MvgeEvent(
                 type=MvgeEventType.COMPACTION_START,
                 data={
@@ -163,7 +167,7 @@ class CompactionRunner:
             prepared.to_summarize, self._summarize, prepared.previous_summary, signal
         )
         if summary is None:
-            await self._emit(
+            await self._send_event(
                 MvgeEvent(
                     type=MvgeEventType.COMPACTION_END,
                     data={"error": "Summarization failed"},
@@ -179,7 +183,7 @@ class CompactionRunner:
 
         self._record(summary, prepared.mana_before, prepared.retained_tail)
 
-        await self._emit(
+        await self._send_event(
             MvgeEvent(
                 type=MvgeEventType.COMPACTION_END,
                 data={

@@ -150,7 +150,9 @@ class TestCoerceSpell:
         assert res is orig
 
     def test_coerce_invalid_type_raises(self) -> None:
-        with pytest.raises(TypeError, match="Expected Callable or MvgeSpell"):
+        with pytest.raises(
+            TypeError, match="Expected Callable, MvgeSpell, or SpellDefinition"
+        ):
             coerce_spell("not_a_spell")  # type: ignore[arg-type]
 
 

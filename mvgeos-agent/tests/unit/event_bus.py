@@ -90,7 +90,7 @@ class TestEventBusIntegration:
         from mvgeos_core.events import ContemplationLevel
         from mvgeos_core.invocations import SummonerRequest
 
-        from mvgeos_agent.mvge_loop import MvgeLoop
+        from mvgeos_agent.harness import MvgeHarness
         from mvgeos_agent.types import MvgeState
 
         bus = EventBus()
@@ -143,8 +143,8 @@ class TestEventBusIntegration:
             for r in responses:
                 yield r
 
-        loop = MvgeLoop(state)
-        await loop.run(stream, {"id": "test-model"}, "none")
+        harness = MvgeHarness(state=state)
+        await harness.run(stream, {"id": "test-model"}, "none")
 
         assert handler.called
         assert state.events  # old path still works
@@ -160,7 +160,7 @@ class TestEventBusIntegration:
         from mvgeos_core.events import ContemplationLevel
         from mvgeos_core.invocations import SummonerRequest
 
-        from mvgeos_agent.mvge_loop import MvgeLoop
+        from mvgeos_agent.harness import MvgeHarness
         from mvgeos_agent.types import MvgeState
 
         state = MvgeState(
@@ -192,7 +192,7 @@ class TestEventBusIntegration:
             for r in responses:
                 yield r
 
-        loop = MvgeLoop(state)
-        result = await loop.run(stream, {"id": "test-model"}, "none")
+        harness = MvgeHarness(state=state)
+        result = await harness.run(stream, {"id": "test-model"}, "none")
         assert result is not None
         assert state.events  # old path still works fine

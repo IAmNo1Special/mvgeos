@@ -15,6 +15,7 @@ from mvgeos_agent.environment import (
 )
 from mvgeos_agent.function_spell import (
     FunctionSpell,
+    RuneSpellWrapper,
     SpellUnion,
     coerce_spell,
     discover_spells_from_dir,
@@ -50,6 +51,7 @@ __all__ = [
     "PromptSource",
     "ResolvedGuidelines",
     "ResolvedPrompt",
+    "RuneSpellWrapper",
     "RuntimeSnapshot",
     "SLASH_COMMANDS",
     "SnapshotConfigEntry",

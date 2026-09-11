@@ -112,12 +112,13 @@ class RuntimeSnapshot:
 
 
 def to_snapshot_spell(spell: MvgeSpell | SpellDefinition) -> SnapshotSpell:
-    if isinstance(spell, SpellDefinition):
+    source_rune = getattr(spell, "source_rune", None)
+    if isinstance(spell, SpellDefinition) or source_rune is not None:
         return SnapshotSpell(
             name=spell.name,
             description=spell.description,
             source=SpellSource.RUNE,
-            source_rune=spell.source_rune,
+            source_rune=source_rune,
             parameters=spell.parameters,
         )
     return SnapshotSpell(
