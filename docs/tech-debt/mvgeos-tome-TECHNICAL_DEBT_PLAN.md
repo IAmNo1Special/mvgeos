@@ -4,12 +4,12 @@
 
 ## Issue Index
 
-| ID | Title | Priority | Effort | Dependencies |
-|----|-------|----------|--------|--------------|
-| TOME-002 | Full file loading in `_read_tome_entries_from_disk` | High | Medium | None |
-| TOME-003 | `FileLock` has no stale lock recovery | High | Medium | None |
-| TOME-005 | No session file integrity check (CRC/checksum) | Medium | Small | None |
-| TOME-008 | Session version migration logic | Medium | Medium | TOME-005 |
+| ID | Title | Priority | Effort | Status |
+|----|-------|----------|--------|--------|
+| TOME-002 | Full file loading in `_read_tome_entries_from_disk` | High | Medium | [RESOLVED] Implemented via `iter_tome_entries` |
+| TOME-003 | `FileLock` has no stale lock recovery | High | Medium | [RESOLVED] Implemented via `force_release_stale` |
+| TOME-005 | No session file integrity check (CRC/checksum) | Medium | Small | [RESOLVED] Implemented via `verify_integrity` |
+| TOME-008 | Session version migration logic | Medium | Medium | Open |
 
 ---
 

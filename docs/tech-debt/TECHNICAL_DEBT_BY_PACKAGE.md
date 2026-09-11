@@ -5,7 +5,7 @@
 ## mvgeos-agent
 
 ### Performance & Scale
-- **Linear spell lookup**: `SpellDispatcher` in `dispatcher.py:74, 191` uses `next((s for s in context.spells if s.name == spell_name), None)` ($O(n)$ per spell cast).
+- [RESOLVED] **Linear spell lookup**: Resolved via `LoopContext.get_spell()` dictionary index in `mvgeos-core/src/mvgeos_core/loop.py` ($O(1)$ lookup in `dispatcher.py`).
 
 ### Gaps in Logic
 - **Incomplete session recovery**: `MvgeTome.open` does not validate model compatibility or spell availability against current configuration.
@@ -30,11 +30,11 @@
 ## mvgeos-tome
 
 ### Performance & Scale
-- **Full file loading in `_read_tome_entries_from_disk`**: `ledger.py:399-401` uses `f.readlines()` to load all JSONL entries into memory rather than an async streaming line generator.
+- [RESOLVED] **Full file loading in `_read_tome_entries_from_disk`**: Resolved via streaming line generators `iter_tome_entries()` and `iter_tome_entries_async()` in `ledger.py` for bounded memory usage.
 
 ### Reliability & Resilience
-- **`FileLock` has no recovery**: `locking.py:9-45` wraps `filelock.FileLock` without PID/timestamp metadata inspection or dead-process lock cleanup on crash.
-- **No session file integrity check**: No per-line CRC32 checksums or session header SHA256 hashes are calculated or validated on JSONL reads.
+- [RESOLVED] **`FileLock` has no recovery**: Resolved via `FileLock.force_release_stale()`, PID/hostname metadata files (`.lock.meta`), and dead-process inspection in `locking.py` and `TomeLedger._cleanup_stale_locks()`.
+- [RESOLVED] **No session file integrity check**: Resolved via `verify_integrity()` and `verify_integrity_async()` in `ledger.py`, with structured `TomeIntegrityReport` and `TomeIntegrityIssue` reporting.
 
 ### Architecture Quirks
 - **Session version migration**: `TomeLedger._load_tome_metadata()` reads session metadata but has no migration pipeline for previous schema versions (v1/v2 -> v3).
@@ -78,12 +78,12 @@
 
 ## Cross-Package Summary
 
-| Category | Count | Highest Impact |
-|----------|-------|----------------|
-| Missing validation | 2 | Resumed session compatibility (`mvgeos-agent`), Rune spell schema validation (`coding-mvge`) |
-| Architecture decoupling | 3 | Streaming abstraction (`mvgeos-provider`), Agent interface decoupling (`mvgeos-cli`), Spell registry (`coding-mvge`) |
-| Resilience & Integrity | 2 | Stale lock cleanup (`mvgeos-tome`), Session file integrity checks (`mvgeos-tome`) |
-| Version migration | 2 | Session schema migration (`mvgeos-tome`, `mvgeos-agent`) |
-| Performance & Scale | 2 | Linear spell lookup (`mvgeos-agent`), JSONL streaming reads (`mvgeos-tome`) |
-| Configuration & Mutability | 3 | Static cache TTL (`mvgeos-provider`), Mutable RuneContext (`mvgeos-runes`), Registration override (`mvgeos-runes`) |
-| Terminology alignment | 1 | Spell vs tool naming alignment (`mvgeos-agent`) |
+| Category | Open Issues | Resolved Items | Primary Focus Area |
+|----------|-------------|----------------|--------------------|
+| Missing validation | 1 | 1 | Resumed session compatibility (`mvgeos-agent`) |
+| Architecture decoupling | 3 | 1 | Streaming abstraction (`mvgeos-provider`), Agent interface decoupling (`mvgeos-cli`) |
+| Resilience & Integrity | 0 | 2 | Stale lock cleanup & Session file integrity (`mvgeos-tome`) [RESOLVED] |
+| Version migration | 2 | 0 | Session schema migration (`mvgeos-tome`, `mvgeos-agent`) |
+| Performance & Scale | 0 | 2 | Linear spell lookup (`mvgeos-core`) & JSONL streaming reads (`mvgeos-tome`) [RESOLVED] |
+| Configuration & Mutability | 3 | 0 | Static cache TTL (`mvgeos-provider`), Mutable RuneContext (`mvgeos-runes`), Registration override (`mvgeos-runes`) |
+| Terminology alignment | 1 | 0 | Spell vs tool naming alignment (`mvgeos-agent`) |

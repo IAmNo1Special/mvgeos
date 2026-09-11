@@ -26,25 +26,25 @@ Establish host sandbox ownership in `mvgeos-agent` while strictly avoiding inver
 
 ### `mvgeos-agent` Package
 
-#### [NEW] [sandbox.py](mvgeos-agent/mvgeos_agent/sandbox.py)
+#### [NEW] `sandbox.py` (`mvgeos-agent/src/mvgeos_agent/sandbox.py`)
 - Define `MvgeSandbox` implementing `execute_code(self, code_str: str, context_globals: dict[str, Any] | None = None, timeout_seconds: float = 5.0, allowed_modules: set[str] | None = None) -> dict[str, Any]`.
 - Provides Mage host sandbox execution using process isolation and configurable module allowlists (`allowed_modules`).
 
-#### [MODIFY] [__init__.py](mvgeos-agent/mvgeos_agent/__init__.py)
+#### [MODIFY] `__init__.py` (`mvgeos-agent/src/mvgeos_agent/__init__.py`)
 - Export `MvgeSandbox` in `mvgeos_agent.__all__`.
 
 ---
 
 ### `mvgeos-runes` Package
 
-#### [MODIFY] [rune_runner.py](mvgeos-runes/mvgeos_runes/rune_runner.py)
+#### [MODIFY] `rune_runner.py` (`mvgeos-runes/src/mvgeos_runes/rune_runner.py`)
 - Instantiate `self._sandbox = MvgeSandbox()` in `RuneRunner.__init__`.
 - Expose `@property def sandbox(self) -> MvgeSandbox` on `RuneRunner`.
 
-#### [MODIFY] [rune_api.py](mvgeos-runes/mvgeos_runes/rune_api.py)
+#### [MODIFY] `rune_api.py` (`mvgeos-runes/src/mvgeos_runes/rune_api.py`)
 - Expose `@property def sandbox(self) -> MvgeSandbox` on `RuneAPI` returning `self._runner.sandbox`.
 
-#### [MODIFY] [test_rune_api.py](mvgeos-runes/tests/integration/rune_api.py)
+#### [MODIFY] `test_rune_api.py` (`mvgeos-runes/tests/integration/rune_api.py`)
 - Add unit tests verifying `api.sandbox` property returns `MvgeSandbox` instance.
 
 ---
@@ -55,7 +55,7 @@ Establish host sandbox ownership in `mvgeos-agent` while strictly avoiding inver
 - Update `rune_factory(api: RuneAPI)` to instantiate `engine = GoapEngine(sandbox=api.sandbox)`.
 - Update `SynthesizedRuneSpell.execute` to execute code via `self._engine.sandbox.execute_code(...)`.
 
-#### [MODIFY] [heal_my_goap_integration.py](coding-mvge/tests/integration/heal_my_goap_integration.py)
+#### [MODIFY] `heal_my_goap_integration.py` (`coding-mvge/tests/integration/heal_my_goap_integration.py`)
 - Update integration tests to verify MvgeOS host sandbox dependency injection.
 
 ---

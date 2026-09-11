@@ -210,7 +210,7 @@ turn_end, agent_end, compaction_start/end, queue_update.
 
 ## Technology Stack
 
-- **Python**: >= 3.14
+- **Python**: >= 3.13
 - **Package manager**: uv exclusively
 - **Build system**: hatchling
 - **Testing**: pytest with pytest-asyncio

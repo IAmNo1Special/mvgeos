@@ -2,7 +2,7 @@
 
 ## Overview
 
-MvgeOS is a Python-based AI coding agent inspired by the pi project, built with clean-room implementation using Mvge-specific terminology. It follows TDD strictly and targets Python 3.14+ with `uv` for dependency management.
+MvgeOS is a Python-based AI coding agent inspired by the pi project, built with clean-room implementation using Mvge-specific terminology. It follows TDD strictly and targets Python 3.13+ with `uv` for dependency management.
 
 ## Architecture
 
@@ -10,7 +10,8 @@ MvgeOS is a Python-based AI coding agent inspired by the pi project, built with 
 
 ```text
 mvgeos/
-├── mvgeos-agent/             # Core agent loop, state, types
+├── mvgeos-core/              # Canonical loop vocabulary: abort, spells, events, turn loop
+├── mvgeos-agent/             # Core agent loop, state, environment, harness
 ├── mvgeos-provider/          # Realm protocol + OpenRouter provider
 ├── mvgeos-tome/              # JSONL session persistence with file locking
 ├── mvgeos-runes/             # Extension system (manifest, loader, sigils)
@@ -24,7 +25,14 @@ mvgeos/
 
 | Package | Module | Purpose |
 | --------- | --------- | --------- |
-| mvgeos-agent | `types.py` | MvgeState, MvgeSpell, MvgeInvocation, MvgeEvent, enums |
+| mvgeos-core | `loop.py` | Canonical turn loop (`run_loop`), `LoopContext`, `LoopCallbacks` |
+| mvgeos-core | `dispatcher.py` | `SpellDispatcher` - parallel/sequential spell execution |
+| mvgeos-core | `spells.py` | `MvgeSpell`, `SpellResult`, `SpellResultMessage`, `ExecutionMode` |
+| mvgeos-core | `events.py` | `MvgeEvent`, `MvgeEventType`, `ContemplationLevel` |
+| mvgeos-core | `invocations.py` | `MvgeInvocation`, `SummonerRequest` |
+| mvgeos-core | `channel.py` | `Model`, `ChannelConfig`, `MvgeResponse`, `RealmResponse`, `StopReason` |
+| mvgeos-core | `abort.py` | `AbortController`, `AbortSignal`, `AbortError` |
+| mvgeos-agent | `types.py` | `MvgeState` session state container |
 | mvgeos-agent | `harness/harness.py` | MvgeHarness - operational turn driver, compaction, and lifecycle |
 | mvgeos-provider | `base.py` | Realm protocol (abstract base) |
 | mvgeos-provider | `openrouter.py` | OpenRouterRealm implementation |
@@ -52,7 +60,7 @@ mvgeos/
 
 ## Core Types
 
-### mvgeos-agent/types.py
+### mvgeos-core/events.py and spells.py
 
 ```python
 class ContemplationLevel(StrEnum):

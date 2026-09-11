@@ -5,7 +5,7 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type Checking: mypy](https://img.shields.io/badge/type%20checking-mypy%20strict-blue.svg)](https://mypy-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-2150%2B%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-2350%2B%20passed-brightgreen.svg)]()
 [![Coverage](https://img.shields.io/badge/coverage-90%25%2B%20enforced-brightgreen.svg)]()
 
 > **MvgeOS** is a modern, extensible, protocol-compliant AI coding agent architecture built in Python.
@@ -32,6 +32,7 @@ MvgeOS is organized as a monorepo powered by `uv` workspaces:
 
 | Package | Purpose |
 | --- | --- |
+| [`mvgeos-core`](mvgeos-core/AGENTS.md) | Canonical loop vocabulary: abort primitives, invocations, spells, events, pure turn loop (zero first-party deps) |
 | [`mvgeos-agent`](mvgeos-agent/AGENTS.md) | Core Mvge loop, invocations, state, spell execution, and MvgeHarness session lifecycle |
 | [`mvgeos-provider`](mvgeos-provider/AGENTS.md) | Realm protocol, model registry, retry policies, and OpenRouter provider |
 | [`mvgeos-tome`](mvgeos-tome/AGENTS.md) | JSONL session persistence with cross-process file locking and in-memory index |
@@ -39,6 +40,34 @@ MvgeOS is organized as a monorepo powered by `uv` workspaces:
 | [`mvgeos-cli`](mvgeos-cli/AGENTS.md) | CLI commands (`mvgeos`), REPL, and TUI interface |
 | [`mvgeos-gui`](mvgeos-gui/AGENTS.md) | Native desktop application powered by NiceGUI with 1:1 Antigravity UI |
 | [`coding-mvge`](coding-mvge/AGENTS.md) | Concrete coding agent implementation with built-in development spells |
+
+```mermaid
+flowchart TD
+    subgraph UI["User Interfaces"]
+        CLI["mvgeos-cli (Terminal REPL / TUI)"]
+        GUI["mvgeos-gui (Desktop NiceGUI + PyWebView)"]
+    end
+
+    subgraph CoreEngine["Agent & Execution Core"]
+        Mvge["coding-mvge (Agent Instance)"]
+        Harness["mvgeos-agent (MvgeHarness & MvgeEnvironment)"]
+        Loop["mvgeos-core (run_loop, Dispatcher, Events)"]
+    end
+
+    subgraph StorageEcosystem["Extensions, Providers & Storage"]
+        Runes["mvgeos-runes (Runes, Sigil Hooks, Skills)"]
+        Provider["mvgeos-provider (OpenRouter Realm & Models)"]
+        Tome["mvgeos-tome (JSONL Ledgers & FileLock)"]
+    end
+
+    CLI --> Harness
+    GUI --> Harness
+    Mvge --> Harness
+    Harness --> Loop
+    Loop --> Provider
+    Loop --> Runes
+    Harness --> Tome
+```
 
 ---
 
@@ -127,6 +156,22 @@ MvgeOS complies with the [dotagents protocol](https://dotagentsprotocol.com). Co
 ├── auth/                # API keys and credentials
 └── models.json          # Custom model configurations
 ```
+
+### Environment Variables
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `OPENROUTER_API_KEY` | string | *Required* | Primary API key for OpenRouter LLM inference |
+| `MVGEOS_API_KEY` | string | *Optional* | Fallback / alias API key for MvgeOS operations |
+| `GEMINI_API_KEY` | string | *Optional* | API key for Gemini models |
+| `GOOGLE_API_KEY` | string | *Optional* | API key for Google Cloud / Gemini endpoints |
+| `STORAGE_SECRET` | string | *Auto-generated* | Secret key used to encrypt NiceGUI desktop session storage |
+| `MVGEOS_LOG_DIR` | string | `.logs` | Custom runtime log directory path |
+| `MVGEOS_LOG_LEVEL` | string | `INFO` | Runtime log verbosity level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `MVGEOS_DB_PATH` | string | `~/.agents/.mvgeos/state.db` | Custom SQLite database path for desktop GUI state |
+| `MVGEOS_WORKSPACE_ROOT` | string | Current working directory | Authorized root directory boundary for file and bash spell operations |
+| `MVGEOS_BASH_TIMEOUT_MS` | integer | `600000` (10 min) | Default spell execution timeout in milliseconds |
+| `EDITOR` | string | System default | External text editor command for editing configurations or notes |
 
 ---
 

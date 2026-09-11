@@ -6,20 +6,23 @@ Based on `TECHNICAL_DEBT_BY_PACKAGE.md` and source code analysis.
 
 ## Issue Index
 
-| ID | Title | Category | Priority | Effort |
+| ID | Title | Category | Priority | Status |
 |----|-------|----------|----------|--------|
-| AGENT-07 | Linear spell lookup $O(n)$ in `dispatcher.py` | Performance | Medium | S |
-| AGENT-14 | Incomplete session recovery (no model/spell validation) | Gap | Medium | M |
-| AGENT-15 | Mixed "spell"/"tool" terminology | Architecture | Low | S |
-| AGENT-16 | Session versioning without migration (in tome) | Architecture | Medium | M |
+| AGENT-07 | Linear spell lookup $O(n)$ in `dispatcher.py` | Performance | Medium | [RESOLVED] Implemented via `LoopContext.get_spell` |
+| AGENT-14 | Incomplete session recovery (no model/spell validation) | Gap | Medium | Open |
+| AGENT-15 | Mixed "spell"/"tool" terminology | Architecture | Low | Open |
+| AGENT-16 | Session versioning without migration (in tome) | Architecture | Medium | Open |
 
 ---
 
-## AGENT-07: Linear Spell Lookup $O(n)$
+## AGENT-07: Linear Spell Lookup $O(n)$ [RESOLVED]
 
-**File**: `mvgeos_agent/dispatcher.py:74, 191`
+**File**: `mvgeos_core/dispatcher.py` (canonical implementation in `mvgeos-core`)
 
-### Root Cause
+### Resolution
+Resolved via `LoopContext._spell_index` and `LoopContext.get_spell(name)` in `mvgeos-core/src/mvgeos_core/loop.py`, providing $O(1)$ spell lookup in `SpellDispatcher`.
+
+### Historical Root Cause
 ```python
 spell = next((s for s in context.spells if s.name == spell_name), None)
 ```

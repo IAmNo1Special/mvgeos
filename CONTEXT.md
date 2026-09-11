@@ -67,7 +67,7 @@ A capability pack discovered per `agentskills.io` via `SKILL_SCOPES` (`PROJECT:.
 _Avoid_: Tool, Spell, Rune, plugin
 
 **Skill Evolution Store**:
-The persistent, compounding store that compiles `Raw Experience` into `skill_evolution/index.md` (catalog `[name](patterns/name.md): specific desc`), `skill_evolution/logs.md`, `skill_evolution/skill-impact.md` (harness-appended diff + `R_val` + `Accepted/Rejected`), and `skill_evolution/patterns/*.md` (10-30 lines: what, root cause, commands, workarounds) via `SkillEvolutionMaintainer` patch ops (`append`/`replace`/`insert_after` exact target). Formerly referred to as Knowledge Store; updated to eliminate ambiguous knowledge naming.
+The persistent, compounding store that compiles `Raw Experience` into `skill_evolution/index.md` (catalog `[name]` linking to `patterns/name.md`: specific desc), `skill_evolution/logs.md`, `skill_evolution/skill-impact.md` (harness-appended diff + `R_val` + `Accepted/Rejected`), and `skill_evolution/patterns/*.md` (10-30 lines: what, root cause, commands, workarounds) via `SkillEvolutionMaintainer` patch ops (`append`/`replace`/`insert_after` exact target). Formerly referred to as Knowledge Store; updated to eliminate ambiguous knowledge naming.
 _Avoid_: Knowledge, wiki, memory, store
 
 **Raw Experience**:
