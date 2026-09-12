@@ -6,7 +6,6 @@ import contextlib
 from collections.abc import Callable
 from typing import Any
 
-from mvgeos_provider import get_model_options
 from nicegui import ui
 
 from mvgeos_gui.autocomplete import AutocompleteService
@@ -55,9 +54,11 @@ def render_chat_panel(state: AppState) -> ui.column:
                         ).classes("text-xs text-[#9c94b3] max-w-[300px] truncate")
 
                 _toolbar_button(
-                    icon="panel_left_close" if state.sidebar_open else "panel_left",
+                    icon="view_sidebar",
                     title="Toggle sidebar",
+                    active=state.sidebar_open,
                     on_click=state.toggle_sidebar,
+                    marker="chat_toggle_sidebar_btn",
                 )
                 _toolbar_button(
                     icon="shield",
@@ -658,21 +659,12 @@ def _render_composer(state: AppState) -> None:
                                 ui.tooltip("Provider")
 
                         # Tier 3: Model Select
-                        all_options = get_model_options()
-                        model_ids = state.get_models_for_selection()
-                        model_options = {
-                            mid: all_options.get(mid, mid) for mid in model_ids
-                        }
-                        if state.selected_model not in model_options:
-                            model_options[state.selected_model] = all_options.get(
-                                state.selected_model, state.selected_model
-                            )
+                        model_options = state.get_model_options_for_selection()
                         with (
                             ui.select(
                                 options=model_options,
                                 value=state.selected_model,
                                 on_change=lambda e: state.switch_model(e.value),
-                                with_input=True,
                             )
                             .props("dense borderless dark rounded text-xs")
                             .classes("text-xs text-[#9c94b3] font-mono")
@@ -737,6 +729,7 @@ def _toolbar_button(
     title: str,
     active: bool = False,
     on_click: Callable[[], Any] | None = None,
+    marker: str | None = None,
 ) -> None:
     """Render a toolbar icon button."""
     btn_cls = (
@@ -744,11 +737,14 @@ def _toolbar_button(
         if active
         else "text-dim hover:text-secondary hover:bg-highlight"
     )
-    with (
+    btn = (
         ui.button(icon=icon, on_click=on_click)
         .props("flat dense round size=xs")
         .classes(f"{btn_cls} p-0.5")
-    ):
+    )
+    if marker:
+        btn.mark(marker)
+    with btn:
         ui.tooltip(title)
 
 

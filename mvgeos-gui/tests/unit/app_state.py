@@ -1268,6 +1268,30 @@ class TestCascadingSelectorState:
         assert isinstance(levels, list)
         assert state.supports_contemplation_for_selected_model() is True
 
+    def test_get_model_options_for_selection_router_strips_provider_prefix(
+        self,
+    ) -> None:
+        state = AppState()
+        options = state.get_model_options_for_selection()
+        assert "nvidia/nemotron-3-ultra-550b-a55b:free" in options
+        assert (
+            options["nvidia/nemotron-3-ultra-550b-a55b:free"]
+            == "Nemotron 3 Ultra (free)"
+        )
+
+    def test_get_model_options_for_selection_direct_preserves_names(self) -> None:
+        state = AppState()
+        mock_models = {"direct/model-1": "Direct: Model 1"}
+        with (
+            patch.object(state, "is_router_realm", return_value=False),
+            patch("mvgeos_gui.state.get_model_options", return_value=mock_models),
+            patch.object(
+                state, "get_models_for_selection", return_value=["direct/model-1"]
+            ),
+        ):
+            options = state.get_model_options_for_selection()
+            assert options["direct/model-1"] == "Direct: Model 1"
+
 
 class TestRuneManagementState:
     """Unit tests for rune marketplace and extension management in AppState."""

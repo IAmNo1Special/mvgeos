@@ -633,7 +633,7 @@ html, body {
 .nav-link-active::before {
     content: '' !important;
     position: absolute !important;
-    left: 12px !important;
+    left: 4px !important;
     top: 50% !important;
     transform: translateY(-50%) !important;
     width: 3px !important;

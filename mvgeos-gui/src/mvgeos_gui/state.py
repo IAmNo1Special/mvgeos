@@ -18,6 +18,7 @@ from typing import Any, cast
 from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_provider import (
     get_default_realm_registry,
+    get_model_options,
     get_models_for_provider,
     get_providers_for_realm,
     get_supported_contemplation_levels,
@@ -608,6 +609,26 @@ class AppState:
         except Exception:
             pass
         return [self.selected_model]
+
+    def get_model_options_for_selection(self) -> dict[str, str]:
+        """Return dict of model IDs to display names for current selection.
+
+        For router realms, repeated provider prefixes followed by ': ' are stripped.
+        Direct providers retain their model names without modification.
+        """
+        all_options = get_model_options()
+        model_ids = self.get_models_for_selection()
+        model_options = {mid: all_options.get(mid, mid) for mid in model_ids}
+        if self.selected_model not in model_options:
+            model_options[self.selected_model] = all_options.get(
+                self.selected_model, self.selected_model
+            )
+        if self.is_router_realm(self.selected_realm):
+            model_options = {
+                mid: (name.split(": ", 1)[1] if ": " in name else name)
+                for mid, name in model_options.items()
+            }
+        return model_options
 
     def get_contemplation_levels_for_selected_model(self) -> list[str]:
         """Return contemplation levels supported by the selected model."""

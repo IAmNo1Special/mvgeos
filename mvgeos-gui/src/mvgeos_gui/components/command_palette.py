@@ -34,11 +34,11 @@ def render_command_palette(state: AppState) -> None:
         results = [
             ("Chat", "chat", "chat_bubble_outline"),
             ("Sessions", "sessions", "history"),
-            ("Timeline", "timeline", "activity"),
-            ("Packages", "packages", "package"),
+            ("Timeline", "timeline", "timeline"),
+            ("Packages", "packages", "inventory_2"),
             ("Notes", "notes", "sticky_note_2"),
             ("Skills", "skills", "auto_awesome"),
-            ("Diagnostics", "diagnostics", "stethoscope"),
+            ("Diagnostics", "diagnostics", "troubleshoot"),
             ("Settings", "settings", "settings"),
         ]
 

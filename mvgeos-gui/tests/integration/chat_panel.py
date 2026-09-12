@@ -359,7 +359,7 @@ class TestComposerComponents:
 
         await user.open("/test_model_select")
 
-        await user.should_see("NVIDIA: Nemotron 3 Ultra (free)")
+        await user.should_see("Nemotron 3 Ultra (free)")
 
     def test_get_word_range_returns_correct_range(
         self, state_with_project: AppState

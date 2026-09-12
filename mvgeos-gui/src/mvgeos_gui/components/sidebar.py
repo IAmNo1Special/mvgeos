@@ -1,6 +1,6 @@
 """Left navigation sidebar for MvgeOS desktop."""
 
-from nicegui import app, ui
+from nicegui import ui
 
 from mvgeos_gui import __version__
 from mvgeos_gui.components.sidebar_hint import sidebar_hint
@@ -9,135 +9,153 @@ from mvgeos_gui.state import AppState
 
 def render_sidebar(state: AppState) -> ui.column:
     """Render the collapsible left sidebar."""
-    collapsed = app.storage.user.get("sidebar-collapsed", False)
-    collapsed_width = 80
+    collapsed = not state.sidebar_open
+    collapsed_width = 56
     expanded_width = 260
 
     container = (
         ui.column()
         .classes(
             "h-full bg-[#08080a] border-r border-[#292335] "
-            "shrink-0 flex flex-col sidebar-container"
+            "shrink-0 flex flex-col no-wrap overflow-hidden sidebar-container"
         )
         .style(f"width: {collapsed_width if collapsed else expanded_width}px")
     )
 
     with container:
         # Header
-        with ui.row().classes(
-            "w-full h-12 items-center justify-between px-3 border-b border-[#292335]"
-        ):
-            with ui.row().classes("items-center gap-2"):
-                ui.icon("auto_awesome", size="16px").classes("text-[#7b6cf6]")
-                ui.label("MvgeOS").classes(
-                    "text-sm font-semibold text-[#eceaf4] tracking-wide "
-                    "sidebar-label" + (" collapsed" if collapsed else " expanded")
+        if collapsed:
+            with (
+                ui.row().classes(
+                    "w-full h-12 items-center justify-center "
+                    "border-b border-[#292335] shrink-0"
+                ),
+                ui.button(
+                    icon="chevron_right",
+                    on_click=state.toggle_sidebar,
                 )
-            ui.button(
-                icon="chevron_left",
-                on_click=_toggle_sidebar,
-            ).props(
-                "flat dense round text-color=grey-5 size=xs collapse-btn-icon"
-                + (" collapsed" if collapsed else "")
-            )
+                .props("flat dense round text-color=grey-5 size=sm")
+                .classes("collapse-btn-icon")
+                .mark("expand_sidebar_btn"),
+            ):
+                ui.tooltip("Expand sidebar")
+        else:
+            with ui.row().classes(
+                "w-full h-12 items-center justify-between px-3 "
+                "border-b border-[#292335] shrink-0 no-wrap"
+            ):
+                with ui.row().classes("items-center gap-2 no-wrap"):
+                    ui.icon("auto_awesome", size="16px").classes("text-[#7b6cf6]")
+                    ui.label("MvgeOS").classes(
+                        "text-sm font-semibold text-[#eceaf4] tracking-wide"
+                    )
+                with (
+                    ui.button(
+                        icon="chevron_left",
+                        on_click=state.toggle_sidebar,
+                    )
+                    .props("flat dense round text-color=grey-5 size=xs")
+                    .classes("collapse-btn-icon")
+                    .mark("collapse_sidebar_btn")
+                ):
+                    ui.tooltip("Collapse sidebar")
 
         # Workspace / Project display
-        with ui.row().classes("px-3 py-2 items-center gap-2"):
-            ui.icon("folder_open", size="14px").classes("text-[#7b6cf6]")
-            project_name = state.project_path.name or str(state.project_path)
-            ui.label(project_name).classes(
-                "text-xs text-[#eceaf4] truncate font-medium sidebar-label"
-                + (" collapsed" if collapsed else " expanded")
-            )
+        project_name = state.project_path.name or str(state.project_path)
+        if collapsed:
+            with (
+                ui.row().classes("w-full justify-center py-2 shrink-0"),
+                ui.element("div").classes(
+                    "cursor-pointer p-1.5 rounded-md hover:bg-[#0e0e12]/60"
+                ),
+            ):
+                ui.icon("folder_open", size="16px").classes("text-[#7b6cf6]")
+                ui.tooltip(f"Project: {project_name}")
+        else:
+            with ui.row().classes(
+                "w-full px-3 py-2 items-center gap-2 shrink-0 no-wrap"
+            ):
+                ui.icon("folder_open", size="14px").classes("text-[#7b6cf6] shrink-0")
+                ui.label(project_name).classes(
+                    "text-xs text-[#eceaf4] truncate font-medium flex-1"
+                )
 
         # New Conversation button / Sign In
         if state.current_user:
-            with ui.row().classes("px-3 py-1"):
-                ui.button(
-                    "+ New Conversation",
-                    on_click=state.new_conversation,
-                ).props("unelevated no-caps").classes(
-                    "w-full bg-[#0e0e12] hover:bg-[#16161d] text-[#eceaf4] "
-                    "border border-[#292335] text-xs font-medium py-2 "
-                    "rounded-lg text-left pl-3 sidebar-label"
-                    + (" collapsed" if collapsed else " expanded")
-                ).mark("new_conversation_btn")
+            if collapsed:
+                with (
+                    ui.row().classes("w-full justify-center py-1 shrink-0"),
+                    ui.button(
+                        icon="add",
+                        on_click=state.new_conversation,
+                    )
+                    .props("flat dense round size=sm")
+                    .classes(
+                        "bg-[#0e0e12] hover:bg-[#16161d] text-[#eceaf4] "
+                        "border border-[#292335]"
+                    )
+                    .mark("new_conversation_btn"),
+                ):
+                    ui.tooltip("New Conversation")
+            else:
+                with ui.row().classes("w-full px-3 py-1 shrink-0"):
+                    ui.button(
+                        "+ New Conversation",
+                        on_click=state.new_conversation,
+                    ).props("unelevated no-caps").classes(
+                        "w-full bg-[#0e0e12] hover:bg-[#16161d] text-[#eceaf4] "
+                        "border border-[#292335] text-xs font-medium py-2 "
+                        "rounded-lg text-left pl-3"
+                    ).mark("new_conversation_btn")
         else:
-            with ui.row().classes("px-3 py-1"):
-                ui.button(
-                    "Sign In",
-                    on_click=state.show_login,
-                ).props("unelevated no-caps").classes(
-                    "w-full mvge-glow-btn "
-                    "text-white text-xs font-medium py-2 rounded-lg "
-                    "sidebar-label" + (" collapsed" if collapsed else " expanded")
-                ).mark("sign_in_btn")
+            if collapsed:
+                with (
+                    ui.row().classes("w-full justify-center py-1 shrink-0"),
+                    ui.button(
+                        icon="login",
+                        on_click=state.show_login,
+                    )
+                    .props("unelevated round size=sm")
+                    .classes("mvge-glow-btn text-white")
+                    .mark("sign_in_btn"),
+                ):
+                    ui.tooltip("Sign In")
+            else:
+                with ui.row().classes("w-full px-3 py-1 shrink-0"):
+                    ui.button(
+                        "Sign In",
+                        on_click=state.show_login,
+                    ).props("unelevated no-caps").classes(
+                        "w-full mvge-glow-btn "
+                        "text-white text-xs font-medium py-2 rounded-lg"
+                    ).mark("sign_in_btn")
 
         # Navigation items
-        with ui.column().classes("px-2 py-1 gap-0.5"):
-            _sidebar_item(
-                "Home", "home", "home", state.current_view == "home", state, collapsed
-            )
-            _sidebar_item(
-                "Chat",
-                "chat",
-                "chat_bubble_outline",
-                state.current_view == "chat",
-                state,
-                collapsed,
-            )
-            _sidebar_item(
-                "Sessions",
-                "sessions",
-                "history",
-                state.current_view == "sessions",
-                state,
-                collapsed,
-            )
-            _sidebar_item(
-                "Timeline",
-                "timeline",
-                "activity",
-                state.current_view == "timeline",
-                state,
-                collapsed,
-            )
-            _sidebar_item(
-                "Packages",
-                "packages",
-                "package",
-                state.current_view == "packages",
-                state,
-                collapsed,
-            )
-            _sidebar_item(
-                "Notes",
-                "notes",
-                "sticky_note_2",
-                state.current_view == "notes",
-                state,
-                collapsed,
-            )
-            _sidebar_item(
-                "Skills",
-                "skills",
-                "auto_awesome",
-                state.current_view == "skills",
-                state,
-                collapsed,
-            )
-            _sidebar_item(
-                "Diagnostics",
-                "diagnostics",
-                "stethoscope",
-                state.current_view == "diagnostics",
-                state,
-                collapsed,
-            )
+        nav_items = [
+            ("Home", "home", "home"),
+            ("Chat", "chat", "chat_bubble_outline"),
+            ("Sessions", "sessions", "history"),
+            ("Timeline", "timeline", "timeline"),
+            ("Packages", "packages", "inventory_2"),
+            ("Notes", "notes", "sticky_note_2"),
+            ("Skills", "skills", "auto_awesome"),
+            ("Diagnostics", "diagnostics", "troubleshoot"),
+        ]
 
-        ui.separator().classes("my-2")
+        with ui.column().classes("w-full px-2 py-1 gap-0.5 shrink-0"):
+            for label, view, icon in nav_items:
+                _sidebar_item(
+                    label,
+                    view,
+                    icon,
+                    state.current_view == view,
+                    state,
+                    collapsed,
+                )
 
-        with ui.column().classes("px-2 py-1 gap-0.5"):
+        ui.separator().classes("my-2 shrink-0")
+
+        with ui.column().classes("w-full px-2 py-1 gap-0.5 shrink-0"):
             _sidebar_item(
                 "Settings",
                 "settings",
@@ -147,97 +165,107 @@ def render_sidebar(state: AppState) -> ui.column:
                 collapsed,
             )
 
-        # Current Session
-        if state.active_tome_id is not None:
-            with (
-                ui.row().classes("mx-3 mt-3"),
-                ui.card().classes(
-                    "w-full p-3 bg-[#0e0e12] border border-[#292335] "
-                    "rounded-lg sidebar-label"
-                    + (" collapsed" if collapsed else " expanded")
-                ),
-            ):
-                ui.label("Current Session").classes(
-                    "text-[10px] font-semibold uppercase tracking-wider text-[#6e6584]"
-                )
-                ui.label(state.tome_title).classes(
-                    "text-sm text-[#eceaf4] truncate mt-1"
-                )
-                if state.active_tome_id:
-                    ui.label(state.active_tome_id[:8]).classes(
-                        "text-[10px] text-[#6e6584] font-mono mt-0.5"
+        # Current Session & Recent Sessions
+        if not collapsed:
+            # Current Session
+            if state.active_tome_id is not None:
+                with (
+                    ui.row().classes("mx-3 mt-3 shrink-0"),
+                    ui.card().classes(
+                        "w-full p-3 bg-[#0e0e12] border border-[#292335] rounded-lg"
+                    ),
+                ):
+                    ui.label("Current Session").classes(
+                        "text-[10px] font-semibold uppercase "
+                        "tracking-wider text-[#6e6584]"
                     )
+                    ui.label(state.tome_title).classes(
+                        "text-sm text-[#eceaf4] truncate mt-1"
+                    )
+                    if state.active_tome_id:
+                        ui.label(state.active_tome_id[:8]).classes(
+                            "text-[10px] text-[#6e6584] font-mono mt-0.5"
+                        )
 
-        # Recent Sessions
-        with ui.column().classes(
-            "mt-4 flex-1 overflow-y-auto px-2 sidebar-label"
-            + (" collapsed" if collapsed else " expanded")
-        ):
-            ui.label("Recent Sessions").classes(
-                "text-[10px] font-semibold uppercase tracking-wider "
-                "text-[#6e6584] px-2 py-1"
-            )
-            if not state.loaded_tomes:
-                ui.label("No sessions yet").classes(
-                    "text-[11px] text-[#6e6584] px-2 py-2"
+            # Recent Sessions
+            with ui.column().classes("mt-4 flex-1 min-h-0 overflow-y-auto px-2 w-full"):
+                ui.label("Recent Sessions").classes(
+                    "text-[10px] font-semibold uppercase tracking-wider "
+                    "text-[#6e6584] px-2 py-1"
                 )
-            else:
-                for entry in state.loaded_tomes:
-                    bg = (
-                        "bg-[#0e0e12]/70 border border-[#292335]/60"
-                        if entry.is_active
-                        else "hover:bg-[#0e0e12]/40"
+                if not state.loaded_tomes:
+                    ui.label("No sessions yet").classes(
+                        "text-[11px] text-[#6e6584] px-2 py-2"
                     )
-                    with (
-                        ui.row()
-                        .classes(
-                            f"w-full items-center px-2 py-1.5 rounded-md "
-                            f"cursor-pointer text-xs {bg}"
+                else:
+                    for entry in state.loaded_tomes:
+                        bg = (
+                            "bg-[#0e0e12]/70 border border-[#292335]/60"
+                            if entry.is_active
+                            else "hover:bg-[#0e0e12]/40"
                         )
-                        .on(
-                            "click",
-                            lambda _, e=entry: state.switch_to_tome(e.tome_id),
-                        )
-                    ):
-                        ui.icon("chat_bubble_outline", size="12px").classes(
-                            "text-[#9c94b3]"
-                        )
-                        ui.label(entry.title).classes(
-                            "text-[#eceaf4] truncate text-[11px] flex-1"
-                        )
-                        with ui.row().classes("items-center gap-1"):
-                            ui.label(entry.relative_time).classes(
-                                "text-[10px] text-[#6e6584]"
+                        with (
+                            ui.row()
+                            .classes(
+                                f"w-full items-center px-2 py-1.5 rounded-md "
+                                f"cursor-pointer text-xs {bg} no-wrap"
                             )
-                            if entry.git_branch:
-                                ui.label(entry.git_branch).classes(
-                                    "text-[10px] px-1 py-0.5 rounded "
-                                    "bg-[#7b6cf6]/10 text-[#7b6cf6] "
-                                    "border border-[#7b6cf6]/30 font-mono"
+                            .on(
+                                "click",
+                                lambda _, e=entry: state.switch_to_tome(e.tome_id),
+                            )
+                        ):
+                            ui.icon("chat_bubble_outline", size="12px").classes(
+                                "text-[#9c94b3] shrink-0"
+                            )
+                            ui.label(entry.title).classes(
+                                "text-[#eceaf4] truncate text-[11px] flex-1"
+                            )
+                            with ui.row().classes("items-center gap-1 shrink-0"):
+                                ui.label(entry.relative_time).classes(
+                                    "text-[10px] text-[#6e6584]"
                                 )
+                                if entry.git_branch:
+                                    ui.label(entry.git_branch).classes(
+                                        "text-[10px] px-1 py-0.5 rounded "
+                                        "bg-[#7b6cf6]/10 text-[#7b6cf6] "
+                                        "border border-[#7b6cf6]/30 font-mono"
+                                    )
+        else:
+            ui.element("div").classes("flex-1")
 
         # Bottom: collapse button + version
-        with ui.row().classes("border-t border-[#292335] px-3 py-2 items-center gap-2"):
-            ui.button(
-                icon="chevron_left",
-                on_click=_toggle_sidebar,
-            ).props(
-                "flat dense round text-color=grey-5 size=xs "
-                "collapse-btn-icon" + (" collapsed" if collapsed else "")
-            )
-            ui.label(f"v{__version__}").classes(
-                "text-[10px] text-[#6e6584] sidebar-label"
-                + (" collapsed" if collapsed else " expanded")
-            )
+        if collapsed:
+            with (
+                ui.row().classes(
+                    "w-full border-t border-[#292335] py-2 "
+                    "justify-center items-center shrink-0"
+                ),
+                ui.button(
+                    icon="chevron_right",
+                    on_click=state.toggle_sidebar,
+                )
+                .props("flat dense round text-color=grey-5 size=xs")
+                .classes("collapse-btn-icon"),
+            ):
+                ui.tooltip("Expand sidebar")
+        else:
+            with ui.row().classes(
+                "w-full border-t border-[#292335] px-3 py-2 items-center "
+                "justify-between shrink-0 no-wrap"
+            ):
+                with (
+                    ui.button(
+                        icon="chevron_left",
+                        on_click=state.toggle_sidebar,
+                    )
+                    .props("flat dense round text-color=grey-5 size=xs")
+                    .classes("collapse-btn-icon")
+                ):
+                    ui.tooltip("Collapse sidebar")
+                ui.label(f"v{__version__}").classes("text-[10px] text-[#6e6584]")
 
     return container
-
-
-def _toggle_sidebar() -> None:
-    """Toggle sidebar collapsed state."""
-    app.storage.user["sidebar-collapsed"] = not app.storage.user.get(
-        "sidebar-collapsed", False
-    )
 
 
 def _sidebar_item(
@@ -254,20 +282,29 @@ def _sidebar_item(
         if active
         else "text-[#9c94b3] hover:text-[#eceaf4] hover:bg-[#0e0e12]/60"
     )
-    with (
-        ui.row()
-        .classes(
-            f"w-full items-center gap-2.5 px-3 py-2 rounded-md "
-            f"cursor-pointer text-xs transition-colors {active_cls}"
-        )
-        .on("click", lambda _, v=view: state.set_current_view(v))
-    ):
-        ui.icon(icon, size="14px").classes(
-            "shrink-0 " + ("nav-icon-active" if active else "text-[#9c94b3]")
-        )
-        ui.label(label).classes(
-            "font-normal truncate sidebar-label"
-            + (" collapsed" if collapsed else " expanded")
-        )
-        if not collapsed:
+    if collapsed:
+        with (
+            ui.row()
+            .classes(
+                f"w-full justify-center py-2 rounded-md "
+                f"cursor-pointer transition-colors {active_cls}"
+            )
+            .on("click", lambda _, v=view: state.set_current_view(v))
+        ):
+            ui.icon(icon, size="16px").classes(
+                "shrink-0 " + ("nav-icon-active" if active else "text-[#9c94b3]")
+            )
             sidebar_hint(label)
+    else:
+        with (
+            ui.row()
+            .classes(
+                f"w-full items-center gap-2.5 px-3 py-2 rounded-md "
+                f"cursor-pointer text-xs transition-colors {active_cls} no-wrap"
+            )
+            .on("click", lambda _, v=view: state.set_current_view(v))
+        ):
+            ui.icon(icon, size="14px").classes(
+                "shrink-0 " + ("nav-icon-active" if active else "text-[#9c94b3]")
+            )
+            ui.label(label).classes("font-normal truncate flex-1")

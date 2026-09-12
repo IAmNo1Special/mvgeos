@@ -137,8 +137,12 @@ async def test_chat_panel_side_panel_and_toolbar_toggles(user: User) -> None:
     await user.should_see("Files")
     state.set_chat_side_panel("diff")
     state.set_chat_side_panel(None)
-    state.toggle_sidebar()
-    state.notify()
+    btn = user.find(marker="chat_toggle_sidebar_btn")
+    assert btn is not None
+    btn.click()
+    assert state.sidebar_open is False
+    btn.click()
+    assert state.sidebar_open is True
 
 
 @pytest.mark.asyncio
