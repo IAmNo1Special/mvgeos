@@ -25,40 +25,20 @@ def render_sidebar(state: AppState) -> ui.column:
     with container:
         # Header
         if collapsed:
-            with (
-                ui.row().classes(
-                    "w-full h-12 items-center justify-center "
-                    "border-b border-[#292335] shrink-0"
-                ),
-                ui.button(
-                    icon="chevron_right",
-                    on_click=state.toggle_sidebar,
-                )
-                .props("flat dense round text-color=grey-5 size=sm")
-                .classes("collapse-btn-icon")
-                .mark("expand_sidebar_btn"),
+            with ui.row().classes(
+                "w-full h-12 items-center justify-center "
+                "border-b border-[#292335] shrink-0"
             ):
-                ui.tooltip("Expand sidebar")
+                ui.icon("auto_awesome", size="16px").classes("text-[#7b6cf6]")
         else:
             with ui.row().classes(
-                "w-full h-12 items-center justify-between px-3 "
-                "border-b border-[#292335] shrink-0 no-wrap"
+                "w-full h-12 items-center px-3 "
+                "border-b border-[#292335] shrink-0 no-wrap gap-2"
             ):
-                with ui.row().classes("items-center gap-2 no-wrap"):
-                    ui.icon("auto_awesome", size="16px").classes("text-[#7b6cf6]")
-                    ui.label("MvgeOS").classes(
-                        "text-sm font-semibold text-[#eceaf4] tracking-wide"
-                    )
-                with (
-                    ui.button(
-                        icon="chevron_left",
-                        on_click=state.toggle_sidebar,
-                    )
-                    .props("flat dense round text-color=grey-5 size=xs")
-                    .classes("collapse-btn-icon")
-                    .mark("collapse_sidebar_btn")
-                ):
-                    ui.tooltip("Collapse sidebar")
+                ui.icon("auto_awesome", size="16px").classes("text-[#7b6cf6]")
+                ui.label("MvgeOS").classes(
+                    "text-sm font-semibold text-[#eceaf4] tracking-wide"
+                )
 
         # Workspace / Project display
         project_name = state.project_path.name or str(state.project_path)
@@ -246,7 +226,8 @@ def render_sidebar(state: AppState) -> ui.column:
                     on_click=state.toggle_sidebar,
                 )
                 .props("flat dense round text-color=grey-5 size=xs")
-                .classes("collapse-btn-icon"),
+                .classes("collapse-btn-icon")
+                .mark("expand_sidebar_btn"),
             ):
                 ui.tooltip("Expand sidebar")
         else:
@@ -261,6 +242,7 @@ def render_sidebar(state: AppState) -> ui.column:
                     )
                     .props("flat dense round text-color=grey-5 size=xs")
                     .classes("collapse-btn-icon")
+                    .mark("collapse_sidebar_btn")
                 ):
                     ui.tooltip("Collapse sidebar")
                 ui.label(f"v{__version__}").classes("text-[10px] text-[#6e6584]")

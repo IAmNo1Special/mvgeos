@@ -54,13 +54,6 @@ def render_chat_panel(state: AppState) -> ui.column:
                         ).classes("text-xs text-[#9c94b3] max-w-[300px] truncate")
 
                 _toolbar_button(
-                    icon="view_sidebar",
-                    title="Toggle sidebar",
-                    active=state.sidebar_open,
-                    on_click=state.toggle_sidebar,
-                    marker="chat_toggle_sidebar_btn",
-                )
-                _toolbar_button(
                     icon="shield",
                     title="Review panel",
                     active=state.review_open,
@@ -106,7 +99,6 @@ def render_chat_panel(state: AppState) -> ui.column:
 
         last_toolbar_state = [
             (
-                state.sidebar_open,
                 state.review_open,
                 state.terminal_open,
                 state.chat_side_panel,
@@ -116,7 +108,6 @@ def render_chat_panel(state: AppState) -> ui.column:
 
         def _on_toolbar_check() -> None:
             cur = (
-                state.sidebar_open,
                 state.review_open,
                 state.terminal_open,
                 state.chat_side_panel,

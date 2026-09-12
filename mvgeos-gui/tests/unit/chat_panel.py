@@ -1,6 +1,7 @@
 """Unit tests for chat panel rendering and scroll behavior."""
 
 import asyncio
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -124,9 +125,13 @@ async def test_chat_panel_chips_and_action_btn(user: User) -> None:
 
 
 @pytest.mark.asyncio
-async def test_chat_panel_side_panel_and_toolbar_toggles(user: User) -> None:
+async def test_chat_panel_side_panel_and_toolbar_toggles(
+    user: User, tmp_path: Path
+) -> None:
     """Verify chat panel responds to side panel and toolbar toggles."""
-    state = AppState()
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    state = AppState(project_path=proj)
 
     @ui.page("/test_chat_panel_toggles")
     def page() -> None:
@@ -137,12 +142,6 @@ async def test_chat_panel_side_panel_and_toolbar_toggles(user: User) -> None:
     await user.should_see("Files")
     state.set_chat_side_panel("diff")
     state.set_chat_side_panel(None)
-    btn = user.find(marker="chat_toggle_sidebar_btn")
-    assert btn is not None
-    btn.click()
-    assert state.sidebar_open is False
-    btn.click()
-    assert state.sidebar_open is True
 
 
 @pytest.mark.asyncio
