@@ -6,6 +6,7 @@ import logging
 import os
 import platform
 import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -37,11 +38,132 @@ def open_folder_in_explorer(target_path: str | Path) -> bool:
         return False
 
 
+def _parse_timestamp(val: Any) -> float:
+    """Parse ISO date string, numeric timestamp, or return 0.0."""
+    if not val:
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    try:
+        dt = datetime.fromisoformat(str(val).replace("Z", "+00:00"))
+        return dt.timestamp()
+    except Exception:
+        return 0.0
+
+
+def _extract_rune_info(
+    name: str,
+    mp_meta: dict[str, Any],
+    inst_meta: dict[str, Any],
+    is_installed: bool,
+) -> dict[str, Any]:
+    """Extract unified metadata and timestamps for a rune."""
+    version = "1.0.0"
+    runtime = "python"
+    desc = ""
+    git_url = ""
+
+    if isinstance(mp_meta, dict) and mp_meta:
+        version = str(mp_meta.get("version", version))
+        runtime = str(mp_meta.get("runtime", runtime))
+        desc = str(mp_meta.get("description", ""))
+        git_url = str(mp_meta.get("git", ""))
+
+    if isinstance(inst_meta, dict) and inst_meta:
+        version = str(inst_meta.get("version", version))
+        runtime = str(inst_meta.get("runtime", runtime))
+        if not desc:
+            desc = str(inst_meta.get("description", ""))
+
+    path = str(inst_meta.get("path", "")) if isinstance(inst_meta, dict) else ""
+    hooks = [
+        h if isinstance(h, str) else getattr(h, "value", str(h))
+        for h in (inst_meta.get("hooks") or mp_meta.get("hooks", []))
+    ]
+    python_deps = [
+        str(d) for d in (inst_meta.get("python_deps") or mp_meta.get("python_deps", []))
+    ]
+
+    types: list[str] = []
+    raw_types = inst_meta.get("types") or (
+        mp_meta.get("types") if isinstance(mp_meta, dict) else None
+    )
+    if isinstance(raw_types, list):
+        types = [str(t) for t in raw_types if t]
+    elif isinstance(raw_types, str) and raw_types:
+        types = [raw_types]
+
+    raw_type = inst_meta.get("type") or (
+        mp_meta.get("type") if isinstance(mp_meta, dict) else None
+    )
+    if raw_type and isinstance(raw_type, str) and raw_type not in types:
+        types.insert(0, raw_type)
+
+    if not types:
+        if "realm" in name.lower() or "provider" in name.lower():
+            types = ["RealmProvider"]
+        elif "seeker" in name.lower():
+            types = ["Spell", "Spell Modifier"]
+        elif "goap" in name.lower() or "planner" in name.lower():
+            types = ["Planner", "Spell Modifier"]
+        else:
+            types = ["Rune"]
+
+    created_at = inst_meta.get("created_at") or mp_meta.get("created_at")
+    created_ts = _parse_timestamp(created_at)
+    if created_ts == 0.0 and path:
+        try:
+            p = Path(path)
+            if p.exists():
+                created_ts = p.stat().st_ctime
+        except Exception:
+            pass
+
+    updated_at = (
+        inst_meta.get("updated_at")
+        or mp_meta.get("updated_at")
+        or inst_meta.get("last_updated")
+        or mp_meta.get("last_updated")
+        or created_at
+    )
+    updated_ts = _parse_timestamp(updated_at)
+    if updated_ts == 0.0 and path:
+        try:
+            p = Path(path)
+            if p.exists():
+                updated_ts = p.stat().st_mtime
+        except Exception:
+            pass
+    if updated_ts == 0.0:
+        updated_ts = created_ts
+
+    return {
+        "name": name,
+        "version": version,
+        "runtime": runtime,
+        "description": desc,
+        "git_url": git_url,
+        "path": path,
+        "is_installed": is_installed,
+        "hooks": hooks,
+        "python_deps": python_deps,
+        "types": types,
+        "created_at": created_ts,
+        "updated_at": updated_ts,
+    }
+
+
 def render_packages_panel(state: AppState) -> None:
     """Render the packages and rune marketplace view."""
     marketplace_data: dict[str, Any] = {}
     installed_data: list[dict[str, Any]] = []
-    search_state: dict[str, str] = {"query": ""}
+    search_state: dict[str, str] = {
+        "query": "",
+        "type": "All Types",
+        "hook": "All Hooks",
+        "dep": "All Deps",
+        "sort": "Alphabetical (A-Z)",
+    }
 
     with (
         ui.dialog() as install_dialog,
@@ -99,11 +221,14 @@ def render_packages_panel(state: AppState) -> None:
                 search_state["query"] = val.strip().lower()
                 render_extensions.refresh()
 
-            ui.input(
-                placeholder="Search packages & runes...",
-                on_change=lambda e: _on_search(str(e.value or "")),
-            ).props("dense dark outlined rounded").classes("flex-1 text-xs").mark(
-                "package_search_input"
+            search_input = (
+                ui.input(
+                    placeholder="Search packages, types, hooks, or deps...",
+                    on_change=lambda e: _on_search(str(e.value or "")),
+                )
+                .props("dense dark outlined rounded")
+                .classes("flex-1 text-xs")
+                .mark("package_search_input")
             )
 
             ui.button(
@@ -113,9 +238,98 @@ def render_packages_panel(state: AppState) -> None:
                 "mvge-glow-btn text-white text-xs"
             ).mark("package_open_install_dialog_btn")
 
+        def _set_filter(key: str, val: str) -> None:
+            search_state[key] = val
+            render_extensions.refresh()
+
+        def _clear_filters() -> None:
+            search_input.value = ""
+            search_state["query"] = ""
+            search_state["type"] = "All Types"
+            search_state["hook"] = "All Hooks"
+            search_state["dep"] = "All Deps"
+            search_state["sort"] = "Alphabetical (A-Z)"
+            type_select.value = "All Types"
+            hook_select.value = "All Hooks"
+            dep_select.value = "All Deps"
+            sort_select.value = "Alphabetical (A-Z)"
+            render_extensions.refresh()
+
+        with ui.row().classes("w-full items-center gap-2 flex-wrap"):
+            ui.icon("filter_list", size="16px").classes("text-[#6e6584]")
+            type_select = (
+                ui.select(
+                    options=["All Types"],
+                    value=search_state["type"],
+                    on_change=lambda e: _set_filter(
+                        "type", str(e.value or "All Types")
+                    ),
+                )
+                .props("dense dark outlined rounded options-dense")
+                .classes("min-w-[130px] text-xs")
+                .mark("package_filter_type_select")
+            )
+
+            hook_select = (
+                ui.select(
+                    options=["All Hooks"],
+                    value=search_state["hook"],
+                    on_change=lambda e: _set_filter(
+                        "hook", str(e.value or "All Hooks")
+                    ),
+                )
+                .props("dense dark outlined rounded options-dense")
+                .classes("min-w-[140px] text-xs")
+                .mark("package_filter_hook_select")
+            )
+
+            dep_select = (
+                ui.select(
+                    options=["All Deps"],
+                    value=search_state["dep"],
+                    on_change=lambda e: _set_filter("dep", str(e.value or "All Deps")),
+                )
+                .props("dense dark outlined rounded options-dense")
+                .classes("min-w-[130px] text-xs")
+                .mark("package_filter_dep_select")
+            )
+
+            with ui.row().classes("items-center gap-1.5 ml-auto"):
+                ui.icon("sort", size="16px").classes("text-[#6e6584]")
+                sort_select = (
+                    ui.select(
+                        options=[
+                            "Alphabetical (A-Z)",
+                            "Alphabetical (Z-A)",
+                            "Date Added",
+                            "Last Updated",
+                        ],
+                        value=search_state["sort"],
+                        on_change=lambda e: _set_filter(
+                            "sort", str(e.value or "Alphabetical (A-Z)")
+                        ),
+                    )
+                    .props("dense dark outlined rounded options-dense")
+                    .classes("min-w-[160px] text-xs")
+                    .mark("package_sort_select")
+                )
+
+                ui.button(
+                    "Clear",
+                    icon="clear",
+                    on_click=_clear_filters,
+                ).props("flat dense size=sm text-color=grey-5").classes("text-xs").mark(
+                    "package_clear_filters_btn"
+                )
+
         @ui.refreshable
         def render_extensions() -> None:
             query = search_state["query"]
+            selected_type = search_state["type"]
+            selected_hook = search_state["hook"]
+            selected_dep = search_state["dep"]
+            sort_by = search_state["sort"]
+
             # Build map of installed runes by name
             installed_by_name: dict[str, dict[str, Any]] = {
                 str(r.get("name", "")): r for r in installed_data if "name" in r
@@ -124,80 +338,98 @@ def render_packages_panel(state: AppState) -> None:
             # Merge all rune names from marketplace and installed
             all_names = set(marketplace_data.keys()) | set(installed_by_name.keys())
 
-            filtered_names: list[str] = []
+            all_infos: list[dict[str, Any]] = []
             for name in all_names:
                 mp_meta = marketplace_data.get(name, {})
                 inst_meta = installed_by_name.get(name, {})
-                desc = (
-                    mp_meta.get("description", "") if isinstance(mp_meta, dict) else ""
-                ) or str(inst_meta.get("description", ""))
+                is_installed = state.is_rune_installed(name) or bool(inst_meta)
+                all_infos.append(
+                    _extract_rune_info(name, mp_meta, inst_meta, is_installed)
+                )
 
-                if query in name.lower() or query in desc.lower():
-                    filtered_names.append(name)
+            filtered_runes: list[dict[str, Any]] = []
+            for r in all_infos:
+                if query:
+                    q = query.lower()
+                    name_match = q in r["name"].lower()
+                    desc_match = q in r["description"].lower()
+                    type_match = any(q in t.lower() for t in r["types"])
+                    hook_match = any(q in h.lower() for h in r["hooks"])
+                    dep_match = any(q in d.lower() for d in r["python_deps"])
+                    if not (
+                        name_match
+                        or desc_match
+                        or type_match
+                        or hook_match
+                        or dep_match
+                    ):
+                        continue
 
-            if not filtered_names:
-                ui.label("No extensions found").classes("text-xs text-[#6e6584] mt-2")
+                if selected_type != "All Types" and not any(
+                    t.lower() == selected_type.lower() for t in r["types"]
+                ):
+                    continue
+
+                if selected_hook != "All Hooks" and not any(
+                    h.lower() == selected_hook.lower() for h in r["hooks"]
+                ):
+                    continue
+
+                if selected_dep != "All Deps" and not any(
+                    selected_dep.lower() in d.lower()
+                    or d.lower() in selected_dep.lower()
+                    for d in r["python_deps"]
+                ):
+                    continue
+
+                filtered_runes.append(r)
+
+            if not filtered_runes:
+                with ui.column().classes(
+                    "items-center justify-center p-8 gap-2 w-full"
+                ):
+                    ui.icon("search_off", size="32px").classes("text-[#6e6584]")
+                    ui.label("No extensions found").classes("text-xs text-[#6e6584]")
+                    has_active_filters = (
+                        bool(query)
+                        or selected_type != "All Types"
+                        or selected_hook != "All Hooks"
+                        or selected_dep != "All Deps"
+                    )
+                    if has_active_filters:
+                        ui.button(
+                            "Reset Filters",
+                            on_click=_clear_filters,
+                        ).props("flat dense text-color=purple-4").classes("text-xs")
                 return
 
+            if sort_by == "Alphabetical (Z-A)":
+                filtered_runes.sort(key=lambda r: r["name"].lower(), reverse=True)
+            elif sort_by == "Date Added":
+                filtered_runes.sort(
+                    key=lambda r: (r["created_at"], r["name"].lower()),
+                    reverse=True,
+                )
+            elif sort_by == "Last Updated":
+                filtered_runes.sort(
+                    key=lambda r: (r["updated_at"], r["name"].lower()),
+                    reverse=True,
+                )
+            else:
+                filtered_runes.sort(key=lambda r: r["name"].lower())
+
             with ui.column().classes("w-full gap-3 mt-2"):
-                for name in sorted(filtered_names):
-                    mp_meta = marketplace_data.get(name, {})
-                    inst_meta = installed_by_name.get(name, {})
-
-                    # Determine installation status
-                    is_installed = state.is_rune_installed(name) or bool(inst_meta)
-
-                    # Gather metadata
-                    version = "1.0.0"
-                    runtime = "python"
-                    desc = ""
-                    git_url = ""
-                    if isinstance(mp_meta, dict) and mp_meta:
-                        version = mp_meta.get("version", version)
-                        runtime = mp_meta.get("runtime", runtime)
-                        desc = mp_meta.get("description", "")
-                        git_url = mp_meta.get("git", "")
-
-                    if inst_meta:
-                        version = str(inst_meta.get("version", version))
-                        runtime = str(inst_meta.get("runtime", runtime))
-                        if not desc:
-                            desc = str(inst_meta.get("description", ""))
-
-                    path = str(inst_meta.get("path", ""))
-                    hooks = inst_meta.get("hooks") or (
-                        mp_meta.get("hooks", []) if isinstance(mp_meta, dict) else []
-                    )
-                    python_deps = inst_meta.get("python_deps") or (
-                        mp_meta.get("python_deps", [])
-                        if isinstance(mp_meta, dict)
-                        else []
-                    )
-
-                    types: list[str] = []
-                    raw_types = inst_meta.get("types") or (
-                        mp_meta.get("types") if isinstance(mp_meta, dict) else None
-                    )
-                    if isinstance(raw_types, list):
-                        types = [str(t) for t in raw_types if t]
-                    elif isinstance(raw_types, str) and raw_types:
-                        types = [raw_types]
-
-                    raw_type = inst_meta.get("type") or (
-                        mp_meta.get("type") if isinstance(mp_meta, dict) else None
-                    )
-                    if raw_type and isinstance(raw_type, str) and raw_type not in types:
-                        types.insert(0, raw_type)
-
-                    if not types:
-                        if "realm" in name.lower() or "provider" in name.lower():
-                            types = ["RealmProvider"]
-                        elif "seeker" in name.lower():
-                            types = ["Spell", "Spell Modifier"]
-                        elif "goap" in name.lower() or "planner" in name.lower():
-                            types = ["Planner", "Spell Modifier"]
-                        else:
-                            types = ["Rune"]
+                for r in filtered_runes:
+                    name = r["name"]
+                    version = r["version"]
+                    runtime = r["runtime"]
+                    desc = r["description"]
+                    git_url = r["git_url"]
+                    is_installed = r["is_installed"]
+                    path = r["path"]
+                    hooks = r["hooks"]
+                    python_deps = r["python_deps"]
+                    types = r["types"]
 
                     with ui.card().classes(
                         "w-full p-4 bg-[#0e0e12] border border-[#292335] "

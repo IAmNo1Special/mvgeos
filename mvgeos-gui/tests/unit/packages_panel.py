@@ -248,3 +248,104 @@ async def test_packages_panel_refresh_data_exceptions(user: User) -> None:
 
     await user.open("/test_packages_exceptions")
     await user.should_see("Marketplace")
+
+
+@pytest.mark.asyncio
+async def test_packages_panel_filters_by_type_hook_dep(user: User) -> None:
+    """Extensions should be filterable by type, hook, and dependency."""
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "realm-rune": {
+                "name": "realm-rune",
+                "version": "1.0.0",
+                "types": ["RealmProvider"],
+                "hooks": ["before_provider_request"],
+                "python_deps": ["httpx"],
+            },
+            "spell-rune": {
+                "name": "spell-rune",
+                "version": "1.0.0",
+                "types": ["Spell"],
+                "hooks": ["turn_start"],
+                "python_deps": ["aiohttp"],
+            },
+        }
+    )
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+
+    @ui.page("/test_packages_filters")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_packages_filters")
+    await user.should_see("realm-rune")
+    await user.should_see("spell-rune")
+
+    # Filter by Type: RealmProvider
+    type_el = next(iter(user.find(marker="package_filter_type_select").elements))
+    type_el.set_value("RealmProvider")
+    await user.should_see("realm-rune")
+    await user.should_not_see("spell-rune")
+
+    # Filter by Hook: turn_start (reset type first)
+    type_el.set_value("All Types")
+    hook_el = next(iter(user.find(marker="package_filter_hook_select").elements))
+    hook_el.set_value("turn_start")
+    await user.should_see("spell-rune")
+    await user.should_not_see("realm-rune")
+
+    # Filter by Dep: httpx (reset hook first)
+    hook_el.set_value("All Hooks")
+    dep_el = next(iter(user.find(marker="package_filter_dep_select").elements))
+    dep_el.set_value("httpx")
+    await user.should_see("realm-rune")
+    await user.should_not_see("spell-rune")
+
+    # Click clear filters
+    user.find(marker="package_clear_filters_btn").click()
+    await user.should_see("realm-rune")
+    await user.should_see("spell-rune")
+
+
+@pytest.mark.asyncio
+async def test_packages_panel_sorting(user: User) -> None:
+    """Extensions should be sortable by name, date added, and last updated."""
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "a-first": {
+                "name": "a-first",
+                "version": "1.0.0",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-10T00:00:00Z",
+            },
+            "z-last": {
+                "name": "z-last",
+                "version": "1.0.0",
+                "created_at": "2026-02-01T00:00:00Z",
+                "updated_at": "2026-02-10T00:00:00Z",
+            },
+        }
+    )
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+
+    @ui.page("/test_packages_sorting")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_packages_sorting")
+    sort_el = next(iter(user.find(marker="package_sort_select").elements))
+
+    # Test Z-A
+    sort_el.set_value("Alphabetical (Z-A)")
+    await user.should_see("z-last")
+    await user.should_see("a-first")
+
+    # Test Date Added
+    sort_el.set_value("Date Added")
+    await user.should_see("z-last")
+
+    # Test Last Updated
+    sort_el.set_value("Last Updated")
+    await user.should_see("z-last")

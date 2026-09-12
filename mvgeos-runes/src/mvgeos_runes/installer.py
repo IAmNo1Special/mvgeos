@@ -74,7 +74,6 @@ def list_installed_runes(
                 types = [str(t) for t in raw_types if t]
             elif "type" in manifest and manifest["type"]:
                 types = [str(manifest["type"])]
-
             installed.append(
                 {
                     "name": manifest.get("name", subdir.name),
@@ -87,6 +86,10 @@ def list_installed_runes(
                     "python_deps": manifest.get("python_deps", []),
                     "type": types[0] if types else manifest.get("type", ""),
                     "types": types,
+                    "created_at": manifest.get("created_at", ""),
+                    "updated_at": manifest.get(
+                        "updated_at", manifest.get("last_updated", "")
+                    ),
                 }
             )
 

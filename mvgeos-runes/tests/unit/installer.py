@@ -310,6 +310,8 @@ def test_list_installed_runes_success(tmp_path: Path) -> None:
         "python_deps": [],
         "type": "",
         "types": [],
+        "created_at": "",
+        "updated_at": "",
     }
     assert installed[1] == {
         "name": "beta-rune",
@@ -322,6 +324,8 @@ def test_list_installed_runes_success(tmp_path: Path) -> None:
         "python_deps": ["pydantic>=2.0"],
         "type": "planner",
         "types": ["planner"],
+        "created_at": "",
+        "updated_at": "",
     }
 
 
