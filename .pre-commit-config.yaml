@@ -26,11 +26,11 @@ repos:
         types: [python]
         pass_filenames: false
 
-      # Fast unit-suite smoke run: no coverage gate (TESTING.md section 3).
+      # Fast unit-smoke run: no coverage gate (TESTING.md section 3).
       # CI owns coverage measurement over the hermetic whole.
       - id: pytest
         name: unit tests
-        entry: uv run --no-sync python -m pytest coding-mvge/tests/unit mvgeos-agent/tests/unit mvgeos-provider/tests/unit mvgeos-runes/tests/unit mvgeos-tome/tests/unit mvgeos-cli/tests/unit mvgeos-gui/tests/unit
+        entry: uv run --no-sync python -m pytest mvgeos-agent/tests/unit mvgeos-provider/tests/unit mvgeos-runes/tests/unit mvgeos-tome/tests/unit mvgeos-cli/tests/unit mvgeos-gui/tests/unit
         language: system
         types: [python]
         pass_filenames: false

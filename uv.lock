@@ -8,7 +8,6 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "coding-mvge",
     "mvgeos",
     "mvgeos-agent",
     "mvgeos-cli",
@@ -331,25 +330,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/e4/46/7eea92b6aa2d68af78e049cbecec5f757f1aad44ecdecdc16bbad7eead51/clr_loader-0.3.1.tar.gz", hash = "sha256:2e073e9aaf49d1ae2f56ecba27987ad5fb68be4bcd9dd34a5bed8f0e4e128366", size = 86805, upload-time = "2026-04-18T17:49:44.287Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5e/da/ec1a6e36624000b6df0dd61183c42342ee5814c073315e802cadaad04d2f/clr_loader-0.3.1-py3-none-any.whl", hash = "sha256:cbad189de20d202a7d621956b0fc38049e13c9bf7ca2923441eff725cd121aa1", size = 55730, upload-time = "2026-04-18T17:49:42.99Z" },
-]
-
-[[package]]
-name = "coding-mvge"
-version = "0.2.8"
-source = { editable = "coding-mvge" }
-dependencies = [
-    { name = "mvgeos-agent" },
-    { name = "mvgeos-core" },
-    { name = "mvgeos-provider" },
-    { name = "mvgeos-runes" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "mvgeos-agent", editable = "mvgeos-agent" },
-    { name = "mvgeos-core", editable = "mvgeos-core" },
-    { name = "mvgeos-provider", editable = "mvgeos-provider" },
-    { name = "mvgeos-runes", editable = "mvgeos-runes" },
 ]
 
 [[package]]
@@ -1005,7 +985,6 @@ source = { virtual = "." }
 
 [package.dev-dependencies]
 dev = [
-    { name = "coding-mvge" },
     { name = "git-cliff" },
     { name = "mvgeos-agent" },
     { name = "mvgeos-cli" },
@@ -1027,7 +1006,6 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "coding-mvge", editable = "coding-mvge" },
     { name = "git-cliff", specifier = ">=2.13.1" },
     { name = "mvgeos-agent", editable = "mvgeos-agent" },
     { name = "mvgeos-cli", editable = "mvgeos-cli" },
@@ -1071,7 +1049,6 @@ name = "mvgeos-cli"
 version = "0.2.8"
 source = { editable = "mvgeos-cli" }
 dependencies = [
-    { name = "coding-mvge" },
     { name = "mvgeos-agent" },
     { name = "mvgeos-core" },
     { name = "mvgeos-provider" },
@@ -1084,7 +1061,6 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "coding-mvge", editable = "coding-mvge" },
     { name = "mvgeos-agent", editable = "mvgeos-agent" },
     { name = "mvgeos-core", editable = "mvgeos-core" },
     { name = "mvgeos-provider", editable = "mvgeos-provider" },
@@ -1111,7 +1087,6 @@ name = "mvgeos-gui"
 version = "0.2.8"
 source = { editable = "mvgeos-gui" }
 dependencies = [
-    { name = "coding-mvge" },
     { name = "keyring" },
     { name = "mvgeos-agent" },
     { name = "mvgeos-core" },
@@ -1125,7 +1100,6 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "coding-mvge", editable = "coding-mvge" },
     { name = "keyring", specifier = ">=24.0" },
     { name = "mvgeos-agent", editable = "mvgeos-agent" },
     { name = "mvgeos-core", editable = "mvgeos-core" },

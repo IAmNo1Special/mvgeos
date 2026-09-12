@@ -4,7 +4,6 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from coding_mvge import root_mvge
 from mvgeos_agent import Mvge
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.protocol import AgentFactory, MvgeAgent
@@ -43,32 +42,28 @@ def default_agent_factory(
     force_fork_resume: bool = False,
     **kwargs: Any,
 ) -> MvgeAgent:
-    """Default agent factory using root_mvge."""
+    """Default agent factory using Mvge."""
+    resolved_name = name
     if (
-        tome_resume
-        or environment
-        or custom_system_prompt
-        or extension_dir
-        or tome_dir
-        or provider_name
-        or strict_resume
-        or force_fork_resume
+        resolved_name == DEFAULT_AGENT_NAME
+        and Path("~/.agents/agents/coding_mvge").expanduser().is_dir()
     ):
-        return Mvge(
-            api_key=api_key or None,
-            name=name,
-            spells=root_mvge._spells,
-            custom_system_prompt=custom_system_prompt,
-            extension_dir=extension_dir,
-            tome_dir=tome_dir,
-            tome_resume=tome_resume,
-            provider_name=provider_name,
-            environment=environment,
-            strict_resume=strict_resume,
-            force_fork_resume=force_fork_resume,
-            provider_registry=kwargs.get("provider_registry"),
-        )
-    return root_mvge
+        resolved_name = "coding_mvge"
+
+    return Mvge(
+        api_key=api_key or None,
+        name=resolved_name,
+        spells=kwargs.get("spells"),
+        custom_system_prompt=custom_system_prompt,
+        extension_dir=extension_dir,
+        tome_dir=tome_dir,
+        tome_resume=tome_resume,
+        provider_name=provider_name,
+        environment=environment,
+        strict_resume=strict_resume,
+        force_fork_resume=force_fork_resume,
+        provider_registry=kwargs.get("provider_registry"),
+    )
 
 
 def get_default_agent_factory() -> AgentFactory:

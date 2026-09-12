@@ -8,7 +8,6 @@ dependencies = []
 
 [dependency-groups]
 dev = [
-    "coding-mvge",
     "git-cliff>=2.13.1",
     "mvgeos-agent",
     "mvgeos-cli",
@@ -37,7 +36,6 @@ members = [
     "mvgeos-runes",
     "mvgeos-cli",
     "mvgeos-gui",
-    "coding-mvge",
     "mvgeos-core",
 ]
 
@@ -49,7 +47,6 @@ mvgeos-runes = { workspace = true, editable = true }
 mvgeos-cli = { workspace = true, editable = true }
 mvgeos-core = { workspace = true, editable = true }
 mvgeos-gui = { workspace = true, editable = true }
-coding-mvge = { workspace = true, editable = true }
 
 [tool.ruff]
 line-length = 88
@@ -86,7 +83,6 @@ exclude = ["/tests/", "/scripts/"]
 
 [tool.pytest.ini_options]
 testpaths = [
-    "coding-mvge/tests",
     "mvgeos-agent/tests",
     "mvgeos-provider/tests",
     "mvgeos-runes/tests",
@@ -112,7 +108,6 @@ branch = true
 # and hid gaps in src/. Out-of-tree code (user runes, tmp_path artifacts)
 # is excluded by construction because it lives outside these packages.
 source = [
-    "coding_mvge",
     "mvgeos_agent",
     "mvgeos_provider",
     "mvgeos_tome",

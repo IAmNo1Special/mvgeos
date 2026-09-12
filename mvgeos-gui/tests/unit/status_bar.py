@@ -66,3 +66,19 @@ async def test_render_status_bar_toggle_buttons(user: User) -> None:
 
     user.find(marker="toggle_sidebar_btn").click()
     state.toggle_sidebar.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_render_status_bar_review_open_and_sidebar_closed(user: User) -> None:
+    state = AppState()
+    state.review_open = True
+    state.sidebar_open = False
+    state.selected_model = ""
+    state.total_mana_used = 0
+
+    @ui.page("/test_status_bar_alt_state")
+    def page() -> None:
+        render_status_bar(state)
+
+    await user.open("/test_status_bar_alt_state")
+    await user.should_see("MvgeOS")

@@ -26,6 +26,7 @@ from mvgeos_cli.agent_factory import create_agent, validate_api_key
 from mvgeos_cli.commands.build import build_app
 from mvgeos_cli.commands.config import config_app
 from mvgeos_cli.commands.info import info_app
+from mvgeos_cli.commands.mvge import mvge_app
 from mvgeos_cli.commands.repl import (
     _display_response,
     run_repl,
@@ -429,6 +430,8 @@ app.add_typer(info_app, name="info")
 app.add_typer(tome_app, name="tome")
 app.add_typer(skill_app, name="skill")
 app.add_typer(rune_app, name="rune")
+app.add_typer(mvge_app, name="mvge")
+app.add_typer(mvge_app, name="agent")
 app.add_typer(setup_app, name="setup", cls=DefaultCheckGroup)
 
 

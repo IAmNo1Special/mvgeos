@@ -5,7 +5,6 @@ description = "Desktop GUI for MvgeOS powered by NiceGUI"
 requires-python = ">=3.13"
 license = "MIT"
 dependencies = [
-    "coding-mvge",
     "keyring>=24.0",
     "mvgeos-agent",
     "mvgeos-core",
@@ -21,7 +20,6 @@ dependencies = [
 mvgeos-gui = "mvgeos_gui.main:main"
 
 [tool.uv.sources]
-coding-mvge = { workspace = true }
 mvgeos-agent = { workspace = true }
 mvgeos-core = { workspace = true }
 mvgeos-provider = { workspace = true }

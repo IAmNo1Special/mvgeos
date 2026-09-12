@@ -1368,3 +1368,68 @@ class TestRuneManagementState:
             mock_uninstall.assert_called_once_with("my-rune")
             mock_registry.unregister_realm_factory.assert_called_once_with("my-rune")
             assert len(notified) > 0
+
+    def test_is_mvge_installed(self, tmp_path: Path) -> None:
+        state = AppState()
+        with patch("pathlib.Path.expanduser", return_value=tmp_path):
+            agent_dir = tmp_path / "my_mvge"
+            assert state.is_mvge_installed("my_mvge") is False
+            agent_dir.mkdir(parents=True)
+            assert state.is_mvge_installed("my-mvge") is True
+
+    @pytest.mark.asyncio
+    async def test_fetch_marketplace_mvges_async(self) -> None:
+        state = AppState()
+        mock_data = {"test": {"name": "test"}}
+        with patch("mvgeos_gui.state.fetch_marketplace_mvges", return_value=mock_data):
+            result = await state.fetch_marketplace_mvges_async()
+            assert result == mock_data
+
+    @pytest.mark.asyncio
+    async def test_list_installed_mvges_async(self) -> None:
+        state = AppState()
+        mock_installed = [{"name": "test"}]
+        with patch(
+            "mvgeos_gui.state.list_installed_mvges", return_value=mock_installed
+        ):
+            result = await state.list_installed_mvges_async()
+            assert result == mock_installed
+
+    @pytest.mark.asyncio
+    async def test_install_mvge_async_success(self) -> None:
+        state = AppState()
+        notified: list[bool] = []
+        state.subscribe(lambda: notified.append(True))
+        with patch(
+            "mvgeos_gui.state.install_mvge", return_value=Path("/tmp/installed")
+        ):
+            result = await state.install_mvge_async("my-mvge")
+            assert result is True
+            assert len(notified) > 0
+
+    @pytest.mark.asyncio
+    async def test_install_mvge_async_failure(self) -> None:
+        state = AppState()
+        with patch("mvgeos_gui.state.install_mvge", side_effect=RuntimeError("fail")):
+            result = await state.install_mvge_async("bad-mvge")
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_uninstall_mvge_async_success(self) -> None:
+        state = AppState()
+        notified: list[bool] = []
+        state.subscribe(lambda: notified.append(True))
+        with patch(
+            "mvgeos_gui.state.uninstall_mvge", return_value=True
+        ) as mock_uninstall:
+            result = await state.uninstall_mvge_async("my-mvge")
+            assert result is True
+            mock_uninstall.assert_called_once_with("my-mvge")
+            assert len(notified) > 0
+
+    @pytest.mark.asyncio
+    async def test_uninstall_mvge_async_failure(self) -> None:
+        state = AppState()
+        with patch("mvgeos_gui.state.uninstall_mvge", side_effect=RuntimeError("fail")):
+            result = await state.uninstall_mvge_async("bad-mvge")
+            assert result is False

@@ -8,6 +8,7 @@ import inspect
 import logging
 import os
 import re
+import sys
 from collections.abc import AsyncIterator, Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -192,23 +193,57 @@ class Mvge:
         self._name = name
         self._caller_dir = caller_dir
 
+        agents_root = str(Path("~/.agents/agents").expanduser())
+        if agents_root not in sys.path:
+            sys.path.insert(0, agents_root)
+
         if spells is not None:
-            self._spells: list[SpellUnion] = list(spells)
+            if spells and all(isinstance(s, str) for s in spells):
+                agent_config_dir = resolve_config_dir(name)
+                discovered: list[SpellUnion] = []
+                if (agent_config_dir / "spells").is_dir():
+                    discovered = list(
+                        discover_spells_from_dir(agent_config_dir / "spells")
+                    )
+                elif name == DEFAULT_AGENT_NAME:
+                    fallback_dir = Path(
+                        "~/.agents/agents/coding_mvge/spells"
+                    ).expanduser()
+                    if fallback_dir.is_dir():
+                        discovered = list(discover_spells_from_dir(fallback_dir))
+                filter_set = set(spells)
+                self._spells = [
+                    s for s in discovered if getattr(s, "name", "") in filter_set
+                ]
+            else:
+                self._spells = list(spells)
         elif caller_dir is not None and (caller_dir / "spells").is_dir():
             self._spells = list(discover_spells_from_dir(caller_dir / "spells"))
         else:
-            self._spells = []
+            agent_config_dir = resolve_config_dir(name)
+            if (agent_config_dir / "spells").is_dir():
+                self._spells = list(
+                    discover_spells_from_dir(agent_config_dir / "spells")
+                )
+            else:
+                self._spells = []
 
         resolved_runes_paths = list(runes_paths) if runes_paths is not None else []
         if caller_dir is not None and (caller_dir / "runes").is_dir():
             colocated_runes = str(caller_dir / "runes")
             if colocated_runes not in resolved_runes_paths:
                 resolved_runes_paths.append(colocated_runes)
+
+        if name and name != DEFAULT_AGENT_NAME:
+            agent_dir = resolve_config_dir(name)
+            for sub_name in ("runes", "extensions"):
+                candidate = agent_dir / sub_name
+                if candidate.is_dir():
+                    cand_str = str(candidate)
+                    if cand_str not in resolved_runes_paths:
+                        resolved_runes_paths.append(cand_str)
+
         # Discover built-in runes for named agent package
-        # (e.g., coding_mvge -> coding_mvge/runes)
-        # Ensures GUI/CLI `Mvge(name="coding_mvge")` from any caller_dir still finds
-        # `coding-mvge/src/coding_mvge/runes/skill_evolution` (evolution layer)
-        # Handles hyphen/underscore mismatch: agent "coding-mvge" vs "coding_mvge"
         if name and name != DEFAULT_AGENT_NAME:
             for try_name in (name, name.replace("-", "_"), name.replace("_", "-")):
                 try:
@@ -262,11 +297,12 @@ class Mvge:
         self._exclude_contemplation = environment.exclude_contemplation
         self._queue_mode: QueueMode = environment.queue_mode
         self._spell_names = environment.spell_names
-        self._runes_paths = (
-            list(resolved_runes_paths)
-            if resolved_runes_paths
-            else list(environment.runes_paths)
-        )
+        combined_runes = [Path(p) for p in environment.runes_paths]
+        for rp in resolved_runes_paths:
+            p = Path(rp).expanduser()
+            if p not in combined_runes:
+                combined_runes.append(p)
+        self._runes_paths = combined_runes
 
         self._provider_registry = (
             provider_registry

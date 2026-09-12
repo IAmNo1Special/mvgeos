@@ -59,7 +59,7 @@ The user on whose behalf a Mvge acts. A SummonerRequest is the Summoner's input 
 _Avoid_: User (as a spoken term), human, operator
 
 **Rune**:
-An extension: a packaged unit that hooks into a Mvge's lifecycle and can register Spells, commands, shortcuts, and Realms. Per the Protocol Boundary Pattern, discovered on disk from standard extension directories (`~/.agents/extensions/`, `~/.agents/agents/{agent}/extensions/`, `{cwd}/.agents/extensions/`). Built-in Runes live at `coding-mvge/src/coding_mvge/runes/<name>/` (e.g., `skill_evolution`). "Extension" is the standard protocol term at filesystem and CLI command boundaries (`mvgeos extension`); "Rune" is the domain term inside the persona, Python model, and user presentation (`mvgeos rune` alias).
+An extension: a packaged unit that hooks into a Mvge's lifecycle and can register Spells, commands, shortcuts, and Realms. Per the Protocol Boundary Pattern, discovered on disk from standard extension directories (`~/.agents/extensions/`, `~/.agents/agents/{agent}/extensions/`, `{cwd}/.agents/extensions/`). Built-in Runes live at `~/.agents/agents/<agent>/runes/<name>/` (e.g., `skill_evolution`). "Extension" is the standard protocol term at filesystem and CLI command boundaries (`mvgeos extension`); "Rune" is the domain term inside the persona, Python model, and user presentation (`mvgeos rune` alias).
 _Avoid_: Extension (as an internal domain/persona term; use Rune internally and Extension at protocol boundaries), plugin, addon, Skill
 
 **Skill**:
@@ -75,7 +75,7 @@ Immutable execution traces `raw_experience/iter_<k>/<trace>.json` (`T_train,k` p
 _Avoid_: Raw Knowledge, raw, traces, history
 
 **skill_evolution Rune**:
-The built-in Rune at `coding-mvge/src/coding_mvge/runes/skill_evolution/` that is our implementation of `WikiSkill: Compiling Agent Experience into Persistent Knowledge for Skill Evolution` (`arxiv:2608.27454`). It harvests `Raw Experience` via `AFTER_INVOCATION`, consolidates into `Skill Evolution Store` (`ExperienceConsolidator`), and evolves `Skills` atomically (`SkillEvolutionEngine` with same-location saves via `SkillManifest.path`). Provides Spells `skill_evolution_consolidate`/`skill_evolution_export`, never mutates `.skill-lock.json` (reproducibility lock `~/.agents/.skill-lock.json` per `vercel-labs/skills`).
+The Rune at `~/.agents/agents/coding_mvge/runes/skill_evolution/` that is our implementation of `WikiSkill: Compiling Agent Experience into Persistent Knowledge for Skill Evolution` (`arxiv:2608.27454`). It harvests `Raw Experience` via `AFTER_INVOCATION`, consolidates into `Skill Evolution Store` (`ExperienceConsolidator`), and evolves `Skills` atomically (`SkillEvolutionEngine` with same-location saves via `SkillManifest.path`). Provides Spells `skill_evolution_consolidate`/`skill_evolution_export`, never mutates `.skill-lock.json` (reproducibility lock `~/.agents/.skill-lock.json` per `vercel-labs/skills`).
 _Avoid_: knowledge_skill, wiki_skill, WikiSkill (as a spoken term for the rune)
 
 **Channeling**:

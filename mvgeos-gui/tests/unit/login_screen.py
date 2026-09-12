@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from nicegui import ui
@@ -115,3 +117,72 @@ async def test_login_screen_successful_login(user: User) -> None:
     assert state.current_user is not None
     assert state.current_user.username == "admin"
     assert state._show_login is False
+
+
+@pytest.mark.asyncio
+async def test_login_screen_hides_app_settings(user: User) -> None:
+    state = AppState()
+    state._show_login = True
+    state._show_app_settings = True
+
+    @ui.page("/test_login_hides_settings")
+    def page() -> None:
+        render_login_screen(state)
+
+    await user.open("/test_login_hides_settings")
+    assert state._show_app_settings is False
+
+
+@pytest.mark.asyncio
+async def test_login_screen_locked_account(user: User) -> None:
+    state = AppState()
+    state._show_login = True
+    login_limiter._locked_until["locked_user"] = time.time() + 100
+
+    @ui.page("/test_login_locked")
+    def page() -> None:
+        render_login_screen(state)
+
+    await user.open("/test_login_locked")
+    inputs = sorted(user.find(ui.input).elements, key=lambda el: el.id)
+    inputs[0].value = "locked_user"
+    inputs[1].value = "pass"
+    user.find("Sign In").click()
+    await user.should_see("Too many attempts. Try again later.")
+
+
+@pytest.mark.asyncio
+async def test_login_screen_invalid_credentials(user: User) -> None:
+    state = AppState()
+    state._show_login = True
+
+    @ui.page("/test_login_invalid")
+    def page() -> None:
+        render_login_screen(state)
+
+    await user.open("/test_login_invalid")
+    inputs = sorted(user.find(ui.input).elements, key=lambda el: el.id)
+    inputs[0].value = "admin"
+    inputs[1].value = "wrongpass"
+    user.find("Sign In").click()
+    await user.should_see("Invalid username or password")
+
+
+@pytest.mark.asyncio
+async def test_login_screen_exception_handling(user: User) -> None:
+    state = AppState()
+    state._show_login = True
+    mock_auth = MagicMock()
+    mock_auth.login.side_effect = RuntimeError("DB error")
+    state._auth_service = mock_auth
+
+    @ui.page("/test_login_error")
+    def page() -> None:
+        render_login_screen(state)
+
+    await user.open("/test_login_error")
+    inputs = sorted(user.find(ui.input).elements, key=lambda el: el.id)
+    inputs[0].value = "admin"
+    inputs[1].value = "admin"
+    user.find("Sign In").click()
+    await user.should_see("Login error: DB error")

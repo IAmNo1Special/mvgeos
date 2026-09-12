@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -426,3 +427,46 @@ class TestMvgeQueueMode:
         assert agent.queue_mode == QueueMode.ONE_AT_A_TIME
         agent.queue_mode = "all"
         assert agent.queue_mode == QueueMode.ALL
+
+
+class TestMvgePropertiesAndMethods:
+    def test_basic_properties(self, tmp_path: Path) -> None:
+        agent = Mvge(
+            api_key="test-key",
+            name="test_mvge",
+            tome_dir=tmp_path / "sessions",
+            spells=[],
+        )
+        assert agent.name == "test_mvge"
+        assert agent.tome_dir == tmp_path / "sessions"
+        assert agent.session_dir == tmp_path / "sessions"
+        assert agent.tome_id is None
+        assert agent.session_id is None
+        assert agent.mana_used is None
+        assert isinstance(agent.config_dir, Path)
+        assert agent.environment is not None
+        assert isinstance(agent.spells, list)
+        assert agent.event_bus is not None
+        assert isinstance(agent.diagnostics, list)
+        assert isinstance(agent.available_spells, list)
+        assert isinstance(agent.registered_commands, list)
+        assert isinstance(agent.registered_shortcuts, list)
+        assert isinstance(agent.registered_providers, list)
+        assert agent.model_registry is not None
+        assert agent.model_id is not None
+        assert agent.contemplation_level is not None
+
+    def test_set_enabled_spells(self) -> None:
+        agent = Mvge(api_key="test-key", spells=[dummy_built_in])
+        assert "dummy_built_in" in agent.available_spells
+        agent.set_enabled_spells(["dummy_built_in"])
+        assert "dummy_built_in" in agent.enabled_spells
+        agent.set_enabled_spells([])
+        assert agent.enabled_spells == []
+
+    def test_set_environment_and_config_manager(self) -> None:
+        agent = Mvge(api_key="test-key", spells=[])
+        env = agent.environment
+        agent.set_environment(env)
+        assert agent.environment == env
+        agent.set_config_manager(None)

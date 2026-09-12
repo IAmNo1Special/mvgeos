@@ -349,3 +349,157 @@ async def test_packages_panel_sorting(user: User) -> None:
     # Test Last Updated
     sort_el.set_value("Last Updated")
     await user.should_see("z-last")
+
+
+@pytest.mark.asyncio
+async def test_packages_panel_mvges_listing_and_search(user: User) -> None:
+    """Marketplace mvges should show version, spells, and deps."""
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "coding_mvge": {
+                "name": "coding_mvge",
+                "version": "0.2.6",
+                "runtime": "python",
+                "description": "Coding agent for MvgeOS",
+                "git": "https://github.com/example/coding_mvge",
+                "spells": ["bash", "read", "write"],
+                "python_deps": ["mvgeos-agent"],
+            },
+            "research_mvge": {
+                "name": "research_mvge",
+                "version": "1.0.0",
+                "runtime": "python",
+                "description": "Research agent for MvgeOS",
+                "spells": ["search_web", "read_url"],
+            },
+        }
+    )
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+
+    @ui.page("/test_mvges_marketplace")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_mvges_marketplace")
+    await user.should_see("coding_mvge")
+    await user.should_see("research_mvge")
+    await user.should_see("Coding agent for MvgeOS")
+    await user.should_see("Research agent for MvgeOS")
+    await user.should_see("bash")
+    await user.should_see("read")
+    await user.should_see("search_web")
+
+    search_el = next(iter(user.find(marker="mvge_search_input").elements))
+    search_el.value = "coding"
+    await user.should_see("coding_mvge")
+
+
+@pytest.mark.asyncio
+async def test_packages_panel_mvges_install_and_uninstall_flow(user: User) -> None:
+    """Mvge install and uninstall buttons invoke appropriate state methods."""
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "installed_mvge": {
+                "name": "installed_mvge",
+                "version": "1.0.0",
+                "description": "Installed agent",
+            },
+            "new_mvge": {
+                "name": "new_mvge",
+                "version": "1.0.0",
+                "description": "Available agent",
+            },
+        }
+    )
+    state.list_installed_mvges_async = AsyncMock(  # type: ignore[method-assign]
+        return_value=[
+            {
+                "name": "installed_mvge",
+                "version": "1.0.0",
+                "path": "/home/user/.agents/agents/installed_mvge",
+                "spells": ["bash"],
+            }
+        ]
+    )
+    state.is_mvge_installed = MagicMock(  # type: ignore[method-assign]
+        side_effect=lambda name: name == "installed_mvge"
+    )
+    state.install_mvge_async = AsyncMock(return_value=True)  # type: ignore[method-assign]
+    state.uninstall_mvge_async = AsyncMock(return_value=True)  # type: ignore[method-assign]
+
+    @ui.page("/test_mvges_flow")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_mvges_flow")
+    await user.should_see("installed_mvge")
+    await user.should_see("new_mvge")
+
+    # Install new_mvge
+    user.find(marker="mvge_install_item_new_mvge").click()
+    await user.should_see("Installing new_mvge...")
+    state.install_mvge_async.assert_called_once_with("new_mvge")
+
+    # Uninstall installed_mvge
+    user.find(marker="mvge_uninstall_item_installed_mvge").click()
+    await user.should_see("Uninstalling installed_mvge...")
+    state.uninstall_mvge_async.assert_called_once_with("installed_mvge")
+
+
+@pytest.mark.asyncio
+async def test_packages_panel_mvge_dialog_and_filters(user: User) -> None:
+    """Install dialog and filters for Mvges."""
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "agent_a": {
+                "name": "agent_a",
+                "version": "1.0.0",
+                "spells": ["bash"],
+                "created_at": "2026-01-01T00:00:00Z",
+            },
+            "agent_z": {
+                "name": "agent_z",
+                "version": "1.0.0",
+                "spells": ["search_web"],
+                "created_at": "2026-02-01T00:00:00Z",
+            },
+        }
+    )
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.install_mvge_async = AsyncMock(return_value=True)  # type: ignore[method-assign]
+
+    @ui.page("/test_mvges_dialog_and_filters")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_mvges_dialog_and_filters")
+
+    # Dialog
+    user.find(marker="mvge_open_install_dialog_btn").click()
+    user.find(marker="mvge_dialog_install_btn").click()
+    await user.should_see("Please enter an agent source")
+
+    source_el = next(iter(user.find(marker="mvge_dialog_source_input").elements))
+    source_el.set_value("coding_mvge")
+    user.find(marker="mvge_dialog_install_btn").click()
+    await user.should_see("Installing coding_mvge...")
+    state.install_mvge_async.assert_called_once_with("coding_mvge")
+
+    # Sort Z-A
+    sort_el = next(iter(user.find(marker="mvge_sort_select").elements))
+    sort_el.set_value("Alphabetical (Z-A)")
+    await user.should_see("agent_z")
+    await user.should_see("agent_a")
+
+    # Clear filters
+    user.find(marker="mvge_clear_filters_btn").click()
+    await user.should_see("agent_a")

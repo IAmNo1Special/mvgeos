@@ -17,6 +17,7 @@ from mvgeos_gui.models import (
     FileExploration,
     StepType,
 )
+from mvgeos_gui.state import AppState
 
 
 @pytest.mark.asyncio
@@ -208,3 +209,47 @@ async def test_render_step_card_with_state_persistence(user: User) -> None:
     await user.open("/test_step_state_card")
     await user.should_see("Worked for 1.5s")
     assert state.is_card_expanded("step_test_1") is True
+
+
+@pytest.mark.asyncio
+async def test_render_worked_card_incomplete_and_params(user: User) -> None:
+    state = AppState()
+    step = ExecutionStep(
+        step_type=StepType.WORKED,
+        spell_name="custom_spell",
+        is_complete=False,
+        details=[],
+        params={"key": "val"},
+    )
+
+    @ui.page("/test_worked_incomplete")
+    def page() -> None:
+        render_worked_card(step, card_id="c1", state=state)
+
+    await user.open("/test_worked_incomplete")
+    await user.should_see("custom_spell")
+    await user.should_see("Execution completed.")
+    await user.should_see("Parameters")
+
+
+@pytest.mark.asyncio
+async def test_render_files_card_with_long_details(user: User) -> None:
+    state = AppState()
+    long_details = "\n".join(f"line {i}" for i in range(30))
+    step = ExecutionStep(
+        step_type=StepType.FILES,
+        title="",
+        files=[
+            FileExploration(
+                path="foo.py", details=long_details, lines="L1", operation="edit"
+            )
+        ],
+    )
+
+    @ui.page("/test_files_long")
+    def page() -> None:
+        render_files_card(step, card_id="f1", state=state)
+
+    await user.open("/test_files_long")
+    await user.should_see("Explored 1 file")
+    await user.should_see("more lines, expand to view")

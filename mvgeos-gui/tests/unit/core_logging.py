@@ -44,3 +44,16 @@ def test_setup_logging_configures_root_when_no_handlers(
 def test_get_logger() -> None:
     child = get_logger("my_component")
     assert child.name == "mvgeos_gui.my_component"
+
+
+def test_log_dir_and_file_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mvgeos_gui.core.logging import _log_dir, _log_file, _resolve_level
+
+    monkeypatch.delenv("MVGEOS_LOG_DIR", raising=False)
+    monkeypatch.delenv("MVGEOS_LOG_LEVEL", raising=False)
+    d = _log_dir()
+    assert d.name == "logs"
+    f = _log_file()
+    assert f.name == "mvgeos-gui.log"
+    lvl = _resolve_level()
+    assert lvl == logging.INFO

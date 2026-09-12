@@ -13,7 +13,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from coding_mvge import root_mvge
 from mvgeos_agent import Mvge
 from mvgeos_agent.auth import load_api_key_from_auth
 from mvgeos_agent.commands import (
@@ -171,7 +170,6 @@ class AgentService:
             self._agent = Mvge(
                 api_key=self._api_key,
                 name="coding_mvge",
-                spells=root_mvge.spells,
                 tome_dir=state.tome_service.tome_dir,
                 tome_resume=state.active_tome_id,
                 environment=env,

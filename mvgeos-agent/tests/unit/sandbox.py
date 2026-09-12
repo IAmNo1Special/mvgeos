@@ -58,3 +58,24 @@ def test_execute_code_timeout() -> None:
     s = MvgeSandbox()
     with pytest.raises(SandboxTimeoutError):
         s.execute_code("while True: pass", timeout_seconds=0.3)
+
+
+def test_execute_code_runtime_error() -> None:
+    s = MvgeSandbox()
+    with pytest.raises(ValueError, match="division by zero"):
+        s.execute_code("x = 1 / 0", timeout_seconds=5.0)
+
+
+def test_execute_code_filters_modules() -> None:
+    s = MvgeSandbox()
+    result = s.execute_code(
+        "import math\ny = math.sqrt(16)", allowed_modules={"math"}, timeout_seconds=5.0
+    )
+    assert result["y"] == 4.0
+    assert "math" not in result
+
+
+def test_execute_sync_safe_import_forbidden() -> None:
+    s = MvgeSandbox()
+    with pytest.raises(ValueError, match="Forbidden AST node"):
+        s._execute_sync("import os", None)

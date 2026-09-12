@@ -342,6 +342,18 @@ def resolve_system_prompt(
             resolved_base = ResolvedPrompt(
                 text=text, source=PromptSource.AGENT_MD, path=agent_file
             )
+        elif (agent_sys_dir := agent_dir / "system_prompt" / filename).is_file() and (
+            text := _read_text(agent_sys_dir)
+        ):
+            resolved_base = ResolvedPrompt(
+                text=text, source=PromptSource.AGENT_MD, path=agent_sys_dir
+            )
+        elif (agent_md := agent_dir / "agent.md").is_file() and (
+            text := _read_text(agent_md)
+        ):
+            resolved_base = ResolvedPrompt(
+                text=text, source=PromptSource.AGENT_MD, path=agent_md
+            )
         else:
             resolved_base = ResolvedPrompt(text=default, source=PromptSource.BUILTIN)
 

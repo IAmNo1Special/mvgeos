@@ -20,6 +20,12 @@ from mvgeos_agent.function_spell import (
     discover_spells_from_dir,
 )
 from mvgeos_agent.harness import MvgeHarness
+from mvgeos_agent.installer import (
+    fetch_marketplace_mvges,
+    install_mvge,
+    list_installed_mvges,
+    uninstall_mvge,
+)
 from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.protocol import AgentFactory, MvgeAgent
 from mvgeos_agent.snapshot import (
@@ -62,6 +68,10 @@ __all__ = [
     "SpellUnion",
     "coerce_spell",
     "discover_spells_from_dir",
+    "fetch_marketplace_mvges",
+    "install_mvge",
+    "list_installed_mvges",
     "load_api_key_from_auth",
     "save_api_key_to_auth",
+    "uninstall_mvge",
 ]

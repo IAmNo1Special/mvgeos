@@ -133,12 +133,11 @@ class TestMvgeAgentProtocol:
         assert isinstance(agent.enabled_spells, list)
 
     def test_coding_mvge_conforms(self) -> None:
-        from coding_mvge import root_mvge
-
-        assert isinstance(root_mvge, MvgeAgent)
-        assert root_mvge.session_id == root_mvge.tome_id
-        assert root_mvge.model_id == root_mvge._model_id
-        assert "bash" in root_mvge.enabled_spells
+        agent = Mvge(name="coding_mvge", api_key="test-key")
+        assert isinstance(agent, MvgeAgent)
+        assert agent.session_id == agent.tome_id
+        assert agent.model_id == agent._model_id
+        assert "bash" in agent.enabled_spells
 
     def test_dummy_agent_conforms(self) -> None:
         dummy = DummyAgent()

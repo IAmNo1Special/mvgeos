@@ -15,6 +15,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
+from mvgeos_agent import (
+    fetch_marketplace_mvges,
+    install_mvge,
+    list_installed_mvges,
+    uninstall_mvge,
+)
 from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_provider import (
     get_default_realm_registry,
@@ -983,3 +989,37 @@ class AppState:
         get_default_realm_registry().unregister_realm_factory(rune_name)
         self.notify()
         return result
+
+    def is_mvge_installed(self, mvge_name: str) -> bool:
+        """Check if an mvge agent is installed in ~/.agents/agents."""
+        normalized = mvge_name.replace("-", "_")
+        target = Path("~/.agents/agents").expanduser() / normalized
+        return target.is_dir()
+
+    async def fetch_marketplace_mvges_async(self) -> dict[str, Any]:
+        """Fetch available marketplace mvges asynchronously."""
+        return await asyncio.to_thread(fetch_marketplace_mvges)
+
+    async def list_installed_mvges_async(self) -> list[dict[str, Any]]:
+        """List installed mvges asynchronously."""
+        return await asyncio.to_thread(list_installed_mvges)
+
+    async def install_mvge_async(self, source: str) -> bool:
+        """Install an mvge from marketplace, git, or path asynchronously."""
+        try:
+            await asyncio.to_thread(install_mvge, source)
+            self.notify()
+            return True
+        except Exception as exc:
+            logger.warning("Failed to install mvge '%s': %s", source, exc)
+            return False
+
+    async def uninstall_mvge_async(self, mvge_name: str) -> bool:
+        """Uninstall an mvge asynchronously."""
+        try:
+            result = bool(await asyncio.to_thread(uninstall_mvge, mvge_name))
+            self.notify()
+            return result
+        except Exception as exc:
+            logger.warning("Failed to uninstall mvge '%s': %s", mvge_name, exc)
+            return False
