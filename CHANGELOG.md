@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] - 2026-09-12
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (2e8fe66)
+
+- **release:** v0.2.7 (08b9095)
+
+
+### Features
+
+- **gui:** merge marketplace and installed tabs into unified view with interactive uninstall button (5c5a3ce)
+
+
+### Refactoring
+
+- **gui:** remove redundant sidebar toggle buttons from toolbar and sidebar header (edf9ec4)
+
+- **gui:** keep sidebar toggle in header and remove from bottom footer (c9d38f1)
+
+- **gui:** rename packages sidebar item and panel header to marketplace (4f68e2d)
+
+- **gui:** remove separator above settings and integrate into main nav list (b45e0d2)
+
+
 ## [0.2.6] - 2026-09-12
 
 

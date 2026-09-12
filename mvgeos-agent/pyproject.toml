@@ -1,6 +1,6 @@
 [project]
 name = "mvgeos-agent"
-version = "0.2.6"
+version = "0.2.7"
 description = "Core Mvge agent loop, invocation types, state management, and spell execution"
 requires-python = ">=3.13"
 license = "MIT"
