@@ -10,6 +10,7 @@ from nicegui import ui
 from nicegui.testing import User
 
 from mvgeos_gui.components.packages_panel import (
+    _parse_timestamp,
     open_folder_in_explorer,
     render_packages_panel,
 )
@@ -503,3 +504,189 @@ async def test_packages_panel_mvge_dialog_and_filters(user: User) -> None:
     # Clear filters
     user.find(marker="mvge_clear_filters_btn").click()
     await user.should_see("agent_a")
+
+
+@pytest.mark.asyncio
+async def test_packages_panel_mvge_remains_in_marketplace_after_uninstall(
+    user: User,
+) -> None:
+    """Uninstalled marketplace mvge remains visible in marketplace
+    with Install button.
+    """
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+
+    mvge_catalog = {
+        "coding_mvge": {
+            "name": "coding_mvge",
+            "version": "0.2.6",
+            "description": "Coding agent for MvgeOS",
+            "runtime": "python",
+            "git": "https://github.com/example/coding_mvge",
+            "spells": ["bash", "read", "write"],
+        }
+    }
+    state.fetch_marketplace_mvges_async = AsyncMock(  # type: ignore[method-assign]
+        return_value=mvge_catalog
+    )
+
+    installed = [
+        {
+            "name": "coding_mvge",
+            "version": "0.2.6",
+            "description": "Coding agent for MvgeOS",
+            "runtime": "python",
+            "path": "/home/user/.agents/agents/coding_mvge",
+            "spells": ["bash", "read", "write"],
+        }
+    ]
+    state.list_installed_mvges_async = AsyncMock(return_value=installed)  # type: ignore[method-assign]
+    is_installed_val = True
+    state.is_mvge_installed = MagicMock(  # type: ignore[method-assign]
+        side_effect=lambda name: is_installed_val
+    )
+
+    async def _mock_uninstall(name: str) -> bool:
+        nonlocal is_installed_val
+        is_installed_val = False
+        state.list_installed_mvges_async.return_value = []
+        return True
+
+    state.uninstall_mvge_async = AsyncMock(  # type: ignore[method-assign]
+        side_effect=_mock_uninstall
+    )
+    state.install_mvge_async = AsyncMock(return_value=True)  # type: ignore[method-assign]
+
+    @ui.page("/test_mvges_persist_after_uninstall")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_mvges_persist_after_uninstall")
+    # Verify coding_mvge is visible initially with Installed button
+    await user.should_see("coding_mvge")
+    await user.should_see("Installed")
+
+    # Click uninstall
+    user.find(marker="mvge_uninstall_item_coding_mvge").click()
+    await user.should_see("Uninstalling coding_mvge...")
+
+    # Verify coding_mvge is STILL visible in marketplace catalog!
+    await user.should_see("coding_mvge")
+    # And now shows Install button
+    await user.should_see("Install")
+
+    # Click install
+    user.find(marker="mvge_install_item_coding_mvge").click()
+    await user.should_see("Installing coding_mvge...")
+    state.install_mvge_async.assert_called_once_with("coding_mvge")
+
+
+def test_parse_timestamp_branches() -> None:
+    """Test various timestamp parsing branches."""
+    assert _parse_timestamp(12345.6) == 12345.6
+    assert _parse_timestamp("invalid-date-string") == 0.0
+    assert _parse_timestamp(None) == 0.0
+
+
+def test_open_folder_in_explorer_exception() -> None:
+    """Test exception branch of open_folder_in_explorer."""
+    with patch("pathlib.Path.expanduser", side_effect=PermissionError("denied")):
+        assert open_folder_in_explorer("/any/path") is False
+
+
+@pytest.mark.asyncio
+async def test_packages_panel_mvge_error_notifications_and_sorting(user: User) -> None:
+    """Test mvge error branches and date sorting."""
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+
+    state.fetch_marketplace_mvges_async = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "agent_early": {
+                "name": "agent_early",
+                "version": "1.0.0",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-05T00:00:00Z",
+            },
+            "agent_late": {
+                "name": "agent_late",
+                "version": "1.0.0",
+                "created_at": "2026-02-01T00:00:00Z",
+                "updated_at": "2026-02-05T00:00:00Z",
+            },
+        }
+    )
+    state.list_installed_mvges_async = AsyncMock(  # type: ignore[method-assign]
+        return_value=[
+            {
+                "name": "agent_early",
+                "version": "1.0.0",
+                "path": "/mock/agents/agent_early",
+            }
+        ]
+    )
+    state.is_mvge_installed = MagicMock(  # type: ignore[method-assign]
+        side_effect=lambda name: name == "agent_early"
+    )
+    state.uninstall_mvge_async = AsyncMock(return_value=False)  # type: ignore[method-assign]
+    state.install_mvge_async = AsyncMock(return_value=False)  # type: ignore[method-assign]
+
+    @ui.page("/test_mvges_branches")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_mvges_branches")
+    await user.should_see("agent_early")
+
+    # Click installed path to open agent folder in explorer
+    with patch(
+        "mvgeos_gui.components.packages_panel.open_folder_in_explorer",
+        return_value=True,
+    ) as mock_open:
+        user.find("/mock/agents/agent_early").click()
+        mock_open.assert_called_once_with("/mock/agents/agent_early")
+
+    # Test uninstall failure notification
+    user.find(marker="mvge_uninstall_item_agent_early").click()
+    await user.should_see("Failed to uninstall agent_early")
+
+    # Test install failure notification on card
+    user.find(marker="mvge_install_item_agent_late").click()
+    await user.should_see("Failed to install agent_late")
+
+    # Test sorting by Date Added and Last Updated
+    sort_el = next(iter(user.find(marker="mvge_sort_select").elements))
+    sort_el.set_value("Date Added")
+    await user.should_see("agent_late")
+    sort_el.set_value("Last Updated")
+    await user.should_see("agent_late")
+
+    # Test dialog failure branch
+    user.find(marker="mvge_open_install_dialog_btn").click()
+    source_el = next(iter(user.find(marker="mvge_dialog_source_input").elements))
+    source_el.set_value("fail_agent")
+    user.find(marker="mvge_dialog_install_btn").click()
+    await user.should_see("Installing fail_agent...")
+
+
+@pytest.mark.asyncio
+async def test_packages_panel_mvge_refresh_exceptions(user: User) -> None:
+    """Test exceptions during mvge data refresh."""
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("mvge fetch error")
+    )
+    state.list_installed_mvges_async = AsyncMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("mvge list error")
+    )
+
+    @ui.page("/test_mvges_refresh_exc")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_mvges_refresh_exc")
+    await user.should_see("Marketplace")

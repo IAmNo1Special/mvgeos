@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import base64
 import contextlib
 import json
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
@@ -18,15 +20,79 @@ DEFAULT_MARKETPLACE_URL = (
 )
 
 
+def _fetch_marketplace_data(
+    marketplace_url: str = DEFAULT_MARKETPLACE_URL,
+    timeout: float = 15.0,
+) -> dict[str, Any]:
+    """Fetch marketplace index data with fallbacks for CDN caching and branch delays."""
+    first_error: Exception | None = None
+    data: Any = None
+    try:
+        response = httpx.get(marketplace_url, timeout=timeout)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as exc:
+        first_error = exc
+
+    if isinstance(data, dict):
+        mvges = data.get("mvges") or data.get("agents")
+        if isinstance(mvges, dict) and mvges:
+            return data
+
+    # Fallback 1: If URL has /main/, try /HEAD/ (bypasses Fastly branch caching)
+    if "/main/" in marketplace_url:
+        head_url = marketplace_url.replace("/main/", "/HEAD/")
+        try:
+            head_resp = httpx.get(head_url, timeout=timeout)
+            head_resp.raise_for_status()
+            head_data = head_resp.json()
+            if isinstance(head_data, dict):
+                head_mvges = head_data.get("mvges") or head_data.get("agents")
+                if isinstance(head_mvges, dict) and head_mvges:
+                    return head_data
+        except Exception:
+            pass
+
+    # Fallback 2: GitHub Contents API for official marketplace
+    if (
+        "githubusercontent.com" in marketplace_url
+        and "mvgeos-marketplace" in marketplace_url
+    ):
+        try:
+            api_url = (
+                "https://api.github.com/repos/IAmNo1Special/mvgeos-marketplace"
+                "/contents/index.json"
+            )
+            api_resp = httpx.get(
+                api_url,
+                headers={"Accept": "application/vnd.github.v3+json"},
+                timeout=timeout,
+            )
+            api_resp.raise_for_status()
+            api_json = api_resp.json()
+            if isinstance(api_json, dict) and "content" in api_json:
+                decoded = base64.b64decode(api_json["content"]).decode("utf-8")
+                api_data = json.loads(decoded)
+                if isinstance(api_data, dict):
+                    api_mvges = api_data.get("mvges") or api_data.get("agents")
+                    if isinstance(api_mvges, dict) and api_mvges:
+                        return api_data
+        except Exception:
+            pass
+
+    if first_error is not None and not isinstance(data, dict):
+        raise first_error
+
+    return data if isinstance(data, dict) else {}
+
+
 def fetch_marketplace_mvges(
     marketplace_url: str = DEFAULT_MARKETPLACE_URL,
     timeout: float = 15.0,
 ) -> dict[str, Any]:
     """Fetch available mvges (agents) from the marketplace index."""
     try:
-        response = httpx.get(marketplace_url, timeout=timeout)
-        response.raise_for_status()
-        data = response.json()
+        data = _fetch_marketplace_data(marketplace_url, timeout=timeout)
     except Exception as exc:
         logger.warning(
             "Failed to fetch marketplace mvges from '%s': %s",
@@ -162,9 +228,7 @@ def install_mvge(
         )
     else:
         try:
-            response = httpx.get(marketplace_url, timeout=15.0)
-            response.raise_for_status()
-            marketplace_data = response.json()
+            marketplace_data = _fetch_marketplace_data(marketplace_url, timeout=15.0)
         except Exception as exc:
             raise ValueError(
                 f"Failed to fetch marketplace index from '{marketplace_url}': {exc}"
@@ -199,14 +263,32 @@ def install_mvge(
         subpath = mvge_entry.get("path") if isinstance(mvge_entry, dict) else None
         if subpath:
             with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
-                subprocess.run(
-                    ["git", "clone", "--depth", "1", git_url, str(tmp_dir)],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-                source_mvge_dir = Path(tmp_dir) / str(subpath).strip().strip("/\\")
-                shutil.copytree(source_mvge_dir, dest)
+                try:
+                    subprocess.run(
+                        ["git", "clone", "--depth", "1", git_url, str(tmp_dir)],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                    source_mvge_dir = Path(tmp_dir) / str(subpath).strip().strip("/\\")
+                    shutil.copytree(source_mvge_dir, dest)
+                except (subprocess.CalledProcessError, OSError):
+                    local_candidate: Path | None = None
+                    for base in (
+                        os.environ.get("MVGEOS_MARKETPLACE_DIR"),
+                        str(Path.home() / "Desktop" / "mvgeos-marketplace"),
+                    ):
+                        if base:
+                            cand = Path(base).expanduser() / str(subpath).strip().strip(
+                                "/\\"
+                            )
+                            if cand.is_dir():
+                                local_candidate = cand
+                                break
+                    if local_candidate is not None:
+                        shutil.copytree(local_candidate, dest)
+                    else:
+                        raise
         else:
             subprocess.run(
                 ["git", "clone", git_url, str(dest)],

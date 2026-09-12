@@ -1190,8 +1190,9 @@ def render_packages_panel(state: AppState) -> None:
     async def _refresh_data() -> None:
         try:
             mp = await state.fetch_marketplace_runes_async()
-            marketplace_data.clear()
-            marketplace_data.update(mp)
+            if mp:
+                marketplace_data.clear()
+                marketplace_data.update(mp)
         except Exception as exc:
             logger.warning("Failed to fetch marketplace runes: %s", exc)
 
@@ -1206,8 +1207,9 @@ def render_packages_panel(state: AppState) -> None:
 
         try:
             mp_m = await state.fetch_marketplace_mvges_async()
-            marketplace_mvges_data.clear()
-            marketplace_mvges_data.update(mp_m)
+            if mp_m:
+                marketplace_mvges_data.clear()
+                marketplace_mvges_data.update(mp_m)
         except Exception as exc:
             logger.warning("Failed to fetch marketplace mvges: %s", exc)
 

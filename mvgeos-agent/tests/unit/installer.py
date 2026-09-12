@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -8,6 +10,7 @@ import pytest
 
 from mvgeos_agent.installer import (
     DEFAULT_MARKETPLACE_URL,
+    _fetch_marketplace_data,
     fetch_marketplace_mvges,
     install_mvge,
     list_installed_mvges,
@@ -491,3 +494,157 @@ def test_install_mvge_git_url_with_existing_dest_file(tmp_path: Path) -> None:
     assert dest == existing_dest
     assert dest.is_dir()
     assert (dest / "manifest.json").is_file()
+
+
+def test_fetch_marketplace_data_fallback_to_head() -> None:
+    main_resp = MagicMock()
+    main_resp.json.return_value = {"runes": {}}
+    main_resp.raise_for_status = MagicMock()
+
+    head_resp = MagicMock()
+    head_resp.json.return_value = {"mvges": {"coding_mvge": {"name": "coding_mvge"}}}
+    head_resp.raise_for_status = MagicMock()
+
+    def fake_get(url: str, **kwargs: object) -> MagicMock:
+        if "/HEAD/" in url:
+            return head_resp
+        return main_resp
+
+    with patch("httpx.get", side_effect=fake_get):
+        data = _fetch_marketplace_data(DEFAULT_MARKETPLACE_URL)
+
+    assert "mvges" in data
+    assert "coding_mvge" in data["mvges"]
+
+
+def test_fetch_marketplace_data_fallback_to_github_api() -> None:
+    main_resp = MagicMock()
+    main_resp.json.return_value = {"runes": {}}
+    main_resp.raise_for_status = MagicMock()
+
+    head_resp = MagicMock()
+    head_resp.json.return_value = {"runes": {}}
+    head_resp.raise_for_status = MagicMock()
+
+    content_data = {"mvges": {"coding_mvge": {"name": "coding_mvge"}}}
+    b64_content = base64.b64encode(json.dumps(content_data).encode("utf-8")).decode(
+        "utf-8"
+    )
+
+    api_resp = MagicMock()
+    api_resp.json.return_value = {"content": b64_content}
+    api_resp.raise_for_status = MagicMock()
+
+    def fake_get(url: str, **kwargs: object) -> MagicMock:
+        if "api.github.com" in url:
+            return api_resp
+        if "/HEAD/" in url:
+            return head_resp
+        return main_resp
+
+    with patch("httpx.get", side_effect=fake_get):
+        data = _fetch_marketplace_data(DEFAULT_MARKETPLACE_URL)
+
+    assert "mvges" in data
+    assert "coding_mvge" in data["mvges"]
+
+
+def test_install_mvge_git_failure_fallback_to_local_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target_dir = tmp_path / "agents"
+    local_marketplace = tmp_path / "local-market"
+    local_mvge = local_marketplace / "mvges" / "coding_mvge"
+    _create_mock_mvge_dir(local_mvge, "coding_mvge")
+
+    monkeypatch.setenv("MVGEOS_MARKETPLACE_DIR", str(local_marketplace))
+
+    marketplace_payload = {
+        "mvges": {
+            "coding_mvge": {
+                "name": "coding_mvge",
+                "git": "https://github.com/example/fail.git",
+                "path": "mvges/coding_mvge",
+            }
+        }
+    }
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = marketplace_payload
+    mock_resp.raise_for_status = MagicMock()
+
+    def fail_git(cmd: list[str], **kwargs: object) -> MagicMock:
+        if cmd[:2] == ["git", "clone"]:
+            raise subprocess.CalledProcessError(1, cmd)
+        return MagicMock(returncode=0)
+
+    with (
+        patch("httpx.get", return_value=mock_resp),
+        patch("subprocess.run", side_effect=fail_git),
+    ):
+        dest = install_mvge("coding_mvge", target_dir=target_dir)
+
+    assert dest == target_dir / "coding_mvge"
+    assert (dest / "manifest.json").is_file()
+
+
+def test_install_mvge_git_failure_no_local_dir_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target_dir = tmp_path / "agents"
+    monkeypatch.delenv("MVGEOS_MARKETPLACE_DIR", raising=False)
+
+    marketplace_payload = {
+        "mvges": {
+            "coding_mvge": {
+                "name": "coding_mvge",
+                "git": "https://github.com/example/fail.git",
+                "path": "mvges/coding_mvge",
+            }
+        }
+    }
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = marketplace_payload
+    mock_resp.raise_for_status = MagicMock()
+
+    def fail_git(cmd: list[str], **kwargs: object) -> MagicMock:
+        if cmd[:2] == ["git", "clone"]:
+            raise subprocess.CalledProcessError(1, cmd)
+        return MagicMock(returncode=0)
+
+    with (
+        patch("httpx.get", return_value=mock_resp),
+        patch("subprocess.run", side_effect=fail_git),
+        patch("pathlib.Path.home", return_value=tmp_path / "fake_home"),
+        pytest.raises(subprocess.CalledProcessError),
+    ):
+        install_mvge("coding_mvge", target_dir=target_dir)
+
+
+def test_install_mvge_uv_pip_deps_error_tolerated(tmp_path: Path) -> None:
+    source_dir = tmp_path / "deps_err_mvge"
+    _create_mock_mvge_dir(source_dir, "deps_err_mvge", python_deps=["pkg_a", "pkg_b"])
+
+    target_dir = tmp_path / "agents"
+
+    def fail_pip(cmd: list[str], **kwargs: object) -> MagicMock:
+        if "uv" in cmd and "pip" in cmd:
+            raise subprocess.CalledProcessError(1, cmd)
+        return MagicMock(returncode=0)
+
+    with patch("subprocess.run", side_effect=fail_pip):
+        dest = install_mvge(str(source_dir), target_dir=target_dir)
+
+    assert dest == target_dir / "deps_err_mvge"
+    assert (dest / "manifest.json").is_file()
+
+
+def test_fetch_marketplace_data_custom_url_without_main() -> None:
+    custom_resp = MagicMock()
+    custom_resp.json.return_value = {"mvges": {"custom": {"name": "custom"}}}
+    custom_resp.raise_for_status = MagicMock()
+
+    with patch("httpx.get", return_value=custom_resp):
+        data = _fetch_marketplace_data("https://custom.example.org/catalog.json")
+
+    assert "mvges" in data
+    assert "custom" in data["mvges"]
