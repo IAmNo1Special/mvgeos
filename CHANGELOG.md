@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-09-12
+
+
+### Bug Fixes
+
+- **gui:** resolve sidebar visual and functional layout bugs (4bdeb5a)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (e246ddb)
+
+- **release:** v0.2.6 (cf2d308)
+
+
 ## [0.2.5] - 2026-09-12
 
 
