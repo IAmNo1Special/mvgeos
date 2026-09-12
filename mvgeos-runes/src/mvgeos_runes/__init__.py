@@ -1,6 +1,12 @@
 from mvgeos_core.spells import ExecutionMode
 
-from mvgeos_runes.installer import DEFAULT_MARKETPLACE_URL, install_rune
+from mvgeos_runes.installer import (
+    DEFAULT_MARKETPLACE_URL,
+    fetch_marketplace_runes,
+    install_rune,
+    list_installed_runes,
+    uninstall_rune,
+)
 from mvgeos_runes.loader import (
     discover_plugin_skill_paths,
     get_default_skill_paths,
@@ -60,8 +66,10 @@ __all__ = [
     "SkillScope",
     "SpellDefinition",
     "discover_plugin_skill_paths",
+    "fetch_marketplace_runes",
     "get_default_skill_paths",
     "install_rune",
+    "list_installed_runes",
     "load_factory_from_manifest",
     "load_manifest",
     "load_manifests",
@@ -69,4 +77,5 @@ __all__ = [
     "load_skill_manifest",
     "load_skill_manifests",
     "load_skills_from_paths",
+    "uninstall_rune",
 ]

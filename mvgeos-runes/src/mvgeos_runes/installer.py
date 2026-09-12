@@ -1,16 +1,105 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MARKETPLACE_URL = (
     "https://raw.githubusercontent.com/IAmNo1Special/mvgeos-marketplace/main/index.json"
 )
+
+
+def fetch_marketplace_runes(
+    marketplace_url: str = DEFAULT_MARKETPLACE_URL,
+    timeout: float = 15.0,
+) -> dict[str, Any]:
+    """Fetch available runes from the marketplace index."""
+    try:
+        response = httpx.get(marketplace_url, timeout=timeout)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as exc:
+        logger.warning(
+            "Failed to fetch marketplace runes from '%s': %s",
+            marketplace_url,
+            exc,
+        )
+        return {}
+
+    if isinstance(data, dict):
+        runes = data.get("runes", {})
+        if isinstance(runes, dict):
+            return runes
+    return {}
+
+
+def list_installed_runes(
+    target_dir: Path | None = None,
+) -> list[dict[str, Any]]:
+    """List installed extension runes from the target directory."""
+    target = (
+        target_dir.expanduser()
+        if target_dir is not None
+        else Path("~/.agents/extensions").expanduser()
+    )
+    if not target.is_dir():
+        return []
+
+    installed: list[dict[str, Any]] = []
+    for subdir in target.iterdir():
+        if not subdir.is_dir():
+            continue
+        manifest_path = subdir / "manifest.json"
+        if manifest_path.is_file():
+            try:
+                with manifest_path.open("r", encoding="utf-8-sig") as f:
+                    manifest = json.load(f)
+            except Exception:
+                continue
+
+            if not isinstance(manifest, dict):
+                continue
+
+            installed.append(
+                {
+                    "name": manifest.get("name", subdir.name),
+                    "version": manifest.get("version", "unknown"),
+                    "description": manifest.get("description", ""),
+                    "runtime": manifest.get("runtime", "python"),
+                    "enabled": manifest.get("enabled", True),
+                    "path": str(subdir),
+                    "hooks": manifest.get("hooks", []),
+                    "python_deps": manifest.get("python_deps", []),
+                }
+            )
+
+    installed.sort(key=lambda r: str(r.get("name", "")))
+    return installed
+
+
+def uninstall_rune(name: str, target_dir: Path | None = None) -> bool:
+    """Uninstall an installed rune by name."""
+    target = (
+        target_dir.expanduser()
+        if target_dir is not None
+        else Path("~/.agents/extensions").expanduser()
+    )
+    path = target / name
+    if path.exists():
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+        return True
+    return False
 
 
 def install_rune(

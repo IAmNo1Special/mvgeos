@@ -7,7 +7,13 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from mvgeos_runes.installer import DEFAULT_MARKETPLACE_URL, install_rune
+from mvgeos_runes.installer import (
+    DEFAULT_MARKETPLACE_URL,
+    fetch_marketplace_runes,
+    install_rune,
+    list_installed_runes,
+    uninstall_rune,
+)
 
 
 def _create_mock_rune_dir(
@@ -187,3 +193,157 @@ def test_install_rune_executes_python_deps(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     )
+
+
+def test_fetch_marketplace_runes_success() -> None:
+    marketplace_payload = {
+        "runes": {
+            "test-rune": {
+                "name": "test-rune",
+                "git": "https://github.com/org/test-rune.git",
+                "description": "A test rune",
+            }
+        }
+    }
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = marketplace_payload
+    mock_resp.raise_for_status = MagicMock()
+
+    with patch("httpx.get", return_value=mock_resp) as mock_get:
+        runes = fetch_marketplace_runes()
+
+    assert runes == marketplace_payload["runes"]
+    mock_get.assert_called_once_with(DEFAULT_MARKETPLACE_URL, timeout=15.0)
+
+
+def test_fetch_marketplace_runes_custom_url_and_timeout() -> None:
+    custom_url = "https://example.com/custom-market.json"
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"runes": {"custom": {"name": "custom"}}}
+    mock_resp.raise_for_status = MagicMock()
+
+    with patch("httpx.get", return_value=mock_resp) as mock_get:
+        runes = fetch_marketplace_runes(marketplace_url=custom_url, timeout=5.0)
+
+    assert runes == {"custom": {"name": "custom"}}
+    mock_get.assert_called_once_with(custom_url, timeout=5.0)
+
+
+def test_fetch_marketplace_runes_network_error() -> None:
+    with patch("httpx.get", side_effect=httpx.ConnectError("Connection failed")):
+        runes = fetch_marketplace_runes()
+
+    assert runes == {}
+
+
+def test_fetch_marketplace_runes_http_status_error() -> None:
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "404 Not Found", request=MagicMock(), response=MagicMock()
+    )
+
+    with patch("httpx.get", return_value=mock_resp):
+        runes = fetch_marketplace_runes()
+
+    assert runes == {}
+
+
+def test_fetch_marketplace_runes_non_dict_payload() -> None:
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json.return_value = ["not", "a", "dict"]
+
+    with patch("httpx.get", return_value=mock_resp):
+        runes = fetch_marketplace_runes()
+
+    assert runes == {}
+
+
+def test_list_installed_runes_nonexistent_directory(tmp_path: Path) -> None:
+    missing_dir = tmp_path / "does_not_exist"
+    assert list_installed_runes(missing_dir) == []
+
+
+def test_list_installed_runes_success(tmp_path: Path) -> None:
+    # Subdir with full manifest
+    beta_dir = tmp_path / "beta-rune"
+    beta_dir.mkdir()
+    beta_manifest = {
+        "name": "beta-rune",
+        "version": "2.0.0",
+        "description": "Beta extension rune",
+        "runtime": "python",
+        "enabled": False,
+        "hooks": ["pre_turn"],
+        "python_deps": ["pydantic>=2.0"],
+    }
+    (beta_dir / "manifest.json").write_text(json.dumps(beta_manifest), encoding="utf-8")
+
+    # Subdir with empty manifest (testing fallbacks)
+    alpha_dir = tmp_path / "alpha-rune"
+    alpha_dir.mkdir()
+    (alpha_dir / "manifest.json").write_text("{}", encoding="utf-8")
+
+    # Subdir without manifest.json (should be ignored)
+    ignored_dir = tmp_path / "ignored-dir"
+    ignored_dir.mkdir()
+
+    # Regular file (should be ignored)
+    (tmp_path / "not-a-dir.txt").write_text("file", encoding="utf-8")
+
+    installed = list_installed_runes(tmp_path)
+
+    assert len(installed) == 2
+    # Sorted by name: alpha-rune first, then beta-rune
+    assert installed[0] == {
+        "name": "alpha-rune",
+        "version": "unknown",
+        "description": "",
+        "runtime": "python",
+        "enabled": True,
+        "path": str(alpha_dir),
+        "hooks": [],
+        "python_deps": [],
+    }
+    assert installed[1] == {
+        "name": "beta-rune",
+        "version": "2.0.0",
+        "description": "Beta extension rune",
+        "runtime": "python",
+        "enabled": False,
+        "path": str(beta_dir),
+        "hooks": ["pre_turn"],
+        "python_deps": ["pydantic>=2.0"],
+    }
+
+
+def test_list_installed_runes_corrupt_manifest(tmp_path: Path) -> None:
+    corrupt_dir = tmp_path / "corrupt-rune"
+    corrupt_dir.mkdir()
+    (corrupt_dir / "manifest.json").write_text("NOT_JSON{", encoding="utf-8")
+
+    installed = list_installed_runes(tmp_path)
+    assert installed == []
+
+
+def test_uninstall_rune_directory(tmp_path: Path) -> None:
+    target_rune = tmp_path / "my-rune"
+    target_rune.mkdir()
+    (target_rune / "manifest.json").write_text("{}", encoding="utf-8")
+
+    assert uninstall_rune("my-rune", target_dir=tmp_path) is True
+    assert not target_rune.exists()
+
+
+def test_uninstall_rune_file(tmp_path: Path) -> None:
+    target_file = tmp_path / "single-file-rune"
+    target_file.write_text("# single file", encoding="utf-8")
+
+    assert uninstall_rune("single-file-rune", target_dir=tmp_path) is True
+    assert not target_file.exists()
+
+
+def test_uninstall_rune_nonexistent(tmp_path: Path) -> None:
+    assert uninstall_rune("nonexistent-rune", target_dir=tmp_path) is False
