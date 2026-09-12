@@ -14,7 +14,7 @@ from mvgeos_gui.state import AppState
 
 @pytest.mark.asyncio
 async def test_render_packages_panel(user: User) -> None:
-    """Packages panel should render title and empty installed message."""
+    """Packages panel should render title and empty message when no runes exist."""
     state = AppState()
 
     @ui.page("/test_packages_panel")
@@ -23,8 +23,7 @@ async def test_render_packages_panel(user: User) -> None:
 
     await user.open("/test_packages_panel")
     await user.should_see("Marketplace")
-    await user.should_see("Installed")
-    await user.should_see("No packages installed")
+    await user.should_see("No extensions found")
 
 
 @pytest.mark.asyncio
@@ -85,7 +84,7 @@ async def test_packages_panel_marketplace_listing_and_search(user: User) -> None
 
 @pytest.mark.asyncio
 async def test_packages_panel_installed_items_and_uninstall(user: User) -> None:
-    """Installed tab should render runes and allow uninstalling them."""
+    """Installed extensions render path/hooks/deps and uninstall via button."""
     state = AppState()
     state.fetch_marketplace_runes_async = AsyncMock(return_value={})  # type: ignore[method-assign]
     state.list_installed_runes_async = AsyncMock(  # type: ignore[method-assign]
@@ -95,6 +94,8 @@ async def test_packages_panel_installed_items_and_uninstall(user: User) -> None:
                 "version": "1.0.0",
                 "path": "/home/user/.agents/extensions/my-tool",
                 "description": "Installed tool description",
+                "hooks": ["turn_start"],
+                "python_deps": ["requests"],
             }
         ]
     )
@@ -105,13 +106,13 @@ async def test_packages_panel_installed_items_and_uninstall(user: User) -> None:
         render_packages_panel(state)
 
     await user.open("/test_packages_installed")
-    # Switch to installed tab
-    user.find(marker="package_tab_installed").click()
     await user.should_see("my-tool")
     await user.should_see("/home/user/.agents/extensions/my-tool")
     await user.should_see("Installed tool description")
+    await user.should_see("turn_start")
+    await user.should_see("requests")
 
-    # Click uninstall
+    # Click installed button to uninstall
     user.find(marker="package_uninstall_item_my-tool").click()
     await user.should_see("Uninstalling my-tool...")
     state.uninstall_rune_async.assert_called_once_with("my-tool")
@@ -124,7 +125,7 @@ async def test_packages_panel_installed_items_and_uninstall(user: User) -> None:
 
 @pytest.mark.asyncio
 async def test_packages_panel_marketplace_install_flow(user: User) -> None:
-    """Marketplace install button installs rune and shows installed badge."""
+    """Marketplace install button installs rune and shows installed button."""
     state = AppState()
     state.fetch_marketplace_runes_async = AsyncMock(  # type: ignore[method-assign]
         return_value={

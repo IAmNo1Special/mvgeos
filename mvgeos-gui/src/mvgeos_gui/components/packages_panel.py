@@ -79,8 +79,7 @@ def render_packages_panel(state: AppState) -> None:
 
             def _on_search(val: str) -> None:
                 search_state["query"] = val.strip().lower()
-                render_marketplace.refresh()
-                render_installed.refresh()
+                render_extensions.refresh()
 
             ui.input(
                 placeholder="Search packages & runes...",
@@ -96,177 +95,95 @@ def render_packages_panel(state: AppState) -> None:
                 "mvge-glow-btn text-white text-xs"
             ).mark("package_open_install_dialog_btn")
 
-        with ui.tabs().classes("w-full border-b border-[#241f38]") as tabs:
-            tab_marketplace = (
-                ui.tab("Marketplace").classes("text-xs").mark("package_tab_marketplace")
-            )
-            tab_installed = (
-                ui.tab("Installed").classes("text-xs").mark("package_tab_installed")
-            )
+        @ui.refreshable
+        def render_extensions() -> None:
+            query = search_state["query"]
+            # Build map of installed runes by name
+            installed_by_name: dict[str, dict[str, Any]] = {
+                str(r.get("name", "")): r for r in installed_data if "name" in r
+            }
 
-        with ui.tab_panels(tabs, value=tab_marketplace).classes(
-            "w-full bg-transparent p-0"
-        ):
-            with ui.tab_panel(tab_marketplace).classes("p-0 pt-4 gap-3"):
+            # Merge all rune names from marketplace and installed
+            all_names = set(marketplace_data.keys()) | set(installed_by_name.keys())
 
-                @ui.refreshable
-                def render_marketplace() -> None:
-                    query = search_state["query"]
-                    filtered = {}
-                    for name, meta in marketplace_data.items():
-                        desc = (
-                            meta.get("description", "")
-                            if isinstance(meta, dict)
-                            else ""
-                        )
-                        if query in name.lower() or query in desc.lower():
-                            filtered[name] = meta
+            filtered_names: list[str] = []
+            for name in all_names:
+                mp_meta = marketplace_data.get(name, {})
+                inst_meta = installed_by_name.get(name, {})
+                desc = (
+                    mp_meta.get("description", "") if isinstance(mp_meta, dict) else ""
+                ) or str(inst_meta.get("description", ""))
 
-                    if not filtered:
-                        ui.label("No marketplace runes found").classes(
-                            "text-xs text-[#6e6584]"
-                        )
-                        return
+                if query in name.lower() or query in desc.lower():
+                    filtered_names.append(name)
 
-                    with ui.column().classes("w-full gap-3"):
-                        for name, meta in sorted(filtered.items()):
-                            if not isinstance(meta, dict):
-                                continue
-                            version = meta.get("version", "1.0.0")
-                            runtime = meta.get("runtime", "python")
-                            desc = meta.get("description", "")
-                            git_url = meta.get("git", "")
+            if not filtered_names:
+                ui.label("No extensions found").classes("text-xs text-[#6e6584] mt-2")
+                return
 
-                            with ui.card().classes(
-                                "w-full p-4 bg-[#0e0e12] border border-[#292335] "
-                                "rounded-xl gap-2"
-                            ):
-                                with ui.row().classes(
-                                    "w-full items-center justify-between"
-                                ):
-                                    with ui.row().classes("items-center gap-2"):
-                                        ui.icon("extension", size="18px").classes(
-                                            "text-[#7b6cf6]"
-                                        )
-                                        ui.label(name).classes(
-                                            "text-sm font-semibold text-[#eceaf4]"
-                                        )
-                                        ui.badge(f"v{version}", color="grey-9").props(
-                                            "rounded dense"
-                                        ).classes(
-                                            "text-[10px] text-[#9c94b3] font-mono"
-                                        )
-                                        ui.badge(runtime, color="purple-9").props(
-                                            "rounded dense"
-                                        ).classes("text-[10px]")
+            with ui.column().classes("w-full gap-3 mt-2"):
+                for name in sorted(filtered_names):
+                    mp_meta = marketplace_data.get(name, {})
+                    inst_meta = installed_by_name.get(name, {})
 
-                                    with ui.row().classes("items-center gap-2"):
-                                        if state.is_rune_installed(name):
-                                            ui.badge(
-                                                "Installed", color="positive"
-                                            ).props("rounded dense").classes("text-xs")
-                                        else:
+                    # Determine installation status
+                    is_installed = state.is_rune_installed(name) or bool(inst_meta)
 
-                                            async def _install_item(
-                                                r: str = name,
-                                            ) -> None:
-                                                ui.notify(
-                                                    f"Installing {r}...",
-                                                    type="info",
-                                                )
-                                                success = (
-                                                    await state.install_rune_async(r)
-                                                )
-                                                if success:
-                                                    ui.notify(
-                                                        f"Successfully installed {r}!",
-                                                        type="positive",
-                                                    )
-                                                    await _refresh_data()
-                                                else:
-                                                    ui.notify(
-                                                        f"Failed to install {r}",
-                                                        type="negative",
-                                                    )
+                    # Gather metadata
+                    version = "1.0.0"
+                    runtime = "python"
+                    desc = ""
+                    git_url = ""
+                    if isinstance(mp_meta, dict) and mp_meta:
+                        version = mp_meta.get("version", version)
+                        runtime = mp_meta.get("runtime", runtime)
+                        desc = mp_meta.get("description", "")
+                        git_url = mp_meta.get("git", "")
 
-                                            ui.button(
-                                                "Install",
-                                                on_click=_install_item,
-                                            ).props("unelevated dense size=sm").classes(
-                                                "mvge-glow-btn text-white"
-                                            ).mark(f"package_install_item_{name}")
+                    if inst_meta:
+                        version = str(inst_meta.get("version", version))
+                        runtime = str(inst_meta.get("runtime", runtime))
+                        if not desc:
+                            desc = str(inst_meta.get("description", ""))
 
-                                if desc:
-                                    ui.label(desc).classes("text-xs text-[#9c94b3]")
+                    path = str(inst_meta.get("path", ""))
+                    hooks = inst_meta.get("hooks", [])
+                    python_deps = inst_meta.get("python_deps", [])
 
-                                if git_url:
-                                    with ui.row().classes("items-center gap-1"):
-                                        ui.icon("code", size="12px").classes(
-                                            "text-[#6e6584]"
-                                        )
-                                        ui.link(
-                                            git_url,
-                                            git_url,
-                                            new_tab=True,
-                                        ).classes(
-                                            "text-[11px] text-[#7b6cf6] underline"
-                                        )
+                    with ui.card().classes(
+                        "w-full p-4 bg-[#0e0e12] border border-[#292335] "
+                        "rounded-xl gap-2"
+                    ):
+                        with ui.row().classes("w-full items-center justify-between"):
+                            with ui.row().classes("items-center gap-2"):
+                                if is_installed:
+                                    ui.icon("check_circle", size="18px").classes(
+                                        "text-green-400"
+                                    )
+                                else:
+                                    ui.icon("extension", size="18px").classes(
+                                        "text-[#7b6cf6]"
+                                    )
 
-                render_marketplace()
+                                ui.label(name).classes(
+                                    "text-sm font-semibold text-[#eceaf4]"
+                                )
+                                ui.badge(f"v{version}", color="grey-9").props(
+                                    "rounded dense"
+                                ).classes("text-[10px] text-[#9c94b3] font-mono")
+                                ui.badge(runtime, color="purple-9").props(
+                                    "rounded dense"
+                                ).classes("text-[10px]")
 
-            with ui.tab_panel(tab_installed).classes("p-0 pt-4 gap-3"):
-
-                @ui.refreshable
-                def render_installed() -> None:
-                    ui.label("Installed").classes(
-                        "text-sm font-semibold text-[#eceaf4] mb-3"
-                    )
-                    query = search_state["query"]
-                    filtered_installed = [
-                        r
-                        for r in installed_data
-                        if query in str(r.get("name", "")).lower()
-                        or query in str(r.get("description", "")).lower()
-                    ]
-
-                    if not filtered_installed:
-                        ui.label("No packages installed").classes(
-                            "text-xs text-[#6e6584]"
-                        )
-                        return
-
-                    with ui.column().classes("w-full gap-3"):
-                        for r in filtered_installed:
-                            name = str(r.get("name", ""))
-                            version = str(r.get("version", "unknown"))
-                            path = str(r.get("path", ""))
-                            desc = str(r.get("description", ""))
-
-                            with ui.card().classes(
-                                "w-full p-4 bg-[#0e0e12] border border-[#292335] "
-                                "rounded-xl gap-2"
-                            ):
-                                with ui.row().classes(
-                                    "w-full items-center justify-between"
-                                ):
-                                    with ui.row().classes("items-center gap-2"):
-                                        ui.icon("check_circle", size="18px").classes(
-                                            "text-green-400"
-                                        )
-                                        ui.label(name).classes(
-                                            "text-sm font-semibold text-[#eceaf4]"
-                                        )
-                                        ui.badge(f"v{version}", color="grey-9").props(
-                                            "rounded dense"
-                                        ).classes(
-                                            "text-[10px] text-[#9c94b3] font-mono"
-                                        )
+                            with ui.row().classes("items-center gap-2"):
+                                if is_installed:
 
                                     async def _uninstall_item(
                                         r_name: str = name,
                                     ) -> None:
                                         ui.notify(
-                                            f"Uninstalling {r_name}...", type="info"
+                                            f"Uninstalling {r_name}...",
+                                            type="info",
                                         )
                                         success = await state.uninstall_rune_async(
                                             r_name
@@ -284,20 +201,109 @@ def render_packages_panel(state: AppState) -> None:
                                             )
 
                                     ui.button(
-                                        "Uninstall",
+                                        "Installed",
                                         on_click=_uninstall_item,
-                                    ).props("flat dense size=sm text-color=red-4").mark(
+                                    ).props("unelevated dense size=sm").classes(
+                                        "mvge-installed-btn text-xs font-medium"
+                                    ).mark(f"package_install_item_{name}").mark(
                                         f"package_uninstall_item_{name}"
                                     )
+                                else:
 
+                                    async def _install_item(
+                                        r: str = name,
+                                    ) -> None:
+                                        ui.notify(
+                                            f"Installing {r}...",
+                                            type="info",
+                                        )
+                                        success = await state.install_rune_async(r)
+                                        if success:
+                                            ui.notify(
+                                                f"Successfully installed {r}!",
+                                                type="positive",
+                                            )
+                                            await _refresh_data()
+                                        else:
+                                            ui.notify(
+                                                f"Failed to install {r}",
+                                                type="negative",
+                                            )
+
+                                    ui.button(
+                                        "Install",
+                                        on_click=_install_item,
+                                    ).props("unelevated dense size=sm").classes(
+                                        "mvge-glow-btn text-white text-xs font-medium"
+                                    ).mark(f"package_install_item_{name}")
+
+                        if desc:
+                            ui.label(desc).classes("text-xs text-[#9c94b3]")
+
+                        if git_url:
+                            with ui.row().classes("items-center gap-1"):
+                                ui.icon("code", size="12px").classes("text-[#6e6584]")
+                                ui.link(
+                                    git_url,
+                                    git_url,
+                                    new_tab=True,
+                                ).classes("text-[11px] text-[#7b6cf6] underline")
+
+                        # Installed extension details
+                        if is_installed:
+                            with ui.column().classes(
+                                "w-full gap-1 pt-1 mt-1 border-t border-[#292335]/50"
+                            ):
                                 if path:
-                                    ui.label(path).classes(
-                                        "text-[11px] text-[#6e6584] font-mono"
-                                    )
-                                if desc:
-                                    ui.label(desc).classes("text-xs text-[#9c94b3]")
+                                    with ui.row().classes(
+                                        "items-center gap-1.5 no-wrap"
+                                    ):
+                                        ui.icon("folder_open", size="12px").classes(
+                                            "text-[#6e6584]"
+                                        )
+                                        ui.label(path).classes(
+                                            "text-[11px] text-[#6e6584] "
+                                            "font-mono truncate"
+                                        )
 
-                render_installed()
+                                if hooks:
+                                    with ui.row().classes(
+                                        "items-center gap-1 flex-wrap"
+                                    ):
+                                        ui.label("Hooks:").classes(
+                                            "text-[10px] uppercase "
+                                            "font-semibold text-[#6e6584]"
+                                        )
+                                        for h in hooks:
+                                            h_name = (
+                                                h
+                                                if isinstance(h, str)
+                                                else getattr(h, "value", str(h))
+                                            )
+                                            ui.badge(h_name, color="dark").props(
+                                                "rounded dense"
+                                            ).classes(
+                                                "text-[9px] text-[#9c94b3] "
+                                                "font-mono border border-[#292335]"
+                                            )
+
+                                if python_deps:
+                                    with ui.row().classes(
+                                        "items-center gap-1 flex-wrap"
+                                    ):
+                                        ui.label("Deps:").classes(
+                                            "text-[10px] uppercase "
+                                            "font-semibold text-[#6e6584]"
+                                        )
+                                        for dep in python_deps:
+                                            ui.badge(str(dep), color="dark").props(
+                                                "rounded dense"
+                                            ).classes(
+                                                "text-[9px] text-[#9c94b3] "
+                                                "font-mono border border-[#292335]"
+                                            )
+
+        render_extensions()
 
     async def _refresh_data() -> None:
         try:
@@ -314,7 +320,6 @@ def render_packages_panel(state: AppState) -> None:
         except Exception as exc:
             logger.warning("Failed to list installed runes: %s", exc)
 
-        render_marketplace.refresh()
-        render_installed.refresh()
+        render_extensions.refresh()
 
     ui.timer(0.01, _refresh_data, once=True)
