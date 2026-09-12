@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.10] - 2026-09-12
+
+
+### Bug Fixes
+
+- **gui:** retain marketplace mvges when uninstalled and add resilient catalog fallbacks (ee7432e)
+
+- **ci:** remove stale coding-mvge refs and make protocol test hermetic (5e9d9e8)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (8dc671a)
+
+- merge origin/main and regenerate uv.lock (14f31a8)
+
+- update versions to v0.2.9 from main (40d634f)
+
+- **release:** v0.2.10 (14adb3f)
+
+
 ## [0.2.9] - 2026-09-12
 
 
@@ -18,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Features
 
 - **gui:** enable filter by hooks, types, deps, and sort marketplace list (e04c036)
+
+- **mvge:** extract coding_mvge and make mvges installable from marketplace (3a5acf5)
 
 
 ## [0.2.8] - 2026-09-12
