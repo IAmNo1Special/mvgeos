@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-09-12
+
+
+### Bug Fixes
+
+- **coding-mvge:** prevent timeout race condition in bash cancellation test (1192553)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (63ea6f3)
+
+- **release:** v0.2.5 (7c02be5)
+
+
+### Features
+
+- **runes:** add marketplace discovery and management functions (a6f62f3)
+
+- **gui:** integrate marketplace exploration and extension management (fefd245)
+
+
+### Tests
+
+- **gui,runes:** expand branch coverage for packages panel and installer (3118bdb)
+
+
 ## [0.2.4] - 2026-09-11
 
 
