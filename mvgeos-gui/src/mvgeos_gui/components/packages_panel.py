@@ -11,12 +11,66 @@ from mvgeos_gui.state import AppState
 
 logger = logging.getLogger(__name__)
 
+SORT_OPTIONS = [
+    ("name_az", "Alphabetical (A-Z)"),
+    ("name_za", "Alphabetical (Z-A)"),
+    ("version_desc", "Version (Highest First)"),
+    ("version_asc", "Version (Lowest First)"),
+]
+
+FILTER_HOOKS_OPTIONS = [
+    ("before_invocation", "Before Invocation"),
+    ("after_invocation", "After Invocation"),
+    ("before_spell_cast", "Before Spell Cast"),
+    ("after_spell_result", "After Spell Result"),
+    ("before_provider_request", "Before Provider Request"),
+    ("after_provider_response", "After Provider Response"),
+    ("turn_start", "Turn Start"),
+    ("turn_end", "Turn End"),
+    ("session_start", "Session Start"),
+    ("session_shutdown", "Session Shutdown"),
+    ("context_transform", "Context Transform"),
+    ("agent_start", "Agent Start"),
+    ("agent_end", "Agent End"),
+    ("input", "Input"),
+    ("should_stop_after_turn", "Should Stop After Turn"),
+    ("prepare_next_turn", "Prepare Next Turn"),
+    ("resources_discover", "Resources Discover"),
+]
+
+RUNTIME_OPTIONS = [
+    ("python", "Python"),
+    ("node", "Node.js"),
+    ("deno", "Deno"),
+    ("bun", "Bun"),
+]
+
+EXECUTION_MODE_OPTIONS = [
+    ("parallel", "Parallel"),
+    ("serial", "Serial"),
+]
+
+SCOPE_OPTIONS = [
+    ("project", "Project"),
+    ("user", "User"),
+    ("agent", "Agent"),
+]
+
 
 def render_packages_panel(state: AppState) -> None:
     """Render the packages and rune marketplace view."""
     marketplace_data: dict[str, Any] = {}
     installed_data: list[dict[str, Any]] = []
     search_state: dict[str, str] = {"query": ""}
+    filter_state: dict[str, Any] = {
+        "hooks": [],
+        "runtime": "",
+        "execution_mode": "",
+        "scope": "",
+        "installed_only": False,
+        "marketplace_only": False,
+    }
+    sort_state: dict[str, str] = {"sort_by": "name_az"}
 
     with (
         ui.dialog() as install_dialog,
@@ -95,9 +149,137 @@ def render_packages_panel(state: AppState) -> None:
                 "mvge-glow-btn text-white text-xs"
             ).mark("package_open_install_dialog_btn")
 
+        # Filter and sort controls
+        with ui.row().classes("w-full items-center gap-3 mt-2 flex-wrap"):
+            # Hooks filter (multi-select)
+            with ui.column().classes("gap-1"):
+                ui.label("Hooks").classes(
+                    "text-[10px] uppercase font-semibold text-[#6e6584]"
+                )
+                hooks_select = (
+                    ui.select(
+                        options=dict(FILTER_HOOKS_OPTIONS),
+                        with_input=True,
+                        multiple=True,
+                        value=[],
+                    )
+                    .props("dense dark outlined rounded")
+                    .classes("w-[200px] text-xs")
+                    .mark("package_filter_hooks")
+                )
+
+            # Runtime filter
+            with ui.column().classes("gap-1"):
+                ui.label("Runtime").classes(
+                    "text-[10px] uppercase font-semibold text-[#6e6584]"
+                )
+                runtime_select = (
+                    ui.select(
+                        options=dict(RUNTIME_OPTIONS),
+                        with_input=True,
+                        value=None,
+                    )
+                    .props("dense dark outlined rounded")
+                    .classes("w-[140px] text-xs")
+                    .mark("package_filter_runtime")
+                )
+
+            # Execution mode filter
+            with ui.column().classes("gap-1"):
+                ui.label("Exec Mode").classes(
+                    "text-[10px] uppercase font-semibold text-[#6e6584]"
+                )
+                exec_mode_select = (
+                    ui.select(
+                        options=dict(EXECUTION_MODE_OPTIONS),
+                        with_input=True,
+                        value=None,
+                    )
+                    .props("dense dark outlined rounded")
+                    .classes("w-[140px] text-xs")
+                    .mark("package_filter_exec_mode")
+                )
+
+            # Scope filter
+            with ui.column().classes("gap-1"):
+                ui.label("Scope").classes(
+                    "text-[10px] uppercase font-semibold text-[#6e6584]"
+                )
+                scope_select = (
+                    ui.select(
+                        options=dict(SCOPE_OPTIONS),
+                        with_input=True,
+                        value=None,
+                    )
+                    .props("dense dark outlined rounded")
+                    .classes("w-[140px] text-xs")
+                    .mark("package_filter_scope")
+                )
+
+            # Installed only checkbox
+            installed_only_chk = (
+                ui.checkbox("Installed only")
+                .props("dense dark color=primary")
+                .classes("text-xs self-end")
+                .mark("package_filter_installed_only")
+            )
+
+            # Marketplace only checkbox
+            marketplace_only_chk = (
+                ui.checkbox("Marketplace only")
+                .props("dense dark color=primary")
+                .classes("text-xs self-end")
+                .mark("package_filter_marketplace_only")
+            )
+
+            # Sort dropdown
+            with ui.column().classes("gap-1"):
+                ui.label("Sort").classes(
+                    "text-[10px] uppercase font-semibold text-[#6e6584]"
+                )
+                sort_select = (
+                    ui.select(
+                        options=dict(SORT_OPTIONS),
+                        with_input=True,
+                        value="name_az",
+                    )
+                    .props("dense dark outlined rounded")
+                    .classes("w-[200px] text-xs")
+                    .mark("package_sort_select")
+                )
+
+        def _on_filter_change() -> None:
+            filter_state["hooks"] = hooks_select.value or []
+            filter_state["runtime"] = runtime_select.value or ""
+            filter_state["execution_mode"] = exec_mode_select.value or ""
+            filter_state["scope"] = scope_select.value or ""
+            filter_state["installed_only"] = bool(installed_only_chk.value)
+            filter_state["marketplace_only"] = bool(marketplace_only_chk.value)
+            render_extensions.refresh()
+
+        def _on_sort_change() -> None:
+            sort_state["sort_by"] = sort_select.value or "name_az"
+            render_extensions.refresh()
+
+        hooks_select.on("update:model-value", _on_filter_change)
+        runtime_select.on("update:model-value", _on_filter_change)
+        exec_mode_select.on("update:model-value", _on_filter_change)
+        scope_select.on("update:model-value", _on_filter_change)
+        installed_only_chk.on("update:model-value", _on_filter_change)
+        marketplace_only_chk.on("update:model-value", _on_filter_change)
+        sort_select.on("update:model-value", _on_sort_change)
+
         @ui.refreshable
         def render_extensions() -> None:
             query = search_state["query"]
+            hooks_filter = filter_state.get("hooks", [])
+            runtime_filter = filter_state.get("runtime", "")
+            exec_mode_filter = filter_state.get("execution_mode", "")
+            scope_filter = filter_state.get("scope", "")
+            installed_only = filter_state.get("installed_only", False)
+            marketplace_only = filter_state.get("marketplace_only", False)
+            sort_by = sort_state.get("sort_by", "name_az")
+
             # Build map of installed runes by name
             installed_by_name: dict[str, dict[str, Any]] = {
                 str(r.get("name", "")): r for r in installed_data if "name" in r
@@ -114,15 +296,82 @@ def render_packages_panel(state: AppState) -> None:
                     mp_meta.get("description", "") if isinstance(mp_meta, dict) else ""
                 ) or str(inst_meta.get("description", ""))
 
-                if query in name.lower() or query in desc.lower():
-                    filtered_names.append(name)
+                # Search filter
+                if query and query not in name.lower() and query not in desc.lower():
+                    continue
+
+                # Installed/Marketplace filter
+                is_installed = state.is_rune_installed(name) or bool(inst_meta)
+                if installed_only and not is_installed:
+                    continue
+                if marketplace_only and is_installed:
+                    continue
+
+                # Runtime filter
+                r_runtime = ""
+                if isinstance(mp_meta, dict) and mp_meta:
+                    r_runtime = mp_meta.get("runtime", "python")
+                if inst_meta:
+                    r_runtime = str(inst_meta.get("runtime", r_runtime))
+                if runtime_filter and r_runtime != runtime_filter:
+                    continue
+
+                # Execution mode filter
+                r_exec_mode = ""
+                if isinstance(mp_meta, dict) and mp_meta:
+                    r_exec_mode = mp_meta.get("execution_mode", "parallel")
+                if inst_meta:
+                    r_exec_mode = str(inst_meta.get("execution_mode", r_exec_mode))
+                if exec_mode_filter and r_exec_mode != exec_mode_filter:
+                    continue
+
+                # Scope filter
+                r_scope = ""
+                if isinstance(mp_meta, dict) and mp_meta:
+                    r_scope = mp_meta.get("scope", "project")
+                if inst_meta:
+                    r_scope = str(inst_meta.get("scope", r_scope))
+                if scope_filter and r_scope != scope_filter:
+                    continue
+
+                # Hooks filter (must have ALL selected hooks)
+                r_hooks: list[str] = []
+                if isinstance(mp_meta, dict) and mp_meta:
+                    r_hooks = mp_meta.get("hooks", []) or []
+                if inst_meta:
+                    r_hooks = inst_meta.get("hooks", r_hooks) or []
+                if hooks_filter and not all(h in r_hooks for h in hooks_filter):
+                    continue
+
+                filtered_names.append(name)
+
+            # Apply sorting
+            def _sort_key(n: str) -> tuple[str, tuple[int, ...]]:
+                mp = marketplace_data.get(n, {})
+                inst = installed_by_name.get(n, {})
+                version_str = str(mp.get("version", inst.get("version", "0.0.0")))
+                # Simple version tuple for sorting
+                version_parts = [int(x) for x in version_str.split(".") if x.isdigit()]
+                version_tuple = tuple(version_parts)
+                if len(version_tuple) < 3:
+                    version_tuple = version_tuple + (0,) * (3 - len(version_tuple))
+                return (n.lower(), version_tuple)
+
+            if sort_by == "name_az":
+                filtered_names.sort(key=lambda n: n.lower())
+            elif sort_by == "name_za":
+                filtered_names.sort(key=lambda n: n.lower(), reverse=True)
+            elif sort_by == "version_desc":
+                filtered_names.sort(key=_sort_key, reverse=True)
+            elif sort_by == "version_asc":
+                filtered_names.sort(key=_sort_key)
 
             if not filtered_names:
                 ui.label("No extensions found").classes("text-xs text-[#6e6584] mt-2")
                 return
 
             with ui.column().classes("w-full gap-3 mt-2"):
-                for name in sorted(filtered_names):
+                for name in filtered_names:
                     mp_meta = marketplace_data.get(name, {})
                     inst_meta = installed_by_name.get(name, {})
 
