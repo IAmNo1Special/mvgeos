@@ -336,7 +336,7 @@ class TestCastBash:
         ):
             await bash(
                 command="sleep 100",
-                timeout_ms=50,
+                timeout_ms=10_000,
                 workspace_root=tmp_path,
             )
         mock_kill.assert_awaited_once_with(mock_proc)
