@@ -623,6 +623,17 @@ def _render_composer(state: AppState) -> None:
                         ):
                             ui.tooltip("Realm")
 
+                        if state.selected_realm == "openrouter" and not (
+                            state.is_rune_installed("openrouter-realm")
+                        ):
+                            (
+                                ui.badge("Rune missing", color="amber-8")
+                                .props("rounded dense size=xs")
+                                .classes("cursor-pointer")
+                                .tooltip("Click to open Marketplace")
+                                .on("click", lambda: state.set_current_view("packages"))
+                            )
+
                         # Tier 2: Provider Select (Visible only if router)
                         if is_router:
                             providers = state.get_providers_for_selected_realm()
@@ -702,6 +713,7 @@ def _render_composer(state: AppState) -> None:
                             state.selected_provider,
                             state.selected_model,
                             state.contemplation_level,
+                            state.is_rune_installed("openrouter-realm"),
                         )
                     ]
 
@@ -711,6 +723,7 @@ def _render_composer(state: AppState) -> None:
                             state.selected_provider,
                             state.selected_model,
                             state.contemplation_level,
+                            state.is_rune_installed("openrouter-realm"),
                         )
                         if current_sel != last_selector_state[0]:
                             last_selector_state[0] = current_sel

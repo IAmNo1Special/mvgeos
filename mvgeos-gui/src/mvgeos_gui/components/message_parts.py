@@ -134,6 +134,47 @@ def render_message_footer(
     return row
 
 
+def render_missing_rune_card(msg: ChatMessage, state: AppState) -> ui.card | None:
+    """Render interactive missing rune card if message has missing_rune."""
+    if not getattr(msg, "missing_rune", None):
+        return None
+
+    missing_rune = str(msg.missing_rune)
+    with (
+        ui.card().classes(
+            "w-full p-3 bg-[#181320] border border-[#f59e0b]/40 rounded-xl my-2"
+        ) as card,
+        ui.row().classes("w-full items-center justify-between"),
+    ):
+        with ui.row().classes("items-center gap-2"):
+            ui.icon("extension", size="18px").classes("text-[#f59e0b]")
+            ui.label(f"Missing Extension: {missing_rune}").classes(
+                "text-xs font-semibold text-[#f59e0b]"
+            )
+        with ui.row().classes("items-center gap-2"):
+
+            async def _install_missing(r: str = missing_rune) -> None:
+                ui.notify(f"Installing {r}...", type="info")
+                success = await state.install_rune_async(r)
+                if success:
+                    ui.notify(f"Successfully installed {r}!", type="positive")
+                    msg.missing_rune = None
+                    state.notify()
+                else:
+                    ui.notify(f"Failed to install {r}", type="negative")
+
+            ui.button(
+                f"Install {missing_rune}",
+                on_click=_install_missing,
+            ).props("unelevated dense size=sm").classes("mvge-glow-btn text-white")
+            ui.button(
+                "Marketplace",
+                on_click=lambda: state.set_current_view("packages"),
+            ).props("flat dense size=sm text-color=grey-4")
+
+    return card
+
+
 def render_assistant_message(
     msg: ChatMessage, msg_idx: int, state: AppState
 ) -> ui.column:
@@ -151,6 +192,7 @@ def render_assistant_message(
         render_message_parts(msg, state, msg_idx=msg_idx)
         render_streaming_indicator(msg)
         render_error_display(msg)
+        render_missing_rune_card(msg, state)
         render_message_footer(msg, msg_idx, state)
 
     return container

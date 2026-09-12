@@ -23,6 +23,12 @@ from mvgeos_provider import (
     get_supported_contemplation_levels,
     is_realm_router,
 )
+from mvgeos_runes import (
+    fetch_marketplace_runes,
+    install_rune,
+    list_installed_runes,
+    uninstall_rune,
+)
 from mvgeos_runes.loader import get_default_skill_paths, load_skills_from_paths
 from mvgeos_runes.types import SkillManifest
 from mvgeos_tome.types import TomeEntryType
@@ -920,3 +926,39 @@ class AppState:
         else:
             self._collapsed_cards.add(card_id)
             self._expanded_cards.discard(card_id)
+
+    def is_rune_installed(self, rune_name: str) -> bool:
+        """Check if a rune extension is installed in ~/.agents/extensions."""
+        target = Path("~/.agents/extensions").expanduser() / rune_name
+        return target.is_dir()
+
+    async def fetch_marketplace_runes_async(self) -> dict[str, Any]:
+        """Fetch available marketplace runes asynchronously."""
+        return await asyncio.to_thread(fetch_marketplace_runes)
+
+    async def list_installed_runes_async(self) -> list[dict[str, Any]]:
+        """List installed runes asynchronously."""
+        return await asyncio.to_thread(list_installed_runes)
+
+    async def install_rune_async(self, source: str) -> bool:
+        """Install a rune from marketplace, git, or path asynchronously."""
+        try:
+            await asyncio.to_thread(install_rune, source)
+            if self.agent_service and self.agent_service._agent:
+                load_runes = getattr(self.agent_service._agent, "_load_runes", None)
+                if callable(load_runes):
+                    res = load_runes()
+                    if inspect.isawaitable(res):
+                        await res
+            self.notify()
+            return True
+        except Exception as exc:
+            logger.warning("Failed to install rune '%s': %s", source, exc)
+            return False
+
+    async def uninstall_rune_async(self, rune_name: str) -> bool:
+        """Uninstall a rune and unregister its realm factory if registered."""
+        result = bool(await asyncio.to_thread(uninstall_rune, rune_name))
+        get_default_realm_registry().unregister_realm_factory(rune_name)
+        self.notify()
+        return result

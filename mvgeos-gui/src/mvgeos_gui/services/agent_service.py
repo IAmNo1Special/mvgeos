@@ -33,6 +33,7 @@ from mvgeos_core.events import (
     MvgeEvent,
     MvgeEventType,
 )
+from mvgeos_provider import NoRealmRegisteredError
 from mvgeos_provider.model_registry import ModelRegistry
 
 from mvgeos_gui.models import (
@@ -688,6 +689,25 @@ class AgentService:
             message.error_message = str(exc)
             if not message.content:
                 self._active_transcript.set_text(_upstream_stall_message(str(exc)))
+        except NoRealmRegisteredError as exc:
+            logger.warning("No realm registered: %s", exc)
+            message.is_error = True
+            message.error_message = str(exc)
+            missing_rune = "openrouter-realm"
+            if "install " in str(exc):
+                parts = str(exc).split("install ")
+                if len(parts) > 1:
+                    cand = parts[1].split()[0].strip("'\"")
+                    if cand:
+                        missing_rune = cand
+            message.missing_rune = missing_rune
+            if not message.content:
+                self._active_transcript.set_text(
+                    f"**Missing Realm Extension**: The selected model requires the "
+                    f"`{missing_rune}` extension to communicate with upstream "
+                    f"providers.\n\n"
+                    f"Install it from the Rune Marketplace or use the button below."
+                )
         except Exception as exc:
             logger.exception("Error executing agent prompt: %s", exc)
             message.is_error = True

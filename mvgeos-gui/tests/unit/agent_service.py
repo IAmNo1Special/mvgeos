@@ -1673,3 +1673,32 @@ async def test_run_prompt_mid_prompt_skill_runs_agent(
     await agent_service.run_prompt(prompt, app_state, msg)
 
     mock_agent.run.assert_called_once_with(prompt)
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_handles_no_realm_registered_error(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify NoRealmRegisteredError sets missing_rune and helpful transcript."""
+    from mvgeos_provider import NoRealmRegisteredError
+
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(
+        side_effect=NoRealmRegisteredError(
+            "No realm for provider 'openrouter'. "
+            "Please install openrouter-realm extension"
+        )
+    )
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.on = MagicMock()
+    agent_service._agent = mock_agent
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("Hello", app_state, msg)
+
+    assert msg.is_error is True
+    assert msg.missing_rune == "openrouter-realm"
+    assert "Missing Realm Extension" in msg.content
+    assert "openrouter-realm" in msg.content

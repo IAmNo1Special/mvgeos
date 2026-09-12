@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from nicegui import ui
 from nicegui.testing import User
@@ -6,6 +8,7 @@ from mvgeos_gui.components.message_parts import (
     render_error_display,
     render_message_header,
     render_message_parts,
+    render_missing_rune_card,
     render_streaming_indicator,
 )
 from mvgeos_gui.models import (
@@ -82,3 +85,19 @@ async def test_render_error_display(user: User) -> None:
 
     await user.open("/test_error")
     await user.should_see("boom")
+
+
+@pytest.mark.asyncio
+async def test_render_missing_rune_card(user: User, tmp_path: Path) -> None:
+    state = AppState(project_path=tmp_path)
+    msg = _msg()
+    msg.missing_rune = "openrouter-realm"
+
+    @ui.page("/test_missing_rune")
+    def page() -> None:
+        render_missing_rune_card(msg, state)
+
+    await user.open("/test_missing_rune")
+    await user.should_see("Missing Extension: openrouter-realm")
+    await user.should_see("Install openrouter-realm")
+    await user.should_see("Marketplace")

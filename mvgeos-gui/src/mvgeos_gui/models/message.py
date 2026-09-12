@@ -50,6 +50,7 @@ class ChatMessage:
     attachments: list[str] = field(default_factory=list)
     artifacts: list[Artifact] = field(default_factory=list)
     parts: list[MessagePart] = field(default_factory=list)
+    missing_rune: str | None = None
 
     @property
     def content(self) -> str:

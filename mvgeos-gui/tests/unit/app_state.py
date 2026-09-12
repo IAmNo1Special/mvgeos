@@ -1267,3 +1267,80 @@ class TestCascadingSelectorState:
         levels = state.get_contemplation_levels_for_selected_model()
         assert isinstance(levels, list)
         assert state.supports_contemplation_for_selected_model() is True
+
+
+class TestRuneManagementState:
+    """Unit tests for rune marketplace and extension management in AppState."""
+
+    def test_is_rune_installed(self, tmp_path: Path) -> None:
+        state = AppState()
+        target_dir = tmp_path / "test-rune"
+        target_dir.mkdir()
+        with patch("pathlib.Path.expanduser", return_value=tmp_path):
+            assert state.is_rune_installed("test-rune") is True
+            assert state.is_rune_installed("missing-rune") is False
+
+    @pytest.mark.asyncio
+    async def test_fetch_marketplace_runes_async(self) -> None:
+        state = AppState()
+        mock_catalog = {"openrouter-realm": {"version": "0.1.0"}}
+        with patch(
+            "mvgeos_gui.state.fetch_marketplace_runes", return_value=mock_catalog
+        ):
+            result = await state.fetch_marketplace_runes_async()
+            assert result == mock_catalog
+
+    @pytest.mark.asyncio
+    async def test_list_installed_runes_async(self) -> None:
+        state = AppState()
+        mock_installed = [{"name": "test-rune", "version": "1.0.0"}]
+        with patch(
+            "mvgeos_gui.state.list_installed_runes", return_value=mock_installed
+        ):
+            result = await state.list_installed_runes_async()
+            assert result == mock_installed
+
+    @pytest.mark.asyncio
+    async def test_install_rune_async_success(self) -> None:
+        state = AppState()
+        notified: list[bool] = []
+        state.subscribe(lambda: notified.append(True))
+        mock_agent = MagicMock()
+        mock_agent._load_runes = AsyncMock()
+        state.agent_service = MagicMock()
+        state.agent_service._agent = mock_agent
+
+        with patch(
+            "mvgeos_gui.state.install_rune", return_value=Path("/tmp/installed")
+        ):
+            result = await state.install_rune_async("my-rune")
+            assert result is True
+            assert len(notified) > 0
+            mock_agent._load_runes.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_install_rune_async_failure(self) -> None:
+        state = AppState()
+        with patch("mvgeos_gui.state.install_rune", side_effect=RuntimeError("fail")):
+            result = await state.install_rune_async("bad-rune")
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_uninstall_rune_async(self) -> None:
+        state = AppState()
+        notified: list[bool] = []
+        state.subscribe(lambda: notified.append(True))
+
+        with (
+            patch(
+                "mvgeos_gui.state.uninstall_rune", return_value=True
+            ) as mock_uninstall,
+            patch("mvgeos_gui.state.get_default_realm_registry") as mock_registry_fn,
+        ):
+            mock_registry = MagicMock()
+            mock_registry_fn.return_value = mock_registry
+            result = await state.uninstall_rune_async("my-rune")
+            assert result is True
+            mock_uninstall.assert_called_once_with("my-rune")
+            mock_registry.unregister_realm_factory.assert_called_once_with("my-rune")
+            assert len(notified) > 0
