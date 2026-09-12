@@ -20,7 +20,6 @@ jobs:
       fail-fast: false
       matrix:
         package:
-          - coding-mvge
           - mvgeos-core
           - mvgeos-agent
           - mvgeos-provider
@@ -182,7 +181,7 @@ jobs:
           BUMP_TYPE: ${{ steps.bump_type.outputs.type }}
         run: |
           for pkg in mvgeos mvgeos-core mvgeos-agent mvgeos-provider mvgeos-tome \
-                     mvgeos-runes mvgeos-cli mvgeos-gui coding-mvge; do
+                     mvgeos-runes mvgeos-cli mvgeos-gui; do
             uv version --bump "$BUMP_TYPE" --package "$pkg" --no-sync
           done
           uv lock
@@ -203,8 +202,7 @@ jobs:
             mvgeos-core/pyproject.toml \
             mvgeos-agent/pyproject.toml mvgeos-provider/pyproject.toml \
             mvgeos-tome/pyproject.toml mvgeos-runes/pyproject.toml \
-            mvgeos-cli/pyproject.toml mvgeos-gui/pyproject.toml \
-            coding-mvge/pyproject.toml
+            mvgeos-cli/pyproject.toml mvgeos-gui/pyproject.toml
 
           git commit -m "chore(release): v$NEW_VERSION"
           git tag "v$NEW_VERSION"
