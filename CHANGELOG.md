@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.8] - 2026-09-12
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (5d92fff)
+
+- **release:** v0.2.8 (30f305c)
+
+
 ## [0.2.7] - 2026-09-12
 
 
@@ -18,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Features
 
 - **gui:** merge marketplace and installed tabs into unified view with interactive uninstall button (5c5a3ce)
+
+- **gui:** style installed button, make path clickable, and add type badges (49aa03c)
 
 
 ### Refactoring

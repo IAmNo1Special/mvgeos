@@ -66,6 +66,13 @@ def load_manifest(path: Path) -> RuneManifest | None:
 
     runtime = str(data.get("runtime", "python")).strip().lower() or "python"
 
+    raw_types = data.get("types")
+    types: list[str] = []
+    if isinstance(raw_types, list):
+        types = [str(t) for t in raw_types if t]
+    elif "type" in data and data["type"]:
+        types = [str(data["type"])]
+
     return RuneManifest(
         name=data["name"],
         version=data["version"],
@@ -78,4 +85,5 @@ def load_manifest(path: Path) -> RuneManifest | None:
         execution_mode=execution_mode,
         enabled=enabled,
         runtime=runtime,
+        types=types,
     )

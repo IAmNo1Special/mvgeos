@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import logging
+import os
+import platform
+import subprocess
+from pathlib import Path
 from typing import Any
 
 from nicegui import ui
@@ -55,6 +59,27 @@ SCOPE_OPTIONS = [
     ("user", "User"),
     ("agent", "Agent"),
 ]
+
+
+def open_folder_in_explorer(target_path: str | Path) -> bool:
+    """Open a directory or file's parent in the OS default file explorer."""
+    try:
+        p = Path(target_path).expanduser().resolve()
+        if not p.exists():
+            return False
+        folder = p if p.is_dir() else p.parent
+        target = str(folder)
+        system = platform.system()
+        if system == "Windows" and hasattr(os, "startfile"):
+            os.startfile(target)
+        elif system == "Darwin":
+            subprocess.Popen(["open", target])
+        else:
+            subprocess.Popen(["xdg-open", target])
+        return True
+    except Exception as exc:
+        logger.warning("Failed to open file explorer for '%s': %s", target_path, exc)
+        return False
 
 
 def render_packages_panel(state: AppState) -> None:
@@ -116,18 +141,11 @@ def render_packages_panel(state: AppState) -> None:
             ).classes("mvge-glow-btn text-white").mark("package_dialog_install_btn")
 
     with ui.column().classes("w-full h-full overflow-y-auto p-6 gap-4"):
-        with ui.row().classes("w-full items-center justify-between"):
-            with ui.column().classes("gap-1"):
-                ui.label("Marketplace").classes("text-2xl font-semibold text-[#eceaf4]")
-                ui.label(
-                    "Explore and manage MvgeOS extensions from the official "
-                    "marketplace."
-                ).classes("text-xs text-[#9c94b3]")
-
-            ui.button(
-                "Back to Chat",
-                on_click=lambda: state.set_current_view("chat"),
-            ).props("unelevated").classes("mvge-glow-btn text-white")
+        with ui.column().classes("gap-1"):
+            ui.label("Marketplace").classes("text-2xl font-semibold text-[#eceaf4]")
+            ui.label(
+                "Explore and manage MvgeOS extensions from the official marketplace."
+            ).classes("text-xs text-[#9c94b3]")
 
         with ui.row().classes("w-full items-center justify-between gap-4 mt-2"):
 
@@ -396,8 +414,39 @@ def render_packages_panel(state: AppState) -> None:
                             desc = str(inst_meta.get("description", ""))
 
                     path = str(inst_meta.get("path", ""))
-                    hooks = inst_meta.get("hooks", [])
-                    python_deps = inst_meta.get("python_deps", [])
+                    hooks = inst_meta.get("hooks") or (
+                        mp_meta.get("hooks", []) if isinstance(mp_meta, dict) else []
+                    )
+                    python_deps = inst_meta.get("python_deps") or (
+                        mp_meta.get("python_deps", [])
+                        if isinstance(mp_meta, dict)
+                        else []
+                    )
+
+                    types: list[str] = []
+                    raw_types = inst_meta.get("types") or (
+                        mp_meta.get("types") if isinstance(mp_meta, dict) else None
+                    )
+                    if isinstance(raw_types, list):
+                        types = [str(t) for t in raw_types if t]
+                    elif isinstance(raw_types, str) and raw_types:
+                        types = [raw_types]
+
+                    raw_type = inst_meta.get("type") or (
+                        mp_meta.get("type") if isinstance(mp_meta, dict) else None
+                    )
+                    if raw_type and isinstance(raw_type, str) and raw_type not in types:
+                        types.insert(0, raw_type)
+
+                    if not types:
+                        if "realm" in name.lower() or "provider" in name.lower():
+                            types = ["RealmProvider"]
+                        elif "seeker" in name.lower():
+                            types = ["Spell", "Spell Modifier"]
+                        elif "goap" in name.lower() or "planner" in name.lower():
+                            types = ["Planner", "Spell Modifier"]
+                        else:
+                            types = ["Rune"]
 
                     with ui.card().classes(
                         "w-full p-4 bg-[#0e0e12] border border-[#292335] "
@@ -452,8 +501,11 @@ def render_packages_panel(state: AppState) -> None:
                                     ui.button(
                                         "Installed",
                                         on_click=_uninstall_item,
-                                    ).props("unelevated dense size=sm").classes(
-                                        "mvge-installed-btn text-xs font-medium"
+                                    ).props(
+                                        "unelevated dense size=sm color=green-7"
+                                    ).classes(
+                                        "mvge-installed-btn text-white text-xs "
+                                        "font-medium"
                                     ).mark(f"package_install_item_{name}").mark(
                                         f"package_uninstall_item_{name}"
                                     )
@@ -498,22 +550,57 @@ def render_packages_panel(state: AppState) -> None:
                                     new_tab=True,
                                 ).classes("text-[11px] text-[#7b6cf6] underline")
 
-                        # Installed extension details
-                        if is_installed:
+                        # Extension details (path, types, hooks, deps)
+                        has_details = bool(
+                            (is_installed and path) or types or hooks or python_deps
+                        )
+                        if has_details:
                             with ui.column().classes(
                                 "w-full gap-1 pt-1 mt-1 border-t border-[#292335]/50"
                             ):
-                                if path:
-                                    with ui.row().classes(
-                                        "items-center gap-1.5 no-wrap"
+                                if is_installed and path:
+
+                                    def _open_folder(p: str = path) -> None:
+                                        opened = open_folder_in_explorer(p)
+                                        if not opened:
+                                            ui.notify(
+                                                f"Could not open directory: {p}",
+                                                type="warning",
+                                            )
+
+                                    with (
+                                        ui.row()
+                                        .classes(
+                                            "items-center gap-1.5 no-wrap "
+                                            "cursor-pointer hover:opacity-80 "
+                                            "transition-opacity"
+                                        )
+                                        .on("click", _open_folder)
+                                        .tooltip("Open folder in file explorer")
                                     ):
                                         ui.icon("folder_open", size="12px").classes(
-                                            "text-[#6e6584]"
-                                        )
+                                            "text-[#7b6cf6]"
+                                        ).on("click", _open_folder)
                                         ui.label(path).classes(
-                                            "text-[11px] text-[#6e6584] "
-                                            "font-mono truncate"
+                                            "text-[11px] text-[#7b6cf6] underline "
+                                            "font-mono truncate cursor-pointer"
+                                        ).on("click", _open_folder)
+
+                                if types:
+                                    with ui.row().classes(
+                                        "items-center gap-1 flex-wrap"
+                                    ):
+                                        ui.label("Type:").classes(
+                                            "text-[10px] uppercase "
+                                            "font-semibold text-[#6e6584]"
                                         )
+                                        for t in types:
+                                            ui.badge(str(t), color="purple-9").props(
+                                                "rounded dense"
+                                            ).classes(
+                                                "text-[9px] text-[#e0daf7] font-mono "
+                                                "border border-[#7b6cf6]/30"
+                                            )
 
                                 if hooks:
                                     with ui.row().classes(
