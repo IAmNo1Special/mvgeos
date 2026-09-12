@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -347,3 +348,121 @@ def test_uninstall_rune_file(tmp_path: Path) -> None:
 
 def test_uninstall_rune_nonexistent(tmp_path: Path) -> None:
     assert uninstall_rune("nonexistent-rune", target_dir=tmp_path) is False
+
+
+def test_fetch_marketplace_runes_non_dict_runes_field() -> None:
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"runes": "not_a_dict"}
+    mock_resp.raise_for_status.return_value = None
+
+    with patch("httpx.get", return_value=mock_resp):
+        res = fetch_marketplace_runes()
+        assert res == {}
+
+
+def test_list_installed_runes_non_dict_manifest(tmp_path: Path) -> None:
+    non_dict_dir = tmp_path / "array-rune"
+    non_dict_dir.mkdir()
+    (non_dict_dir / "manifest.json").write_text('["not_a_dict"]', encoding="utf-8")
+
+    installed = list_installed_runes(tmp_path)
+    assert installed == []
+
+
+def test_install_rune_local_path_overwrite(tmp_path: Path) -> None:
+    source_dir = tmp_path / "src_rune"
+    _create_mock_rune_dir(source_dir, "src_rune")
+
+    target_dir = tmp_path / "extensions"
+    existing_dest = target_dir / "src_rune"
+    existing_dest.mkdir(parents=True)
+    (existing_dest / "old.txt").write_text("old", encoding="utf-8")
+
+    dest = install_rune(str(source_dir), target_dir=target_dir)
+    assert dest == existing_dest
+    assert not (dest / "old.txt").exists()
+    assert (dest / "manifest.json").is_file()
+
+    # Test file overwrite branch
+    import shutil
+
+    if dest.is_dir():
+        shutil.rmtree(dest)
+    else:
+        dest.unlink(missing_ok=True)
+    dest.write_text("file", encoding="utf-8")
+    dest2 = install_rune(str(source_dir), target_dir=target_dir)
+    assert dest2.is_dir()
+
+
+def test_install_rune_git_url_overwrite(tmp_path: Path) -> None:
+    target_dir = tmp_path / "extensions"
+    existing_dest = target_dir / "git-rune"
+    existing_dest.mkdir(parents=True)
+    (existing_dest / "old.txt").write_text("old", encoding="utf-8")
+
+    def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
+        _create_mock_rune_dir(existing_dest, "git-rune")
+        return MagicMock(returncode=0)
+
+    with patch("subprocess.run", side_effect=fake_git_clone):
+        dest = install_rune(
+            "https://github.com/org/git-rune.git", target_dir=target_dir
+        )
+        assert dest == existing_dest
+
+    # Test file overwrite branch
+    import shutil
+
+    shutil.rmtree(existing_dest)
+    existing_dest.write_text("file", encoding="utf-8")
+    with patch("subprocess.run", side_effect=fake_git_clone):
+        dest = install_rune(
+            "https://github.com/org/git-rune.git", target_dir=target_dir
+        )
+        assert dest.is_dir()
+
+
+def test_install_rune_marketplace_overwrite(tmp_path: Path) -> None:
+    target_dir = tmp_path / "extensions"
+    existing_dest = target_dir / "market-rune"
+    existing_dest.mkdir(parents=True)
+    (existing_dest / "old.txt").write_text("old", encoding="utf-8")
+
+    marketplace_payload = {
+        "runes": {
+            "market-rune": {
+                "name": "market-rune",
+                "git": "https://github.com/org/market-rune.git",
+            }
+        }
+    }
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = marketplace_payload
+    mock_resp.raise_for_status.return_value = None
+
+    def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
+        _create_mock_rune_dir(existing_dest, "market-rune")
+        return MagicMock(returncode=0)
+
+    with (
+        patch("httpx.get", return_value=mock_resp),
+        patch("subprocess.run", side_effect=fake_git_clone),
+    ):
+        dest = install_rune("market-rune", target_dir=target_dir)
+        assert dest == existing_dest
+        assert not (dest / "old.txt").exists()
+
+
+def test_install_rune_uv_pip_install_failure(tmp_path: Path) -> None:
+    source_dir = tmp_path / "dep_rune"
+    _create_mock_rune_dir(source_dir, "dep_rune", python_deps=["failing-dep"])
+
+    def fake_run(cmd: list[str], **kwargs: object) -> MagicMock:
+        if cmd[:3] == ["uv", "pip", "install"]:
+            raise subprocess.CalledProcessError(1, cmd, output="error")
+        return MagicMock(returncode=0)
+
+    with patch("subprocess.run", side_effect=fake_run):
+        dest = install_rune(str(source_dir), target_dir=tmp_path / "extensions")
+        assert (dest / "manifest.json").is_file()

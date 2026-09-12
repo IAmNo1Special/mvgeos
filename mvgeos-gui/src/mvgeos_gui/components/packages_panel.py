@@ -34,12 +34,13 @@ def render_packages_panel(state: AppState) -> None:
             ui.input(placeholder="git URL, local path, or marketplace rune name")
             .props("dense dark outlined rounded")
             .classes("w-full text-xs")
+            .mark("package_dialog_source_input")
         )
 
         with ui.row().classes("w-full justify-end gap-2 mt-2"):
             ui.button("Cancel", on_click=install_dialog.close).props(
                 "flat dense text-color=grey-4"
-            )
+            ).mark("package_dialog_cancel_btn")
 
             async def _do_install() -> None:
                 source = (source_input.value or "").strip()
@@ -58,7 +59,7 @@ def render_packages_panel(state: AppState) -> None:
 
             ui.button("Install", on_click=_do_install).props(
                 "unelevated dense"
-            ).classes("mvge-glow-btn text-white")
+            ).classes("mvge-glow-btn text-white").mark("package_dialog_install_btn")
 
     with ui.column().classes("w-full h-full overflow-y-auto p-6 gap-4"):
         with ui.row().classes("w-full items-center justify-between"):
@@ -91,11 +92,17 @@ def render_packages_panel(state: AppState) -> None:
             ui.button(
                 "+ Install from URL/Git",
                 on_click=install_dialog.open,
-            ).props("unelevated dense").classes("mvge-glow-btn text-white text-xs")
+            ).props("unelevated dense").classes(
+                "mvge-glow-btn text-white text-xs"
+            ).mark("package_open_install_dialog_btn")
 
         with ui.tabs().classes("w-full border-b border-[#241f38]") as tabs:
-            tab_marketplace = ui.tab("Marketplace").classes("text-xs")
-            tab_installed = ui.tab("Installed").classes("text-xs")
+            tab_marketplace = (
+                ui.tab("Marketplace").classes("text-xs").mark("package_tab_marketplace")
+            )
+            tab_installed = (
+                ui.tab("Installed").classes("text-xs").mark("package_tab_installed")
+            )
 
         with ui.tab_panels(tabs, value=tab_marketplace).classes(
             "w-full bg-transparent p-0"
@@ -187,7 +194,7 @@ def render_packages_panel(state: AppState) -> None:
                                                 on_click=_install_item,
                                             ).props("unelevated dense size=sm").classes(
                                                 "mvge-glow-btn text-white"
-                                            )
+                                            ).mark(f"package_install_item_{name}")
 
                                 if desc:
                                     ui.label(desc).classes("text-xs text-[#9c94b3]")
@@ -279,7 +286,9 @@ def render_packages_panel(state: AppState) -> None:
                                     ui.button(
                                         "Uninstall",
                                         on_click=_uninstall_item,
-                                    ).props("flat dense size=sm text-color=red-4")
+                                    ).props("flat dense size=sm text-color=red-4").mark(
+                                        f"package_uninstall_item_{name}"
+                                    )
 
                                 if path:
                                     ui.label(path).classes(
