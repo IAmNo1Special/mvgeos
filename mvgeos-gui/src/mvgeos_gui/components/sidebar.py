@@ -140,6 +140,7 @@ def render_sidebar(state: AppState) -> ui.column:
             ("Notes", "notes", "sticky_note_2"),
             ("Skills", "skills", "auto_awesome"),
             ("Diagnostics", "diagnostics", "troubleshoot"),
+            ("Settings", "settings", "settings"),
         ]
 
         with ui.column().classes("w-full px-2 py-1 gap-0.5 shrink-0"):
@@ -152,18 +153,6 @@ def render_sidebar(state: AppState) -> ui.column:
                     state,
                     collapsed,
                 )
-
-        ui.separator().classes("my-2 shrink-0")
-
-        with ui.column().classes("w-full px-2 py-1 gap-0.5 shrink-0"):
-            _sidebar_item(
-                "Settings",
-                "settings",
-                "settings",
-                state.current_view == "settings",
-                state,
-                collapsed,
-            )
 
         # Current Session & Recent Sessions
         if not collapsed:
