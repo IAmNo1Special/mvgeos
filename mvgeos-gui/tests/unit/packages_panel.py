@@ -22,7 +22,7 @@ async def test_render_packages_panel(user: User) -> None:
         render_packages_panel(state)
 
     await user.open("/test_packages_panel")
-    await user.should_see("Packages")
+    await user.should_see("Marketplace")
     await user.should_see("Installed")
     await user.should_see("No packages installed")
 
@@ -223,4 +223,4 @@ async def test_packages_panel_refresh_data_exceptions(user: User) -> None:
         render_packages_panel(state)
 
     await user.open("/test_packages_exceptions")
-    await user.should_see("Packages")
+    await user.should_see("Marketplace")

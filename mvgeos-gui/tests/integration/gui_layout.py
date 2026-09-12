@@ -362,7 +362,7 @@ async def test_command_palette_opens_and_lists_views(user: User) -> None:
     await user.should_see("Quick Switcher")
     await user.should_see("Sessions")
     await user.should_see("Timeline")
-    await user.should_see("Packages")
+    await user.should_see("Marketplace")
     await user.should_see("Notes")
     await user.should_see("Skills")
     await user.should_see("Diagnostics")
@@ -482,4 +482,4 @@ async def test_packages_panel_renders(user: User) -> None:
         build_page(state)
 
     await user.open("/test_packages_panel")
-    await user.should_see("Packages")
+    await user.should_see("Marketplace")

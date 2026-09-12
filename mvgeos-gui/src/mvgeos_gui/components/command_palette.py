@@ -35,7 +35,7 @@ def render_command_palette(state: AppState) -> None:
             ("Chat", "chat", "chat_bubble_outline"),
             ("Sessions", "sessions", "history"),
             ("Timeline", "timeline", "timeline"),
-            ("Packages", "packages", "inventory_2"),
+            ("Marketplace", "packages", "storefront"),
             ("Notes", "notes", "sticky_note_2"),
             ("Skills", "skills", "auto_awesome"),
             ("Diagnostics", "diagnostics", "troubleshoot"),

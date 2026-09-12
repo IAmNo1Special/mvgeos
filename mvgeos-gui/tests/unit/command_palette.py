@@ -42,7 +42,7 @@ async def test_render_command_palette_open(user: User) -> None:
     await user.should_see("Chat")
     await user.should_see("Sessions")
     await user.should_see("Timeline")
-    await user.should_see("Packages")
+    await user.should_see("Marketplace")
     await user.should_see("Notes")
     await user.should_see("Skills")
     await user.should_see("Diagnostics")

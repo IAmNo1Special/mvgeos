@@ -64,7 +64,7 @@ def render_packages_panel(state: AppState) -> None:
     with ui.column().classes("w-full h-full overflow-y-auto p-6 gap-4"):
         with ui.row().classes("w-full items-center justify-between"):
             with ui.column().classes("gap-1"):
-                ui.label("Packages").classes("text-2xl font-semibold text-[#eceaf4]")
+                ui.label("Marketplace").classes("text-2xl font-semibold text-[#eceaf4]")
                 ui.label(
                     "Explore and manage MvgeOS extensions from the official "
                     "marketplace."
