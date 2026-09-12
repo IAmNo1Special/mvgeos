@@ -1002,16 +1002,27 @@ CURVY_COMPOSER_CSS = """
 .mvge-composer-toolbar .q-field__control {
     background: transparent !important;
 }
+.q-btn.mvge-installed-btn,
 .mvge-installed-btn {
-    background: rgba(34, 197, 94, 0.15) !important;
-    color: #4ade80 !important;
-    border: 1px solid rgba(74, 222, 128, 0.4) !important;
-    transition: all 0.2s ease !important;
+    background: #16a34a !important;
+    background-color: #16a34a !important;
+    color: #ffffff !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    transition: background-color 0.2s ease, color 0.2s ease !important;
 }
+.q-btn.mvge-installed-btn:hover,
 .mvge-installed-btn:hover {
-    background: rgba(239, 68, 68, 0.2) !important;
-    color: #f87171 !important;
-    border-color: rgba(248, 113, 113, 0.5) !important;
+    background: #dc2626 !important;
+    background-color: #dc2626 !important;
+    color: #ffffff !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+.mvge-installed-btn .q-focus-helper {
+    display: none !important;
 }
 """
 

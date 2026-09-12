@@ -279,6 +279,7 @@ def test_list_installed_runes_success(tmp_path: Path) -> None:
         "enabled": False,
         "hooks": ["pre_turn"],
         "python_deps": ["pydantic>=2.0"],
+        "type": "planner",
     }
     (beta_dir / "manifest.json").write_text(json.dumps(beta_manifest), encoding="utf-8")
 
@@ -307,6 +308,8 @@ def test_list_installed_runes_success(tmp_path: Path) -> None:
         "path": str(alpha_dir),
         "hooks": [],
         "python_deps": [],
+        "type": "",
+        "types": [],
     }
     assert installed[1] == {
         "name": "beta-rune",
@@ -317,6 +320,8 @@ def test_list_installed_runes_success(tmp_path: Path) -> None:
         "path": str(beta_dir),
         "hooks": ["pre_turn"],
         "python_deps": ["pydantic>=2.0"],
+        "type": "planner",
+        "types": ["planner"],
     }
 
 

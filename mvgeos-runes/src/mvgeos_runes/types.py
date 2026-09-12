@@ -362,6 +362,7 @@ class RuneManifest:
     execution_mode: ExecutionMode = ExecutionMode.PARALLEL
     enabled: bool = True
     runtime: str = "python"
+    types: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

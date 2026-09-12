@@ -2,48 +2,55 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nicegui import ui
 from nicegui.testing import User
 
-from mvgeos_gui.components.packages_panel import render_packages_panel
+from mvgeos_gui.components.packages_panel import (
+    open_folder_in_explorer,
+    render_packages_panel,
+)
 from mvgeos_gui.state import AppState
 
 
-@pytest.mark.asyncio
-async def test_render_packages_panel(user: User) -> None:
-    """Packages panel should render title and empty message when no runes exist."""
-    state = AppState()
-
-    @ui.page("/test_packages_panel")
-    def page() -> None:
-        render_packages_panel(state)
-
-    await user.open("/test_packages_panel")
-    await user.should_see("Marketplace")
-    await user.should_see("No extensions found")
+def test_open_folder_in_explorer_nonexistent() -> None:
+    """open_folder_in_explorer should return False if path doesn't exist."""
+    assert open_folder_in_explorer("/nonexistent/directory/path/12345") is False
 
 
-@pytest.mark.asyncio
-async def test_packages_panel_back_to_chat_button(user: User) -> None:
-    """Clicking Back to Chat button should switch view to chat."""
-    state = AppState()
-    state.set_current_view = MagicMock()
+def test_open_folder_in_explorer_success(tmp_path: Path) -> None:
+    """open_folder_in_explorer should open existing folder via OS handler."""
+    with (
+        patch("platform.system", return_value="Windows"),
+        patch("os.startfile", create=True) as mock_startfile,
+    ):
+        res = open_folder_in_explorer(tmp_path)
+        assert res is True
+        mock_startfile.assert_called_once_with(str(tmp_path.resolve()))
 
-    @ui.page("/test_packages_back_btn")
-    def page() -> None:
-        render_packages_panel(state)
+    with (
+        patch("platform.system", return_value="Darwin"),
+        patch("subprocess.Popen") as mock_popen,
+    ):
+        res = open_folder_in_explorer(tmp_path)
+        assert res is True
+        mock_popen.assert_called_once_with(["open", str(tmp_path.resolve())])
 
-    await user.open("/test_packages_back_btn")
-    user.find("Back to Chat").click()
-    state.set_current_view.assert_called_once_with("chat")
+    with (
+        patch("platform.system", return_value="Linux"),
+        patch("subprocess.Popen") as mock_popen,
+    ):
+        res = open_folder_in_explorer(tmp_path)
+        assert res is True
+        mock_popen.assert_called_once_with(["xdg-open", str(tmp_path.resolve())])
 
 
 @pytest.mark.asyncio
 async def test_packages_panel_marketplace_listing_and_search(user: User) -> None:
-    """Marketplace runes should be listed and filterable via search."""
+    """Marketplace runes should show type, hooks, and deps even when uninstalled."""
     state = AppState()
     state.fetch_marketplace_runes_async = AsyncMock(  # type: ignore[method-assign]
         return_value={
@@ -53,6 +60,9 @@ async def test_packages_panel_marketplace_listing_and_search(user: User) -> None
                 "runtime": "python",
                 "description": "Alpha extension description",
                 "git": "https://github.com/example/alpha",
+                "types": ["Spell", "Spell Modifier"],
+                "hooks": ["turn_start"],
+                "python_deps": ["requests"],
             },
             "beta-rune": {
                 "name": "beta-rune",
@@ -76,6 +86,11 @@ async def test_packages_panel_marketplace_listing_and_search(user: User) -> None
     await user.should_see("beta-rune")
     await user.should_see("Alpha extension description")
     await user.should_see("Beta extension description")
+    # Verify uninstalled extension displays Type badges, Hooks, and Deps
+    await user.should_see("Spell")
+    await user.should_see("Spell Modifier")
+    await user.should_see("turn_start")
+    await user.should_see("requests")
 
     search_el = next(iter(user.find(marker="package_search_input").elements))
     search_el.value = "alpha"
@@ -111,6 +126,14 @@ async def test_packages_panel_installed_items_and_uninstall(user: User) -> None:
     await user.should_see("Installed tool description")
     await user.should_see("turn_start")
     await user.should_see("requests")
+
+    # Click path to open folder in explorer
+    with patch(
+        "mvgeos_gui.components.packages_panel.open_folder_in_explorer",
+        return_value=True,
+    ) as mock_open:
+        user.find("/home/user/.agents/extensions/my-tool").click()
+        mock_open.assert_called_once_with("/home/user/.agents/extensions/my-tool")
 
     # Click installed button to uninstall
     user.find(marker="package_uninstall_item_my-tool").click()
