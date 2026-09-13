@@ -117,6 +117,7 @@ class RuneRunner:
         self._loaded_skills: list[SkillLoad] = []
         self._skill_diagnostics: list[SkillDiagnostic] = []
         self._suppress_skill_catalog: bool = False
+        self._spell_version: int = 0
         # The effective active-spell set is the *union* of each rune's own
         # contribution: ``_active_spells_by_rune`` maps a rune name (or ``None``
         # for spells registered outside any rune context) to the set of spell
@@ -205,6 +206,7 @@ class RuneRunner:
                         if h in self._sigil_handlers[hook]:
                             self._sigil_handlers[hook].remove(h)
             del self._rune_handlers[rune_name]
+        self._spell_version += 1
 
     def get_sigil_handlers(self, hook: SigilHook) -> list[Handler]:
         return list(self._sigil_handlers.get(hook, []))
@@ -240,6 +242,7 @@ class RuneRunner:
         # runes' pinned sets are left untouched (composable per-rune model).
         if rune_name not in self._pinned_runes:
             self._active_spells_by_rune.setdefault(rune_name, set()).add(spell.name)
+        self._spell_version += 1
         return True
 
     def register_command(
@@ -320,6 +323,7 @@ class RuneRunner:
             rune_name = self._current_loading_rune
         self._active_spells_by_rune[rune_name] = set(spell_names)
         self._pinned_runes.add(rune_name)
+        self._spell_version += 1
 
     def load_skills(
         self,
@@ -489,3 +493,10 @@ class RuneRunner:
 
     def get_event_channels(self) -> list[str]:
         return list(self._event_handlers.keys())
+
+    @property
+    def spell_version(self) -> int:
+        """Monotonic counter incremented on spell registration/removal/activation
+        changes. Used by MvgeHarness to skip redundant spell resolution rebuilds.
+        """
+        return self._spell_version

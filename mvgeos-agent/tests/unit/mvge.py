@@ -439,9 +439,7 @@ class TestMvgePropertiesAndMethods:
         )
         assert agent.name == "test_mvge"
         assert agent.tome_dir == tmp_path / "sessions"
-        assert agent.session_dir == tmp_path / "sessions"
         assert agent.tome_id is None
-        assert agent.session_id is None
         assert agent.mana_used is None
         assert isinstance(agent.config_dir, Path)
         assert agent.environment is not None

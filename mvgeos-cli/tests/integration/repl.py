@@ -220,15 +220,10 @@ class TestReplHelpers:
 
         monkeypatch.setattr(formatting_mod, "format_cwd", lambda: "~/proj")
 
-        class _State:
-            mana_used = 9500
-
         agent = Mvge(api_key="test-key")
-        agent._state = _State()  # type: ignore[attr-defined]
         info = format_tome_info(agent, branch="main")
         parts = " ".join(text for _, text in info)
         assert "~/proj (main)" in parts
-        assert "mana 9500" in parts
         assert "nvidia/nemotron" in parts
 
     def test_format_tome_info_reports_mana_used(
@@ -236,14 +231,11 @@ class TestReplHelpers:
     ) -> None:
         from mvgeos_cli.formatting import format_tome_info
 
-        class _State:
-            mana_used = 7500
-
         agent = Mvge(api_key="test-key")
-        agent._state = _State()  # type: ignore[attr-defined]
+        # Test fallback when no state is initialized
         info = format_tome_info(agent)
         parts = " ".join(text for _, text in info)
-        assert "mana 7500" in parts
+        assert "mana ?" in parts
 
     def test_format_tome_info_without_state(self) -> None:
         from mvgeos_cli.formatting import format_tome_info

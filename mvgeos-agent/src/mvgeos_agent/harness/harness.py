@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from mvgeos_core.abort import AbortSignal
 from mvgeos_core.channel import Model, MvgeResponse
 from mvgeos_core.events import (
     ContemplationLevel,
+    ExecutionSnapshot,
     MvgeEvent,
     MvgeEventType,
     QueueMode,
@@ -66,13 +68,19 @@ class MvgeHarness:
         compaction: CompactionRunner | None = None,
         compaction_settings: CompactionSettings = DEFAULT_COMPACTION_SETTINGS,
         callbacks: LoopCallbacks | None = None,
+        refresh_spells: Callable[[], list[MvgeSpell]] | None = None,
     ) -> None:
         self._state = state
         self._tome: MvgeTome | None = tome or getattr(self._state, "agent_tome", None)
         self._realm = realm
         self._model = model
+        self._configured_model = model.id if model is not None else None
+        self._configured_realm = realm.__class__.__name__ if realm is not None else None
+        self._captured_model: str | None = None
+        self._captured_realm: str | None = None
         self._compaction_settings = compaction_settings
         self._callbacks = callbacks
+        self._refresh_spells = refresh_spells
 
         self._compaction: CompactionRunner | None
         if compaction is not None:
@@ -115,9 +123,16 @@ class MvgeHarness:
             self._compaction._tome = tome
 
     def set_model_and_realm(self, model: Model, realm: Realm) -> None:
-        """Update model and realm references on harness and compaction runner."""
+        """Update model and realm references on harness and compaction runner.
+
+        Emits CONFIG_CHANGE event for observers (GUI, CLI, tests).
+        Mirrors Pi's config_update event on AgentLane.setModel().
+        """
         self._model = model
         self._realm = realm
+        self._configured_model = model.id
+        self._configured_realm = realm.__class__.__name__
+
         comp: CompactionRunner | None = self._compaction
         if comp is None:
             self._compaction = CompactionRunner(
@@ -131,7 +146,43 @@ class MvgeHarness:
             comp._model = model
             comp._realm = realm
 
+        # Emit CONFIG_CHANGE for observers (tests, GUI, CLI)
+        import asyncio
+
+        asyncio.create_task(
+            self._emit(
+                MvgeEvent(
+                    type=MvgeEventType.CONFIG_CHANGE,
+                    data={"model": model.id, "realm": realm.__class__.__name__},
+                )
+            )
+        )
+
+    @property
+    def snapshot(self) -> ExecutionSnapshot:
+        """Read-only observability snapshot (mirrors Pi's LaneExecutionInfo)."""
+        return ExecutionSnapshot(
+            configured_model=self._configured_model,
+            captured_model=self._captured_model,
+            configured_realm=self._configured_realm,
+            captured_realm=self._captured_realm,
+            contemplation_budget=self._state.contemplation_budget
+            if isinstance(self._state.contemplation_budget, int)
+            else None,
+            active_spell_count=len(self._state.spells),
+        )
+
     def _resolve_spells(self) -> list[MvgeSpell]:
+        """Resolve the spell list for the current turn.
+
+        If a refresh_spells hook is provided (from Mvge._build_spells), use it
+        for centralized validation, renaming, and filtering. Otherwise fall back
+        to the legacy append-only merge (for backward compatibility).
+        """
+        if self._refresh_spells is not None:
+            return self._refresh_spells()
+
+        # Legacy append-only merge (no validation/rename/filter)
         spells = list(self._state.spells)
         runner = self._state.rune_runner
         if runner is None:
@@ -406,6 +457,11 @@ class MvgeHarness:
         self._state.is_streaming = True
         self._state.model = model
         self._state.contemplation_level = ContemplationLevel(contemplation_level)
+
+        # Capture configured model/realm for this turn (Pi's capturedModel semantics)
+        self._captured_model = self._configured_model
+        self._captured_realm = self._configured_realm
+        self._captured_realm = self._configured_realm
 
         context = LoopContext(
             system_prompt=self._state.system_prompt,

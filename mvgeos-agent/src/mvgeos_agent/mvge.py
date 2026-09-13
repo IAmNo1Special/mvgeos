@@ -342,11 +342,6 @@ class Mvge:
         return self._tome_dir
 
     @property
-    def session_dir(self) -> Path:
-        """Alias for tome_dir adhering to .agents protocol boundary."""
-        return self._tome_dir
-
-    @property
     def model_id(self) -> str:
         return self._model_id
 
@@ -383,6 +378,19 @@ class Mvge:
         self._spell_names = list(spell_names)
         if self._state is not None:
             self._state.spells = self._build_spells()
+
+    def reload_spells(self) -> None:
+        """Re-run spell resolution with full validation and update state.
+
+        Called after Rune watcher reload, manual load_runes(), or any event
+        that may have changed the rune-registered spell set. Re-validates all
+        spells (name, schema, signature) and applies collision renaming,
+        then refreshes MvgeState.spells and the internal spell index.
+        """
+        if self._state is not None:
+            self._state.spells = self._build_spells()
+            # Refresh the spell index used by the dispatcher
+            self._state._spell_index = {s.name: s for s in self._state.spells}
 
     @property
     def registered_commands(self) -> list[str]:
@@ -428,6 +436,11 @@ class Mvge:
     @property
     def event_bus(self) -> EventBus:
         return self._event_bus
+
+    @property
+    def harness(self) -> MvgeHarness | None:
+        """Access to the deepened Harness seam for observability (snapshot, events)."""
+        return self._harness
 
     @property
     def diagnostics(self) -> list[Diagnostic | SkillDiagnostic]:
@@ -854,6 +867,7 @@ class Mvge:
             model=self._model,
             compaction=self._compaction,
             compaction_settings=self._compaction_settings,
+            refresh_spells=self._build_spells,
         )
         self._compaction = self._harness.compaction
 

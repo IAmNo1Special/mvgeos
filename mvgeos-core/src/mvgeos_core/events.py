@@ -55,6 +55,7 @@ class MvgeEventType(StrEnum):
     COMPACTION_START = "compaction_start"
     COMPACTION_END = "compaction_end"
     PROVIDER_ERROR = "provider_error"
+    CONFIG_CHANGE = "config_change"
 
 
 @dataclass
@@ -63,9 +64,26 @@ class MvgeEvent:
     data: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class ExecutionSnapshot:
+    """Read-only observability snapshot of the current execution configuration.
+
+    Mirrors Pi's LaneExecutionInfo: exposes configured vs captured state
+    without exposing internal mutation paths.
+    """
+
+    configured_model: str | None = None
+    captured_model: str | None = None
+    configured_realm: str | None = None
+    captured_realm: str | None = None
+    contemplation_budget: int | None = None
+    active_spell_count: int = 0
+
+
 __all__ = [
     "ContemplationLevel",
     "ContentType",
+    "ExecutionSnapshot",
     "MvgeEvent",
     "MvgeEventType",
     "PromptSource",

@@ -279,7 +279,7 @@ async def test_bug4_single_registry_and_rune_providers(tmp_path: Path) -> None:
         )
         try:
             assert "custom_rune_prov" in agent.registered_providers
-            assert agent._state is not None
-            assert agent._state.rune_runner is not None
+            assert agent.harness is not None
+            assert agent.harness.state.rune_runner is not None
         finally:
             await agent.close()

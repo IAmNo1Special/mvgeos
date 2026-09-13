@@ -1481,3 +1481,138 @@ class TestMvgeHarnessQueueMode:
         await harness.run(stream_fn, {"id": "test-model"}, "none")
 
         assert len(state.followup_queue) == 0
+
+
+class TestMvgeHarnessConfigChangeEvent:
+    """Tests for CONFIG_CHANGE event emission on config setters."""
+
+    @pytest.mark.asyncio
+    async def test_set_model_and_realm_emits_config_change(self) -> None:
+        state = MvgeState(
+            system_prompt="test",
+            model={"id": "old-model", "name": "Old"},
+            invocations=[SummonerRequest(role="user", content="hi")],
+        )
+        event_bus = EventBus()
+        state.event_bus = event_bus
+
+        received: list[MvgeEvent] = []
+        event_bus.on(MvgeEventType.CONFIG_CHANGE, lambda e: received.append(e))
+
+        mock_realm = MagicMock()
+        mock_realm.__class__.__name__ = "TestRealm"
+        mock_model = MagicMock()
+        mock_model.id = "new-model"
+
+        harness = MvgeHarness(state=state)
+        harness.set_model_and_realm(mock_model, mock_realm)
+
+        await asyncio.sleep(0.01)  # allow create_task to run
+
+        assert len(received) == 1
+        assert received[0].type == MvgeEventType.CONFIG_CHANGE
+        assert received[0].data["model"] == "new-model"
+        assert received[0].data["realm"] == "TestRealm"
+
+    @pytest.mark.asyncio
+    async def test_set_model_and_realm_updates_configured_snapshot(self) -> None:
+        state = MvgeState(
+            system_prompt="test",
+            model={"id": "old-model", "name": "Old"},
+            invocations=[SummonerRequest(role="user", content="hi")],
+        )
+
+        mock_realm = MagicMock()
+        mock_realm.__class__.__name__ = "TestRealm"
+        mock_model = MagicMock()
+        mock_model.id = "new-model"
+
+        harness = MvgeHarness(state=state)
+        harness.set_model_and_realm(mock_model, mock_realm)
+
+        snap = harness.snapshot
+        assert snap.configured_model == "new-model"
+        assert snap.configured_realm == "TestRealm"
+
+
+class TestMvgeHarnessExecutionSnapshot:
+    """Tests for the ExecutionSnapshot read-only observability property."""
+
+    @pytest.mark.asyncio
+    async def test_snapshot_reflects_configured_and_captured(self) -> None:
+        state = MvgeState(
+            system_prompt="test",
+            model={"id": "configured-model", "name": "Configured"},
+            invocations=[SummonerRequest(role="user", content="hi")],
+        )
+        mock_realm = MagicMock()
+        mock_realm.__class__.__name__ = "TestRealm"
+        model_obj = Model(
+            id="configured-model",
+            name="Configured",
+            realm="test",
+            base_url="https://api.test.com",
+            api_key="test",
+        )
+
+        harness = MvgeHarness(state=state, realm=mock_realm, model=model_obj)
+
+        # Before run: configured set, captured None
+        snap = harness.snapshot
+        assert snap.configured_model == "configured-model"
+        assert snap.captured_model is None
+        assert snap.configured_realm == "TestRealm"
+        assert snap.captured_realm is None
+        assert snap.active_spell_count == 0
+        assert snap.contemplation_budget is None
+
+        # After run: captured should be set
+        model_obj = Model(
+            id="configured-model",
+            name="Configured",
+            realm="test",
+            base_url="https://api.test.com",
+            api_key="test",
+        )
+        responses = [
+            RealmResponse(
+                model=model_obj,
+                invocation=MvgeResponse(
+                    role="assistant",
+                    content=[{"type": "text", "text": "ok"}],
+                    stop_reason=StopReason.STOP,
+                ),
+            ),
+        ]
+
+        async def stream(invs, sig=None):
+            for r in responses:
+                yield r
+
+        await harness.run(stream, {"id": "configured-model"}, "none")
+
+        snap = harness.snapshot
+        assert snap.captured_model == "configured-model"
+        assert snap.captured_realm == "TestRealm"
+
+    @pytest.mark.asyncio
+    async def test_snapshot_reflects_configured_when_not_run(self) -> None:
+        state = MvgeState(
+            system_prompt="test",
+            model={"id": "base-model", "name": "Base"},
+            invocations=[SummonerRequest(role="user", content="hi")],
+        )
+        model_obj = Model(
+            id="base-model",
+            name="Base",
+            realm="test",
+            base_url="https://api.test.com",
+            api_key="test",
+        )
+
+        harness = MvgeHarness(state=state, model=model_obj)
+
+        # Test that snapshot reflects configured model correctly before run
+        snap = harness.snapshot
+        assert snap.configured_model == "base-model"
+        assert snap.captured_model is None
