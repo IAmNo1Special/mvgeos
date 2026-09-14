@@ -1,0 +1,4 @@
+# Live-eval run artifacts: task sandboxes and result dumps.
+live_eval/tmp_eval/
+live_eval/results_*.json
+__pycache__/

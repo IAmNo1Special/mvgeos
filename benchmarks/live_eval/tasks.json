@@ -1,0 +1,161 @@
+[
+  {
+    "task_id": "file_read_basic",
+    "category": "file_ops",
+    "description": "Read the content of a specific file and report its first 50 characters",
+    "setup": {
+      "files": {
+        "test_data/sample.txt": "This is a sample file for testing file read operations. It contains multiple lines of text."
+      }
+    },
+    "ground_truth": {
+      "expected_content_start": "This is a sample file for testing"
+    },
+    "success_criteria": "Model correctly reads the file and reports the first 50 characters matching ground truth"
+  },
+  {
+    "task_id": "file_write_readback",
+    "category": "file_ops",
+    "description": "Write a specific string to a file, then read it back and verify",
+    "setup": {
+      "files": {}
+    },
+    "ground_truth": {
+      "write_content": "LIVE_EVAL_TEST_12345",
+      "expected_readback": "LIVE_EVAL_TEST_12345"
+    },
+    "success_criteria": "Model writes the exact string to a file and reads it back correctly"
+  },
+  {
+    "task_id": "directory_listing",
+    "category": "file_ops",
+    "description": "List all files in a directory and count them",
+    "setup": {
+      "files": {
+        "test_data/dir_a/file1.txt": "content1",
+        "test_data/dir_a/file2.txt": "content2",
+        "test_data/dir_a/subdir/file3.txt": "content3"
+      }
+    },
+    "ground_truth": {
+      "expected_file_count": 3,
+      "expected_names": ["file1.txt", "file2.txt", "file3.txt"]
+    },
+    "success_criteria": "Model lists all 3 files in the directory tree"
+  },
+  {
+    "task_id": "code_search_function",
+    "category": "code_search",
+    "description": "Find a function by name in a codebase and report its signature",
+    "setup": {
+      "files": {
+        "test_data/codebase/utils.py": "def calculate_total(items, tax_rate=0.1):\n    return sum(items) * (1 + tax_rate)\n\ndef format_currency(amount):\n    return f'${amount:.2f}'\n",
+        "test_data/codebase/models.py": "class Order:\n    def __init__(self, items):\n        self.items = items\n    def total(self, tax_rate=0.1):\n        return calculate_total(self.items, tax_rate)\n"
+      }
+    },
+    "ground_truth": {
+      "target_function": "calculate_total",
+      "expected_signature": "calculate_total(items, tax_rate=0.1)"
+    },
+    "success_criteria": "Model finds the function and reports its correct signature"
+  },
+  {
+    "task_id": "code_search_class_method",
+    "category": "code_search",
+    "description": "Find a class method and report its implementation",
+    "setup": {
+      "files": {
+        "test_data/codebase/models.py": "class Order:\n    def __init__(self, items):\n        self.items = items\n    def total(self, tax_rate=0.1):\n        return sum(items) * (1 + tax_rate)\n    def add_item(self, item):\n        self.items.append(item)\n"
+      }
+    },
+    "ground_truth": {
+      "target_method": "Order.total",
+      "expected_body_contains": "sum(items)"
+    },
+    "success_criteria": "Model finds the Order.total method and identifies it uses sum()"
+  },
+  {
+    "task_id": "grep_pattern_search",
+    "category": "code_search",
+    "description": "Search for a regex pattern across files and count matches",
+    "setup": {
+      "files": {
+        "test_data/codebase/logs.txt": "ERROR: Connection failed\nINFO: Retrying...\nERROR: Timeout\nWARN: Slow response\nERROR: Connection failed\nINFO: Success\n"
+      }
+    },
+    "ground_truth": {
+      "pattern": "ERROR",
+      "expected_count": 3
+    },
+    "success_criteria": "Model searches for 'ERROR' pattern and reports exactly 3 matches"
+  },
+  {
+    "task_id": "multi_step_synthesis",
+    "category": "synthesis",
+    "description": "Read multiple files, combine their data, and produce a summary",
+    "setup": {
+      "files": {
+        "test_data/reports/q1.txt": "Revenue: $100,000\nExpenses: $60,000",
+        "test_data/reports/q2.txt": "Revenue: $120,000\nExpenses: $65,000",
+        "test_data/reports/q3.txt": "Revenue: $110,000\nExpenses: $70,000"
+      }
+    },
+    "ground_truth": {
+      "total_revenue": 330000,
+      "total_expenses": 195000,
+      "net_profit": 135000
+    },
+    "success_criteria": "Model reads all 3 files, extracts numbers, and computes correct totals"
+  },
+  {
+    "task_id": "file_modification",
+    "category": "file_ops",
+    "description": "Modify a file by replacing a specific string",
+    "setup": {
+      "files": {
+        "test_data/config.txt": "DEBUG=false\nLOG_LEVEL=info\nAPI_ENDPOINT=https://api.example.com"
+      }
+    },
+    "ground_truth": {
+      "target_line": "DEBUG=false",
+      "replacement": "DEBUG=true",
+      "expected_result": "DEBUG=true\nLOG_LEVEL=info\nAPI_ENDPOINT=https://api.example.com"
+    },
+    "success_criteria": "Model changes DEBUG=false to DEBUG=true while preserving other lines"
+  },
+  {
+    "task_id": "json_manipulation",
+    "category": "file_ops",
+    "description": "Read a JSON file, extract a nested value, and write result to new file",
+    "setup": {
+      "files": {
+        "test_data/data.json": "{\"users\": [{\"id\": 1, \"name\": \"Alice\", \"role\": \"admin\"}, {\"id\": 2, \"name\": \"Bob\", \"role\": \"user\"}, {\"id\": 3, \"name\": \"Carol\", \"role\": \"user\"}]}"
+      }
+    },
+    "ground_truth": {
+      "target_query": "count of users with role 'user'",
+      "expected_answer": 2
+    },
+    "success_criteria": "Model parses JSON, counts users with role 'user', reports 2"
+  },
+  {
+    "task_id": "recursive_file_search",
+    "category": "file_ops",
+    "description": "Find all files with a specific extension in a directory tree",
+    "setup": {
+      "files": {
+        "test_data/project/src/main.py": "print('hello')",
+        "test_data/project/src/utils.py": "def helper(): pass",
+        "test_data/project/tests/test_main.py": "def test_main(): pass",
+        "test_data/project/docs/readme.md": "# Project",
+        "test_data/project/config.yaml": "key: value"
+      }
+    },
+    "ground_truth": {
+      "extension": ".py",
+      "expected_count": 3,
+      "expected_names": ["main.py", "utils.py", "test_main.py"]
+    },
+    "success_criteria": "Model finds exactly 3 .py files in the directory tree"
+  }
+]
