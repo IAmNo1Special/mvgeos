@@ -56,6 +56,7 @@ class MvgeEventType(StrEnum):
     COMPACTION_END = "compaction_end"
     PROVIDER_ERROR = "provider_error"
     CONFIG_CHANGE = "config_change"
+    SESSION_TITLE_UPDATED = "session_title_updated"
 
 
 @dataclass
