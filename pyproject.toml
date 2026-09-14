@@ -79,7 +79,7 @@ strict = true
 # warn_unreachable is the one strict-mode gap worth closing explicitly;
 # every other previously listed flag is implied by strict or default-on.
 warn_unreachable = true
-exclude = ["/tests/", "/scripts/"]
+exclude = ["/tests/", "/scripts/", "test_keys.py", "benchmarks"]
 
 [tool.pytest.ini_options]
 testpaths = [

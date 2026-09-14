@@ -20,6 +20,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+test_keys.py
 .coverage
 htmlcov/
 .pytest_cache/
