@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-15
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (d5924d4)
+
+- **release:** v0.4.0 (a6d85cd)
+
+
+### Refactoring
+
+- **tome:** replace TomeLedger/FileLock with TomeHandle/TomeHandleFactory **BREAKING CHANGE** (3a1c361)
+
+
 ## [0.3.0] - 2026-09-13
 
 
@@ -12,7 +27,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - update CHANGELOG.md [skip ci] (b7abc21)
 
+- add test_keys.py to gitignore and mypy exclude for benchmarks (403b56a)
+
 - **release:** v0.3.0 (915aa22)
+
+
+### Features
+
+- **core:** add SESSION_TITLE_UPDATED event type (997e76e)
+
+- **tome:** add TomeHandle/TomeStore with integrity verification and torn-tail repair (cb1de29)
+
+- **benchmarks:** add hermetic and live Seeker-vs-baseline evaluation harnesses (fcf4f09)
 
 
 ### Refactoring
