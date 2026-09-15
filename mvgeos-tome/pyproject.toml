@@ -5,7 +5,7 @@ description = "Session persistence using JSONL storage with file locking and in-
 requires-python = ">=3.13"
 license = "MIT"
 dependencies = [
-    "filelock>=3.32.3",
+    "portalocker>=3.0.0",
 ]
 
 [build-system]

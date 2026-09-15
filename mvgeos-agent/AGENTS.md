@@ -37,7 +37,7 @@ Test paths follow pattern: `mvgeos-agent/tests/unit/<module>.py` and `mvgeos-age
 | `MvgeEnvironment` | Two-layer invariant scaffolding, layered config, and diagnostic introspection |
 | `CompactionRunner` | Orchestrates transcript compaction and summary generation |
 | `SpellDispatcher` | Executes tool call batches concurrently or sequentially |
-| `MvgeTome` | Deep session manager over `TomeLedger`; open/create/fork/switch; emits session sigils |
+| `MvgeTome` | Deep session manager over `TomeHandleFactory`; open/create/fork/switch; emits session sigils |
 | `RuneLifecycle` | Loads runes/skills into a RuneRunner and owns hot-reload watchers |
 
 Core vocabulary (`MvgeEvent`, `MvgeSpell`, `MvgeInvocation`, `ContemplationLevel`,
@@ -51,7 +51,7 @@ Core vocabulary (`MvgeEvent`, `MvgeSpell`, `MvgeInvocation`, `ContemplationLevel
 
 - `mvgeos-core` (loop vocabulary: abort, invocations, spells, events, loop)
 - `mvgeos-provider` (Realm protocol, registries, OpenRouter realm)
-- `mvgeos-tome` (TomeLedger persistence)
+- `mvgeos-tome` (TomeHandleFactory persistence)
 - `mvgeos-runes` (RuneRunner, RuneContext, SigilHook)
 
 ## Architecture

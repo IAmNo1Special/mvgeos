@@ -34,7 +34,7 @@ from mvgeos_core.spells import (
 )
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import SigilHook
-from mvgeos_tome.ledger import TomeLedger
+from mvgeos_tome.handle import TomeHandleFactory
 
 from mvgeos_agent.agent_session import MvgeTome
 from mvgeos_agent.environment import PromptSource
@@ -913,13 +913,14 @@ class TestMvgeHarnessTomeHooks:
     ) -> None:
 
         with tempfile.TemporaryDirectory() as tmp:
-            ledger = TomeLedger(Path(tmp))
-            meta = ledger.create_tome("/tmp")
+            factory = TomeHandleFactory(Path(tmp))
+            write = factory.create_tome("/tmp")
+            read = factory.open_read(write.tome_id)
             runner = RuneRunner()
             handler = MagicMock()
             runner.register_handler(SigilHook.SESSION_START, handler)
 
-            session = MvgeTome(ledger, meta, runner)
+            session = MvgeTome(factory, write, read, runner)
             state = MvgeState(
                 system_prompt="test",
                 model={"id": "test-model", "name": "Test"},
@@ -966,13 +967,14 @@ class TestMvgeHarnessTomeHooks:
     ) -> None:
 
         with tempfile.TemporaryDirectory() as tmp:
-            ledger = TomeLedger(Path(tmp))
-            meta = ledger.create_tome("/tmp")
+            factory = TomeHandleFactory(Path(tmp))
+            write = factory.create_tome("/tmp")
+            read = factory.open_read(write.tome_id)
             runner = RuneRunner()
             handler = MagicMock()
             runner.register_handler(SigilHook.SESSION_SHUTDOWN, handler)
 
-            session = MvgeTome(ledger, meta, runner)
+            session = MvgeTome(factory, write, read, runner)
             state = MvgeState(
                 system_prompt="test",
                 model={"id": "test-model", "name": "Test"},
@@ -1189,12 +1191,12 @@ async def test_record_invocation_spell_result_serializes_structured_json() -> No
         MvgeEvent,
         MvgeEventType,
     )
-    from mvgeos_tome.ledger import TomeLedger
 
     with tempfile.TemporaryDirectory() as tmp:
-        ledger = TomeLedger(Path(tmp))
-        meta = ledger.create_tome("/tmp")
-        session = MvgeTome(ledger, meta)
+        factory = TomeHandleFactory(Path(tmp))
+        write = factory.create_tome("/tmp")
+        read = factory.open_read(write.tome_id)
+        session = MvgeTome(factory, write, read)
         await session.start()
 
         state = MvgeState(
@@ -1219,7 +1221,7 @@ async def test_record_invocation_spell_result_serializes_structured_json() -> No
             )
         )
 
-        entries = ledger.get_entries(meta.id)
+        entries = factory.get_entries(write.tome_id)
         msg_entries = [e for e in entries if e.payload.get("role") == "spellResult"]
         assert len(msg_entries) == 1
         entry = msg_entries[0]
@@ -1229,7 +1231,7 @@ async def test_record_invocation_spell_result_serializes_structured_json() -> No
             {"type": "text", "text": "file content here"}
         ]
 
-        tome_file = ledger.tome_file(meta.id)
+        tome_file = factory.tome_file(write.tome_id)
         lines = tome_file.read_text(encoding="utf-8").strip().splitlines()
         assert len(lines) >= 2
         for line in lines:
@@ -1249,9 +1251,10 @@ class TestMvgeHarnessRecordInvocationParentId:
     async def test_record_invocation_supplies_active_leaf_id(self) -> None:
 
         with tempfile.TemporaryDirectory() as tmp:
-            ledger = TomeLedger(Path(tmp))
-            meta = ledger.create_tome("/tmp")
-            tome = MvgeTome(ledger, meta)
+            factory = TomeHandleFactory(Path(tmp))
+            write = factory.create_tome("/tmp")
+            read = factory.open_read(write.tome_id)
+            tome = MvgeTome(factory, write, read)
             tome._started = True
 
             state = MvgeState(
@@ -1275,7 +1278,7 @@ class TestMvgeHarnessRecordInvocationParentId:
 
             e1_id = tome.active_leaf_id
             assert e1_id is not None
-            entry1 = ledger.get_entry(tome.tome_id, e1_id)
+            entry1 = factory.get_entry(tome.tome_id, e1_id)
             assert entry1 is not None
             assert entry1.parent_id is None
 
@@ -1294,7 +1297,7 @@ class TestMvgeHarnessRecordInvocationParentId:
             e2_id = tome.active_leaf_id
             assert e2_id is not None
             assert e2_id != e1_id
-            entry2 = ledger.get_entry(tome.tome_id, e2_id)
+            entry2 = factory.get_entry(tome.tome_id, e2_id)
             assert entry2 is not None
             assert entry2.parent_id == e1_id
 
@@ -1314,12 +1317,12 @@ class TestMvgeHarnessRecordInvocationParentId:
             e3_id = tome.active_leaf_id
             assert e3_id is not None
             assert e3_id != e2_id
-            entry3 = ledger.get_entry(tome.tome_id, e3_id)
+            entry3 = factory.get_entry(tome.tome_id, e3_id)
             assert entry3 is not None
             assert entry3.parent_id == e2_id
 
             # Context lookup from e3_id should reconstruct [entry1, entry2, entry3]
-            context = ledger.get_entries_for_context(tome.tome_id, leaf_id=e3_id)
+            context = factory.get_entries_for_context(tome.tome_id, leaf_id=e3_id)
             assert [e.id for e in context] == [e1_id, e2_id, e3_id]
 
 

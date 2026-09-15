@@ -8,9 +8,27 @@ import pytest
 from mvgeos_core.channel import Model
 from mvgeos_core.errors import TomeResumeError
 from mvgeos_core.spells import MvgeSpell
-from mvgeos_tome.ledger import TomeLedger
+from mvgeos_tome.handle import TomeHandleFactory
+from mvgeos_tome.types import TomeEntry, TomeEntryType
 
 from mvgeos_agent.mvge import Mvge
+
+
+def _seed_tome(
+    tome_dir: Path,
+    *,
+    model: str | None = None,
+    contemplation_level: str | None = None,
+    spells: list[str] | None = None,
+) -> str:
+    factory = TomeHandleFactory(tome_dir)
+    write = factory.create_tome(
+        "/test",
+        model=model,
+        contemplation_level=contemplation_level,
+        spells=spells,
+    )
+    return write.tome_id
 
 
 def _mock_model() -> Model:
@@ -179,9 +197,8 @@ async def test_resume_tome_missing_id_raises_error() -> None:
 async def test_resume_matching_config_succeeds_without_warnings() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tome_dir = Path(tmp_dir)
-        ledger = TomeLedger(tome_dir)
-        meta = ledger.create_tome(
-            "/test",
+        tome_id = _seed_tome(
+            tome_dir,
             model="test-model",
             contemplation_level="medium",
             spells=["spell_a", "spell_b"],
@@ -197,7 +214,7 @@ async def test_resume_matching_config_succeeds_without_warnings() -> None:
         agent = SpellAgent(
             api_key="test-key",
             tome_dir=tome_dir,
-            tome_resume=meta.id,
+            tome_resume=tome_id,
         )
         agent._provider_registry.resolve = MagicMock(
             return_value=(_mock_model(), MagicMock())
@@ -212,7 +229,7 @@ async def test_resume_matching_config_succeeds_without_warnings() -> None:
             await agent.initialize()
 
         assert agent._agent_tome is not None
-        assert agent._agent_tome.tome_id == meta.id
+        assert agent._agent_tome.tome_id == tome_id
         # No resume diagnostics
         assert len(agent._resume_diagnostics) == 0
 
@@ -221,9 +238,8 @@ async def test_resume_matching_config_succeeds_without_warnings() -> None:
 async def test_resume_mismatched_model_non_strict_emits_diagnostic() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tome_dir = Path(tmp_dir)
-        ledger = TomeLedger(tome_dir)
-        meta = ledger.create_tome(
-            "/test",
+        tome_id = _seed_tome(
+            tome_dir,
             model="different-model",
             contemplation_level="medium",
             spells=[],
@@ -232,7 +248,7 @@ async def test_resume_mismatched_model_non_strict_emits_diagnostic() -> None:
         agent = Mvge(
             api_key="test-key",
             tome_dir=tome_dir,
-            tome_resume=meta.id,
+            tome_resume=tome_id,
             strict_resume=False,
         )
         agent._provider_registry.resolve = MagicMock(
@@ -248,7 +264,7 @@ async def test_resume_mismatched_model_non_strict_emits_diagnostic() -> None:
             await agent.initialize()
 
         assert agent._agent_tome is not None
-        assert agent._agent_tome.tome_id == meta.id
+        assert agent._agent_tome.tome_id == tome_id
         diags = agent.diagnostics
         assert any("different-model" in d.message for d in diags)
 
@@ -259,9 +275,8 @@ async def test_resume_mismatched_model_strict_raises_tome_incompatible() -> None
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tome_dir = Path(tmp_dir)
-        ledger = TomeLedger(tome_dir)
-        meta = ledger.create_tome(
-            "/test",
+        tome_id = _seed_tome(
+            tome_dir,
             model="different-model",
             contemplation_level="medium",
             spells=[],
@@ -270,7 +285,7 @@ async def test_resume_mismatched_model_strict_raises_tome_incompatible() -> None
         agent = Mvge(
             api_key="test-key",
             tome_dir=tome_dir,
-            tome_resume=meta.id,
+            tome_resume=tome_id,
             strict_resume=True,
         )
         agent._provider_registry.resolve = MagicMock(
@@ -289,7 +304,7 @@ async def test_resume_mismatched_model_strict_raises_tome_incompatible() -> None
             await agent.initialize()
 
         assert "different-model" in str(exc_info.value)
-        assert exc_info.value.tome_id == meta.id
+        assert exc_info.value.tome_id == tome_id
         assert exc_info.value.model_mismatch == ("different-model", "test-model")
 
 
@@ -299,9 +314,8 @@ async def test_resume_missing_spells_strict_raises_tome_incompatible() -> None:
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tome_dir = Path(tmp_dir)
-        ledger = TomeLedger(tome_dir)
-        meta = ledger.create_tome(
-            "/test",
+        tome_id = _seed_tome(
+            tome_dir,
             model="test-model",
             contemplation_level="medium",
             spells=["required_custom_spell", "bash"],
@@ -314,7 +328,7 @@ async def test_resume_missing_spells_strict_raises_tome_incompatible() -> None:
         agent = LimitedAgent(
             api_key="test-key",
             tome_dir=tome_dir,
-            tome_resume=meta.id,
+            tome_resume=tome_id,
             strict_resume=True,
         )
         agent._provider_registry.resolve = MagicMock(
@@ -340,9 +354,8 @@ async def test_resume_missing_spells_strict_raises_tome_incompatible() -> None:
 async def test_resume_missing_spells_non_strict_emits_diagnostic() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tome_dir = Path(tmp_dir)
-        ledger = TomeLedger(tome_dir)
-        meta = ledger.create_tome(
-            "/test",
+        tome_id = _seed_tome(
+            tome_dir,
             model="test-model",
             contemplation_level="medium",
             spells=["required_custom_spell", "bash"],
@@ -355,7 +368,7 @@ async def test_resume_missing_spells_non_strict_emits_diagnostic() -> None:
         agent = LimitedAgent(
             api_key="test-key",
             tome_dir=tome_dir,
-            tome_resume=meta.id,
+            tome_resume=tome_id,
             strict_resume=False,
         )
         agent._provider_registry.resolve = MagicMock(
@@ -379,15 +392,23 @@ async def test_resume_missing_spells_non_strict_emits_diagnostic() -> None:
 async def test_resume_force_fork_branches_incompatible_session() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tome_dir = Path(tmp_dir)
-        ledger = TomeLedger(tome_dir)
-        meta = ledger.create_tome(
-            "/test",
+        factory = TomeHandleFactory(tome_dir)
+        tome_id = _seed_tome(
+            tome_dir,
             model="old-model",
             contemplation_level="low",
             spells=["old_spell"],
         )
-        e1 = ledger.append_message(meta.id, "user", "turn 1")
-        ledger.append_leaf(meta.id, e1.id)
+        seed_write = factory.open_write(tome_id)
+        e1 = TomeEntry(
+            id="turn-1",
+            parent_id=None,
+            type=TomeEntryType.MESSAGE,
+            timestamp=1000.0,
+            payload={"role": "user", "content": "turn 1"},
+        )
+        seed_write.append(e1)
+        seed_write.append_leaf(e1.id)
 
         class NewAgent(Mvge):
             def _build_spells(self) -> list[MvgeSpell]:
@@ -396,7 +417,7 @@ async def test_resume_force_fork_branches_incompatible_session() -> None:
         agent = NewAgent(
             api_key="test-key",
             tome_dir=tome_dir,
-            tome_resume=meta.id,
+            tome_resume=tome_id,
             force_fork_resume=True,
         )
         agent._provider_registry.resolve = MagicMock(
@@ -413,13 +434,13 @@ async def test_resume_force_fork_branches_incompatible_session() -> None:
 
         assert agent._agent_tome is not None
         # Forked tome has a new ID and points to parent
-        assert agent._agent_tome.tome_id != meta.id
-        assert agent._agent_tome.metadata.parent_tome_id == meta.id
+        assert agent._agent_tome.tome_id != tome_id
+        assert agent._agent_tome.metadata.parent_tome_id == tome_id
         assert agent._agent_tome.metadata.model == "test-model"
         assert agent._agent_tome.metadata.spells == ["new_spell"]
 
         # Ancestor history preserved
-        entries = ledger.get_entries(agent._agent_tome.tome_id)
+        entries = factory.get_entries(agent._agent_tome.tome_id)
         assert len(entries) >= 1
         assert entries[0].id == e1.id
 
@@ -428,9 +449,8 @@ async def test_resume_force_fork_branches_incompatible_session() -> None:
 async def test_validate_tome_compatibility_helper() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tome_dir = Path(tmp_dir)
-        ledger = TomeLedger(tome_dir)
-        meta = ledger.create_tome(
-            "/test",
+        tome_id = _seed_tome(
+            tome_dir,
             model="other-model",
             contemplation_level="high",
             spells=["spell_x"],
@@ -441,7 +461,7 @@ async def test_validate_tome_compatibility_helper() -> None:
             return_value=(_mock_model(), MagicMock())
         )  # type: ignore[method-assign]
 
-        report = agent.validate_tome_compatibility(meta.id)
+        report = agent.validate_tome_compatibility(tome_id)
         assert not report.compatible
         assert report.model_mismatch == ("other-model", "test-model")
         assert "spell_x" in report.missing_spells

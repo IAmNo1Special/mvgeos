@@ -38,7 +38,7 @@ from mvgeos_runes import (
 )
 from mvgeos_runes.loader import get_default_skill_paths, load_skills_from_paths
 from mvgeos_runes.types import SkillManifest
-from mvgeos_tome.types import TomeEntryType
+from mvgeos_tome.types import TomeEntryType, TomeVersionError
 
 from mvgeos_gui.autocomplete import (
     AutocompleteService,
@@ -513,10 +513,9 @@ class AppState:
 
     def load_messages_for_tome(self, tome_id: str) -> None:
         """Load existing messages from a Tome's JSONL transcript."""
-        ledger = self.tome_service.ledger
         try:
-            entries = ledger.get_entries(tome_id)
-        except (ValueError, KeyError):
+            entries = self.tome_service.factory.get_entries(tome_id)
+        except (FileNotFoundError, TomeVersionError, ValueError, KeyError):
             self.messages = []
             return
 
@@ -537,8 +536,10 @@ class AppState:
 
     def switch_to_tome(self, tome_id: str) -> None:
         """Load a Tome session and switch the active conversation."""
-        ledger = self.tome_service.ledger
-        meta = ledger.open_tome(tome_id)
+        try:
+            meta = self.tome_service.factory.open_tome(tome_id)
+        except TomeVersionError:
+            return
         if meta is None:
             return
         self.active_tome_id = meta.id
@@ -812,23 +813,23 @@ class AppState:
         """Fork the active Tome and switch to the new branch."""
         if self.active_tome_id is None:
             return None
-        ledger = self.tome_service.ledger
-        leaf_id = ledger.get_leaf_id(self.active_tome_id)
+        factory = self.tome_service.factory
+        leaf_id = factory.get_leaf_id(self.active_tome_id)
         if leaf_id is None:
             return None
-        forked = ledger.create_branched_tome(
+        forked = factory.create_branched_tome(
             parent_tome_id=self.active_tome_id,
             cwd=str(self.project_path),
             fork_from_leaf_id=leaf_id,
         )
-        self.switch_to_tome(forked.id)
-        return forked.id
+        self.switch_to_tome(forked.tome_id)
+        return forked.tome_id
 
     def export_tome(self) -> Path | None:
         """Export the active Tome's JSONL transcript to the project directory."""
         if self.active_tome_id is None:
             return None
-        src = self.tome_service.ledger.tome_file(self.active_tome_id)
+        src = self.tome_service.factory.tome_file(self.active_tome_id)
         if not src.exists():
             return None
         dest = self.project_path / f"{self.active_tome_id[:8]}.jsonl"

@@ -1,4 +1,5 @@
-import ctypes
+from __future__ import annotations
+
 import os
 import signal
 import subprocess
@@ -6,16 +7,20 @@ import sys
 import tempfile
 import time
 from contextlib import suppress
-from ctypes import wintypes
 from pathlib import Path
 
-from mvgeos_tome.ledger import TomeLedger
-from mvgeos_tome.locking import FileLock
+import portalocker
+import pytest
+
+from mvgeos_tome.handle import TomeHandleFactory
 from mvgeos_tome.types import TomeEntry, TomeEntryType
 
 
 def _kill_pid(pid: int) -> None:
     if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
         windll = getattr(ctypes, "windll", None)
         if windll:
             kernel32 = windll.kernel32
@@ -31,17 +36,17 @@ def _kill_pid(pid: int) -> None:
             os.kill(pid, signal.SIGKILL)
 
 
-def test_subprocess_crash_recovery() -> None:
+def test_kernel_lease_released_on_crash() -> None:
+    """A killed holder releases its kernel lease; a new writer proceeds."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tome_dir = Path(tmpdir)
-        lock_path = tome_dir / ".lock"
+        factory = TomeHandleFactory(tome_dir)
+        write = factory.create_tome(str(tome_dir), tome_id="t1")
+        lock_path = str(write.path) + ".lock"
 
-        # Child process script that acquires lock, writes metadata, and signals
         child_code = (
-            "import os, time, sys\n"
-            "from pathlib import Path\n"
-            "from mvgeos_tome.locking import FileLock\n"
-            f"lock = FileLock(Path(r'{lock_path}'))\n"
+            "import portalocker, os, time, sys\n"
+            f"lock = portalocker.Lock(r'{lock_path}', timeout=30)\n"
             "lock.acquire()\n"
             "print(f'LOCKED {os.getpid()}', flush=True)\n"
             "time.sleep(30)\n"
@@ -56,45 +61,33 @@ def test_subprocess_crash_recovery() -> None:
 
         child_pid: int | None = None
         try:
-            # Wait for child to acquire lock
             assert proc.stdout is not None
             line = proc.stdout.readline().strip()
             assert line.startswith("LOCKED")
             child_pid = int(line.split()[1])
 
-            # Verify lock metadata exists and matches child process
-            lock = FileLock(lock_path)
-            meta = lock.read_metadata()
-            assert meta is not None
-            assert meta.pid == child_pid
+            # The live holder blocks a second writer with a short timeout.
+            with pytest.raises(portalocker.exceptions.AlreadyLocked):
+                portalocker.Lock(lock_path, timeout=0.5).acquire()
 
-            # Simulate abrupt process crash / kill
             _kill_pid(child_pid)
             proc.kill()
             proc.wait()
+            time.sleep(0.5)
 
-            # Small wait to ensure OS has reclaimed process handle
-            time.sleep(0.1)
-
-            # Now verify stale lock recovery in parent
-            assert lock.is_stale() is True
-
-            # TomeLedger initialization should clean up stale lock and operate normally
-            ledger = TomeLedger(tome_dir)
-            tome_meta = ledger.create_tome(str(tome_dir))
-            assert tome_meta.id is not None
-
-            # Append entry to confirm lock acquisition and ledger mutation work
-            entry = TomeEntry(
-                id="entry-1",
-                parent_id=None,
-                type=TomeEntryType.MESSAGE,
-                timestamp=time.time(),
-                payload={"text": "recovered"},
+            # After the crash the lease is free: appending works.
+            recovered = factory.open_write("t1")
+            recovered.append(
+                TomeEntry(
+                    id="entry-1",
+                    parent_id=None,
+                    type=TomeEntryType.MESSAGE,
+                    timestamp=time.time(),
+                    payload={"text": "recovered"},
+                )
             )
-            ledger.append(tome_meta.id, entry)
 
-            entries = ledger.get_entries(tome_meta.id)
+            entries = factory.get_entries("t1")
             assert len(entries) == 1
             assert entries[0].payload == {"text": "recovered"}
         finally:
@@ -103,3 +96,26 @@ def test_subprocess_crash_recovery() -> None:
             if proc.poll() is None:
                 proc.kill()
                 proc.wait()
+
+
+def test_torn_tail_repaired_by_resumer() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tome_dir = Path(tmpdir)
+        factory = TomeHandleFactory(tome_dir)
+        write = factory.create_tome(str(tome_dir), tome_id="t1")
+        write.append(
+            TomeEntry(
+                id="entry-1",
+                parent_id=None,
+                type=TomeEntryType.MESSAGE,
+                timestamp=time.time(),
+                payload={"text": "kept"},
+            )
+        )
+
+        with write.path.open("a", encoding="utf-8") as f:
+            f.write('{"id": "partial", "type": "messa')
+
+        truncated = factory.open_write("t1").repair_torn_tail()
+        assert truncated > 0
+        assert [e.id for e in factory.get_entries("t1")] == ["entry-1"]

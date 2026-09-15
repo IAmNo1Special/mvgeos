@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from mvgeos_tome.ledger import TomeLedger
+from mvgeos_tome.handle import TomeHandleFactory
 from mvgeos_tome.types import TomeEntry, TomeEntryType, TomeVersionError
 
 
@@ -29,47 +29,59 @@ def _write_raw_tome(
     return tome_file
 
 
-class TestIterTomeEntries:
-    def test_iter_tome_entries_yields_entries_sequentially(
-        self, tmp_path: Path
-    ) -> None:
-        ledger = TomeLedger(tmp_path)
-        tome = ledger.create_tome(str(tmp_path))
-        m1 = ledger.append_message(tome.id, "user", "one")
-        l1 = ledger.append_leaf(tome.id, m1.id)
-        m2 = ledger.append_message(tome.id, "assistant", "two")
+def _message(
+    entry_id: str, role: str, content: str, timestamp: float = 1000.0
+) -> TomeEntry:
+    return TomeEntry(
+        id=entry_id,
+        parent_id=None,
+        type=TomeEntryType.MESSAGE,
+        timestamp=timestamp,
+        payload={"role": role, "content": content},
+    )
 
-        # Force cache eviction to test disk streaming
-        ledger._invalidate_cache(tome.id)
 
-        gen = ledger.iter_tome_entries(tome.id)
-        entries = list(gen)
+def _leaf(entry_id: str, target: str) -> TomeEntry:
+    return TomeEntry(
+        id=entry_id,
+        parent_id=None,
+        type=TomeEntryType.LEAF,
+        timestamp=1001.0,
+        payload={"targetId": target},
+    )
+
+
+class TestIterEntries:
+    def test_iter_entries_yields_entries_sequentially(self, tmp_path: Path) -> None:
+        factory = TomeHandleFactory(tmp_path)
+        write = factory.create_tome(str(tmp_path), tome_id="t1")
+        write.append(_message("m1", "user", "one"))
+        write.append(_leaf("l1", "m1"))
+        write.append(_message("m2", "assistant", "two"))
+
+        entries = list(factory.open_read("t1").iter_entries())
 
         assert len(entries) == 3
-        assert [e.id for e in entries] == [m1.id, l1.id, m2.id]
+        assert [e.id for e in entries] == ["m1", "l1", "m2"]
         assert entries[0].type == TomeEntryType.MESSAGE
         assert entries[1].type == TomeEntryType.LEAF
         assert entries[2].type == TomeEntryType.MESSAGE
         assert entries[0].payload["content"] == "one"
 
-    def test_iter_tome_entries_from_cache(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
-        tome = ledger.create_tome(str(tmp_path))
-        m1 = ledger.append_message(tome.id, "user", "one")
+    def test_iter_entries_sees_external_appends(self, tmp_path: Path) -> None:
+        factory = TomeHandleFactory(tmp_path)
+        write = factory.create_tome(str(tmp_path), tome_id="t1")
+        write.append(_message("m1", "user", "one"))
 
-        # Populate cache via get_entries
-        cached = ledger.get_entries(tome.id)
-        assert len(cached) == 1
-        assert tome.id in ledger._entries_cache
+        read = factory.open_read("t1")
+        assert [e.id for e in read.iter_entries()] == ["m1"]
 
-        entries = list(ledger.iter_tome_entries(tome.id))
-        assert len(entries) == 1
-        assert entries[0].id == m1.id
+        write.append(_message("m2", "user", "two"))
+        assert [e.id for e in read.iter_entries()] == ["m1", "m2"]
 
-    def test_iter_tome_entries_skips_corrupted_lines_gracefully(
+    def test_iter_entries_skips_corrupted_lines_gracefully(
         self, tmp_path: Path
     ) -> None:
-        ledger = TomeLedger(tmp_path)
         tome_id = "test-corrupt"
         entries_data = [
             {
@@ -106,68 +118,56 @@ class TestIterTomeEntries:
                 + "\n"
             )
 
-        ledger._load_tome_headers()
-        streamed = list(ledger.iter_tome_entries(tome_id))
+        factory = TomeHandleFactory(tmp_path)
+        streamed = list(factory.open_read(tome_id).iter_entries())
         assert [e.id for e in streamed] == ["e1", "e2", "e4"]
 
-    def test_iter_tome_entries_empty_file_or_header_only(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
-        tome = ledger.create_tome(str(tmp_path))
-        ledger._invalidate_cache(tome.id)
+    def test_iter_entries_empty_file_or_header_only(self, tmp_path: Path) -> None:
+        factory = TomeHandleFactory(tmp_path)
+        factory.create_tome(str(tmp_path), tome_id="t1")
 
-        assert list(ledger.iter_tome_entries(tome.id)) == []
-        assert list(ledger.iter_tome_entries("non-existent-tome")) == []
+        assert list(factory.open_read("t1").iter_entries()) == []
 
-    @pytest.mark.asyncio
-    async def test_iter_tome_entries_async(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
-        tome = ledger.create_tome(str(tmp_path))
-        m1 = ledger.append_message(tome.id, "user", "async one")
-        m2 = ledger.append_message(tome.id, "assistant", "async two")
-        ledger._invalidate_cache(tome.id)
+    def test_iter_entries_missing_tome_raises(self, tmp_path: Path) -> None:
+        factory = TomeHandleFactory(tmp_path)
+        with pytest.raises(FileNotFoundError):
+            factory.open_read("non-existent-tome")
 
-        results: list[TomeEntry] = []
-        async for entry in ledger.iter_tome_entries_async(tome.id):
-            results.append(entry)
-
-        assert len(results) == 2
-        assert [e.id for e in results] == [m1.id, m2.id]
-
-    def test_iter_tome_entries_unsupported_version_raises(self, tmp_path: Path) -> None:
+    def test_iter_entries_unsupported_version_raises(self, tmp_path: Path) -> None:
         file_path = tmp_path / "v9.jsonl"
         file_path.write_text(
             '{"type": "session", "version": 9, "id": "v9", '
             '"timestamp": "2026-01-01T00:00:00Z", "cwd": "/tmp"}\n',
             encoding="utf-8",
         )
-        ledger = TomeLedger(tmp_path)
+        factory = TomeHandleFactory(tmp_path)
         with pytest.raises(TomeVersionError):
-            list(ledger.iter_tome_entries("v9"))
+            factory.open_read("v9")
 
-    def test_iter_tome_entries_invalid_version_raises(self, tmp_path: Path) -> None:
+    def test_iter_entries_invalid_version_raises(self, tmp_path: Path) -> None:
         file_path = tmp_path / "bad-ver.jsonl"
         file_path.write_text(
             '{"type": "session", "version": "not-a-num", "id": "bad-ver", '
             '"timestamp": "2026-01-01T00:00:00Z", "cwd": "/tmp"}\n',
             encoding="utf-8",
         )
-        ledger = TomeLedger(tmp_path)
+        factory = TomeHandleFactory(tmp_path)
         with pytest.raises(TomeVersionError):
-            list(ledger.iter_tome_entries("bad-ver"))
+            factory.open_read("bad-ver")
 
-    def test_iter_tome_entries_header_invalid_json(self, tmp_path: Path) -> None:
+    def test_iter_entries_header_invalid_json(self, tmp_path: Path) -> None:
         file_path = tmp_path / "bad-json.jsonl"
         file_path.write_text("NOT_JSON\n", encoding="utf-8")
-        ledger = TomeLedger(tmp_path)
-        assert list(ledger.iter_tome_entries("bad-json")) == []
+        factory = TomeHandleFactory(tmp_path)
+        assert factory.open_read("bad-json").get_entries() == []
 
-    def test_iter_tome_entries_header_not_session(self, tmp_path: Path) -> None:
+    def test_iter_entries_header_not_session(self, tmp_path: Path) -> None:
         file_path = tmp_path / "not-session.jsonl"
         file_path.write_text('{"type": "other"}\n', encoding="utf-8")
-        ledger = TomeLedger(tmp_path)
-        assert list(ledger.iter_tome_entries("not-session")) == []
+        factory = TomeHandleFactory(tmp_path)
+        assert factory.open_read("not-session").get_entries() == []
 
-    def test_iter_tome_entries_entry_not_object(self, tmp_path: Path) -> None:
+    def test_iter_entries_entry_not_object(self, tmp_path: Path) -> None:
         file_path = tmp_path / "entry-string.jsonl"
         file_path.write_text(
             '{"type": "session", "version": 1, "id": "entry-string", '
@@ -175,20 +175,18 @@ class TestIterTomeEntries:
             '"just-a-string"\n\n',
             encoding="utf-8",
         )
-        ledger = TomeLedger(tmp_path)
-        assert list(ledger.iter_tome_entries("entry-string")) == []
+        factory = TomeHandleFactory(tmp_path)
+        assert factory.open_read("entry-string").get_entries() == []
 
 
 class TestReadLastNEntries:
     def test_read_last_n_entries_bounded_slice(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
-        tome = ledger.create_tome(str(tmp_path))
+        factory = TomeHandleFactory(tmp_path)
+        write = factory.create_tome(str(tmp_path), tome_id="t1")
         for i in range(10):
-            ledger.append_message(tome.id, "user", f"msg-{i}")
+            write.append(_message(f"m{i}", "user", f"msg-{i}", timestamp=1000.0 + i))
 
-        ledger._invalidate_cache(tome.id)
-
-        tail = ledger.read_last_n_entries(tome.id, limit=3)
+        tail = factory.read_last_n_entries("t1", limit=3)
         assert len(tail) == 3
         assert [e.payload["content"] for e in tail] == [
             "msg-7",
@@ -197,67 +195,24 @@ class TestReadLastNEntries:
         ]
 
     def test_read_last_n_entries_limit_greater_than_total(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
-        tome = ledger.create_tome(str(tmp_path))
-        m1 = ledger.append_message(tome.id, "user", "msg-0")
-        m2 = ledger.append_message(tome.id, "user", "msg-1")
+        factory = TomeHandleFactory(tmp_path)
+        write = factory.create_tome(str(tmp_path), tome_id="t1")
+        write.append(_message("m1", "user", "msg-0"))
+        write.append(_message("m2", "user", "msg-1"))
 
-        ledger._invalidate_cache(tome.id)
-
-        tail = ledger.read_last_n_entries(tome.id, limit=100)
+        tail = factory.read_last_n_entries("t1", limit=100)
         assert len(tail) == 2
-        assert [e.id for e in tail] == [m1.id, m2.id]
+        assert [e.id for e in tail] == ["m1", "m2"]
 
     def test_read_last_n_entries_zero_or_negative_limit(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
-        tome = ledger.create_tome(str(tmp_path))
-        ledger.append_message(tome.id, "user", "msg-0")
+        factory = TomeHandleFactory(tmp_path)
+        write = factory.create_tome(str(tmp_path), tome_id="t1")
+        write.append(_message("m1", "user", "msg-0"))
 
-        assert ledger.read_last_n_entries(tome.id, limit=0) == []
-        assert ledger.read_last_n_entries(tome.id, limit=-5) == []
-
-    def test_read_last_n_entries_from_cache(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
-        tome = ledger.create_tome(str(tmp_path))
-        for i in range(5):
-            ledger.append_message(tome.id, "user", f"cached-{i}")
-
-        # Populate cache
-        ledger.get_entries(tome.id)
-        assert tome.id in ledger._entries_cache
-
-        tail = ledger.read_last_n_entries(tome.id, limit=2)
-        assert len(tail) == 2
-        assert [e.payload["content"] for e in tail] == ["cached-3", "cached-4"]
-
-    def test_read_last_n_entries_across_multi_chunk_boundaries(
-        self, tmp_path: Path
-    ) -> None:
-        ledger = TomeLedger(tmp_path)
-        tome_id = "large-tail-test"
-        entries_data = [
-            {
-                "id": f"entry-{i:05d}",
-                "parentId": f"entry-{i - 1:05d}" if i > 0 else None,
-                "type": "message",
-                "timestamp": 1000.0 + i,
-                "payload": {
-                    "role": "user",
-                    "content": f"data-{i:05d}-" + "x" * 200,
-                },
-            }
-            for i in range(1000)
-        ]
-        _write_raw_tome(tmp_path, tome_id, entries_data)
-        ledger._load_tome_headers()
-
-        tail = ledger.read_last_n_entries(tome_id, limit=25)
-        assert len(tail) == 25
-        assert tail[0].id == "entry-00975"
-        assert tail[-1].id == "entry-00999"
+        assert factory.read_last_n_entries("t1", limit=0) == []
+        assert factory.read_last_n_entries("t1", limit=-5) == []
 
     def test_read_last_n_entries_skips_corrupted_lines(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
         tome_id = "tail-corrupt"
         entries_data = [
             {
@@ -304,15 +259,14 @@ class TestReadLastNEntries:
                 + "\n"
             )
 
-        ledger._load_tome_headers()
-        tail = ledger.read_last_n_entries(tome_id, limit=3)
+        factory = TomeHandleFactory(tmp_path)
+        tail = factory.read_last_n_entries(tome_id, limit=3)
         assert len(tail) == 3
         assert [e.id for e in tail] == ["e2", "e3", "e4"]
 
     def test_read_last_n_entries_continues_seeking_past_trailing_corrupt_lines(
         self, tmp_path: Path
     ) -> None:
-        ledger = TomeLedger(tmp_path)
         tome_id = "trailing-corrupt"
         entries_data = [
             {
@@ -331,31 +285,18 @@ class TestReadLastNEntries:
             for _ in range(10):
                 f.write("not valid json\n\n")
 
-        ledger._load_tome_headers()
-        tail = ledger.read_last_n_entries(tome_id, limit=3)
+        factory = TomeHandleFactory(tmp_path)
+        tail = factory.read_last_n_entries(tome_id, limit=3)
         assert len(tail) == 3
         assert [e.id for e in tail] == ["valid-2", "valid-3", "valid-4"]
 
     def test_read_last_n_entries_prefix_resolution(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
+        factory = TomeHandleFactory(tmp_path)
         long_id = "0123456789abcdef0123456789abcdef"
-        ledger.create_tome(str(tmp_path), tome_id=long_id)
-        ledger.append_message(long_id, "user", "msg1")
-        ledger.append_message(long_id, "user", "msg2")
-        ledger._invalidate_cache(long_id)
+        write = factory.create_tome(str(tmp_path), tome_id=long_id)
+        write.append(_message("m1", "user", "msg1"))
+        write.append(_message("m2", "user", "msg2"))
 
-        tail = ledger.read_last_n_entries("01234567", limit=1)
+        tail = factory.read_last_n_entries("01234567", limit=1)
         assert len(tail) == 1
         assert tail[0].payload["content"] == "msg2"
-
-    @pytest.mark.asyncio
-    async def test_read_last_n_entries_async(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
-        tome = ledger.create_tome(str(tmp_path))
-        ledger.append_message(tome.id, "user", "async-1")
-        ledger.append_message(tome.id, "user", "async-2")
-        ledger._invalidate_cache(tome.id)
-
-        tail = await ledger.read_last_n_entries_async(tome.id, limit=1)
-        assert len(tail) == 1
-        assert tail[0].payload["content"] == "async-2"

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import logging
 import re
+import uuid
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +26,7 @@ from mvgeos_core.invocations import (
 from mvgeos_core.spells import SpellResultMessage
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import SigilHook
-from mvgeos_tome.ledger import TomeLedger
+from mvgeos_tome.handle import TomeHandle, TomeHandleFactory
 from mvgeos_tome.types import (
     TomeEntry,
     TomeEntryType,
@@ -41,6 +44,14 @@ logger = logging.getLogger(__name__)
 _TOME_FILE_PATTERN = re.compile(r"([a-f0-9]{32})\.jsonl$")
 
 
+def _generate_short_id() -> str:
+    return uuid.uuid4().hex[:8]
+
+
+def _timestamp_now() -> float:
+    return datetime.now(UTC).timestamp()
+
+
 def _serialise_invocation(invocation: Any) -> dict[str, Any]:
     """Flatten an Invocation to JSON-safe primitives for the Tome file."""
     if dataclasses.is_dataclass(invocation) and not isinstance(invocation, type):
@@ -52,7 +63,7 @@ class MvgeTome:
     @classmethod
     async def open(
         cls,
-        ledger: TomeLedger,
+        factory: TomeHandleFactory,
         tome_id: str,
         runner: RuneRunner | None = None,
         *,
@@ -70,14 +81,17 @@ class MvgeTome:
             TomeIncompatibleError: when strict=True and compatibility checks fail.
         """
         try:
-            metadata = ledger.open_tome(tome_id)
-        except (ValueError, FileNotFoundError, TomeVersionError) as e:
+            read_handle = factory.open_read(tome_id)
+            metadata = read_handle.get_metadata()
+        except (FileNotFoundError, TomeVersionError) as e:
             raise TomeResumeError(tome_id) from e
         if metadata is None:
             raise TomeResumeError(tome_id)
 
+        write_handle = factory.open_write(metadata.id)
+
         if entries is None:
-            entries = ledger.get_entries(metadata.id)
+            entries = read_handle.get_entries()
 
         report = validate_session_compatibility(
             metadata,
@@ -95,9 +109,9 @@ class MvgeTome:
                 )
                 try:
                     fork_leaf_id = (
-                        ledger.get_leaf_id(metadata.id) or metadata.active_leaf_id
+                        cls._leaf_of(factory, metadata.id) or metadata.active_leaf_id
                     )
-                    forked_metadata = ledger.create_branched_tome(
+                    forked_write = factory.create_branched_tome(
                         parent_tome_id=metadata.id,
                         cwd=metadata.cwd,
                         fork_from_leaf_id=fork_leaf_id,
@@ -122,7 +136,8 @@ class MvgeTome:
                         contemplation_mismatch=report.contemplation_mismatch,
                     ) from e
 
-                tome = cls(ledger, forked_metadata, runner)
+                forked_read = factory.open_read(forked_write.tome_id)
+                tome = cls(factory, forked_write, forked_read, runner)
                 tome.last_compatibility_report = report
                 await tome.start(reason="fork")
                 return tome
@@ -142,7 +157,7 @@ class MvgeTome:
                 [d.message for d in report.diagnostics],
             )
 
-        tome = cls(ledger, metadata, runner)
+        tome = cls(factory, write_handle, read_handle, runner)
         tome.last_compatibility_report = report
         await tome.start(reason="resume")
         return tome
@@ -150,7 +165,7 @@ class MvgeTome:
     @classmethod
     async def create(
         cls,
-        ledger: TomeLedger,
+        factory: TomeHandleFactory,
         cwd: str | Path | None = None,
         runner: RuneRunner | None = None,
         *,
@@ -160,20 +175,21 @@ class MvgeTome:
     ) -> MvgeTome:
         """Create and start a fresh Tome."""
         cwd_str = str(cwd) if cwd is not None else str(Path.cwd())
-        metadata = ledger.create_tome(
+        write_handle = factory.create_tome(
             cwd_str,
             model=model,
             contemplation_level=contemplation_level,
-            spells=spells,
+            spells=list(spells) if spells is not None else None,
         )
-        tome = cls(ledger, metadata, runner)
+        read_handle = factory.open_read(write_handle.tome_id)
+        tome = cls(factory, write_handle, read_handle, runner)
         await tome.start(reason="startup")
         return tome
 
     @classmethod
     async def open_or_create(
         cls,
-        ledger: TomeLedger,
+        factory: TomeHandleFactory,
         tome_resume: str | None = None,
         cwd: str | Path | None = None,
         runner: RuneRunner | None = None,
@@ -187,7 +203,7 @@ class MvgeTome:
         """Resume the given tome, or create a fresh one when no target given."""
         if tome_resume:
             return await cls.open(
-                ledger,
+                factory,
                 tome_resume,
                 runner,
                 expected_model=model,
@@ -197,7 +213,7 @@ class MvgeTome:
                 force_fork=force_fork,
             )
         return await cls.create(
-            ledger,
+            factory,
             cwd,
             runner,
             model=model,
@@ -205,38 +221,48 @@ class MvgeTome:
             spells=spells,
         )
 
+    @staticmethod
+    def _leaf_of(factory: TomeHandleFactory, tome_id: str) -> str | None:
+        return factory.get_leaf_id(tome_id)
+
     def __init__(
         self,
-        ledger: TomeLedger,
-        tome_metadata: TomeMetadata,
+        factory: TomeHandleFactory,
+        write_handle: TomeHandle,
+        read_handle: TomeHandle,
         rune_runner: RuneRunner | None = None,
     ) -> None:
-        self._ledger = ledger
-        self._metadata = tome_metadata
+        self._factory = factory
+        self._write_handle = write_handle
+        self._read_handle = read_handle
+        self._tome_id = write_handle.tome_id
         self._rune_runner = rune_runner
         self._started = False
         self.last_compatibility_report: SessionCompatibilityReport | None = None
 
     @property
     def version(self) -> int:
-        return self._metadata.version
+        meta = self.metadata
+        return meta.version
 
     @property
     def tome_id(self) -> str:
-        return self._metadata.id
+        return self._tome_id
 
     @property
     def tome_file(self) -> str:
-        # Return the path to the tome's JSONL file
-        return str(self._ledger.tome_file(self._metadata.id))
+        return str(self._factory.tome_file(self._tome_id))
 
     @property
-    def ledger(self) -> TomeLedger:
-        return self._ledger
+    def factory(self) -> TomeHandleFactory:
+        return self._factory
 
     @property
     def metadata(self) -> TomeMetadata:
-        return self._metadata
+        meta = self._read_handle.get_metadata()
+        if meta is None:
+            raise TomeResumeError(self._tome_id)
+        return meta
 
     @property
     def compatibility_report(self) -> SessionCompatibilityReport | None:
@@ -244,9 +270,12 @@ class MvgeTome:
 
     @property
     def active_leaf_id(self) -> str | None:
-        return (
-            self._ledger.get_leaf_id(self._metadata.id) or self._metadata.active_leaf_id
-        )
+        return self._factory.get_leaf_id(self._tome_id)
+
+    def set_leaf(self, leaf_id: str) -> TomeEntry:
+        """Point the Tome's Leaf at an existing entry."""
+        with self._write_handle.locked():
+            return self._write_handle.append_leaf(leaf_id)
 
     def get_entries(
         self,
@@ -254,8 +283,8 @@ class MvgeTome:
         limit: int | None = None,
     ) -> list[TomeEntry]:
         """Fetch entries recorded in this tome session."""
-        return self._ledger.get_entries(
-            self._metadata.id, entry_type=entry_type, limit=limit
+        return self._factory.get_entries(
+            self._tome_id, entry_type=entry_type, limit=limit
         )
 
     def get_context_entries(
@@ -265,16 +294,14 @@ class MvgeTome:
     ) -> list[TomeEntry]:
         """Fetch entries along the branch ending at leaf_id (or active leaf)."""
         target_leaf = leaf_id or self.active_leaf_id
-        return self._ledger.get_entries_for_context(
-            self._metadata.id, leaf_id=target_leaf, max_entries=max_entries
+        return self._factory.get_entries_for_context(
+            self._tome_id, leaf_id=target_leaf, max_entries=max_entries
         )
 
     def reconstruct_invocations(self) -> list[MvgeInvocation]:
         """Reconstruct prior conversation invocations from active session branch."""
         leaf_id = self.active_leaf_id
-        entries = self._ledger.get_entries_for_context(
-            self._metadata.id, leaf_id=leaf_id
-        )
+        entries = self._factory.get_entries_for_context(self._tome_id, leaf_id=leaf_id)
         invocations: list[MvgeInvocation] = []
 
         for entry in entries:
@@ -416,7 +443,7 @@ class MvgeTome:
             SigilHook.SESSION_START,
             {
                 "reason": reason,
-                "tomeId": self._metadata.id,
+                "tomeId": self._tome_id,
                 "tomeFile": self.tome_file,
             },
         )
@@ -429,7 +456,7 @@ class MvgeTome:
         self._started = False
         data: dict[str, Any] = {
             "reason": reason,
-            "tomeId": self._metadata.id,
+            "tomeId": self._tome_id,
         }
         if target_session_file is not None:
             data["targetSessionFile"] = target_session_file
@@ -440,7 +467,7 @@ class MvgeTome:
             SigilHook.SESSION_BEFORE_SWITCH,
             {
                 "targetSessionFile": target_file,
-                "tomeId": self._metadata.id,
+                "tomeId": self._tome_id,
             },
         )
         if isinstance(result, dict) and result.get("cancel"):
@@ -452,7 +479,7 @@ class MvgeTome:
             SigilHook.SESSION_BEFORE_FORK,
             {
                 "entryId": entry_id,
-                "tomeId": self._metadata.id,
+                "tomeId": self._tome_id,
             },
         )
         if isinstance(result, dict) and result.get("cancel"):
@@ -463,7 +490,7 @@ class MvgeTome:
         """Fork the Tome at an entry and start the branched tome.
 
         Returns None when a SESSION_BEFORE_FORK sigil cancels the fork or the
-        ledger rejects the branch; failures leave the source session running.
+        branch cannot be created; failures leave the source session running.
         """
         target_id = entry_id or self.active_leaf_id or ""
         fork_result = await self.before_fork(target_id)
@@ -471,18 +498,20 @@ class MvgeTome:
             return None
 
         try:
-            new_metadata = self._ledger.create_branched_tome(
-                parent_tome_id=self._metadata.id,
-                cwd=self._metadata.cwd,
+            meta = self.metadata
+            forked_write = self._factory.create_branched_tome(
+                parent_tome_id=meta.id,
+                cwd=meta.cwd,
                 fork_from_leaf_id=target_id or None,
             )
-        except (KeyError, ValueError) as e:
+        except (KeyError, ValueError, TomeResumeError) as e:
             logger.exception("Failed to fork tome: %s", e)
             return None
 
-        new_tome_file = str(self._ledger.tome_file(new_metadata.id))
+        new_tome_file = str(self._factory.tome_file(forked_write.tome_id))
         await self.shutdown(reason="fork", target_session_file=new_tome_file)
-        new_tome = MvgeTome(self._ledger, new_metadata, self._rune_runner)
+        forked_read = self._factory.open_read(forked_write.tome_id)
+        new_tome = MvgeTome(self._factory, forked_write, forked_read, self._rune_runner)
         await new_tome.start(reason="fork")
         return new_tome
 
@@ -505,18 +534,28 @@ class MvgeTome:
         target_tome_id = match.group(1)
 
         try:
-            metadata = self._ledger.open_tome(target_tome_id)
-            if metadata is None:
+            target_read = self._factory.open_read(target_tome_id)
+            if target_read.get_metadata() is None:
                 logger.error("Failed to open target tome: %s", target_tome_id)
                 return None
+            target_write = self._factory.open_write(target_read.tome_id)
         except (ValueError, FileNotFoundError, TomeVersionError) as e:
             logger.exception("Failed to open target tome: %s", e)
             return None
 
         await self.shutdown(reason="resume", target_session_file=target_str)
-        new_tome = MvgeTome(self._ledger, metadata, self._rune_runner)
+        new_tome = MvgeTome(self._factory, target_write, target_read, self._rune_runner)
         await new_tome.start(reason="resume")
         return new_tome
+
+    def _require_started(self) -> bool:
+        if not self._started:
+            logger.warning(
+                "record dropped: tome %s not started",
+                self._tome_id,
+            )
+            return False
+        return True
 
     def record_message(
         self,
@@ -526,39 +565,40 @@ class MvgeTome:
         model: str | None = None,
         provider: str | None = None,
     ) -> TomeEntry | None:
-        if not self._started:
-            logger.warning(
-                "record_message dropped: tome %s not started",
-                self._metadata.id,
-            )
+        if not self._require_started():
             return None
         if parent_id is None:
             parent_id = self.active_leaf_id
-        entry = self._ledger.append_message(
-            tome_id=self._metadata.id,
-            role=role,
-            content=content,
+        entry = TomeEntry(
+            id=_generate_short_id(),
             parent_id=parent_id,
-            model=model,
-            provider=provider,
+            type=TomeEntryType.MESSAGE,
+            timestamp=_timestamp_now(),
+            payload={
+                "role": role,
+                "content": content,
+                "model": model,
+                "provider": provider,
+            },
         )
-        self._advance_leaf(entry)
+        with self._write_handle.locked():
+            self._write_handle.append(entry)
+            self._advance_leaf(entry)
         return entry
 
     def _advance_leaf(self, entry: TomeEntry | None) -> None:
         """Move the Tome's Leaf to the entry just appended.
 
-        The Leaf marks the current tip of the branch, so it advances on every
-        recorded entry. Forking reads it to decide where to branch from.
+        The Leaf marks the current tip of the branch, recorded both as a
+        LEAF entry and as the header's activeLeafId. Forking reads it to
+        decide where to branch from.
         """
         if entry is None:
             return
         try:
-            self._ledger.append_leaf(self._metadata.id, entry.id)
+            self._write_handle.append_leaf(entry.id)
         except Exception:
-            logger.exception(
-                "Failed to advance the Leaf for tome %s", self._metadata.id
-            )
+            logger.exception("Failed to advance the Leaf for tome %s", self._tome_id)
 
     def record_compaction(
         self,
@@ -570,11 +610,7 @@ class MvgeTome:
     ) -> TomeEntry | None:
         """Record a compaction so the Tome can rebuild context without replaying
         the Invocations the summary replaced."""
-        if not self._started:
-            logger.warning(
-                "record_compaction dropped: tome %s not started",
-                self._metadata.id,
-            )
+        if not self._require_started():
             return None
         if parent_id is None:
             parent_id = self.active_leaf_id
@@ -585,11 +621,15 @@ class MvgeTome:
         }
         if first_kept_entry_id is not None:
             payload["firstKeptEntryId"] = first_kept_entry_id
-        return self._ledger.append_compaction(
-            tome_id=self._metadata.id,
-            payload=payload,
+        entry = TomeEntry(
+            id=_generate_short_id(),
             parent_id=parent_id,
+            type=TomeEntryType.COMPACTION,
+            timestamp=_timestamp_now(),
+            payload=payload,
         )
+        self._write_handle.append(entry)
+        return entry
 
     def record_custom(
         self,
@@ -597,25 +637,35 @@ class MvgeTome:
         data: dict[str, Any] | None = None,
         parent_id: str | None = None,
     ) -> TomeEntry | None:
-        if not self._started:
-            logger.warning(
-                "record_custom dropped: tome %s not started",
-                self._metadata.id,
-            )
+        if not self._require_started():
             return None
         if parent_id is None:
             parent_id = self.active_leaf_id
-        return self._ledger.append_custom(
-            tome_id=self._metadata.id,
-            payload={"type": custom_type, "data": data or {}},
+        entry = TomeEntry(
+            id=_generate_short_id(),
             parent_id=parent_id,
+            type=TomeEntryType.CUSTOM,
+            timestamp=_timestamp_now(),
+            payload={"type": custom_type, "data": data or {}},
         )
+        self._write_handle.append(entry)
+        return entry
+
+    def record_tome_info(self, payload: dict[str, Any]) -> TomeEntry | None:
+        if not self._require_started():
+            return None
+        entry = TomeEntry(
+            id=_generate_short_id(),
+            parent_id=None,
+            type=TomeEntryType.TOME_INFO,
+            timestamp=_timestamp_now(),
+            payload=payload,
+        )
+        self._write_handle.append(entry)
+        return entry
 
     async def active_leaf_id_async(self) -> str | None:
-        return (
-            await self._ledger.get_leaf_id_async(self._metadata.id)
-            or self._metadata.active_leaf_id
-        )
+        return self.active_leaf_id
 
     async def record_message_async(
         self,
@@ -625,35 +675,9 @@ class MvgeTome:
         model: str | None = None,
         provider: str | None = None,
     ) -> TomeEntry | None:
-        if not self._started:
-            logger.warning(
-                "record_message_async dropped: tome %s not started",
-                self._metadata.id,
-            )
-            return None
-        if parent_id is None:
-            parent_id = await self.active_leaf_id_async()
-        entry = await self._ledger.append_message_async(
-            tome_id=self._metadata.id,
-            role=role,
-            content=content,
-            parent_id=parent_id,
-            model=model,
-            provider=provider,
+        return await asyncio.to_thread(
+            self.record_message, role, content, parent_id, model, provider
         )
-        await self._advance_leaf_async(entry)
-        return entry
-
-    async def _advance_leaf_async(self, entry: TomeEntry | None) -> None:
-        """Non-blocking variant of `_advance_leaf`."""
-        if entry is None:
-            return
-        try:
-            await self._ledger.append_leaf_async(self._metadata.id, entry.id)
-        except Exception:
-            logger.exception(
-                "Failed to advance the Leaf for tome %s", self._metadata.id
-            )
 
     async def record_compaction_async(
         self,
@@ -663,25 +687,13 @@ class MvgeTome:
         first_kept_entry_id: str | None = None,
         parent_id: str | None = None,
     ) -> TomeEntry | None:
-        if not self._started:
-            logger.warning(
-                "record_compaction_async dropped: tome %s not started",
-                self._metadata.id,
-            )
-            return None
-        if parent_id is None:
-            parent_id = await self.active_leaf_id_async()
-        payload: dict[str, Any] = {
-            "summary": summary,
-            "manaBefore": mana_before,
-            "retainedTail": [_serialise_invocation(inv) for inv in retained_tail],
-        }
-        if first_kept_entry_id is not None:
-            payload["firstKeptEntryId"] = first_kept_entry_id
-        return await self._ledger.append_compaction_async(
-            tome_id=self._metadata.id,
-            payload=payload,
-            parent_id=parent_id,
+        return await asyncio.to_thread(
+            self.record_compaction,
+            summary,
+            mana_before,
+            retained_tail,
+            first_kept_entry_id,
+            parent_id,
         )
 
     async def record_custom_async(
@@ -690,19 +702,10 @@ class MvgeTome:
         data: dict[str, Any] | None = None,
         parent_id: str | None = None,
     ) -> TomeEntry | None:
-        if not self._started:
-            logger.warning(
-                "record_custom_async dropped: tome %s not started",
-                self._metadata.id,
-            )
-            return None
-        if parent_id is None:
-            parent_id = await self.active_leaf_id_async()
-        return await self._ledger.append_custom_async(
-            tome_id=self._metadata.id,
-            payload={"type": custom_type, "data": data or {}},
-            parent_id=parent_id,
-        )
+        return await asyncio.to_thread(self.record_custom, custom_type, data, parent_id)
+
+    async def record_tome_info_async(self, payload: dict[str, Any]) -> TomeEntry | None:
+        return await asyncio.to_thread(self.record_tome_info, payload)
 
     async def _safe_emit(self, hook: SigilHook, data: Any) -> None:
         if self._rune_runner is None:

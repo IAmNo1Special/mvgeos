@@ -9,8 +9,8 @@ from typing import Any
 
 import typer
 from mvgeos_core.constants import DEFAULT_TOME_DIR
-from mvgeos_tome.ledger import TomeLedger
-from mvgeos_tome.types import TomeEntry, TomeMetadata
+from mvgeos_tome.handle import TomeHandleFactory
+from mvgeos_tome.types import TomeEntry, TomeMetadata, TomeVersionError
 from rich import box
 from rich.console import Console
 from rich.table import Table
@@ -36,14 +36,16 @@ def get_tome_dir() -> Path:
     return tome_dir
 
 
+def get_factory() -> TomeHandleFactory:
+    return TomeHandleFactory(get_tome_dir())
+
+
 @tome_app.command("list")
 def tome_list() -> None:
     """List all tomes."""
-    tome_dir = get_tome_dir()
-    ledger = TomeLedger(tome_dir)
     ascii_only = not is_utf8_stream(sys.stdout)
 
-    console.print(_render_tome_list(ledger.list_tomes(), ascii_only=ascii_only))
+    console.print(_render_tome_list(get_factory().list_tomes(), ascii_only=ascii_only))
 
 
 def _render_tome_list(metas: list[TomeMetadata], ascii_only: bool = False) -> str:
@@ -123,6 +125,18 @@ def _render_tome_export(
         raise ValueError(f"Unknown format: {format}")
 
 
+def _open_tome_or_exit(factory: TomeHandleFactory, tome_id: str) -> TomeMetadata:
+    try:
+        meta = factory.open_tome(tome_id)
+    except TomeVersionError as e:
+        console.print(format_error(f"Unsupported tome version: {e}"))
+        raise typer.Exit(1) from None
+    if meta is None:
+        console.print(format_error(f"Tome not found: {tome_id}"))
+        raise typer.Exit(1) from None
+    return meta
+
+
 @tome_app.command("show")
 def tome_show(
     tome_id: str = typer.Argument(..., help="Tome ID to show"),
@@ -131,15 +145,10 @@ def tome_show(
     ),
 ) -> None:
     """Show tome details."""
-    tome_dir = get_tome_dir()
-    ledger = TomeLedger(tome_dir)
+    factory = get_factory()
+    meta = _open_tome_or_exit(factory, tome_id)
 
-    meta = ledger.open_tome(tome_id)
-    if meta is None:
-        console.print(format_error(f"Tome not found: {tome_id}"))
-        raise typer.Exit(1) from None
-
-    tome_entries = ledger.get_entries(meta.id)
+    tome_entries = factory.get_entries(meta.id)
 
     if format is not None:
         try:
@@ -174,15 +183,10 @@ def tome_export(
     output: str | None = typer.Option(None, "--output", "-o", help="Output file"),
 ) -> None:
     """Export a tome to JSON or Markdown."""
-    tome_dir = get_tome_dir()
-    ledger = TomeLedger(tome_dir)
+    factory = get_factory()
+    meta = _open_tome_or_exit(factory, tome_id)
 
-    meta = ledger.open_tome(tome_id)
-    if meta is None:
-        console.print(format_error(f"Tome not found: {tome_id}"))
-        raise typer.Exit(1) from None
-
-    entries = ledger.get_entries(meta.id)
+    entries = factory.get_entries(meta.id)
 
     try:
         output_text = _render_tome_export(meta, entries, format)
@@ -205,50 +209,51 @@ def tome_create(
     parent: str | None = typer.Option(None, "--parent", help="Parent tome ID"),
 ) -> None:
     """Create a new tome."""
-    tome_dir = get_tome_dir()
+    factory = get_factory()
 
     if cwd is None:
         cwd = str(Path.cwd())
 
-    ledger = TomeLedger(tome_dir)
-    meta = ledger.create_tome(cwd, parent_tome_id=parent)
-    console.print(f"[green]Created tome: {meta.id[:8]}[/green]")
-    console.print(f"[dim]File: {ledger.tome_file(meta.id)}[/dim]")
+    if parent is not None:
+        try:
+            handle = factory.create_branched_tome(parent_tome_id=parent, cwd=cwd)
+        except (KeyError, ValueError) as e:
+            console.print(format_error(f"Failed to create tome: {e}"))
+            raise typer.Exit(1) from e
+    else:
+        handle = factory.create_tome(cwd)
+    console.print(f"[green]Created tome: {handle.tome_id[:8]}[/green]")
+    console.print(f"[dim]File: {handle.path}[/dim]")
 
 
 @tome_app.command("fork")
 def tome_fork(
     tome_id: str = typer.Argument(..., help="Tome ID to fork from"),
-    leaf_id: str = typer.Option(
+    leaf_id: str | None = typer.Option(
         None, "--leaf", "-l", help="Leaf entry ID to fork at (default: current leaf)"
     ),
 ) -> None:
     """Fork a tome, creating a new branched tome."""
-    tome_dir = get_tome_dir()
-    ledger = TomeLedger(tome_dir)
+    factory = get_factory()
+    meta = _open_tome_or_exit(factory, tome_id)
 
-    meta = ledger.open_tome(tome_id)
-    if meta is None:
-        console.print(format_error(f"Tome not found: {tome_id}"))
-        raise typer.Exit(1)
-
-    target_leaf = leaf_id or ledger.get_leaf_id(meta.id)
+    target_leaf = leaf_id or factory.get_leaf_id(meta.id)
     if target_leaf is None:
         console.print(format_error("No leaf ID available. Specify --leaf."))
         raise typer.Exit(1)
 
-    if ledger.get_entry(meta.id, target_leaf) is None:
+    if factory.get_entry(meta.id, target_leaf) is None:
         console.print(format_error(f"Leaf entry not found: {target_leaf}"))
         raise typer.Exit(1)
 
     try:
-        forked_meta = ledger.create_branched_tome(
+        forked = factory.create_branched_tome(
             parent_tome_id=meta.id,
             cwd=meta.cwd,
             fork_from_leaf_id=target_leaf,
         )
-        console.print(f"[green]Forked tome: {forked_meta.id[:8]}[/green]")
-        console.print(f"[dim]File: {ledger.tome_file(forked_meta.id)}[/dim]")
+        console.print(f"[green]Forked tome: {forked.tome_id[:8]}[/green]")
+        console.print(f"[dim]File: {forked.path}[/dim]")
         console.print(f"[dim]Parent: {meta.id[:8]}[/dim]")
     except (KeyError, ValueError) as e:
         console.print(format_error(f"Failed to fork tome: {e}"))
@@ -260,10 +265,9 @@ def tome_verify(
     tome_id: str = typer.Argument(..., help="Tome ID to verify"),
 ) -> None:
     """Verify integrity of a tome session file."""
-    tome_dir = get_tome_dir()
-    ledger = TomeLedger(tome_dir)
+    factory = get_factory()
 
-    report = ledger.verify_integrity(tome_id)
+    report = factory.verify_integrity(tome_id)
     if report.valid:
         console.print(f"[green]Tome {report.tome_id[:8]} is valid.[/green]")
         console.print(

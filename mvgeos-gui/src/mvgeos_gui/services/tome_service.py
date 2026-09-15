@@ -11,8 +11,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from mvgeos_core.constants import DEFAULT_TOME_DIR
-from mvgeos_tome.ledger import TomeLedger
-from mvgeos_tome.types import TomeEntryType
+from mvgeos_tome.handle import TomeHandleFactory
+from mvgeos_tome.types import TomeEntryType, TomeVersionError
 
 from mvgeos_gui.git_workspace import resolve_git_branch
 
@@ -57,27 +57,24 @@ class TomeService:
 
     def __init__(self, tome_dir: Path | None = None) -> None:
         self._tome_dir = tome_dir or DEFAULT_TOME_DIR
-        self._ledger: TomeLedger | None = None
+        self._tome_dir.mkdir(parents=True, exist_ok=True)
+        self._factory = TomeHandleFactory(self._tome_dir)
 
     @property
     def tome_dir(self) -> Path:
         return self._tome_dir
 
     @property
-    def ledger(self) -> TomeLedger:
-        if self._ledger is None:
-            self._tome_dir.mkdir(parents=True, exist_ok=True)
-            self._ledger = TomeLedger(self._tome_dir)
-        return self._ledger
+    def factory(self) -> TomeHandleFactory:
+        return self._factory
 
     def list_tomes_for_project(
         self, project_path: Path, active_tome_id: str | None = None
     ) -> list[TomeListEntry]:
         """List all Tomes for a project workspace, sorted newest-first."""
-        ledger = self.ledger
         entries: list[TomeListEntry] = []
         norm_project = os.path.normcase(os.path.normpath(str(project_path)))
-        for meta in ledger.list_tomes():
+        for meta in self._factory.list_tomes():
             tome_cwd = os.path.normcase(os.path.normpath(meta.cwd))
             if tome_cwd != norm_project:
                 continue
@@ -103,10 +100,10 @@ class TomeService:
         payload. Falls back to "Conversation" if none is found.
         """
         try:
-            entries = self.ledger.get_entries(tome_id)
-        except (ValueError, KeyError):
+            entries = self._factory.get_entries(tome_id)
+        except (FileNotFoundError, TomeVersionError, ValueError, KeyError):
             return "Conversation"
-        for entry in entries:
+        for entry in reversed(entries):
             if entry.type == TomeEntryType.TOME_INFO:
                 payload = entry.payload
                 if "name" in payload:

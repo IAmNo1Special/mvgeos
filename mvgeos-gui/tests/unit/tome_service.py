@@ -8,7 +8,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from mvgeos_tome.ledger import TomeLedger
+from mvgeos_tome.handle import TomeHandleFactory
+from mvgeos_tome.types import TomeEntry, TomeEntryType
 
 from mvgeos_gui.git_workspace import resolve_git_branch
 from mvgeos_gui.services.tome_service import (
@@ -141,6 +142,20 @@ class TestTomeListEntry:
         assert entry.is_active is True
 
 
+def _append_info(
+    factory: TomeHandleFactory, tome_id: str, payload: dict, entry_id: str
+) -> None:
+    factory.open_write(tome_id).append(
+        TomeEntry(
+            id=entry_id,
+            parent_id=None,
+            type=TomeEntryType.TOME_INFO,
+            timestamp=1000.0,
+            payload=payload,
+        )
+    )
+
+
 class TestTomeServiceListTomes:
     def test_empty_tome_dir(self, tmp_path: Path) -> None:
         service = TomeService(tmp_path)
@@ -148,10 +163,10 @@ class TestTomeServiceListTomes:
         assert entries == []
 
     def test_filters_by_project_cwd(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
-        ledger.create_tome("/project/a")
-        ledger.create_tome("/project/b")
-        ledger.create_tome("/project/a")
+        factory = TomeHandleFactory(tmp_path)
+        factory.create_tome("/project/a")
+        factory.create_tome("/project/b")
+        factory.create_tome("/project/a")
 
         service = TomeService(tmp_path)
         entries = service.list_tomes_for_project(Path("/project/a"))
@@ -159,8 +174,8 @@ class TestTomeServiceListTomes:
         assert len(entries) == 2
 
     def test_entry_has_relative_time(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
-        ledger.create_tome("/project/a")
+        factory = TomeHandleFactory(tmp_path)
+        factory.create_tome("/project/a")
 
         service = TomeService(tmp_path)
         entries = service.list_tomes_for_project(Path("/project/a"))
@@ -175,8 +190,8 @@ class TestTomeServiceListTomes:
         repo.mkdir()
         _init_git_repo(repo, "feature-x")
 
-        ledger = TomeLedger(tmp_path)
-        ledger.create_tome(str(repo))
+        factory = TomeHandleFactory(tmp_path)
+        factory.create_tome(str(repo))
 
         service = TomeService(tmp_path)
         entries = service.list_tomes_for_project(repo)
@@ -185,32 +200,41 @@ class TestTomeServiceListTomes:
         assert entries[0].git_branch == "feature-x"
 
     def test_active_flag_set(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
-        meta = ledger.create_tome("/project/a")
+        factory = TomeHandleFactory(tmp_path)
+        tome_id = factory.create_tome("/project/a").tome_id
 
         service = TomeService(tmp_path)
         entries = service.list_tomes_for_project(
-            Path("/project/a"), active_tome_id=meta.id
+            Path("/project/a"), active_tome_id=tome_id
         )
 
         assert len(entries) == 1
         assert entries[0].is_active is True
 
     def test_active_flag_not_set_for_other(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
-        meta_a = ledger.create_tome("/project/a")
-        ledger.create_tome("/project/a")
+        factory = TomeHandleFactory(tmp_path)
+        tome_a_id = factory.create_tome("/project/a").tome_id
+        factory.create_tome("/project/a")
 
         service = TomeService(tmp_path)
         entries = service.list_tomes_for_project(
-            Path("/project/a"), active_tome_id=meta_a.id
+            Path("/project/a"), active_tome_id=tome_a_id
         )
 
         found = {e.tome_id: e for e in entries}
-        assert found[meta_a.id].is_active is True
+        assert found[tome_a_id].is_active is True
         for tome_id, entry in found.items():
-            if tome_id != meta_a.id:
+            if tome_id != tome_a_id:
                 assert entry.is_active is False
+
+    def test_lists_tome_created_by_another_factory(self, tmp_path: Path) -> None:
+        """A tome persisted by the agent is visible to the GUI service."""
+        TomeHandleFactory(tmp_path).create_tome("/project/a")
+
+        service = TomeService(tmp_path)
+        entries = service.list_tomes_for_project(Path("/project/a"))
+
+        assert len(entries) == 1
 
     def test_sorted_newest_first(self, tmp_path: Path) -> None:
         import json
@@ -250,27 +274,60 @@ class TestTomeServiceListTomes:
 
 class TestTomeServiceGetTitle:
     def test_title_from_tome_info_entry(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
-        meta = ledger.create_tome("/project/a")
-        ledger.append_tome_info(meta.id, {"name": "My Custom Title"})
+        factory = TomeHandleFactory(tmp_path)
+        tome_id = factory.create_tome("/project/a").tome_id
+        _append_info(factory, tome_id, {"name": "My Custom Title"}, "info-1")
 
         service = TomeService(tmp_path)
-        assert service.get_tome_title(meta.id) == "My Custom Title"
+        assert service.get_tome_title(tome_id) == "My Custom Title"
 
     def test_title_from_tome_info_title_key(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
-        meta = ledger.create_tome("/project/a")
-        ledger.append_tome_info(meta.id, {"title": "Another Title"})
+        factory = TomeHandleFactory(tmp_path)
+        tome_id = factory.create_tome("/project/a").tome_id
+        _append_info(factory, tome_id, {"title": "Another Title"}, "info-1")
 
         service = TomeService(tmp_path)
-        assert service.get_tome_title(meta.id) == "Another Title"
+        assert service.get_tome_title(tome_id) == "Another Title"
 
     def test_title_fallback_when_no_info(self, tmp_path: Path) -> None:
-        ledger = TomeLedger(tmp_path)
-        meta = ledger.create_tome("/project/a")
+        factory = TomeHandleFactory(tmp_path)
+        tome_id = factory.create_tome("/project/a").tome_id
 
         service = TomeService(tmp_path)
-        assert service.get_tome_title(meta.id) == "Conversation"
+        assert service.get_tome_title(tome_id) == "Conversation"
+
+    def test_title_sees_external_write_after_first_read(self, tmp_path: Path) -> None:
+        """Titles persisted by the agent are visible to the GUI service."""
+        agent_factory = TomeHandleFactory(tmp_path)
+        tome_id = agent_factory.create_tome("/project/a").tome_id
+
+        service = TomeService(tmp_path)
+        assert service.get_tome_title(tome_id) == "Conversation"
+
+        _append_info(agent_factory, tome_id, {"name": "Fix login bug"}, "info-1")
+        assert service.get_tome_title(tome_id) == "Fix login bug"
+
+    def test_title_latest_wins_on_rename(self, tmp_path: Path) -> None:
+        factory = TomeHandleFactory(tmp_path)
+        tome_id = factory.create_tome("/project/a").tome_id
+        _append_info(factory, tome_id, {"name": "Fallback title"}, "info-1")
+        _append_info(factory, tome_id, {"name": "User rename"}, "info-2")
+
+        service = TomeService(tmp_path)
+        assert service.get_tome_title(tome_id) == "User rename"
+
+    def test_title_fallback_for_missing_tome(self, tmp_path: Path) -> None:
+        service = TomeService(tmp_path)
+        assert service.get_tome_title("missing") == "Conversation"
+
+    def test_title_fallback_for_bad_version(self, tmp_path: Path) -> None:
+        (tmp_path / "future-5.jsonl").write_text(
+            '{"type":"session","version":5,"id":"future-5",'
+            '"timestamp":"2026-01-01T00:00:00Z","cwd":"/tmp"}\n',
+            encoding="utf-8",
+        )
+        service = TomeService(tmp_path)
+        assert service.get_tome_title("future-5") == "Conversation"
 
     def test_tome_dir_property(self, tmp_path: Path) -> None:
         service = TomeService(tmp_path)

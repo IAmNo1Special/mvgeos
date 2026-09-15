@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
+import uuid
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,14 +18,20 @@ from mvgeos_tome.types import (
     CURRENT_SESSION_VERSION,
     TomeEntry,
     TomeEntryType,
+    TomeIntegrityIssue,
+    TomeIntegrityReport,
     TomeMetadata,
     TomeVersionError,
 )
 
+logger = logging.getLogger(__name__)
+
+_LOCK_TIMEOUT = 30.0
+
 
 @dataclass(frozen=True, slots=True)
 class Revision:
-    """Single invalidation token: filesystem identity + size + mtime_ns."""
+    """Single invalidation token: filesystem identity + size + mtime."""
 
     mtime_ns: int
     size: int
@@ -35,6 +44,22 @@ class Revision:
             return Revision(st.st_mtime_ns, st.st_size, st.st_ino)
         except FileNotFoundError:
             return None
+
+
+def _generate_short_id() -> str:
+    return uuid.uuid4().hex[:8]
+
+
+def _generate_id() -> str:
+    return uuid.uuid4().hex
+
+
+def _timestamp_now() -> float:
+    return datetime.now(UTC).timestamp()
+
+
+def _timestamp_iso() -> str:
+    return datetime.now(UTC).isoformat()
 
 
 def _parse_tome_entry(raw: dict[str, Any]) -> TomeEntry:
@@ -63,8 +88,28 @@ def _filter_entries_to_leaf(entries: list[TomeEntry], leaf_id: str) -> list[Tome
     return path
 
 
+def _fsync_dir(dir_path: Path) -> None:
+    """Fsync a directory so file creates/renames survive a crash.
+
+    No-op on Windows, which cannot open a directory handle.
+    """
+    if os.name == "nt":
+        return
+    fd = os.open(dir_path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 class TomeHandle:
-    """A handle to a single tome; read handles share, write is exclusive."""
+    """A handle to a single tome; read handles share, write is exclusive.
+
+    The on-disk JSONL file is the source of truth. Each handle keeps an
+    in-memory mirror that is revalidated against a filesystem revision token
+    on every read, so any number of handles across threads and processes stay
+    coherent without shared caches.
+    """
 
     def __init__(self, tome_dir: Path, tome_id: str, mode: str) -> None:
         self._tome_dir = Path(tome_dir).expanduser().resolve()
@@ -72,7 +117,7 @@ class TomeHandle:
         self._mode = mode  # "r" or "w"
         self._path = self._tome_dir / f"{tome_id}.jsonl"
         self._revision: Revision | None = None
-        self._entries_cache: list[TomeEntry] = []
+        self._entries_cache: list[TomeEntry] | None = None
         self._header: dict[str, Any] | None = None
         self._lease: portalocker.Lock | None = None
         self._local_lock = threading.RLock()
@@ -90,22 +135,35 @@ class TomeHandle:
         return self._mode
 
     @contextmanager
-    def _acquire(self) -> Generator[None]:
-        """Acquire kernel lease for write mode. Read mode: no lease, just stat."""
-        if self._mode == "w":
-            self._lease = portalocker.Lock(
-                str(self._path) + ".lock",
-                timeout=30,
-                flags=portalocker.LOCK_EX,
-            )
-            self._lease.acquire()
-            self._revision = Revision.from_path(self._path)
-        try:
+    def locked(self) -> Generator[None]:
+        """Hold this handle's local mutex across a compound operation.
+
+        Reentrant: may be held while calling append/append_leaf/replace.
+        """
+        with self._local_lock:
             yield
-        finally:
-            if self._lease:
-                self._lease.release()
-                self._lease = None
+
+    @contextmanager
+    def _acquire(self) -> Generator[None]:
+        """Acquire the local mutex plus the kernel lease for write mode.
+
+        Lock order is always local-then-lease. Read mode takes no lease:
+        reads are stat-validated snapshots.
+        """
+        with self._local_lock:
+            if self._mode == "w":
+                self._lease = portalocker.Lock(
+                    str(self._path) + ".lock",
+                    timeout=_LOCK_TIMEOUT,
+                )
+                self._lease.acquire()
+                self._revision = Revision.from_path(self._path)
+            try:
+                yield
+            finally:
+                if self._lease is not None:
+                    self._lease.release()
+                    self._lease = None
 
     # ── Read API (both modes) ──────────────────────────────────
 
@@ -124,7 +182,7 @@ class TomeHandle:
             self._revision = Revision.from_path(self._path)
             return []
         try:
-            header = json.loads(lines[0])
+            header = json.loads(lines[0].strip())
         except json.JSONDecodeError:
             self._entries_cache = []
             self._header = None
@@ -135,41 +193,55 @@ class TomeHandle:
             self._header = None
             self._revision = Revision.from_path(self._path)
             return []
-        version_raw = header.get("version", 1)
+        version_raw = header.get("version", CURRENT_SESSION_VERSION)
         try:
             version = int(version_raw)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
             raise TomeVersionError(
                 version_raw, f"Invalid session version: {version_raw}"
-            ) from None
-        if version != 1:
+            ) from e
+        if version != CURRENT_SESSION_VERSION:
             raise TomeVersionError(version, f"Unsupported session version: {version}")
         self._header = header
-        entries = []
-        for line in lines[1:]:
-            line = line.strip()
+        entries: list[TomeEntry] = []
+        for idx, raw_line in enumerate(lines[1:], start=2):
+            line = raw_line.strip()
             if not line:
                 continue
             try:
                 raw = json.loads(line)
                 if not isinstance(raw, dict):
-                    continue
-                if not raw.get("type") or "id" not in raw or "timestamp" not in raw:
+                    logger.warning(
+                        "Malformed entry in tome %s at line %d: expected JSON object",
+                        self._tome_id,
+                        idx,
+                    )
                     continue
                 entries.append(_parse_tome_entry(raw))
-            except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+            except (
+                json.JSONDecodeError,
+                KeyError,
+                ValueError,
+                TypeError,
+            ) as e:
+                logger.warning(
+                    "Damaged entry in tome %s at line %d: %s",
+                    self._tome_id,
+                    idx,
+                    e,
+                )
                 continue
         self._entries_cache = entries
         self._revision = Revision.from_path(self._path)
         return entries
 
     def get_entries(self) -> list[TomeEntry]:
-        """Snapshot read - mirror IS the cache. No separate validation."""
+        """Snapshot read; the mirror is revalidated on every call."""
         with self._local_lock:
             rev = Revision.from_path(self._path)
-            if self._entries_cache and self._revision == rev:
-                return self._entries_cache
-            return self._load_snapshot()
+            if self._entries_cache is not None and self._revision == rev:
+                return list(self._entries_cache)
+            return list(self._load_snapshot())
 
     def get_metadata(self) -> TomeMetadata | None:
         """Return parsed header metadata."""
@@ -190,183 +262,290 @@ class TomeHandle:
             parent_tome_id=header.get("parentSession"),
             active_leaf_id=header.get("activeLeafId"),
             schema_version=header.get("schema_version", "1.0"),
-            version=header.get("version", 1),
+            version=header.get("version", CURRENT_SESSION_VERSION),
             model=header.get("model"),
             contemplation_level=header.get("contemplationLevel"),
             spells=list(header.get("spells", []) or []),
         )
 
     def iter_entries(self) -> Generator[TomeEntry]:
-        """Snapshot iteration - materialize once, yield without locks."""
-        entries = self.get_entries()
-        yield from entries
+        """Snapshot iteration over a materialized copy; holds no locks."""
+        yield from self.get_entries()
 
     def get_revision(self) -> Revision | None:
-        """Single invalidation token - query cache keys on this."""
+        """Single invalidation token for this tome's file."""
         return self._revision or Revision.from_path(self._path)
 
     # ── Write API (write mode only) ────────────────────────────
 
     def append(self, entry: TomeEntry) -> None:
-        """Append single entry + durability barrier."""
+        """Append a single entry plus a durability barrier."""
         if self._mode != "w":
             raise RuntimeError("Read handle cannot append")
         with self._acquire():
             self._load_snapshot()
+            assert self._entries_cache is not None
             self._entries_cache.append(entry)
             self._flush_to_disk()
 
+    def append_leaf(self, target_id: str) -> TomeEntry:
+        """Point the Tome's Leaf at an entry, syncing header and entries.
+
+        A single atomic step under the lease: appends the LEAF marker entry
+        and records it as the header's activeLeafId, mirroring the previous
+        whole-file rewrite cost without ever serving a split header/log.
+        """
+        if self._mode != "w":
+            raise RuntimeError("Read handle cannot append")
+        with self._acquire():
+            self._load_snapshot()
+            assert self._entries_cache is not None
+            leaf = TomeEntry(
+                id=_generate_short_id(),
+                parent_id=None,
+                type=TomeEntryType.LEAF,
+                timestamp=_timestamp_now(),
+                payload={"targetId": target_id},
+            )
+            entries = list(self._entries_cache)
+            entries.append(leaf)
+            header = dict(self._header or {})
+            header["activeLeafId"] = target_id
+            self._replace_locked(header, entries)
+        return leaf
+
     def replace(self, header: dict[str, Any], entries: list[TomeEntry]) -> None:
-        """Atomic full rewrite (compaction/fork). tmp+rename+fsync."""
+        """Atomic full rewrite (compaction/fork) via tmp file + rename."""
         if self._mode != "w":
             raise RuntimeError("Read handle cannot replace")
         with self._acquire():
-            tmp = self._path.with_name(f".{self._path.name}.{os.getpid()}.tmp")
-            try:
-                with tmp.open("w", encoding="utf-8") as f:
-                    f.write(json.dumps(header) + "\n")
-                    for e in entries:
-                        f.write(json.dumps(e.to_dict()) + "\n")
-                    f.flush()
-                    os.fsync(f.fileno())
-                os.replace(tmp, self._path)
-                # fsync directory for create visibility (Unix only;
-                # Windows cannot open a directory handle).
-                try:
-                    with open(self._tome_dir) as dfd:
-                        os.fsync(dfd.fileno())
-                except (PermissionError, OSError):
-                    pass  # Windows does not support directory fsync
-                self._entries_cache = entries
-                self._header = header
-                self._revision = Revision.from_path(self._path)
-            finally:
-                if tmp.exists():
-                    tmp.unlink(missing_ok=True)
+            self._replace_locked(header, entries)
+
+    def _replace_locked(self, header: dict[str, Any], entries: list[TomeEntry]) -> None:
+        """Rewrite the file; caller must hold the lease via _acquire()."""
+        tmp = self._path.with_name(f".{self._path.name}.{os.getpid()}.tmp")
+        try:
+            with tmp.open("w", encoding="utf-8") as f:
+                f.write(json.dumps(header) + "\n")
+                for e in entries:
+                    f.write(json.dumps(e.to_dict()) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self._path)
+            _fsync_dir(self._tome_dir)
+            self._entries_cache = list(entries)
+            self._header = dict(header)
+            self._revision = Revision.from_path(self._path)
+        finally:
+            if tmp.exists():
+                tmp.unlink(missing_ok=True)
 
     def _flush_to_disk(self) -> None:
-        """Durability barrier: append line + fsync file + fsync dir."""
+        """Durability barrier: append last entry, fsync file and directory."""
+        assert self._entries_cache is not None
         line = json.dumps(self._entries_cache[-1].to_dict()) + "\n"
         with self._path.open("a", encoding="utf-8") as f:
             f.write(line)
             f.flush()
             os.fsync(f.fileno())
-        # fsync directory for create visibility (Unix only;
-        # Windows cannot open a directory handle).
-        try:
-            with open(self._tome_dir) as dfd:
-                os.fsync(dfd.fileno())
-        except (PermissionError, OSError):
-            pass  # Windows does not support directory fsync
+        _fsync_dir(self._tome_dir)
         self._revision = Revision.from_path(self._path)
 
-    # ── Repair (resumer calls, not store) ──────────────────────
+    # ── Repair (resumer calls, not readers) ────────────────────
 
     def repair_torn_tail(self) -> int:
-        """Truncate partial last line. Returns bytes truncated."""
+        """Truncate a partial last line left by a crashed writer.
+
+        Operates on raw bytes so platform newline translation can never
+        corrupt the file. Only the tail is touched: middle lines (even
+        damaged ones) are preserved for readers to skip and the auditor
+        to flag. Returns the number of bytes truncated.
+        """
         if self._mode != "w":
             raise RuntimeError("Read handle cannot repair")
         with self._acquire():
             if not self._path.exists():
                 return 0
-            with self._path.open("r+", encoding="utf-8") as f:
+            with self._path.open("rb") as f:
                 content = f.read()
-                if not content:
-                    return 0
-                lines = content.splitlines(keepends=True)
-                last_complete = 0
-                for i in range(len(lines) - 1, -1, -1):
-                    try:
-                        json.loads(lines[i])
-                        last_complete = i + 1
-                        break
-                    except json.JSONDecodeError:
-                        continue
-                if last_complete < len(lines):
-                    truncated = sum(len(ln.encode()) for ln in lines[last_complete:])
-                    f.seek(0)
-                    f.writelines(lines[:last_complete])
-                    f.truncate()
-                    f.flush()
-                    os.fsync(f.fileno())
-                    # Invalidate cache so the next read reloads the
-                    # now-truncated file.
-                    self._revision = None
-                    self._entries_cache = []
-                    return truncated
+            if not content:
                 return 0
-
-
-def _generate_short_id() -> str:
-    import uuid
-
-    return uuid.uuid4().hex[:8]
-
-
-def _generate_id() -> str:
-    import uuid
-
-    return uuid.uuid4().hex
-
-
-def _timestamp_now() -> float:
-    from datetime import UTC, datetime
-
-    return datetime.now(UTC).timestamp()
-
-
-def _timestamp_iso() -> str:
-    from datetime import UTC, datetime
-
-    return datetime.now(UTC).isoformat()
+            lines = content.split(b"\n")
+            last_complete = -1
+            for i, raw in enumerate(lines):
+                if i == len(lines) - 1 and raw == b"":
+                    continue  # trailing newline, not a line
+                try:
+                    text = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    continue  # torn multi-byte sequence
+                if not text.strip():
+                    continue
+                try:
+                    json.loads(text)
+                except json.JSONDecodeError:
+                    continue
+                last_complete = i
+            if last_complete < 0:
+                return 0  # nothing parseable: corruption, not a torn tail
+            repaired = b"\n".join(lines[: last_complete + 1]) + b"\n"
+            if repaired == content:
+                return 0
+            with self._path.open("r+b") as f:
+                f.seek(0)
+                f.write(repaired)
+                f.truncate()
+                f.flush()
+                os.fsync(f.fileno())
+            # Invalidate the mirror so the next read reloads.
+            self._revision = None
+            self._entries_cache = None
+            self._header = None
+            return len(content) - len(repaired)
 
 
 class TomeHandleFactory:
-    """Factory for creating tome handles with write-leaf-entry helper."""
+    """Stateless entry point for tome persistence.
+
+    Holds no caches: every query rescans the directory or revalidates the
+    file revision, so any number of factories, handles, threads, and
+    processes stay coherent. The JSONL file is the source of truth.
+    """
 
     def __init__(self, tome_dir: Path) -> None:
         self._tome_dir = Path(tome_dir).expanduser().resolve()
 
+    @property
+    def dir(self) -> Path:
+        return self._tome_dir
+
     def _resolve_tome_id(self, tome_id: str) -> str | None:
-        """Resolve short ID prefix to full tome ID."""
+        """Resolve a full, case-insensitive, or prefix id to a full tome id."""
         if not tome_id:
             return None
         if not self._tome_dir.exists():
             return None
         stems = [f.stem for f in self._tome_dir.glob("*.jsonl") if f.is_file()]
-        exact = [s for s in stems if s == tome_id]
+        if tome_id in stems:
+            return tome_id
+        exact = [s for s in stems if s.lower() == tome_id.lower()]
         if len(exact) == 1:
             return exact[0]
-        case_matches = [s for s in stems if s.lower() == tome_id.lower()]
-        if len(case_matches) == 1:
-            return case_matches[0]
-        prefix_matches = [s for s in stems if s.lower().startswith(tome_id.lower())]
-        if len(prefix_matches) == 1:
-            return prefix_matches[0]
+        prefix = [s for s in stems if s.lower().startswith(tome_id.lower())]
+        if len(prefix) == 1:
+            return prefix[0]
         return None
 
-    def _validate_tome_file(self, path: Path) -> tuple[bool, dict[str, Any] | None]:
-        """Validate tome file header. Returns (is_valid, header_dict)."""
+    def _read_header(self, path: Path) -> dict[str, Any] | None:
+        """Read and validate a session header; None when absent or corrupt."""
         if not path.exists():
-            return False, None
+            return None
         try:
             with path.open("r", encoding="utf-8") as f:
                 first = f.readline()
             if not first:
-                return False, None
+                return None
             header = json.loads(first)
             if not isinstance(header, dict) or header.get("type") != "session":
-                return False, None
-            version_raw = header.get("version", 1)
+                return None
+            version_raw = header.get("version", CURRENT_SESSION_VERSION)
             try:
                 version = int(version_raw)
-            except (ValueError, TypeError):
-                return False, None
-            if version != 1:
-                return False, None
-            return True, header
-        except (json.JSONDecodeError, KeyError, ValueError, TypeError):
-            return False, None
+            except (ValueError, TypeError) as e:
+                raise TomeVersionError(
+                    version_raw, f"Invalid session version: {version_raw}"
+                ) from e
+            if version != CURRENT_SESSION_VERSION:
+                raise TomeVersionError(
+                    version, f"Unsupported session version: {version}"
+                )
+            return header
+        except TomeVersionError:
+            raise
+        except (json.JSONDecodeError, KeyError, ValueError, OSError):
+            return None
+
+    def _header_to_metadata(self, header: dict[str, Any]) -> TomeMetadata:
+        return TomeMetadata(
+            id=header["id"],
+            created_at=header["timestamp"],
+            cwd=header["cwd"],
+            parent_tome_id=header.get("parentSession"),
+            active_leaf_id=header.get("activeLeafId"),
+            schema_version=header.get("schema_version", "1.0"),
+            version=header.get("version", CURRENT_SESSION_VERSION),
+            model=header.get("model"),
+            contemplation_level=header.get("contemplationLevel"),
+            spells=list(header.get("spells", []) or []),
+        )
+
+    def _metadata_for(self, stem: str) -> TomeMetadata | None:
+        try:
+            header = self._read_header(self._tome_dir / f"{stem}.jsonl")
+        except TomeVersionError:
+            raise
+        except OSError:
+            return None
+        if header is None:
+            return None
+        try:
+            return self._header_to_metadata(header)
+        except KeyError:
+            return None
+
+    def tome_file(self, tome_id: str) -> Path:
+        """Resolve a tome id (or file path) to its JSONL file."""
+        resolved = self._resolve_tome_id(tome_id)
+        if resolved is None:
+            candidate = Path(tome_id)
+            if candidate.is_file():
+                resolved = self._resolve_tome_id(candidate.stem)
+        return self._tome_dir / f"{resolved or tome_id}.jsonl"
+
+    def list_tomes(self) -> list[TomeMetadata]:
+        """Rescan the directory on every call; never serve a stale list."""
+        if not self._tome_dir.exists():
+            return []
+        metas: list[TomeMetadata] = []
+        for f in self._tome_dir.glob("*.jsonl"):
+            if not f.is_file():
+                continue
+            try:
+                meta = self._metadata_for(f.stem)
+            except TomeVersionError as e:
+                logger.warning("Failed to load header for %s: %s", f, e)
+                continue
+            if meta is not None:
+                metas.append(meta)
+        return metas
+
+    def open_tome(self, tome_id: str) -> TomeMetadata | None:
+        """Open tome metadata by id, prefix, or file path.
+
+        Returns None when missing; raises TomeVersionError on bad versions.
+        """
+        resolved = self._resolve_tome_id(tome_id)
+        if resolved is None and Path(tome_id).is_file():
+            resolved = self._resolve_tome_id(Path(tome_id).stem)
+        if resolved is None:
+            return self._metadata_for(tome_id)
+        return self._metadata_for(resolved)
+
+    def open_recent(self, cwd: str) -> TomeMetadata | None:
+        """Most recently modified tome for a working directory."""
+        if not self._tome_dir.exists():
+            return None
+        candidates = sorted(
+            self._tome_dir.glob("*.jsonl"), key=lambda f: f.stat().st_mtime_ns
+        )
+        for f in reversed(candidates):
+            try:
+                meta = self._metadata_for(f.stem)
+            except TomeVersionError:
+                continue
+            if meta is not None and meta.cwd == cwd:
+                return meta
+        return None
 
     def create_tome(
         self,
@@ -378,10 +557,9 @@ class TomeHandleFactory:
         spells: Sequence[str] | None = None,
     ) -> TomeHandle:
         """Create a new tome and return a write handle."""
-        from mvgeos_tome.types import CURRENT_SESSION_VERSION
-
+        self._tome_dir.mkdir(parents=True, exist_ok=True)
         tid = tome_id or _generate_id()
-        header = {
+        header: dict[str, Any] = {
             "type": "session",
             "version": CURRENT_SESSION_VERSION,
             "id": tid,
@@ -394,7 +572,7 @@ class TomeHandleFactory:
         if contemplation_level is not None:
             header["contemplationLevel"] = contemplation_level
         if spells:
-            header["spells"] = spells
+            header["spells"] = list(spells)
 
         write_handle = TomeHandle(self._tome_dir, tid, "w")
         write_handle.replace(header, [])
@@ -409,304 +587,394 @@ class TomeHandleFactory:
         tome_id: str | None = None,
         model: str | None = None,
         contemplation_level: str | None = None,
-        spells: list[str] | None = None,
+        spells: Sequence[str] | None = None,
     ) -> TomeHandle:
-        """Create a new tome branched from an existing tome at a specific leaf."""
+        """Branch a tome by copying the ancestor chain up to a leaf entry."""
         resolved_parent = self._resolve_tome_id(parent_tome_id)
         if resolved_parent is None:
             raise ValueError(f"Parent tome not found: {parent_tome_id}")
 
-        parent_read_handle = self.open_read(resolved_parent)
-        parent_meta = parent_read_handle.get_metadata()
+        parent_read = self.open_read(resolved_parent)
+        parent_meta = parent_read.get_metadata()
         if parent_meta is None:
             raise ValueError(f"Parent tome metadata not found: {parent_tome_id}")
 
-        parent_entries = parent_read_handle.get_entries()
-
-        # Filter entries to the fork point
-        if fork_from_leaf_id:
-            entries = _filter_entries_to_leaf(parent_entries, fork_from_leaf_id)
-        else:
-            entries = parent_entries
+        parent_entries = parent_read.get_entries()
+        entries = (
+            _filter_entries_to_leaf(parent_entries, fork_from_leaf_id)
+            if fork_from_leaf_id
+            else list(parent_entries)
+        )
 
         tid = tome_id or _generate_id()
-        header = {
+        header: dict[str, Any] = {
             "type": "session",
             "version": CURRENT_SESSION_VERSION,
             "id": tid,
             "timestamp": _timestamp_iso(),
-            "cwd": cwd,
+            "cwd": cwd or parent_meta.cwd,
             "schema_version": "1.0",
             "parentSession": parent_meta.id,
             "activeLeafId": fork_from_leaf_id or parent_meta.active_leaf_id,
         }
-        if model is not None:
-            header["model"] = model
-        elif parent_meta.model:
-            header["model"] = parent_meta.model
-        if contemplation_level is not None:
-            header["contemplationLevel"] = contemplation_level
-        elif parent_meta.contemplation_level:
-            header["contemplationLevel"] = parent_meta.contemplation_level
-        if spells is not None:
-            header["spells"] = spells
-        elif parent_meta.spells:
-            header["spells"] = parent_meta.spells
+        header["model"] = model if model is not None else parent_meta.model
+        header["contemplationLevel"] = (
+            contemplation_level
+            if contemplation_level is not None
+            else parent_meta.contemplation_level
+        )
+        header["spells"] = (
+            list(spells) if spells is not None else list(parent_meta.spells)
+        )
 
         write_handle = TomeHandle(self._tome_dir, tid, "w")
         write_handle.replace(header, entries)
         return write_handle
 
     def open_read(self, tome_id: str) -> TomeHandle:
-        """Open a read handle.
+        """Open a read handle; raises FileNotFoundError when unknown."""
+        resolved = self._resolve_tome_id(tome_id)
+        if resolved is None and Path(tome_id).is_file():
+            resolved = self._resolve_tome_id(Path(tome_id).stem)
+        if resolved is None:
+            raise FileNotFoundError(f"Tome not found: {tome_id}")
+        handle = TomeHandle(self._tome_dir, resolved, "r")
+        handle.get_metadata()
+        return handle
 
-        Supports short ID prefix and case-insensitive matching. Raises
-        TomeVersionError if the tome has an unsupported version.
+    def open_write(self, tome_id: str) -> TomeHandle:
+        """Open a write handle; raises FileNotFoundError when unknown.
+
+        Tomes are only created via create_tome/create_branched_tome so the
+        recorded cwd is always the project directory, never the tome dir.
         """
         resolved = self._resolve_tome_id(tome_id)
         if resolved is None:
-            # Return handle anyway - it will raise on get_entries.
-            return TomeHandle(self._tome_dir, tome_id, "r")
-        # Validate version upfront.
-        path = self._tome_dir / f"{resolved}.jsonl"
-        is_valid, _ = self._validate_tome_file(path)
-        if not is_valid:
-            try:
-                with path.open("r", encoding="utf-8") as f:
-                    first = f.readline()
-                if first:
-                    header = json.loads(first)
-                    version_raw = header.get("version", 1)
-                    try:
-                        version = int(version_raw)
-                        if version != 1:
-                            raise TomeVersionError(
-                                version,
-                                f"Unsupported session version: {version}",
-                            ) from None
-                    except (ValueError, TypeError):
-                        raise TomeVersionError(
-                            version_raw,
-                            f"Invalid session version: {version_raw}",
-                        ) from None
-            except TomeVersionError:
-                raise
-            except Exception:
-                pass
-        return TomeHandle(self._tome_dir, resolved, "r")
+            raise FileNotFoundError(f"Tome not found: {tome_id}")
+        handle = TomeHandle(self._tome_dir, resolved, "w")
+        if handle.get_metadata() is None:
+            raise ValueError(f"Tome has no readable header: {tome_id}")
+        return handle
 
-    def open_write(self, tome_id: str) -> TomeHandle:
-        """Open a write handle. Creates tome if it doesn't exist."""
-        resolved = self._resolve_tome_id(tome_id)
-        if resolved is None:
-            # Create new tome with default config.
-            write_handle = TomeHandle(self._tome_dir, tome_id, "w")
-            header = {
-                "type": "session",
-                "version": 1,
-                "id": tome_id,
-                "timestamp": _timestamp_iso(),
-                "cwd": str(self._tome_dir),
-                "schema_version": "1.0",
-            }
-            write_handle.replace(header, [])
-            return write_handle
-        return TomeHandle(self._tome_dir, resolved, "w")
+    def get_entries(
+        self,
+        tome_id: str,
+        entry_type: TomeEntryType | None = None,
+        limit: int | None = None,
+    ) -> list[TomeEntry]:
+        entries = self.open_read(tome_id).get_entries()
+        if entry_type is not None:
+            entries = [e for e in entries if e.type == entry_type]
+        if limit is not None:
+            entries = entries[-limit:]
+        return entries
 
-    def list_tomes(self) -> list[str]:
-        if not self._tome_dir.exists():
+    def get_entry(self, tome_id: str, entry_id: str) -> TomeEntry | None:
+        for entry in self.get_entries(tome_id):
+            if entry.id == entry_id:
+                return entry
+        return None
+
+    def get_leaf_id(self, tome_id: str) -> str | None:
+        """The entry the Tome's Leaf currently points at."""
+        for entry in reversed(self.get_entries(tome_id)):
+            if entry.type == TomeEntryType.LEAF:
+                target = entry.payload.get("targetId")
+                return str(target) if target is not None else None
+        meta = self.open_tome(tome_id)
+        if meta is not None and meta.active_leaf_id:
+            return meta.active_leaf_id
+        return None
+
+    def list_leaves(self, tome_id: str) -> list[str]:
+        """Content entries never referenced as another entry's parent."""
+        content = [e for e in self.get_entries(tome_id) if e.type != TomeEntryType.LEAF]
+        if not content:
             return []
-        valid_tomes = []
-        for f in self._tome_dir.glob("*.jsonl"):
-            if f.is_file():
-                is_valid, _ = self._validate_tome_file(f)
-                if is_valid:
-                    valid_tomes.append(f.stem)
-        return valid_tomes
+        parent_ids = {e.parent_id for e in content if e.parent_id is not None}
+        return [e.id for e in content if e.id not in parent_ids]
 
-    def verify_integrity(self, tome_id: str) -> dict[str, Any]:
-        """Verify integrity of a tome file (bypasses cache)."""
+    def get_parent_summoner_entry(
+        self, tome_id: str, leaf_id: str | None = None
+    ) -> TomeEntry | None:
+        """Parent of the most recent user message along the leaf branch."""
+        target_leaf = leaf_id or self.get_leaf_id(tome_id)
+        branch = self.get_entries_for_context(tome_id, leaf_id=target_leaf)
+        for entry in reversed(branch):
+            if (
+                entry.type == TomeEntryType.MESSAGE
+                and (entry.payload or {}).get("role") == "user"
+            ):
+                if entry.parent_id is None:
+                    return None
+                return self.get_entry(tome_id, entry.parent_id)
+        return None
+
+    def get_entries_for_context(
+        self,
+        tome_id: str,
+        leaf_id: str | None = None,
+        max_entries: int | None = None,
+    ) -> list[TomeEntry]:
+        entries = self.get_entries(tome_id)
+        if leaf_id:
+            entries = _filter_entries_to_leaf(entries, leaf_id)
+        if max_entries is not None:
+            entries = entries[-max_entries:]
+        return entries
+
+    def read_last_n_entries(self, tome_id: str, limit: int) -> list[TomeEntry]:
+        if limit <= 0:
+            return []
+        return self.get_entries(tome_id)[-limit:]
+
+    def verify_integrity(self, tome_id: str) -> TomeIntegrityReport:
+        """Audit a tome file without touching any cache."""
         resolved = self._resolve_tome_id(tome_id)
-        if resolved is None:
-            return {
-                "valid": False,
-                "tome_id": tome_id,
-                "issues": [{"line_number": 0, "message": f"Tome not found: {tome_id}"}],
-                "total_lines": 0,
-                "valid_entries_count": 0,
-            }
-        path = self._tome_dir / f"{resolved}.jsonl"
+        if resolved is None and Path(tome_id).is_file():
+            resolved = self._resolve_tome_id(Path(tome_id).stem)
+        target = resolved or tome_id
+        path = self._tome_dir / f"{target}.jsonl"
         if not path.exists():
-            return {
-                "valid": False,
-                "tome_id": resolved,
-                "issues": [
-                    {"line_number": 0, "message": f"Tome file not found: {path}"}
+            return TomeIntegrityReport(
+                valid=False,
+                tome_id=target,
+                issues=[
+                    TomeIntegrityIssue(
+                        line_number=0,
+                        message=f"Tome file does not exist: {path}",
+                    )
                 ],
-                "total_lines": 0,
-                "valid_entries_count": 0,
-            }
+            )
 
-        issues: list[dict[str, Any]] = []
+        issues: list[TomeIntegrityIssue] = []
         total_lines = 0
         valid_entries_count = 0
-
-        def _add(ln: int, message: str) -> None:
-            issues.append({"line_number": ln, "message": message})
-
         try:
             with path.open("r", encoding="utf-8") as f:
-                first = f.readline()
+                header_line = f.readline()
                 total_lines += 1
-                if not first:
-                    _add(1, "Tome file is empty (missing session header)")
+                header_raw = header_line.rstrip("\r\n")
+                if not header_raw.strip():
+                    issues.append(
+                        TomeIntegrityIssue(
+                            line_number=1,
+                            message="Missing session header (line is empty)",
+                            raw_line=header_raw,
+                        )
+                    )
                 else:
                     try:
-                        header = json.loads(first)
+                        header = json.loads(header_raw)
+                    except json.JSONDecodeError as e:
+                        header = None
+                        issues.append(
+                            TomeIntegrityIssue(
+                                line_number=1,
+                                message=f"Corrupted session header: invalid JSON: {e}",
+                                raw_line=header_raw,
+                            )
+                        )
+                    if header is not None:
                         if not isinstance(header, dict):
-                            _add(1, "Invalid session header: expected JSON object")
+                            issues.append(
+                                TomeIntegrityIssue(
+                                    line_number=1,
+                                    message="Invalid session header: "
+                                    "expected JSON object",
+                                    raw_line=header_raw,
+                                )
+                            )
                         else:
                             if header.get("type") != "session":
-                                _add(
-                                    1,
-                                    (
-                                        "Invalid session header: missing or "
-                                        "invalid 'type' "
-                                        f"(expected 'session', "
-                                        f"got {header.get('type')!r})"
-                                    ),
+                                issues.append(
+                                    TomeIntegrityIssue(
+                                        line_number=1,
+                                        message="Invalid session header: "
+                                        "missing or invalid 'type' "
+                                        f"(expected 'session', got "
+                                        f"{header.get('type')!r})",
+                                        raw_line=header_raw,
+                                    )
                                 )
                             if not header.get("id") or not isinstance(
                                 header.get("id"), str
                             ):
-                                _add(
-                                    1,
-                                    "Invalid session header: missing or invalid 'id'",
+                                issues.append(
+                                    TomeIntegrityIssue(
+                                        line_number=1,
+                                        message="Invalid session header: missing or "
+                                        "invalid 'id'",
+                                        raw_line=header_raw,
+                                    )
                                 )
-                            elif header.get("id") != resolved:
-                                _add(
-                                    1,
-                                    (
-                                        "Header ID mismatch: "
-                                        f"expected '{resolved}', "
-                                        f"got '{header.get('id')}'"
-                                    ),
+                            elif header.get("id") != path.stem:
+                                issues.append(
+                                    TomeIntegrityIssue(
+                                        line_number=1,
+                                        message=(
+                                            "Header ID mismatch: expected "
+                                            f"'{path.stem}', got '{header.get('id')}'"
+                                        ),
+                                        raw_line=header_raw,
+                                    )
                                 )
                             if "cwd" not in header or not isinstance(
                                 header.get("cwd"), str
                             ):
-                                _add(
-                                    1,
-                                    "Invalid session header: missing or invalid 'cwd'",
+                                issues.append(
+                                    TomeIntegrityIssue(
+                                        line_number=1,
+                                        message="Invalid session header: missing or "
+                                        "invalid 'cwd'",
+                                        raw_line=header_raw,
+                                    )
                                 )
                             if "timestamp" not in header or not isinstance(
                                 header.get("timestamp"), str
                             ):
-                                _add(
-                                    1,
-                                    "Invalid session header: missing or invalid "
-                                    "'timestamp'",
+                                issues.append(
+                                    TomeIntegrityIssue(
+                                        line_number=1,
+                                        message="Invalid session header: missing or "
+                                        "invalid 'timestamp'",
+                                        raw_line=header_raw,
+                                    )
                                 )
-                            version_raw = header.get("version", 1)
+                            version_raw = header.get("version", CURRENT_SESSION_VERSION)
                             try:
                                 version = int(version_raw)
-                                if version != 1:
-                                    _add(
-                                        1,
-                                        f"Unsupported session version: {version}",
+                                if version != CURRENT_SESSION_VERSION:
+                                    issues.append(
+                                        TomeIntegrityIssue(
+                                            line_number=1,
+                                            message=f"Unsupported session version: "
+                                            f"{version}",
+                                            raw_line=header_raw,
+                                        )
                                     )
                             except (ValueError, TypeError):
-                                _add(
-                                    1,
-                                    f"Invalid session version: {version_raw}",
+                                issues.append(
+                                    TomeIntegrityIssue(
+                                        line_number=1,
+                                        message="Invalid session version: "
+                                        f"{version_raw}",
+                                        raw_line=header_raw,
+                                    )
                                 )
-                    except json.JSONDecodeError as e:
-                        _add(1, f"Corrupted session header: invalid JSON: {e}")
 
-                # Lines 2+: Entries verification
-                for idx, raw in enumerate(f, start=2):
+                for idx, raw_line in enumerate(f, start=2):
                     total_lines += 1
-                    line = raw.rstrip("\r\n")
+                    line = raw_line.rstrip("\r\n")
                     if not line.strip():
-                        _add(idx, "Empty or blank line in JSONL stream")
+                        issues.append(
+                            TomeIntegrityIssue(
+                                line_number=idx,
+                                message="Empty or blank line in JSONL stream",
+                                raw_line=line,
+                            )
+                        )
                         continue
-
                     try:
                         entry_raw = json.loads(line)
                     except json.JSONDecodeError as e:
-                        _add(idx, f"Invalid JSON (truncated or corrupted): {e}")
+                        issues.append(
+                            TomeIntegrityIssue(
+                                line_number=idx,
+                                message=f"Invalid JSON (truncated or corrupted): {e}",
+                                raw_line=line,
+                            )
+                        )
                         continue
-
                     if not isinstance(entry_raw, dict):
-                        _add(idx, "Malformed entry: expected JSON object")
+                        issues.append(
+                            TomeIntegrityIssue(
+                                line_number=idx,
+                                message="Malformed entry: expected JSON object",
+                                raw_line=line,
+                            )
+                        )
                         continue
-
-                    has_entry_issue = False
+                    broken = False
                     if not entry_raw.get("id") or not isinstance(
                         entry_raw.get("id"), str
                     ):
-                        _add(
-                            idx,
-                            "Malformed entry: missing or invalid 'id' field",
+                        issues.append(
+                            TomeIntegrityIssue(
+                                line_number=idx,
+                                message="Malformed entry: missing or invalid 'id' "
+                                "field",
+                                raw_line=line,
+                            )
                         )
-                        has_entry_issue = True
-
+                        broken = True
                     entry_type_raw = entry_raw.get("type")
                     if not entry_type_raw or not isinstance(entry_type_raw, str):
-                        _add(
-                            idx,
-                            "Malformed entry: missing or invalid 'type' field",
+                        issues.append(
+                            TomeIntegrityIssue(
+                                line_number=idx,
+                                message="Malformed entry: missing or invalid 'type' "
+                                "field",
+                                raw_line=line,
+                            )
                         )
-                        has_entry_issue = True
+                        broken = True
                     else:
                         try:
                             TomeEntryType(entry_type_raw)
                         except ValueError:
-                            _add(
-                                idx,
-                                (
-                                    "Malformed entry: invalid entry type "
-                                    f"'{entry_type_raw}'"
-                                ),
+                            issues.append(
+                                TomeIntegrityIssue(
+                                    line_number=idx,
+                                    message="Malformed entry: invalid entry type "
+                                    f"'{entry_type_raw}'",
+                                    raw_line=line,
+                                )
                             )
-                            has_entry_issue = True
-
+                            broken = True
                     ts = entry_raw.get("timestamp")
                     if (
                         ts is None
                         or isinstance(ts, bool)
                         or not isinstance(ts, (int, float))
                     ):
-                        _add(
-                            idx,
-                            "Malformed entry: missing or invalid 'timestamp' "
-                            "(must be number)",
+                        issues.append(
+                            TomeIntegrityIssue(
+                                line_number=idx,
+                                message="Malformed entry: missing or invalid "
+                                "'timestamp' (must be number)",
+                                raw_line=line,
+                            )
                         )
-                        has_entry_issue = True
-
+                        broken = True
                     payload = entry_raw.get("payload")
                     if payload is not None and not isinstance(payload, dict):
-                        _add(
-                            idx,
-                            "Malformed entry: 'payload' must be an object/dict",
+                        issues.append(
+                            TomeIntegrityIssue(
+                                line_number=idx,
+                                message="Malformed entry: 'payload' must be an "
+                                "object/dict",
+                                raw_line=line,
+                            )
                         )
-                        has_entry_issue = True
-
-                    if not has_entry_issue:
+                        broken = True
+                    if not broken:
                         valid_entries_count += 1
 
-            return {
-                "valid": len(issues) == 0,
-                "tome_id": resolved,
-                "issues": issues,
-                "total_lines": total_lines,
-                "valid_entries_count": valid_entries_count,
-            }
-        except Exception as e:
-            return {
-                "valid": False,
-                "tome_id": resolved,
-                "issues": [{"line_number": 0, "message": f"Failed to read file: {e}"}],
-                "total_lines": 0,
-                "valid_entries_count": 0,
-            }
+            return TomeIntegrityReport(
+                valid=len(issues) == 0,
+                tome_id=target,
+                issues=issues,
+                total_lines=total_lines,
+                valid_entries_count=valid_entries_count,
+            )
+        except OSError as e:
+            return TomeIntegrityReport(
+                valid=False,
+                tome_id=target,
+                issues=[
+                    TomeIntegrityIssue(
+                        line_number=0, message=f"Failed to read file: {e}"
+                    )
+                ],
+            )

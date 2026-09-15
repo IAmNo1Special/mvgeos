@@ -9,7 +9,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mvgeos_tome.ledger import TomeLedger
+from mvgeos_tome.handle import TomeHandleFactory
+from mvgeos_tome.types import TomeEntry, TomeEntryType
 
 from mvgeos_gui.autocomplete import MentionChip
 from mvgeos_gui.models import ChangedFile, ChatMessage, DiffView
@@ -228,9 +229,46 @@ def _make_state_with_tomes(
 
 
 def _create_tome(tome_dir: Path, cwd: str, tome_id: str | None = None) -> str:
-    ledger = TomeLedger(tome_dir)
-    meta = ledger.create_tome(cwd, tome_id=tome_id)
-    return meta.id
+    factory = TomeHandleFactory(tome_dir)
+    return factory.create_tome(cwd, tome_id=tome_id).tome_id
+
+
+def _append_message(
+    tome_dir: Path, tome_id: str, role: str, content: str, entry_id: str
+) -> TomeEntry:
+    entry = TomeEntry(
+        id=entry_id,
+        parent_id=None,
+        type=TomeEntryType.MESSAGE,
+        timestamp=1000.0,
+        payload={"role": role, "content": content},
+    )
+    TomeHandleFactory(tome_dir).open_write(tome_id).append(entry)
+    return entry
+
+
+def _append_leaf(tome_dir: Path, tome_id: str, target: str, entry_id: str) -> TomeEntry:
+    entry = TomeEntry(
+        id=entry_id,
+        parent_id=None,
+        type=TomeEntryType.LEAF,
+        timestamp=1001.0,
+        payload={"targetId": target},
+    )
+    TomeHandleFactory(tome_dir).open_write(tome_id).append(entry)
+    return entry
+
+
+def _append_tome_info(tome_dir: Path, tome_id: str, payload: dict) -> None:
+    TomeHandleFactory(tome_dir).open_write(tome_id).append(
+        TomeEntry(
+            id="info-1",
+            parent_id=None,
+            type=TomeEntryType.TOME_INFO,
+            timestamp=1002.0,
+            payload=payload,
+        )
+    )
 
 
 class TestLoadTomes:
@@ -286,8 +324,7 @@ class TestSwitchToTome:
     def test_sets_active_tome_id_and_title(self) -> None:
         state, tome_dir = _make_state_with_tomes("/proj/a")
         tome_id = _create_tome(tome_dir, "/proj/a")
-        ledger = TomeLedger(tome_dir)
-        ledger.append_tome_info(tome_id, {"name": "Bug Fix Session"})
+        _append_tome_info(tome_dir, tome_id, {"name": "Bug Fix Session"})
 
         state.switch_to_tome(tome_id)
 
@@ -297,9 +334,8 @@ class TestSwitchToTome:
     def test_loads_existing_messages_from_tome(self) -> None:
         state, tome_dir = _make_state_with_tomes("/proj/a")
         tome_id = _create_tome(tome_dir, "/proj/a")
-        ledger = TomeLedger(tome_dir)
-        ledger.append_message(tome_id, "user", "How do I fix this?")
-        ledger.append_message(tome_id, "assistant", "Here is the fix.")
+        _append_message(tome_dir, tome_id, "user", "How do I fix this?", "m1")
+        _append_message(tome_dir, tome_id, "assistant", "Here is the fix.", "m2")
 
         state.switch_to_tome(tome_id)
 
@@ -310,8 +346,7 @@ class TestSwitchToTome:
     def test_sets_title_from_tome_info_title_key(self) -> None:
         state, tome_dir = _make_state_with_tomes("/proj/a")
         tome_id = _create_tome(tome_dir, "/proj/a")
-        ledger = TomeLedger(tome_dir)
-        ledger.append_tome_info(tome_id, {"title": "Refactor Loop"})
+        _append_tome_info(tome_dir, tome_id, {"title": "Refactor Loop"})
 
         state.switch_to_tome(tome_id)
 
@@ -359,9 +394,8 @@ class TestForkTome:
     def test_forks_active_tome_and_switches(self) -> None:
         state, tome_dir = _make_state_with_tomes("/proj/a")
         tome_id = _create_tome(tome_dir, "/proj/a")
-        ledger = TomeLedger(tome_dir)
-        entry = ledger.append_message(tome_id, "user", "hello")
-        ledger.append_leaf(tome_id, entry.id)
+        entry = _append_message(tome_dir, tome_id, "user", "hello", "m1")
+        _append_leaf(tome_dir, tome_id, entry.id, "l1")
         state.active_tome_id = tome_id
         state.tome_title = "Original"
 
@@ -389,9 +423,8 @@ class TestExportTome:
         with tempfile.TemporaryDirectory() as proj_tmp:
             state, tome_dir = _make_state_with_tomes(proj_tmp)
             tome_id = _create_tome(tome_dir, proj_tmp)
-            ledger = TomeLedger(tome_dir)
-            ledger.append_message(tome_id, "user", "hello")
-            ledger.append_message(tome_id, "assistant", "hi")
+            _append_message(tome_dir, tome_id, "user", "hello", "m1")
+            _append_message(tome_dir, tome_id, "assistant", "hi", "m2")
             state.active_tome_id = tome_id
 
             result = state.export_tome()
@@ -1069,9 +1102,8 @@ class TestLoadMessagesForTome:
         """load_messages_for_tome must notify subscribers after loading entries."""
         state, tome_dir = _make_state_with_tomes(str(tmp_path))
         tome_id = _create_tome(tome_dir, str(tmp_path))
-        ledger = state.tome_service.ledger
-        ledger.append_message(tome_id, "user", "Hello")
-        ledger.append_message(tome_id, "assistant", "Hi there")
+        _append_message(tome_dir, tome_id, "user", "Hello", "m1")
+        _append_message(tome_dir, tome_id, "assistant", "Hi there", "m2")
 
         called: list[bool] = []
         state.subscribe(lambda: called.append(True))

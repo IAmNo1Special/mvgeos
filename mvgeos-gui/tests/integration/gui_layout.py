@@ -10,7 +10,8 @@ from mvgeos_runes.types import (
     SkillManifest,
     SkillScope,
 )
-from mvgeos_tome.ledger import TomeLedger
+from mvgeos_tome.handle import TomeHandleFactory
+from mvgeos_tome.types import TomeEntry, TomeEntryType
 from nicegui import ui
 
 from mvgeos_gui.app import build_page, init_app
@@ -219,9 +220,17 @@ async def test_sidebar_displays_tomes(user: User, tmp_path: Path) -> None:
     tome_dir = tmp_path / "tomes"
     project_path = tmp_path / "proj"
     project_path.mkdir()
-    ledger = TomeLedger(tome_dir)
-    meta = ledger.create_tome(str(project_path))
-    ledger.append_tome_info(meta.id, {"name": "Bug Fix Session"})
+    factory = TomeHandleFactory(tome_dir)
+    tome_id = factory.create_tome(str(project_path)).tome_id
+    factory.open_write(tome_id).append(
+        TomeEntry(
+            id="info-1",
+            parent_id=None,
+            type=TomeEntryType.TOME_INFO,
+            timestamp=1000.0,
+            payload={"name": "Bug Fix Session"},
+        )
+    )
 
     service = TomeService(tome_dir)
     state = AppState(project_path=project_path, tome_service=service)
@@ -246,8 +255,7 @@ async def test_sidebar_shows_git_branch(user: User, tmp_path: Path) -> None:
     _init_git_repo(repo, "feature-branch")
 
     tome_dir = tmp_path / "tomes"
-    ledger = TomeLedger(tome_dir)
-    ledger.create_tome(str(repo))
+    TomeHandleFactory(tome_dir).create_tome(str(repo))
 
     service = TomeService(tome_dir)
     state = AppState(project_path=repo, tome_service=service)
@@ -267,9 +275,17 @@ async def test_clicking_tome_switches_session(user: User, tmp_path: Path) -> Non
     tome_dir = tmp_path / "tomes"
     project_path = tmp_path / "proj"
     project_path.mkdir()
-    ledger = TomeLedger(tome_dir)
-    meta = ledger.create_tome(str(project_path))
-    ledger.append_tome_info(meta.id, {"name": "Test Session"})
+    factory = TomeHandleFactory(tome_dir)
+    meta_id = factory.create_tome(str(project_path)).tome_id
+    factory.open_write(meta_id).append(
+        TomeEntry(
+            id="info-1",
+            parent_id=None,
+            type=TomeEntryType.TOME_INFO,
+            timestamp=1000.0,
+            payload={"name": "Test Session"},
+        )
+    )
 
     service = TomeService(tome_dir)
     state = AppState(project_path=project_path, tome_service=service)
@@ -282,8 +298,8 @@ async def test_clicking_tome_switches_session(user: User, tmp_path: Path) -> Non
     await user.open("/test_click_tome")
     await user.should_see("Test Session")
 
-    state.switch_to_tome(meta.id)
-    assert state.active_tome_id == meta.id
+    state.switch_to_tome(meta_id)
+    assert state.active_tome_id == meta_id
     assert state.tome_title == "Test Session"
 
 
@@ -293,14 +309,22 @@ async def test_current_session_card_with_tome(user: User, tmp_path: Path) -> Non
     tome_dir = tmp_path / "tomes"
     project_path = tmp_path / "my-awesome-project"
     project_path.mkdir()
-    ledger = TomeLedger(tome_dir)
-    meta = ledger.create_tome(str(project_path))
-    ledger.append_tome_info(meta.id, {"name": "Active Session"})
+    factory = TomeHandleFactory(tome_dir)
+    meta_id = factory.create_tome(str(project_path)).tome_id
+    factory.open_write(meta_id).append(
+        TomeEntry(
+            id="info-1",
+            parent_id=None,
+            type=TomeEntryType.TOME_INFO,
+            timestamp=1000.0,
+            payload={"name": "Active Session"},
+        )
+    )
 
     service = TomeService(tome_dir)
     state = AppState(project_path=project_path, tome_service=service)
     state.load_tomes()
-    state.switch_to_tome(meta.id)
+    state.switch_to_tome(meta_id)
 
     @ui.page("/test_current_session")
     def page() -> None:
@@ -317,14 +341,22 @@ async def test_viewport_shows_chat(user: User, tmp_path: Path) -> None:
     tome_dir = tmp_path / "tomes"
     project_path = tmp_path / "proj"
     project_path.mkdir()
-    ledger = TomeLedger(tome_dir)
-    meta = ledger.create_tome(str(project_path))
-    ledger.append_tome_info(meta.id, {"name": "Active Session"})
+    factory = TomeHandleFactory(tome_dir)
+    meta_id = factory.create_tome(str(project_path)).tome_id
+    factory.open_write(meta_id).append(
+        TomeEntry(
+            id="info-1",
+            parent_id=None,
+            type=TomeEntryType.TOME_INFO,
+            timestamp=1000.0,
+            payload={"name": "Active Session"},
+        )
+    )
 
     service = TomeService(tome_dir)
     state = AppState(project_path=project_path, tome_service=service)
     state.load_tomes()
-    state.switch_to_tome(meta.id)
+    state.switch_to_tome(meta_id)
 
     @ui.page("/test_viewport_transition")
     def page() -> None:
@@ -388,13 +420,13 @@ async def test_new_conversation_resets_active_tome(user: User, tmp_path: Path) -
     tome_dir = tmp_path / "tomes"
     project_path = tmp_path / "proj"
     project_path.mkdir()
-    ledger = TomeLedger(tome_dir)
-    meta = ledger.create_tome(str(project_path))
+    factory = TomeHandleFactory(tome_dir)
+    meta_id = factory.create_tome(str(project_path)).tome_id
 
     service = TomeService(tome_dir)
     state = AppState(project_path=project_path, tome_service=service)
     state.load_tomes()
-    state.switch_to_tome(meta.id)
+    state.switch_to_tome(meta_id)
     state.current_user = _mock_user()
 
     @ui.page("/test_new_convo_transition")

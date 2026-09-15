@@ -1,7 +1,8 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from mvgeos_tome.ledger import TomeLedger
+from mvgeos_tome.handle import TomeHandleFactory
+from mvgeos_tome.types import TomeEntry, TomeEntryType
 
 from mvgeos_agent.commands import SLASH_COMMANDS, CommandAction, CommandDispatcher
 from mvgeos_agent.protocol import MvgeAgent
@@ -16,38 +17,68 @@ def test_slash_commands_catalog() -> None:
     assert "/skills" in SLASH_COMMANDS
 
 
-def test_tome_ledger_list_leaves_and_parent_summoner(tmp_path) -> None:
-    ledger = TomeLedger(tmp_path)
-    meta = ledger.create_tome(str(tmp_path))
-    tome_id = meta.id
+def _message(
+    write_handle,
+    entry_id: str,
+    role: str,
+    content: str,
+    parent_id: str | None = None,
+) -> TomeEntry:
+    entry = TomeEntry(
+        id=entry_id,
+        parent_id=parent_id,
+        type=TomeEntryType.MESSAGE,
+        timestamp=1000.0,
+        payload={"role": role, "content": content},
+    )
+    write_handle.append(entry)
+    return entry
+
+
+def _leaf(write_handle, entry_id: str, target: str) -> TomeEntry:
+    entry = TomeEntry(
+        id=entry_id,
+        parent_id=None,
+        type=TomeEntryType.LEAF,
+        timestamp=1001.0,
+        payload={"targetId": target},
+    )
+    write_handle.append(entry)
+    return entry
+
+
+def test_tome_factory_list_leaves_and_parent_summoner(tmp_path) -> None:
+    factory = TomeHandleFactory(tmp_path)
+    write = factory.create_tome(str(tmp_path), tome_id="t1")
+    tome_id = write.tome_id
 
     # Initially no content entries
-    assert ledger.list_leaves(tome_id) == []
+    assert factory.list_leaves(tome_id) == []
 
     # Summoner turn 1
-    m1 = ledger.append_message(tome_id, "user", "Hello", parent_id=None)
-    ledger.append_leaf(tome_id, m1.id)
-    r1 = ledger.append_message(tome_id, "assistant", "Hi there", parent_id=m1.id)
-    ledger.append_leaf(tome_id, r1.id)
+    m1 = _message(write, "m1", "user", "Hello", parent_id=None)
+    write.append_leaf(m1.id)
+    r1 = _message(write, "r1", "assistant", "Hi there", parent_id=m1.id)
+    write.append_leaf(r1.id)
 
     # Leaves should be [r1.id] (m1 is parent of r1)
-    leaves = ledger.list_leaves(tome_id)
+    leaves = factory.list_leaves(tome_id)
     assert leaves == [r1.id]
 
     # Parent of summoner message in turn 1 is None (it was root)
-    assert ledger.get_parent_summoner_entry(tome_id, r1.id) is None
+    assert factory.get_parent_summoner_entry(tome_id, r1.id) is None
 
     # Summoner turn 2
-    m2 = ledger.append_message(tome_id, "user", "How are you?", parent_id=r1.id)
-    ledger.append_leaf(tome_id, m2.id)
-    r2 = ledger.append_message(tome_id, "assistant", "I am well", parent_id=m2.id)
-    ledger.append_leaf(tome_id, r2.id)
+    m2 = _message(write, "m2", "user", "How are you?", parent_id=r1.id)
+    write.append_leaf(m2.id)
+    r2 = _message(write, "r2", "assistant", "I am well", parent_id=m2.id)
+    write.append_leaf(r2.id)
 
     # Leaves should be [r2.id]
-    assert ledger.list_leaves(tome_id) == [r2.id]
+    assert factory.list_leaves(tome_id) == [r2.id]
 
     # Parent of summoner message in turn 2 should be r1
-    parent_entry = ledger.get_parent_summoner_entry(tome_id, r2.id)
+    parent_entry = factory.get_parent_summoner_entry(tome_id, r2.id)
     assert parent_entry is not None
     assert parent_entry.id == r1.id
 

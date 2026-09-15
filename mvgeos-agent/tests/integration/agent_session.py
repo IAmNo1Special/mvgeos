@@ -2,27 +2,27 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 from mvgeos_core.errors import TomeResumeError
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import SigilHook
-from mvgeos_tome.ledger import TomeLedger
-from mvgeos_tome.types import TomeMetadata
+from mvgeos_tome.handle import TomeHandle, TomeHandleFactory
 
 from mvgeos_agent.agent_session import MvgeTome
 
 
 @pytest.fixture
-def tome_ledger() -> TomeLedger:
+def tome_factory() -> TomeHandleFactory:
     with tempfile.TemporaryDirectory() as tmp:
-        yield TomeLedger(Path(tmp))
+        yield TomeHandleFactory(Path(tmp))
 
 
 @pytest.fixture
-def tome_metadata(tome_ledger: TomeLedger) -> TomeMetadata:
-    return tome_ledger.create_tome("/test")
+def agent_tome(tome_factory: TomeHandleFactory) -> MvgeTome:
+    write = tome_factory.create_tome("/test")
+    read = tome_factory.open_read(write.tome_id)
+    return MvgeTome(tome_factory, write, read)
 
 
 @pytest.fixture
@@ -31,160 +31,142 @@ def runner() -> RuneRunner:
 
 
 @pytest.mark.asyncio
-async def test_start_emits_session_start(
-    tome_ledger: TomeLedger, tome_metadata: TomeMetadata
-) -> None:
+async def test_start_emits_session_start(agent_tome: MvgeTome) -> None:
     runner = RuneRunner()
+    agent_tome.bind_runner(runner)
+    from unittest.mock import MagicMock
+
     handler = MagicMock()
     runner.register_handler(SigilHook.SESSION_START, handler)
-    tome = MvgeTome(tome_ledger, tome_metadata, runner)
-    await tome.start(reason="startup")
+    await agent_tome.start(reason="startup")
     handler.assert_called_once()
     call_data = handler.call_args[0][0]
     assert call_data["reason"] == "startup"
-    assert call_data["tomeId"] == tome_metadata.id
+    assert call_data["tomeId"] == agent_tome.tome_id
 
 
 @pytest.mark.asyncio
-async def test_start_idempotent(
-    tome_ledger: TomeLedger, tome_metadata: TomeMetadata
-) -> None:
+async def test_start_idempotent(agent_tome: MvgeTome) -> None:
+    from unittest.mock import MagicMock
+
     runner = RuneRunner()
+    agent_tome.bind_runner(runner)
     handler = MagicMock()
     runner.register_handler(SigilHook.SESSION_START, handler)
-    tome = MvgeTome(tome_ledger, tome_metadata, runner)
-    await tome.start(reason="startup")
-    await tome.start(reason="startup")
+    await agent_tome.start(reason="startup")
+    await agent_tome.start(reason="startup")
     handler.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_shutdown_emits_session_shutdown(
-    tome_ledger: TomeLedger, tome_metadata: TomeMetadata
-) -> None:
+async def test_shutdown_emits_session_shutdown(agent_tome: MvgeTome) -> None:
+    from unittest.mock import MagicMock
+
     runner = RuneRunner()
+    agent_tome.bind_runner(runner)
     handler = MagicMock()
     runner.register_handler(SigilHook.SESSION_SHUTDOWN, handler)
-    tome = MvgeTome(tome_ledger, tome_metadata, runner)
-    await tome.start(reason="startup")
-    await tome.shutdown(reason="quit")
+    await agent_tome.start(reason="startup")
+    await agent_tome.shutdown(reason="quit")
     handler.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_shutdown_with_target_file(
-    tome_ledger: TomeLedger, tome_metadata: TomeMetadata
-) -> None:
+async def test_shutdown_with_target_file(agent_tome: MvgeTome) -> None:
+    from unittest.mock import MagicMock
+
     runner = RuneRunner()
+    agent_tome.bind_runner(runner)
     handler = MagicMock()
     runner.register_handler(SigilHook.SESSION_SHUTDOWN, handler)
-    tome = MvgeTome(tome_ledger, tome_metadata, runner)
-    await tome.start(reason="startup")
-    await tome.shutdown(reason="resume", target_session_file="/path/to/new")
+    await agent_tome.start(reason="startup")
+    await agent_tome.shutdown(reason="resume", target_session_file="/path/to/new")
     call_data = handler.call_args[0][0]
     assert call_data["reason"] == "resume"
     assert call_data["targetSessionFile"] == "/path/to/new"
 
 
 @pytest.mark.asyncio
-async def test_shutdown_noop_if_not_started(
-    tome_ledger: TomeLedger, tome_metadata: TomeMetadata
-) -> None:
+async def test_shutdown_noop_if_not_started(agent_tome: MvgeTome) -> None:
+    from unittest.mock import MagicMock
+
     runner = RuneRunner()
+    agent_tome.bind_runner(runner)
     handler = MagicMock()
     runner.register_handler(SigilHook.SESSION_SHUTDOWN, handler)
-    tome = MvgeTome(tome_ledger, tome_metadata, runner)
-    await tome.shutdown(reason="quit")
+    await agent_tome.shutdown(reason="quit")
     handler.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_before_switch_cancellable(
-    tome_ledger: TomeLedger, tome_metadata: TomeMetadata
-) -> None:
+async def test_before_switch_cancellable(agent_tome: MvgeTome) -> None:
     runner = RuneRunner()
+    agent_tome.bind_runner(runner)
 
     def canceller(data: dict) -> dict:
         return {"cancel": True}
 
     runner.register_handler(SigilHook.SESSION_BEFORE_SWITCH, canceller)
-    tome = MvgeTome(tome_ledger, tome_metadata, runner)
-    result = await tome.before_switch("/path/to/target")
+    result = await agent_tome.before_switch("/path/to/target")
     assert result is not None
     assert result["cancelled"]
 
 
 @pytest.mark.asyncio
-async def test_before_switch_not_cancelled(
-    tome_ledger: TomeLedger, tome_metadata: TomeMetadata
-) -> None:
+async def test_before_switch_not_cancelled(agent_tome: MvgeTome) -> None:
     runner = RuneRunner()
-    tome = MvgeTome(tome_ledger, tome_metadata, runner)
-    result = await tome.before_switch("/path/to/target")
+    agent_tome.bind_runner(runner)
+    result = await agent_tome.before_switch("/path/to/target")
     assert result is not None
     assert not result["cancelled"]
 
 
 @pytest.mark.asyncio
-async def test_before_fork_cancellable(
-    tome_ledger: TomeLedger, tome_metadata: TomeMetadata
-) -> None:
+async def test_before_fork_cancellable(agent_tome: MvgeTome) -> None:
     runner = RuneRunner()
+    agent_tome.bind_runner(runner)
 
     def canceller(data: dict) -> dict:
         return {"cancel": True}
 
     runner.register_handler(SigilHook.SESSION_BEFORE_FORK, canceller)
-    tome = MvgeTome(tome_ledger, tome_metadata, runner)
-    result = await tome.before_fork("entry-123")
+    result = await agent_tome.before_fork("entry-123")
     assert result is not None
     assert result["cancelled"]
 
 
 @pytest.mark.asyncio
-async def test_properties(tome_ledger: TomeLedger, tome_metadata: TomeMetadata) -> None:
-    tome = MvgeTome(tome_ledger, tome_metadata)
-    assert tome.tome_id == tome_metadata.id
-    assert tome.metadata is tome_metadata
+async def test_properties(agent_tome: MvgeTome) -> None:
+    assert agent_tome.tome_id == agent_tome.metadata.id
+    assert agent_tome.metadata.cwd == "/test"
 
 
 @pytest.mark.asyncio
-async def test_bind_runner(
-    tome_ledger: TomeLedger, tome_metadata: TomeMetadata
-) -> None:
-    tome = MvgeTome(tome_ledger, tome_metadata)
+async def test_bind_runner(agent_tome: MvgeTome) -> None:
     runner = RuneRunner()
-    tome.bind_runner(runner)
-    assert tome._rune_runner is runner
+    agent_tome.bind_runner(runner)
+    assert agent_tome._rune_runner is runner
 
 
 @pytest.mark.asyncio
-async def test_record_message_not_started(
-    tome_ledger: TomeLedger, tome_metadata: TomeMetadata
-) -> None:
-    tome = MvgeTome(tome_ledger, tome_metadata)
-    result = tome.record_message("user", "hello")
+async def test_record_message_not_started(agent_tome: MvgeTome) -> None:
+    result = agent_tome.record_message("user", "hello")
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_record_custom_not_started(
-    tome_ledger: TomeLedger, tome_metadata: TomeMetadata
-) -> None:
-    tome = MvgeTome(tome_ledger, tome_metadata)
-    result = tome.record_custom("test_type", {"key": "value"})
+async def test_record_custom_not_started(agent_tome: MvgeTome) -> None:
+    result = agent_tome.record_custom("test_type", {"key": "value"})
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_record_message_started(
-    tome_ledger: TomeLedger, tome_metadata: TomeMetadata
-) -> None:
+async def test_record_message_started(agent_tome: MvgeTome) -> None:
     runner = RuneRunner()
-    tome = MvgeTome(tome_ledger, tome_metadata, runner)
-    await tome.start(reason="startup")
+    agent_tome.bind_runner(runner)
+    await agent_tome.start(reason="startup")
 
-    result = tome.record_message("user", "hello", model="test-model")
+    result = agent_tome.record_message("user", "hello", model="test-model")
     assert result is not None
     assert result.type.value == "message"
     assert result.payload.get("role") == "user"
@@ -192,35 +174,29 @@ async def test_record_message_started(
 
 
 @pytest.mark.asyncio
-async def test_record_custom_started(
-    tome_ledger: TomeLedger, tome_metadata: TomeMetadata
-) -> None:
+async def test_record_custom_started(agent_tome: MvgeTome) -> None:
     runner = RuneRunner()
-    tome = MvgeTome(tome_ledger, tome_metadata, runner)
-    await tome.start(reason="startup")
+    agent_tome.bind_runner(runner)
+    await agent_tome.start(reason="startup")
 
-    result = tome.record_custom("test_type", {"key": "value"})
+    result = agent_tome.record_custom("test_type", {"key": "value"})
     assert result is not None
     assert result.type.value == "custom"
     assert result.payload.get("type") == "test_type"
 
 
 @pytest.mark.asyncio
-async def test_safe_emit_no_runner(
-    tome_ledger: TomeLedger, tome_metadata: TomeMetadata
-) -> None:
+async def test_safe_emit_no_runner(agent_tome: MvgeTome) -> None:
     # Should not raise when runner is None
-    tome = MvgeTome(tome_ledger, tome_metadata)
-    await tome._safe_emit(SigilHook.SESSION_START, {"test": "data"})
+    await agent_tome._safe_emit(SigilHook.SESSION_START, {"test": "data"})
 
 
 @pytest.mark.asyncio
-async def test_safe_emit_first_no_runner(
-    tome_ledger: TomeLedger, tome_metadata: TomeMetadata
-) -> None:
+async def test_safe_emit_first_no_runner(agent_tome: MvgeTome) -> None:
     # Should return None when runner is None
-    tome = MvgeTome(tome_ledger, tome_metadata)
-    result = await tome._safe_emit_first(SigilHook.SESSION_START, {"test": "data"})
+    result = await agent_tome._safe_emit_first(
+        SigilHook.SESSION_START, {"test": "data"}
+    )
     assert result is None
 
 
@@ -241,12 +217,12 @@ def _assert_no_shutdown(seen: list[SigilHook]) -> None:
 
 @pytest.mark.asyncio
 async def test_factory_create_starts_session(
-    tome_ledger: TomeLedger, runner: RuneRunner
+    tome_factory: TomeHandleFactory, runner: RuneRunner
 ) -> None:
     starts: list[dict] = []
     runner.register_handler(SigilHook.SESSION_START, lambda d: starts.append(d))
 
-    tome = await MvgeTome.create(tome_ledger, cwd="/custom/dir", runner=runner)
+    tome = await MvgeTome.create(tome_factory, cwd="/custom/dir", runner=runner)
 
     assert isinstance(tome, MvgeTome)
     assert tome.metadata.cwd == "/custom/dir"
@@ -256,126 +232,126 @@ async def test_factory_create_starts_session(
 
 @pytest.mark.asyncio
 async def test_factory_open_resumes_session(
-    tome_ledger: TomeLedger, runner: RuneRunner, tome_metadata: TomeMetadata
+    tome_factory: TomeHandleFactory, runner: RuneRunner, agent_tome: MvgeTome
 ) -> None:
     starts: list[dict] = []
     runner.register_handler(SigilHook.SESSION_START, lambda d: starts.append(d))
 
-    tome = await MvgeTome.open(tome_ledger, tome_metadata.id, runner=runner)
+    tome = await MvgeTome.open(tome_factory, agent_tome.tome_id, runner=runner)
 
     assert isinstance(tome, MvgeTome)
-    assert tome.tome_id == tome_metadata.id
+    assert tome.tome_id == agent_tome.tome_id
     assert len(starts) == 1
     assert starts[0]["reason"] == "resume"
 
 
 @pytest.mark.asyncio
 async def test_factory_open_missing_raises(
-    tome_ledger: TomeLedger, runner: RuneRunner
+    tome_factory: TomeHandleFactory, runner: RuneRunner
 ) -> None:
     with pytest.raises(TomeResumeError):
-        await MvgeTome.open(tome_ledger, "nonexistent", runner=runner)
+        await MvgeTome.open(tome_factory, "nonexistent", runner=runner)
 
 
 @pytest.mark.asyncio
 async def test_factory_open_or_create(
-    tome_ledger: TomeLedger, runner: RuneRunner, tome_metadata: TomeMetadata
+    tome_factory: TomeHandleFactory, runner: RuneRunner, agent_tome: MvgeTome
 ) -> None:
-    tome1 = await MvgeTome.open_or_create(tome_ledger, cwd="/proj", runner=runner)
+    tome1 = await MvgeTome.open_or_create(tome_factory, cwd="/proj", runner=runner)
     assert tome1.metadata.cwd == "/proj"
 
     tome2 = await MvgeTome.open_or_create(
-        tome_ledger, tome_resume=tome_metadata.id, runner=runner
+        tome_factory, tome_resume=agent_tome.tome_id, runner=runner
     )
-    assert tome2.tome_id == tome_metadata.id
+    assert tome2.tome_id == agent_tome.tome_id
 
 
 @pytest.mark.asyncio
 async def test_switch_cancelled(
-    runner: RuneRunner, tome_ledger: TomeLedger, tome_metadata: TomeMetadata
+    runner: RuneRunner, tome_factory: TomeHandleFactory, agent_tome: MvgeTome
 ) -> None:
     def canceller(data: dict) -> dict:
         return {"cancel": True}
 
     runner.register_handler(SigilHook.SESSION_BEFORE_SWITCH, canceller)
-    source = MvgeTome(tome_ledger, tome_metadata, runner)
-    await source.start(reason="startup")
+    agent_tome.bind_runner(runner)
+    await agent_tome.start(reason="startup")
     seen = _record_shutdowns(runner)
 
-    result = await source.switch(Path("/path/to/target.jsonl"))
+    result = await agent_tome.switch(Path("/path/to/target.jsonl"))
     assert result is None
     _assert_no_shutdown(seen)
 
 
 @pytest.mark.asyncio
 async def test_switch_invalid_tome_id(
-    runner: RuneRunner, tome_ledger: TomeLedger, tome_metadata: TomeMetadata
+    runner: RuneRunner, tome_factory: TomeHandleFactory, agent_tome: MvgeTome
 ) -> None:
-    source = MvgeTome(tome_ledger, tome_metadata, runner)
-    await source.start(reason="startup")
+    agent_tome.bind_runner(runner)
+    await agent_tome.start(reason="startup")
     seen = _record_shutdowns(runner)
 
-    result = await source.switch(Path("/path/to/invalid.jsonl"))
+    result = await agent_tome.switch(Path("/path/to/invalid.jsonl"))
     assert result is None
     _assert_no_shutdown(seen)
 
 
 @pytest.mark.asyncio
 async def test_switch_tome_not_found(
-    runner: RuneRunner, tome_ledger: TomeLedger, tome_metadata: TomeMetadata
+    runner: RuneRunner, tome_factory: TomeHandleFactory, agent_tome: MvgeTome
 ) -> None:
-    source = MvgeTome(tome_ledger, tome_metadata, runner)
-    await source.start(reason="startup")
+    agent_tome.bind_runner(runner)
+    await agent_tome.start(reason="startup")
     seen = _record_shutdowns(runner)
 
     target_file = Path("/path/to") / f"{'a' * 32}.jsonl"
-    result = await source.switch(target_file)
+    result = await agent_tome.switch(target_file)
     assert result is None
     _assert_no_shutdown(seen)
 
 
 @pytest.mark.asyncio
 async def test_switch_success(
-    tome_ledger: TomeLedger, runner: RuneRunner, tome_metadata: TomeMetadata
+    tome_factory: TomeHandleFactory, runner: RuneRunner, agent_tome: MvgeTome
 ) -> None:
-    source = MvgeTome(tome_ledger, tome_metadata, runner)
-    await source.start(reason="startup")
+    agent_tome.bind_runner(runner)
+    await agent_tome.start(reason="startup")
 
-    meta2 = tome_ledger.create_tome("/test2")
-    target_file = tome_ledger.tome_file(meta2.id)
+    target_write = tome_factory.create_tome("/test2")
+    target_file = tome_factory.tome_file(target_write.tome_id)
 
-    result = await source.switch(target_file)
+    result = await agent_tome.switch(target_file)
     assert result is not None
-    assert result.tome_id == meta2.id
+    assert result.tome_id == target_write.tome_id
 
 
 @pytest.mark.asyncio
 async def test_fork_cancelled(
-    tome_ledger: TomeLedger, runner: RuneRunner, tome_metadata: TomeMetadata
+    tome_factory: TomeHandleFactory, runner: RuneRunner, agent_tome: MvgeTome
 ) -> None:
     def canceller(data: dict) -> dict:
         return {"cancel": True}
 
     runner.register_handler(SigilHook.SESSION_BEFORE_FORK, canceller)
-    source = MvgeTome(tome_ledger, tome_metadata, runner)
-    await source.start(reason="startup")
+    agent_tome.bind_runner(runner)
+    await agent_tome.start(reason="startup")
     seen = _record_shutdowns(runner)
 
-    entry = tome_ledger.append_message(
-        tome_id=source.tome_id, role="user", content="test"
-    )
+    agent_tome.record_message("user", "test")
 
-    result = await source.fork(entry.id)
+    result = await agent_tome.fork()
     assert result is None
     _assert_no_shutdown(seen)
 
 
 @pytest.mark.asyncio
-async def test_fork_ledger_rejection_keeps_source_running(
-    tome_ledger: TomeLedger, runner: RuneRunner
+async def test_fork_missing_backing_file_keeps_source_running(
+    tome_factory: TomeHandleFactory, runner: RuneRunner
 ) -> None:
-    ghost_meta = TomeMetadata(id="f" * 32, created_at="now", cwd="/test")
-    source = MvgeTome(tome_ledger, ghost_meta, runner)
+    ghost_id = "f" * 32
+    write = TomeHandle(tome_factory.dir, ghost_id, "w")
+    read = TomeHandle(tome_factory.dir, ghost_id, "r")
+    source = MvgeTome(tome_factory, write, read, runner)
     await source.start(reason="startup")
     seen = _record_shutdowns(runner)
 
@@ -386,40 +362,39 @@ async def test_fork_ledger_rejection_keeps_source_running(
 
 @pytest.mark.asyncio
 async def test_fork_success(
-    tome_ledger: TomeLedger, runner: RuneRunner, tome_metadata: TomeMetadata
+    tome_factory: TomeHandleFactory, runner: RuneRunner, agent_tome: MvgeTome
 ) -> None:
-    source = MvgeTome(tome_ledger, tome_metadata, runner)
-    await source.start(reason="startup")
+    agent_tome.bind_runner(runner)
+    await agent_tome.start(reason="startup")
 
-    entry = tome_ledger.append_message(
-        tome_id=source.tome_id, role="user", content="test"
-    )
+    entry = agent_tome.record_message("user", "test")
+    assert entry is not None
 
-    result = await source.fork(entry.id)
+    result = await agent_tome.fork(entry.id)
     assert result is not None
-    assert result.tome_id != source.tome_id
+    assert result.tome_id != agent_tome.tome_id
 
-    branched_entries = tome_ledger.get_entries(result.tome_id)
+    branched_entries = tome_factory.get_entries(result.tome_id)
     assert any(e.id == entry.id for e in branched_entries)
 
 
 @pytest.mark.asyncio
 async def test_fork_invalid_entry_creates_branched(
-    tome_ledger: TomeLedger, runner: RuneRunner, tome_metadata: TomeMetadata
+    tome_factory: TomeHandleFactory, runner: RuneRunner, agent_tome: MvgeTome
 ) -> None:
-    source = MvgeTome(tome_ledger, tome_metadata, runner)
-    await source.start(reason="startup")
+    agent_tome.bind_runner(runner)
+    await agent_tome.start(reason="startup")
 
-    result = await source.fork("nonexistent-entry")
+    result = await agent_tome.fork("nonexistent-entry")
     assert result is not None
-    assert result.tome_id != source.tome_id
+    assert result.tome_id != agent_tome.tome_id
 
 
 @pytest.mark.asyncio
 async def test_mvge_tome_create_initializes_valid_tome() -> None:
     with tempfile.TemporaryDirectory() as direct_dir:
-        ledger = TomeLedger(Path(direct_dir))
-        tome = await MvgeTome.create(ledger)
+        factory = TomeHandleFactory(Path(direct_dir))
+        tome = await MvgeTome.create(factory)
 
         assert tome.metadata.cwd == str(Path.cwd())
         assert tome.metadata.parent_tome_id is None
@@ -428,10 +403,10 @@ async def test_mvge_tome_create_initializes_valid_tome() -> None:
 
 @pytest.mark.asyncio
 async def test_session_resume_with_matching_configuration_persisted_to_disk(
-    tome_ledger: TomeLedger, runner: RuneRunner
+    tome_factory: TomeHandleFactory, runner: RuneRunner
 ) -> None:
     tome1 = await MvgeTome.create(
-        tome_ledger,
+        tome_factory,
         cwd="/workspace",
         runner=runner,
         model="model-v1",
@@ -442,7 +417,7 @@ async def test_session_resume_with_matching_configuration_persisted_to_disk(
     await tome1.shutdown(reason="quit")
 
     tome2 = await MvgeTome.open(
-        tome_ledger,
+        tome_factory,
         tome1.tome_id,
         runner=runner,
         expected_model="model-v1",
@@ -458,12 +433,12 @@ async def test_session_resume_with_matching_configuration_persisted_to_disk(
 
 @pytest.mark.asyncio
 async def test_session_resume_strict_raises_tome_incompatible_on_mismatched_model(
-    tome_ledger: TomeLedger, runner: RuneRunner
+    tome_factory: TomeHandleFactory, runner: RuneRunner
 ) -> None:
     from mvgeos_core.errors import TomeIncompatibleError
 
     tome1 = await MvgeTome.create(
-        tome_ledger,
+        tome_factory,
         cwd="/workspace",
         runner=runner,
         model="claude-3-opus",
@@ -474,7 +449,7 @@ async def test_session_resume_strict_raises_tome_incompatible_on_mismatched_mode
 
     with pytest.raises(TomeIncompatibleError) as exc_info:
         await MvgeTome.open(
-            tome_ledger,
+            tome_factory,
             tome1.tome_id,
             runner=runner,
             expected_model="gpt-4o",
@@ -489,10 +464,10 @@ async def test_session_resume_strict_raises_tome_incompatible_on_mismatched_mode
 
 @pytest.mark.asyncio
 async def test_session_resume_force_fork_preserves_history_with_updated_metadata(
-    tome_ledger: TomeLedger, runner: RuneRunner
+    tome_factory: TomeHandleFactory, runner: RuneRunner
 ) -> None:
     tome1 = await MvgeTome.create(
-        tome_ledger,
+        tome_factory,
         cwd="/workspace",
         runner=runner,
         model="old-model",
@@ -501,11 +476,10 @@ async def test_session_resume_force_fork_preserves_history_with_updated_metadata
     )
     e1 = tome1.record_message("user", "historic prompt")
     assert e1 is not None
-    tome_ledger.append_leaf(tome1.tome_id, e1.id)
     await tome1.shutdown(reason="quit")
 
     forked_tome = await MvgeTome.open(
-        tome_ledger,
+        tome_factory,
         tome1.tome_id,
         runner=runner,
         expected_model="new-model",
@@ -520,22 +494,24 @@ async def test_session_resume_force_fork_preserves_history_with_updated_metadata
     assert forked_tome.metadata.contemplation_level == "high"
     assert forked_tome.metadata.spells == ["new_spell"]
 
-    entries = tome_ledger.get_entries(forked_tome.tome_id)
+    entries = tome_factory.get_entries(forked_tome.tome_id)
     assert any(e.id == e1.id for e in entries)
 
 
 @pytest.mark.asyncio
 async def test_session_resume_unconstrained_legacy_session_resumes_cleanly(
-    tome_ledger: TomeLedger, runner: RuneRunner
+    tome_factory: TomeHandleFactory, runner: RuneRunner
 ) -> None:
     # Unconstrained sessions resume cleanly without errors or warnings
-    legacy_meta = tome_ledger.create_tome("/workspace")
+    legacy_write = tome_factory.create_tome("/workspace")
+    legacy_meta = tome_factory.open_tome(legacy_write.tome_id)
+    assert legacy_meta is not None
     assert legacy_meta.model is None
     assert legacy_meta.spells == []
 
     tome = await MvgeTome.open(
-        tome_ledger,
-        legacy_meta.id,
+        tome_factory,
+        legacy_write.tome_id,
         runner=runner,
         expected_model="any-model",
         expected_spells=["any_spell"],

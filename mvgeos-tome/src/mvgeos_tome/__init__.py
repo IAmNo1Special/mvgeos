@@ -1,5 +1,4 @@
-from mvgeos_tome.ledger import TomeLedger
-from mvgeos_tome.locking import FileLock, LockMetadata, is_process_alive
+from mvgeos_tome.handle import Revision, TomeHandle, TomeHandleFactory
 from mvgeos_tome.types import (
     CURRENT_SESSION_VERSION,
     TomeEntry,
@@ -12,14 +11,13 @@ from mvgeos_tome.types import (
 
 __all__ = [
     "CURRENT_SESSION_VERSION",
-    "FileLock",
-    "LockMetadata",
+    "Revision",
     "TomeEntry",
     "TomeEntryType",
+    "TomeHandle",
+    "TomeHandleFactory",
     "TomeIntegrityIssue",
     "TomeIntegrityReport",
-    "TomeLedger",
     "TomeMetadata",
     "TomeVersionError",
-    "is_process_alive",
 ]

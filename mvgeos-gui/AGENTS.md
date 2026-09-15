@@ -27,7 +27,7 @@ Test paths follow pattern: `mvgeos-gui/tests/unit/<module>.py` and `mvgeos-gui/t
 | --- | --- |
 | `AppState` | Central reactive UI state (project, conversations, streaming tokens, artifacts, git diff, settings) |
 | `AgentService` | Async execution bridge running `CodingMvge` and `MvgeHarness`, consuming event bus |
-| `TomeService` | Session persistence, conversation loading, and branch forking via `TomeLedger` |
+| `TomeService` | Session persistence, conversation loading, and branch forking via `TomeHandleFactory` |
 | `ConfigService` | Provider and workspace configuration manager |
 | `GitDiffService` | Workspace Git diff calculation, staged/unstaged changes, and diff line stats |
 | `AutocompleteService` | Fuzzy autocomplete provider for `@` mentions (files, skills, subagents) and `/` slash commands |

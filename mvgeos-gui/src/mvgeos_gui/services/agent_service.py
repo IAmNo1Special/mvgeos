@@ -172,6 +172,7 @@ class AgentService:
                 name="coding_mvge",
                 tome_dir=state.tome_service.tome_dir,
                 tome_resume=state.active_tome_id,
+                tome_factory=state.tome_service.factory,
                 environment=env,
             )
 

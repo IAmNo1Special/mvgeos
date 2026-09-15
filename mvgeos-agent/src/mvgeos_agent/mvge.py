@@ -51,8 +51,8 @@ from mvgeos_runes.types import (
     SkillDiagnostic,
     SpellDefinition,
 )
-from mvgeos_tome.ledger import TomeLedger
-from mvgeos_tome.types import TomeMetadata
+from mvgeos_tome.handle import TomeHandleFactory
+from mvgeos_tome.types import TomeMetadata, TomeVersionError
 
 from mvgeos_agent.agent_session import MvgeTome
 from mvgeos_agent.compatibility import (
@@ -163,6 +163,7 @@ class Mvge:
         extension_dir: str | None = None,
         tome_dir: Path | None = None,
         tome_resume: str | None = None,
+        tome_factory: TomeHandleFactory | None = None,
         provider_name: str | None = None,
         runes_paths: Sequence[str] | None = None,
         compaction: CompactionSettings = DEFAULT_COMPACTION_SETTINGS,
@@ -269,6 +270,9 @@ class Mvge:
 
         self._custom_system_prompt = custom_system_prompt
         self._extension_dir = extension_dir
+        self._tome_factory = tome_factory or TomeHandleFactory(
+            tome_dir or DEFAULT_TOME_DIR
+        )
         self._tome_dir = tome_dir or DEFAULT_TOME_DIR
         self._tome_resume = tome_resume
         self._provider_name = provider_name
@@ -315,7 +319,6 @@ class Mvge:
         self._model: Model | None = None
         self._realm: Realm | None = None
         self._agent_tome: MvgeTome | None = None
-        self._tome_ledger: TomeLedger | None = None
         self._harness: MvgeHarness | None = None
         self._compaction: CompactionRunner | None = None
         self._state: MvgeState | None = None
@@ -326,10 +329,8 @@ class Mvge:
 
     @property
     def tome_id(self) -> str | None:
-        if self._tome_ledger is not None:
-            tomes = self._tome_ledger.list_tomes()
-            if tomes:
-                return tomes[0].id
+        if self._agent_tome is not None:
+            return self._agent_tome.tome_id
         return None
 
     @property
@@ -506,16 +507,16 @@ class Mvge:
         tome_id_or_meta: str | TomeMetadata,
     ) -> SessionCompatibilityReport:
         """Inspect compatibility of a target tome against active configuration."""
-        if self._tome_ledger is None:
-            self._tome_ledger = TomeLedger(self._tome_dir)
-
         if isinstance(tome_id_or_meta, TomeMetadata):
             meta = tome_id_or_meta
         else:
-            loaded_meta = self._tome_ledger.open_tome(tome_id_or_meta)
-            if loaded_meta is None:
+            try:
+                loaded = self._tome_factory.open_tome(tome_id_or_meta)
+            except TomeVersionError as e:
+                raise TomeResumeError(tome_id_or_meta) from e
+            if loaded is None:
                 raise TomeResumeError(tome_id_or_meta)
-            meta = loaded_meta
+            meta = loaded
 
         active_spells = [s.name for s in self._build_spells()]
         if self._runner is not None:
@@ -537,7 +538,7 @@ class Mvge:
         else:
             model_id = None
 
-        entries = self._tome_ledger.get_entries(meta.id)
+        entries = self._tome_factory.get_entries(meta.id)
         return validate_session_compatibility(
             meta,
             expected_model=model_id,
@@ -785,7 +786,6 @@ class Mvge:
 
         await self._load_runes()
 
-        self._tome_ledger = TomeLedger(self._tome_dir)
         final_prompt = await self._build_system_prompt_async()
         self._model, self._realm = self._provider_registry.resolve(
             self._model_id, self._api_key, self._provider_name
@@ -799,7 +799,7 @@ class Mvge:
 
         model_id = self._model.id if self._model is not None else self._model_id
         self._agent_tome = await MvgeTome.open_or_create(
-            self._tome_ledger,
+            self._tome_factory,
             self._tome_resume,
             runner=self._runner,
             model=model_id,
@@ -956,46 +956,34 @@ class Mvge:
 
     async def checkout_leaf(self, leaf_id: str) -> None:
         """Switch active position in the Tome to a specific leaf entry."""
-        if (
-            not self._initialized
-            or self._agent_tome is None
-            or self._tome_ledger is None
-        ):
+        if not self._initialized or self._agent_tome is None:
             raise RuntimeError("Agent not initialized")
         if self._state is not None and getattr(self._state, "is_streaming", False):
             raise RuntimeError("Cannot checkout leaf while invocation is streaming")
-        self._tome_ledger.append_leaf(self._agent_tome.tome_id, leaf_id)
+        self._agent_tome.set_leaf(leaf_id)
         if self._state is not None:
             self._state.invocations = self._agent_tome.reconstruct_invocations()
 
     async def list_leaves(self) -> list[str]:
         """List all active leaf entry IDs in the current Tome."""
-        if (
-            not self._initialized
-            or self._agent_tome is None
-            or self._tome_ledger is None
-        ):
+        if not self._initialized or self._agent_tome is None:
             return []
-        return self._tome_ledger.list_leaves(self._agent_tome.tome_id)
+        return self._tome_factory.list_leaves(self._agent_tome.tome_id)
 
     async def undo(self) -> str | None:
         """Revert the most recent summoner invocation by pointing active
         leaf to its parent.
         """
-        if (
-            not self._initialized
-            or self._agent_tome is None
-            or self._tome_ledger is None
-        ):
+        if not self._initialized or self._agent_tome is None:
             raise RuntimeError("Agent not initialized")
         if self._state is not None and getattr(self._state, "is_streaming", False):
             raise RuntimeError("Cannot undo while invocation is streaming")
-        target = self._tome_ledger.get_parent_summoner_entry(
+        target = self._tome_factory.get_parent_summoner_entry(
             self._agent_tome.tome_id, self._agent_tome.active_leaf_id
         )
         if target is None:
             raise ValueError("Cannot undo: at root invocation")
-        self._tome_ledger.append_leaf(self._agent_tome.tome_id, target.id)
+        self._agent_tome.set_leaf(target.id)
         if self._state is not None:
             self._state.invocations = self._agent_tome.reconstruct_invocations()
         return target.id
