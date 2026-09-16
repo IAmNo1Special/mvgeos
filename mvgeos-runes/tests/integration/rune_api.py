@@ -278,3 +278,31 @@ class TestRuneAPISkillRegistration:
         factories = api.get_registered_realm_factories()
         assert "custom:" in factories
         assert factories["custom:"] is dummy_factory
+
+
+class TestRuneAPIGlobalAllowlist:
+    def test_get_global_allowlist_defaults_to_none(
+        self, api: RuneAPI, runner: RuneRunner
+    ) -> None:
+        assert api.get_global_spell_allowlist() is None
+
+    def test_set_global_allowlist_delegates_to_runner(
+        self, api: RuneAPI, runner: RuneRunner
+    ) -> None:
+        api.set_global_spell_allowlist(["tool_search", "skill_search"])
+        assert runner.get_global_spell_allowlist() == [
+            "tool_search",
+            "skill_search",
+        ]
+        assert api.get_global_spell_allowlist() == [
+            "tool_search",
+            "skill_search",
+        ]
+
+    def test_set_global_allowlist_none_delegates(
+        self, api: RuneAPI, runner: RuneRunner
+    ) -> None:
+        api.set_global_spell_allowlist(["tool_search"])
+        assert api.get_global_spell_allowlist() is not None
+        api.set_global_spell_allowlist(None)
+        assert api.get_global_spell_allowlist() is None

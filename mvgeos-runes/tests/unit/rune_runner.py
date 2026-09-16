@@ -210,6 +210,65 @@ class TestRuneRunnerActiveSpellsComposition:
         assert runner.get_active_spells() == []
 
 
+class TestRuneRunnerGlobalAllowlist:
+    def test_default_allowlist_is_none(self) -> None:
+        runner = RuneRunner()
+        assert runner.get_global_spell_allowlist() is None
+
+    def test_set_allowlist(self) -> None:
+        runner = RuneRunner()
+        runner.set_global_spell_allowlist(["tool_search", "skill_search"])
+        assert runner.get_global_spell_allowlist() == ["tool_search", "skill_search"]
+
+    def test_set_allowlist_none_disables(self) -> None:
+        runner = RuneRunner()
+        runner.set_global_spell_allowlist(["tool_search"])
+        runner.set_global_spell_allowlist(None)
+        assert runner.get_global_spell_allowlist() is None
+
+    def test_set_allowlist_copies_list(self) -> None:
+        runner = RuneRunner()
+        names = ["tool_search"]
+        runner.set_global_spell_allowlist(names)
+        names.append("bash")
+        assert runner.get_global_spell_allowlist() == ["tool_search"]
+
+    def test_widen_creates_when_none(self) -> None:
+        runner = RuneRunner()
+        runner.widen_global_allowlist(["tool_search"])
+        assert runner.get_global_spell_allowlist() == ["tool_search"]
+
+    def test_widen_merges_existing(self) -> None:
+        runner = RuneRunner()
+        runner.set_global_spell_allowlist(["tool_search", "skill_search"])
+        runner.widen_global_allowlist(["grep"])
+        assert set(runner.get_global_spell_allowlist()) == {
+            "tool_search",
+            "skill_search",
+            "grep",
+        }
+
+    def test_widen_dedupes(self) -> None:
+        runner = RuneRunner()
+        runner.set_global_spell_allowlist(["tool_search"])
+        runner.widen_global_allowlist(["tool_search", "grep"])
+        result = runner.get_global_spell_allowlist()
+        assert result.count("tool_search") == 1
+        assert "grep" in result
+
+    def test_allowlist_changes_increment_spell_version(self) -> None:
+        runner = RuneRunner()
+        initial = runner.spell_version
+        runner.set_global_spell_allowlist(["tool_search"])
+        assert runner.spell_version == initial + 1
+        before_widen = runner.spell_version
+        runner.widen_global_allowlist(["grep"])
+        assert runner.spell_version == before_widen + 1
+        before_disable = runner.spell_version
+        runner.set_global_spell_allowlist(None)
+        assert runner.spell_version == before_disable + 1
+
+
 class TestRuneRunnerCommands:
     def test_register_and_get_commands(self) -> None:
         runner = RuneRunner()

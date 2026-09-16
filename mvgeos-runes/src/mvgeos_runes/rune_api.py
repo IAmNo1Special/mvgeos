@@ -110,6 +110,14 @@ class RuneAPI:
     def set_active_spells(self, spell_names: list[str]) -> None:
         self._runner.set_active_spells(spell_names, self._rune_name)
 
+    def get_global_spell_allowlist(self) -> list[str] | None:
+        """Get the engine-owned global spell allowlist, or None if unset."""
+        return self._runner.get_global_spell_allowlist()
+
+    def set_global_spell_allowlist(self, spell_names: list[str] | None) -> None:
+        """Set the global spell allowlist. None disables global filtering."""
+        self._runner.set_global_spell_allowlist(spell_names)
+
     def get_all_spells(self) -> list[SpellDefinition]:
         return self._runner.get_all_registered_spells()
 

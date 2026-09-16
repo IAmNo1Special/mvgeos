@@ -126,6 +126,7 @@ class RuneRunner:
         self._active_spells_by_rune: dict[str | None, set[str]] = {}
         self._pinned_runes: set[str | None] = set()
         self._rune_handlers: dict[str, dict[SigilHook, list[Handler]]] = {}
+        self._global_spell_allowlist: list[str] | None = None
         self._registered_skill_paths: list[Path] = []
 
     @property
@@ -323,6 +324,41 @@ class RuneRunner:
             rune_name = self._current_loading_rune
         self._active_spells_by_rune[rune_name] = set(spell_names)
         self._pinned_runes.add(rune_name)
+        self._spell_version += 1
+
+    def get_global_spell_allowlist(self) -> list[str] | None:
+        """Get the engine-owned global spell allowlist.
+
+        Returns ``None`` when no global filtering is active (all spells
+        visible). When set to a list of spell names, only those spells
+        are exposed to the model regardless of per-rune active sets.
+        """
+        return self._global_spell_allowlist
+
+    def set_global_spell_allowlist(self, spell_names: list[str] | None) -> None:
+        """Set the global spell allowlist.
+
+        Pass ``None`` to disable global filtering (all active spells visible).
+        Pass a list to restrict the model's view to only those spell names.
+        """
+        if spell_names is None:
+            self._global_spell_allowlist = None
+        else:
+            self._global_spell_allowlist = list(spell_names)
+        self._spell_version += 1
+
+    def widen_global_allowlist(self, spell_names: list[str]) -> None:
+        """Add spell names to the existing global allowlist.
+
+        If no global allowlist is active (``None``), one is created with the
+        given names. Otherwise the names are merged into the existing set.
+        """
+        if self._global_spell_allowlist is None:
+            self._global_spell_allowlist = list(spell_names)
+        else:
+            existing: set[str] = set(self._global_spell_allowlist)
+            existing.update(spell_names)
+            self._global_spell_allowlist = list(existing)
         self._spell_version += 1
 
     def load_skills(
