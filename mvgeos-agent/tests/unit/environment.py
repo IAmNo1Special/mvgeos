@@ -29,13 +29,17 @@ from mvgeos_agent.environment import (
     MvgeEnvironment,
     PromptSource,
     ResolvedPrompt,
+    _read_text,
     coerce_agent_config,
     ensure_config_files,
     get_environment_info,
     render_prompt,
     resolve_append_system_prompts,
     resolve_config_dir,
+    resolve_global_agents_file,
+    resolve_scoped_agents_file,
     resolve_system_prompt,
+    resolve_workspace_agents_file,
 )
 from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.snapshot import RuntimeSnapshot
@@ -727,3 +731,223 @@ class TestMvgeEnvironmentSnapshot:
         assert agent._queue_mode == env.queue_mode
         assert agent._spell_names == env.spell_names
         assert agent._runes_paths == env.runes_paths
+
+
+class TestRepositorySteering:
+    def test_resolve_workspace_agents_file_precedence(self, tmp_path: Path) -> None:
+        # 1. Root AGENTS.md takes precedence over .agents/AGENTS.md
+        ws1 = tmp_path / "ws1"
+        (ws1 / ".agents").mkdir(parents=True)
+        (ws1 / "AGENTS.md").write_text("root upper", encoding="utf-8")
+        (ws1 / ".agents" / "AGENTS.md").write_text("dot upper", encoding="utf-8")
+        res1 = resolve_workspace_agents_file(ws1)
+        assert res1 is not None
+        assert res1[0] == ws1 / "AGENTS.md"
+        assert res1[1] == "AGENTS.md"
+
+        # 2. Lowercase root agents.md works
+        ws2 = tmp_path / "ws2"
+        ws2.mkdir()
+        (ws2 / "agents.md").write_text("root lower", encoding="utf-8")
+        res2 = resolve_workspace_agents_file(ws2)
+        assert res2 is not None
+        assert res2[0] == ws2 / "agents.md"
+        assert res2[1] == "agents.md"
+
+        # 3. .agents/AGENTS.md works when root is absent
+        ws3 = tmp_path / "ws3"
+        (ws3 / ".agents").mkdir(parents=True)
+        (ws3 / ".agents" / "AGENTS.md").write_text("dot upper", encoding="utf-8")
+        res3 = resolve_workspace_agents_file(ws3)
+        assert res3 is not None
+        assert res3[0] == ws3 / ".agents" / "AGENTS.md"
+        assert res3[1] == ".agents/AGENTS.md"
+
+        # 4. .agents/agents.md works when root and upper are absent
+        ws4 = tmp_path / "ws4"
+        (ws4 / ".agents").mkdir(parents=True)
+        (ws4 / ".agents" / "agents.md").write_text("dot lower", encoding="utf-8")
+        res4 = resolve_workspace_agents_file(ws4)
+        assert res4 is not None
+        assert res4[0] == ws4 / ".agents" / "agents.md"
+        assert res4[1] == ".agents/agents.md"
+
+        # 5. None when empty directory
+        ws5 = tmp_path / "ws5"
+        ws5.mkdir()
+        assert resolve_workspace_agents_file(ws5) is None
+
+    def test_resolve_global_agents_file(self, tmp_path: Path) -> None:
+        global_missing = tmp_path / "missing"
+        assert resolve_global_agents_file(global_missing) is None
+
+        global_lower = tmp_path / "global_lower"
+        global_lower.mkdir(parents=True)
+        lower_file = global_lower / "agents.md"
+        lower_file.write_text("global lower", encoding="utf-8")
+        res_lower = resolve_global_agents_file(global_lower)
+        assert res_lower is not None
+        assert res_lower[0] == lower_file
+        assert res_lower[1] == lower_file.as_posix()
+
+        global_upper = tmp_path / "global_upper"
+        global_upper.mkdir(parents=True)
+        upper_file = global_upper / "AGENTS.md"
+        upper_file.write_text("global upper", encoding="utf-8")
+        res_upper = resolve_global_agents_file(global_upper)
+        assert res_upper is not None
+        assert res_upper[0] == upper_file
+        assert res_upper[1] == upper_file.as_posix()
+
+    def test_resolve_scoped_agents_file(self, tmp_path: Path) -> None:
+        pkg_dir = tmp_path / "packages" / "core"
+        nested_dir = pkg_dir / "src" / "deep"
+        nested_dir.mkdir(parents=True)
+        target_file = nested_dir / "mod.py"
+        target_file.write_text("x = 1", encoding="utf-8")
+
+        # No AGENTS.md anywhere
+        assert resolve_scoped_agents_file(target_file, cwd=tmp_path) is None
+
+        # Add AGENTS.md in pkg_dir
+        pkg_agents = pkg_dir / "AGENTS.md"
+        pkg_agents.write_text("package rules", encoding="utf-8")
+
+        res = resolve_scoped_agents_file(target_file, cwd=tmp_path)
+        assert res is not None
+        assert res[0] == pkg_agents
+        assert res[1] == "packages/core/AGENTS.md"
+
+        # Target at pkg_dir itself
+        res_dir = resolve_scoped_agents_file(pkg_dir, cwd=tmp_path)
+        assert res_dir is not None
+        assert res_dir[0] == pkg_agents
+
+    def test_read_text_strip_frontmatter(self, tmp_path: Path) -> None:
+        f = tmp_path / "with_fm.md"
+        f.write_text(
+            "---\nkind: agents\nversion: 1.0\n---\n# Real Content\nBody text",
+            encoding="utf-8",
+        )
+        assert _read_text(f, strip_frontmatter=True) == "# Real Content\nBody text"
+        assert _read_text(f, strip_frontmatter=False).startswith("---")
+
+        f_only_fm = tmp_path / "only_fm.md"
+        f_only_fm.write_text("---\nkind: agents\n---", encoding="utf-8")
+        assert _read_text(f_only_fm, strip_frontmatter=True) == ""
+
+        f_no_fm = tmp_path / "no_fm.md"
+        f_no_fm.write_text("Plain markdown", encoding="utf-8")
+        assert _read_text(f_no_fm, strip_frontmatter=True) == "Plain markdown"
+
+    def test_render_prompt_with_workspace_and_global(self, tmp_path: Path) -> None:
+        global_dir = tmp_path / "global"
+        global_dir.mkdir(parents=True)
+        (global_dir / "AGENTS.md").write_text(
+            "---\nkind: global\n---\nGlobal instructions here",
+            encoding="utf-8",
+        )
+
+        cwd_dir = tmp_path / "workspace"
+        dot_agents = cwd_dir / ".agents"
+        dot_agents.mkdir(parents=True)
+        (dot_agents / "AGENTS.md").write_text(
+            "# Project Guidelines\nWorkspace instructions here",
+            encoding="utf-8",
+        )
+
+        rendered = render_prompt(
+            body="You are a Mvge.",
+            cwd=cwd_dir,
+            global_dir=global_dir,
+        )
+
+        # Invariant XML blocks
+        assert "<project_context>" in rendered
+        assert "</project_context>" in rendered
+        assert '<global_instructions path="' in rendered
+        assert "Global instructions here" in rendered
+        assert '<project_instructions path=".agents/AGENTS.md">' in rendered
+        assert "Workspace instructions here" in rendered
+        # YAML frontmatter must be stripped
+        assert "kind: global" not in rendered
+
+        # Self-Modification pointers
+        assert "Self-Modification & Customization:" in rendered
+        assert "- Global Rules:" in rendered
+        assert "- Project Rules: .agents/AGENTS.md" in rendered
+
+    def test_render_prompt_progressive_disclosure_subpackage_pointers(
+        self, tmp_path: Path
+    ) -> None:
+        cwd_dir = tmp_path / "repo"
+        cwd_dir.mkdir(parents=True)
+        (cwd_dir / "AGENTS.md").write_text("Root rules", encoding="utf-8")
+
+        pkg_core = cwd_dir / "mvgeos-core"
+        pkg_core.mkdir()
+        (pkg_core / "AGENTS.md").write_text("Core secret internals", encoding="utf-8")
+
+        pkg_gui = cwd_dir / "mvgeos-gui"
+        pkg_gui.mkdir()
+        (pkg_gui / "agents.md").write_text("GUI secret internals", encoding="utf-8")
+
+        plain_dir = cwd_dir / "regular_folder"
+        plain_dir.mkdir()
+
+        rendered = render_prompt(
+            body="You are a Mvge.",
+            cwd=cwd_dir,
+            global_dir=tmp_path / "empty_global",
+        )
+
+        # Root instructions must be inlined
+        assert '<project_instructions path="AGENTS.md">' in rendered
+        assert "Root rules" in rendered
+
+        # Subpackages must be listed as on-demand pointers
+        assert "- Subpackage Rules (mvgeos-core): mvgeos-core/AGENTS.md" in rendered
+        assert "- Subpackage Rules (mvgeos-gui): mvgeos-gui/agents.md" in rendered
+        assert "regular_folder" not in rendered
+
+        # Subpackage internal text must NOT be inlined into initial prompt
+        # to protect token budgets
+        assert "Core secret internals" not in rendered
+        assert "GUI secret internals" not in rendered
+
+    def test_render_prompt_empty_agents_files_ignored(self, tmp_path: Path) -> None:
+        global_dir = tmp_path / "global"
+        global_dir.mkdir(parents=True)
+        (global_dir / "AGENTS.md").write_text("   \n  \t ", encoding="utf-8")
+
+        cwd_dir = tmp_path / "workspace"
+        cwd_dir.mkdir(parents=True)
+        empty_fm = "---\nkind: empty\n---\n   "
+        (cwd_dir / "AGENTS.md").write_text(empty_fm, encoding="utf-8")
+
+        rendered = render_prompt(
+            body="You are a Mvge.",
+            cwd=cwd_dir,
+            global_dir=global_dir,
+        )
+
+        assert "<project_context>" not in rendered
+        assert "<global_instructions" not in rendered
+        assert "<project_instructions" not in rendered
+        assert "- Global Rules:" not in rendered
+        assert "- Project Rules:" not in rendered
+
+    def test_environment_resolve_with_global_dir(self, tmp_path: Path) -> None:
+        global_dir = tmp_path / "global"
+        global_dir.mkdir(parents=True)
+        (global_dir / "AGENTS.md").write_text("Global system rule", encoding="utf-8")
+
+        env = MvgeEnvironment.resolve(
+            "test-agent",
+            project_dir=tmp_path,
+            global_dir=global_dir,
+        )
+        assert env.global_dir == global_dir
+        rendered = env.render_system_prompt()
+        assert "<global_instructions" in rendered
+        assert "Global system rule" in rendered

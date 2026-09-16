@@ -719,11 +719,17 @@ class Mvge:
     async def _build_system_prompt_async(self) -> str:
         """Async version that supports rune prompt injection via sigil hooks."""
         active_names = [s.name for s in self._build_spells()]
+        effective_cwd = (
+            self._config_manager.project_dir
+            if self._config_manager is not None
+            and self._config_manager.project_dir is not None
+            else Path.cwd()
+        )
         return await self._environment.assemble_system_prompt(
             runner=self._runner,
             base_prompt=self._build_system_prompt(),
             custom_prompt=getattr(self, "_custom_system_prompt", ""),
-            cwd=Path.cwd(),
+            cwd=effective_cwd,
             spell_names=active_names,
             config_dir=self.config_dir,
         )

@@ -115,6 +115,152 @@ def get_environment_info(cwd: str | Path | None = None) -> list[str]:
     return lines
 
 
+def _read_text(path: Path, strip_frontmatter: bool = False) -> str:
+    """Read a file's text, stripped, returning empty on error.
+
+    If ``strip_frontmatter`` is True, strips leading YAML frontmatter
+    (delimited by '---') per the .agents Protocol specification.
+    """
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        logger.warning("Could not read file at %s", path)
+        return ""
+
+    if strip_frontmatter and text.startswith("---"):
+        parts = text.split("---", 2)
+        text = parts[2].strip() if len(parts) >= 3 else ""
+
+    return text
+
+
+def resolve_workspace_agents_file(
+    cwd: Path | str | None = None,
+) -> tuple[Path, str] | None:
+    """Find workspace AGENTS.md in precedence order per .agents Protocol.
+
+    Precedence:
+    1. <cwd>/AGENTS.md
+    2. <cwd>/agents.md
+    3. <cwd>/.agents/AGENTS.md
+    4. <cwd>/.agents/agents.md
+
+    Returns (resolved_path, relative_display_path) or None if no valid non-empty file.
+    """
+    base = Path(cwd) if cwd else Path.cwd()
+    if not base.is_dir():
+        return None
+
+    # Check root level first
+    root_candidates: list[Path] = []
+    try:
+        for entry in base.iterdir():
+            if entry.name in ("AGENTS.md", "agents.md") and entry.is_file():
+                root_candidates.append(entry)
+    except OSError:
+        pass
+
+    root_candidates.sort(key=lambda p: (0 if p.name == "AGENTS.md" else 1, p.name))
+    for cand in root_candidates:
+        content = _read_text(cand, strip_frontmatter=True)
+        if content:
+            return (cand, cand.name)
+
+    # Fall back to .agents/
+    dot_agents = base / ".agents"
+    if dot_agents.is_dir():
+        dot_candidates: list[Path] = []
+        try:
+            for entry in dot_agents.iterdir():
+                if entry.name in ("AGENTS.md", "agents.md") and entry.is_file():
+                    dot_candidates.append(entry)
+        except OSError:
+            pass
+
+        dot_candidates.sort(key=lambda p: (0 if p.name == "AGENTS.md" else 1, p.name))
+        for cand in dot_candidates:
+            content = _read_text(cand, strip_frontmatter=True)
+            if content:
+                return (cand, f".agents/{cand.name}")
+
+    return None
+
+
+def resolve_global_agents_file(
+    global_dir: Path | None = None,
+) -> tuple[Path, str] | None:
+    """Find global AGENTS.md per .agents Protocol.
+
+    Precedence:
+    1. (global_dir or ~/.agents)/AGENTS.md
+    2. (global_dir or ~/.agents)/agents.md
+
+    Returns (resolved_path, display_path) or None if no valid non-empty file.
+    """
+    g_dir = global_dir if global_dir is not None else Path("~/.agents").expanduser()
+    if not g_dir.is_dir():
+        return None
+
+    candidates: list[Path] = []
+    try:
+        for entry in g_dir.iterdir():
+            if entry.name in ("AGENTS.md", "agents.md") and entry.is_file():
+                candidates.append(entry)
+    except OSError:
+        pass
+
+    candidates.sort(key=lambda p: (0 if p.name == "AGENTS.md" else 1, p.name))
+    for cand in candidates:
+        content = _read_text(cand, strip_frontmatter=True)
+        if content:
+            display = (
+                f"~/.agents/{cand.name}" if global_dir is None else cand.as_posix()
+            )
+            return (cand, display)
+
+    return None
+
+
+def resolve_scoped_agents_file(
+    target_path: Path | str,
+    cwd: Path | str | None = None,
+) -> tuple[Path, str] | None:
+    """Resolve the nearest localized AGENTS.md for a target file or directory.
+
+    Walks upward from target_path until cwd is reached, checking for
+    AGENTS.md or agents.md at each directory level.
+    """
+    base_cwd = (Path(cwd) if cwd else Path.cwd()).resolve()
+    target = Path(target_path).resolve()
+    curr: Path = target if target.is_dir() else target.parent
+
+    while True:
+        if curr.is_dir():
+            candidates: list[Path] = []
+            try:
+                for entry in curr.iterdir():
+                    if entry.name in ("AGENTS.md", "agents.md") and entry.is_file():
+                        candidates.append(entry)
+            except OSError:
+                pass
+
+            candidates.sort(key=lambda p: (0 if p.name == "AGENTS.md" else 1, p.name))
+            for cand in candidates:
+                content = _read_text(cand, strip_frontmatter=True)
+                if content:
+                    try:
+                        rel = cand.relative_to(base_cwd).as_posix()
+                    except ValueError:
+                        rel = cand.as_posix()
+                    return (cand, rel)
+
+        if curr == base_cwd or curr.parent == curr:
+            break
+        curr = curr.parent
+
+    return None
+
+
 def render_prompt(
     body: str,
     spells: Sequence[str] = (),
@@ -125,6 +271,7 @@ def render_prompt(
     skills_paths: Sequence[Path] = (),
     runes_paths: Sequence[Path] = (),
     system_path: Path | None = None,
+    global_dir: Path | None = None,
 ) -> str:
     """The single rendering every entry point goes through."""
     parts: list[str] = []
@@ -147,7 +294,8 @@ def render_prompt(
 
     # Self-Modification & Customization section (on-demand AGENTS.md reference pattern)
     effective_cwd_path = Path(cwd) if cwd else Path.cwd()
-    project_agents_file = effective_cwd_path / "AGENTS.md"
+    ws_agents = resolve_workspace_agents_file(effective_cwd_path)
+    gl_agents = resolve_global_agents_file(global_dir)
 
     self_mod_lines = [
         "\nSelf-Modification & Customization:",
@@ -168,9 +316,41 @@ def render_prompt(
         for rp in runes_paths:
             self_mod_lines.append(f"- Runes: {rp.as_posix()}/AGENTS.md")
             has_self_mod = True
-    if project_agents_file.is_file():
-        self_mod_lines.append(f"- Project Rules: {project_agents_file.as_posix()}")
+    if gl_agents is not None:
+        self_mod_lines.append(f"- Global Rules: {gl_agents[1]}")
         has_self_mod = True
+    if ws_agents is not None:
+        self_mod_lines.append(f"- Project Rules: {ws_agents[1]}")
+        has_self_mod = True
+
+    # Progressive disclosure: scan first-level subpackages for localized AGENTS.md
+    if effective_cwd_path.is_dir():
+        try:
+            for child in sorted(effective_cwd_path.iterdir()):
+                if (
+                    child.is_dir()
+                    and not child.name.startswith(".")
+                    and child.name != "__pycache__"
+                ):
+                    sub_candidates: list[Path] = []
+                    for entry in child.iterdir():
+                        if entry.name in ("AGENTS.md", "agents.md") and entry.is_file():
+                            sub_candidates.append(entry)
+                    sub_candidates.sort(
+                        key=lambda p: (0 if p.name == "AGENTS.md" else 1, p.name)
+                    )
+                    for sub_file in sub_candidates:
+                        content = _read_text(sub_file, strip_frontmatter=True)
+                        if content:
+                            rel_sub = f"{child.name}/{sub_file.name}"
+                            self_mod_lines.append(
+                                f"- Subpackage Rules ({child.name}): {rel_sub}"
+                            )
+                            has_self_mod = True
+                            break
+        except OSError:
+            logger.debug("Could not scan subdirectories in %s", effective_cwd_path)
+
     if system_path is not None and system_path.is_file():
         self_mod_lines.append(f"- System Instructions: {system_path.as_posix()}")
         has_self_mod = True
@@ -178,20 +358,35 @@ def render_prompt(
     if has_self_mod:
         parts.extend(self_mod_lines)
 
-    # Workspace AGENTS.md context injection
-    if project_agents_file.is_file():
-        content = _read_text(project_agents_file)
-        if content:
-            proj_instr = (
-                f'<project_instructions path="AGENTS.md">\n'
-                f"{content}\n"
-                f"</project_instructions>\n"
+    # Workspace & Global AGENTS.md context injection per .agents Protocol
+    instructions_blocks: list[str] = []
+
+    if gl_agents is not None:
+        gl_content = _read_text(gl_agents[0], strip_frontmatter=True)
+        if gl_content:
+            instructions_blocks.append(
+                f'<global_instructions path="{gl_agents[1]}">\n'
+                f"{gl_content}\n"
+                f"</global_instructions>"
             )
-            parts.append(
-                "\n<project_context>\n"
-                "Project-specific instructions and guidelines:\n\n"
-                f"{proj_instr}</project_context>"
+
+    if ws_agents is not None:
+        ws_content = _read_text(ws_agents[0], strip_frontmatter=True)
+        if ws_content:
+            instructions_blocks.append(
+                f'<project_instructions path="{ws_agents[1]}">\n'
+                f"{ws_content}\n"
+                f"</project_instructions>"
             )
+
+    if instructions_blocks:
+        joined_blocks = "\n\n".join(instructions_blocks)
+        parts.append(
+            "\n<project_context>\n"
+            "Project-specific instructions and guidelines:\n\n"
+            f"{joined_blocks}\n"
+            "</project_context>"
+        )
 
     if append_text:
         parts.append(f"\n{append_text}")
@@ -225,15 +420,6 @@ def ensure_config_files(name: str, config_dir: Path | None = None) -> Path:
         path.write_text(DEFAULT_SYSTEM_MD, encoding="utf-8")
 
     return resolved
-
-
-def _read_text(path: Path) -> str:
-    """Read a file's text, stripped, returning empty on error."""
-    try:
-        return path.read_text(encoding="utf-8").strip()
-    except OSError:
-        logger.warning("Could not read file at %s", path)
-        return ""
 
 
 def resolve_append_system_prompts(
@@ -515,6 +701,7 @@ class MvgeEnvironment:
     runner: RuneRunner | None = None
     config_manager: ConfigManager | None = None
     agent_config: AgentConfig | None = None
+    global_dir: Path | None = None
 
     @classmethod
     def resolve(
@@ -591,6 +778,24 @@ class MvgeEnvironment:
             runner=runner,
             config_manager=cm if has_config_manager else None,
             agent_config=coerced,
+            global_dir=global_dir,
+        )
+
+    def render_system_prompt(
+        self,
+        *,
+        cwd: str | Path | None = None,
+        append_text: str = "",
+    ) -> str:
+        """Synchronously render Layer 2 invariant scaffolding using resolved state."""
+        return self.render_prompt(
+            body=self.resolved_prompt.text,
+            spells=self.spell_names or [],
+            cwd=cwd,
+            append_text=append_text,
+            runes_paths=self.runes_paths,
+            system_path=self.resolved_prompt.path,
+            global_dir=self.global_dir,
         )
 
     async def assemble_system_prompt(
@@ -665,6 +870,7 @@ class MvgeEnvironment:
             append_text=skill_catalog,
             runes_paths=self.runes_paths,
             system_path=self.resolved_prompt.path,
+            global_dir=self.global_dir,
         )
 
     @staticmethod
@@ -678,6 +884,7 @@ class MvgeEnvironment:
         skills_paths: Sequence[Path] = (),
         runes_paths: Sequence[Path] = (),
         system_path: Path | None = None,
+        global_dir: Path | None = None,
     ) -> str:
         """Render a prompt with body, spells, and environment."""
         return render_prompt(
@@ -689,6 +896,7 @@ class MvgeEnvironment:
             skills_paths=skills_paths,
             runes_paths=runes_paths,
             system_path=system_path,
+            global_dir=global_dir,
         )
 
     def build_snapshot(self) -> RuntimeSnapshot:

@@ -102,3 +102,44 @@ async def test_initialize_fires_before_mvge_start_once() -> None:
 
         assert len(calls) == 1
         assert calls[0].agent_name == "default-mvge"
+
+
+@pytest.mark.asyncio
+async def test_agent_initialization_with_steering_environment() -> None:
+    """Mvge with steering environment correctly renders <project_context>."""
+    from mvgeos_agent.environment import MvgeEnvironment
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        proj_dir = tmp_path / "project"
+        proj_dir.mkdir()
+        (proj_dir / ".agents").mkdir()
+        (proj_dir / ".agents" / "AGENTS.md").write_text(
+            "# Project Rules\nStrict mode always.", encoding="utf-8"
+        )
+
+        global_dir = tmp_path / "global"
+        global_dir.mkdir()
+        (global_dir / "AGENTS.md").write_text("Global dev standard.", encoding="utf-8")
+
+        env = MvgeEnvironment.resolve(
+            "test-agent",
+            project_dir=proj_dir,
+            global_dir=global_dir,
+            config_dir=tmp_path / "config",
+        )
+        agent = Mvge(api_key="test-key", environment=env, tome_dir=tmp_path / "tomes")
+        agent._provider_registry.resolve = MagicMock(
+            return_value=(_mock_model(), MagicMock())
+        )
+        await agent.initialize()
+
+        assert agent._state is not None
+        rendered = agent._state.system_prompt
+        assert "<project_context>" in rendered
+        assert '<global_instructions path="' in rendered
+        assert "Global dev standard." in rendered
+        assert '<project_instructions path=".agents/AGENTS.md">' in rendered
+        assert "Strict mode always." in rendered
+        assert "- Global Rules:" in rendered
+        assert "- Project Rules: .agents/AGENTS.md" in rendered

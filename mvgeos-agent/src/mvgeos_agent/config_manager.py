@@ -147,6 +147,11 @@ class ConfigManager:
         )
 
     @property
+    def project_dir(self) -> Path:
+        """Path to the project root directory."""
+        return self._project_dir
+
+    @property
     def agent_config_path(self) -> Path:
         """Path to the agent-scope config file."""
         return self._agent_config_base / self._agent_name / "config.json"
