@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from dotenv import load_dotenv
 from mvgeos_agent import Mvge
 from mvgeos_agent.auth import load_api_key_from_auth
 from mvgeos_agent.commands import (
@@ -89,6 +90,9 @@ class AgentService:
         model_registry: ModelRegistry | None = None,
     ) -> None:
         self._project_path = project_path
+        env_path = (self._project_path / ".env").resolve()
+        if env_path.is_file():
+            load_dotenv(env_path)
         self._api_key = resolve_api_key(api_key)
         self._agent_factory = agent_factory
         self._model_registry = model_registry or ModelRegistry()

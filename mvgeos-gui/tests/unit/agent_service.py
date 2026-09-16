@@ -72,6 +72,25 @@ def test_resolve_api_key_variants() -> None:
         assert resolve_api_key() is None
 
 
+def test_agent_service_loads_env_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify AgentService loads .env from the project directory."""
+    (tmp_path / ".env").write_text(
+        "OPENROUTER_API_KEY=sk-or-from-dotenv\n", encoding="utf-8"
+    )
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("MVGEOS_API_KEY", raising=False)
+
+    with patch(
+        "mvgeos_gui.services.agent_service.load_api_key_from_auth",
+        return_value=None,
+    ):
+        service = AgentService(project_path=tmp_path, api_key=None)
+
+    assert service._api_key == "sk-or-from-dotenv"
+
+
 def test_get_or_create_agent_with_factory(app_state: AppState) -> None:
     """Verify get_or_create_agent uses custom agent_factory if provided."""
     mock_agent = MagicMock()
