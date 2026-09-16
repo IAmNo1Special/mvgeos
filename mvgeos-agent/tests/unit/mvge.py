@@ -107,6 +107,7 @@ def _create_mock_runner(spells: list[SpellDefinition]) -> MagicMock:
     runner = MagicMock()
     runner.get_all_registered_spells.return_value = spells
     runner.get_active_spells.return_value = [s.name for s in spells]
+    runner.get_global_spell_allowlist.return_value = None
     return runner
 
 
@@ -461,6 +462,53 @@ class TestMvgePropertiesAndMethods:
         assert "dummy_built_in" in agent.enabled_spells
         agent.set_enabled_spells([])
         assert agent.enabled_spells == []
+
+    def test_build_spells_respects_global_allowlist(self) -> None:
+        agent = Mvge(api_key="test-key", spells=[dummy_built_in])
+        spell_1 = ValidRuneSpell("tool_search", parameters={})
+        spell_2 = ValidRuneSpell("bash", parameters={})
+        agent._runner = _create_mock_runner([spell_1, spell_2])
+        agent._runner.get_global_spell_allowlist.return_value = ["tool_search"]
+
+        spells = agent._build_spells()
+        names = [s.name for s in spells]
+        assert "tool_search" in names
+        assert "bash" not in names
+        assert "dummy_built_in" not in names
+
+    def test_build_spells_global_allowlist_none_shows_all(self) -> None:
+        agent = Mvge(api_key="test-key", spells=[dummy_built_in])
+        spell_1 = ValidRuneSpell("tool_search", parameters={})
+        agent._runner = _create_mock_runner([spell_1])
+        agent._runner.get_global_spell_allowlist.return_value = None
+
+        spells = agent._build_spells()
+        names = [s.name for s in spells]
+        assert "dummy_built_in" in names
+        assert "tool_search" in names
+
+    def test_build_spells_global_allowlist_and_filter_are_conjunctive(self) -> None:
+        agent = Mvge(api_key="test-key", spells=[])
+        spell_1 = ValidRuneSpell("tool_search", parameters={})
+        spell_2 = ValidRuneSpell("bash", parameters={})
+        agent._runner = _create_mock_runner([spell_1, spell_2])
+        agent._runner.get_global_spell_allowlist.return_value = [
+            "tool_search",
+            "bash",
+        ]
+        agent.set_enabled_spells(["tool_search"])
+
+        spells = agent._build_spells()
+        names = [s.name for s in spells]
+        assert names == ["tool_search"]
+
+    def test_build_spells_global_allowlist_none_with_disabled_runner(self) -> None:
+        agent = Mvge(api_key="test-key", spells=[dummy_built_in])
+        agent._runner = None
+
+        spells = agent._build_spells()
+        names = [s.name for s in spells]
+        assert names == ["dummy_built_in"]
 
     def test_set_environment_and_config_manager(self) -> None:
         agent = Mvge(api_key="test-key", spells=[])

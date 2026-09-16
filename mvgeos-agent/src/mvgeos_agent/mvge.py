@@ -678,6 +678,12 @@ class Mvge:
         if self._enabled_spells_filter is not None:
             spells = [s for s in spells if s.name in self._enabled_spells_filter]
 
+        if self._runner is not None:
+            global_allowlist = self._runner.get_global_spell_allowlist()
+            if global_allowlist is not None:
+                allowlist_set = set(global_allowlist)
+                spells = [s for s in spells if s.name in allowlist_set]
+
         return spells
 
     def _build_system_prompt(self) -> str:
