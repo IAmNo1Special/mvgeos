@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-09-16
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (6278eee)
+
+- **release:** v0.4.1 (18005b3)
+
+
+### Features
+
+- **runes:** add global spell allowlist to RuneRunner and RuneAPI (6d4bbe8)
+
+- **agent:** integrate global spell allowlist in Mvge._build_spells (ceeb6c1)
+
+- **gui:** load .env from project directory in AgentService (08ddae0)
+
+
 ## [0.4.0] - 2026-09-15
 
 
