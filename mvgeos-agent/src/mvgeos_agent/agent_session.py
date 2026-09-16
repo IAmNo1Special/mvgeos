@@ -90,6 +90,12 @@ class MvgeTome:
 
         write_handle = factory.open_write(metadata.id)
 
+        truncated = write_handle.repair_torn_tail()
+        if truncated:
+            logger.warning(
+                "Repaired torn tail of tome %s (%d bytes)", metadata.id, truncated
+            )
+
         if entries is None:
             entries = read_handle.get_entries()
 

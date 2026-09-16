@@ -35,7 +35,7 @@ The cap on total Mana the Mvge can spend during a single run. **Not currently im
 Cumulative Mana consumed during a run (`mana_used`). Carried on every `MESSAGE_END` and `TURN_END` event; reduced into `MvgeState` by `MvgeHarness`. Read by compaction to size the Mana Pool.
 
 **Tome**:
-A single persisted conversation between a Summoner and a Mvge, recorded as an append-only sequence of Invocations. Per the Protocol Boundary Pattern, stored on disk in standard session directories (`~/.agents/sessions/`, `.agents/sessions/`) using standard Pi-compatible JSONL v1 wire format (`type: "session"`, `parentSession`). "Session" is the standard protocol term at filesystem, wire, and CLI command boundaries (`mvgeos session`); "Tome" is the domain term inside the persona, Python model, and user presentation (`mvgeos tome` alias).
+A single persisted conversation between a Summoner and a Mvge, recorded as an append-only sequence of Invocations. Per the Protocol Boundary Pattern, stored on disk in standard session directories (`~/.agents/sessions/`, `.agents/sessions/`) using standard JSONL v1 wire format (`type: "session"`, `parentSession`) — Pi-inspired, but not byte-compatible with Pi session files. "Session" is the standard protocol term at filesystem, wire, and CLI command boundaries (`mvgeos session`); "Tome" is the domain term inside the persona, Python model, and user presentation (`mvgeos tome` alias).
 _Avoid_: Session (as an internal domain/persona term; use Tome internally and Session at protocol boundaries), conversation, chat
 
 **Invocation**:

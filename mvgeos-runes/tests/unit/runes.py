@@ -1143,3 +1143,40 @@ def test_load_factory_skips_incompatible_runtime() -> None:
         assert diagnostics[0].kind == DiagnosticKind.INCOMPATIBLE_RUNTIME
         assert "targets 'typescript' runtime" in diagnostics[0].message
         assert diagnostics[0].rune_name == "ts_rune"
+
+
+def _write_manifest(tmpdir: str, data: str) -> Path:
+    rune_dir = Path(tmpdir) / "gw_rune"
+    rune_dir.mkdir(exist_ok=True)
+    (rune_dir / "manifest.json").write_text(data, encoding="utf-8")
+    return rune_dir
+
+
+def test_load_manifest_spell_gateway_true() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = _write_manifest(
+            tmpdir,
+            '{"name": "seeker", "version": "1.0.0", "spell_gateway": true}',
+        )
+        manifest = load_manifest(rune_dir)
+        assert manifest is not None
+        assert manifest.spell_gateway is True
+
+
+def test_load_manifest_spell_gateway_defaults_false() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = _write_manifest(tmpdir, '{"name": "plain", "version": "1.0.0"}')
+        manifest = load_manifest(rune_dir)
+        assert manifest is not None
+        assert manifest.spell_gateway is False
+
+
+def test_load_manifest_spell_gateway_non_bool_defaults_false() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = _write_manifest(
+            tmpdir,
+            '{"name": "weird", "version": "1.0.0", "spell_gateway": "yes"}',
+        )
+        manifest = load_manifest(rune_dir)
+        assert manifest is not None
+        assert manifest.spell_gateway is False

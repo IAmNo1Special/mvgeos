@@ -64,7 +64,7 @@ abort primitives) is canonical in `mvgeos-core`.
 ### mvgeos-tome
 
 Manages session (tome) persistence. `TomeLedger` creates, opens, and manages tomes.
-Each tome is stored as a single Pi-compatible JSONL file (`{tome_id}.jsonl`) with a
+Each tome is stored as a single JSONL file (`{tome_id}.jsonl`) — a Pi-inspired format that is not byte-compatible with Pi session files — with a
 header line followed by entry lines. An in-memory index (`Index`) accelerates queries
 and is rebuilt on startup from the JSONL files. File locking via `filelock` ensures
 cross-platform concurrency safety.

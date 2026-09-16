@@ -77,3 +77,20 @@ Runes are user-installed extensions (not built-in). They are loaded from three s
 - Sigils are emitted four ways: `emit_async` (fire-all), `emit_chain` (thread value), `emit_first` (first non-None), `emit_block` (handler can veto)
 - `RuneWatcher` uses watchdog per rune directory with 0.5s debounce
 
+## Spell-Gateway Contract
+
+- A rune opts into gateway duty with `"spell_gateway": true` in `manifest.json`
+  (parsed into `RuneManifest.spell_gateway`; non-bool values are treated as false)
+- `RuneRunner` designates the first loaded claimant as `gateway_rune_name`;
+  extra claimants get a `PARSE_WARNING` diagnostic and are ignored
+- The engine (`Mvge._load_runes`) then narrows the model's spell view to the
+  gateway rune's registered spells via the engine-owned global spell
+  allowlist — an explicitly configured allowlist is never overridden
+- Any rune may call `RuneAPI.widen_global_allowlist(names)` to reveal spells
+  as they are discovered (e.g. `tool_search` hits, heal-my-goap's synthesized
+  spells): widening is additive-only and a no-op when no allowlist is active,
+  so a rune can never narrow the model's view or create the filter itself.
+  Replacing or dropping the filter stays engine-only.
+- This is a cooperation contract for honest runes, not a sandbox: rune
+  factories run in-process Python and can already reach `api._runner`
+

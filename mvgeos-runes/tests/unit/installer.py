@@ -57,7 +57,7 @@ def test_install_rune_git_url(tmp_path: Path) -> None:
 
     def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
         if cmd[:2] == ["git", "clone"]:
-            dest_dir = Path(cmd[3])
+            dest_dir = Path(cmd[-1])
             _create_mock_rune_dir(dest_dir, "sample-rune")
         return MagicMock(returncode=0)
 
@@ -89,7 +89,7 @@ def test_install_rune_marketplace_success(tmp_path: Path) -> None:
 
     def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
         if cmd[:2] == ["git", "clone"]:
-            dest_dir = Path(cmd[3])
+            dest_dir = Path(cmd[-1])
             _create_mock_rune_dir(dest_dir, "openrouter-realm")
         return MagicMock(returncode=0)
 
@@ -475,3 +475,26 @@ def test_install_rune_uv_pip_install_failure(tmp_path: Path) -> None:
     with patch("subprocess.run", side_effect=fake_run):
         dest = install_rune(str(source_dir), target_dir=tmp_path / "extensions")
         assert (dest / "manifest.json").is_file()
+
+
+def test_uninstall_rune_rejects_traversal_name(tmp_path: Path) -> None:
+    target_dir = tmp_path / "extensions"
+    target_dir.mkdir()
+    sibling = tmp_path / "sibling"
+    sibling.mkdir()
+    (sibling / "keep.txt").write_text("keep", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid rune name"):
+        uninstall_rune("..", target_dir=target_dir)
+
+    assert (sibling / "keep.txt").is_file()
+
+
+def test_install_rune_git_url_rejects_traversal_name(tmp_path: Path) -> None:
+    target_dir = tmp_path / "extensions"
+    with (
+        patch("subprocess.run") as mock_run,
+        pytest.raises(ValueError, match="Invalid rune name"),
+    ):
+        install_rune("https://github.com/org/..", target_dir=target_dir)
+    mock_run.assert_not_called()

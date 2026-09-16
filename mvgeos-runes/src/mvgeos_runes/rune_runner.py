@@ -127,6 +127,10 @@ class RuneRunner:
         self._pinned_runes: set[str | None] = set()
         self._rune_handlers: dict[str, dict[SigilHook, list[Handler]]] = {}
         self._global_spell_allowlist: list[str] | None = None
+        # Designated spell-gateway rune (manifest-declared): when set, the
+        # engine narrows the model's spell view to this rune's spells and the
+        # gateway reveals discovered spells via widen_global_allowlist.
+        self._gateway_rune_name: str | None = None
         self._registered_skill_paths: list[Path] = []
 
     @property
@@ -483,6 +487,50 @@ class RuneRunner:
                 if isinstance(result, Awaitable):
                     await result
                 self._current_loading_rune = None
+        self._designate_spell_gateway()
+
+    def _designate_spell_gateway(self) -> None:
+        """Designate the spell-gateway rune from loaded manifests.
+
+        The first loaded rune declaring ``spell_gateway`` wins; additional
+        claimants are reported via diagnostics and ignored, so the model's
+        narrowed spell view stays predictable.
+        """
+        for manifest in self._loaded_manifests:
+            if not manifest.spell_gateway:
+                continue
+            if self._gateway_rune_name is None:
+                self._gateway_rune_name = manifest.name
+            elif manifest.name != self._gateway_rune_name:
+                self._diagnostics.append(
+                    Diagnostic(
+                        kind=DiagnosticKind.PARSE_WARNING,
+                        rune_name=manifest.name,
+                        message=(
+                            f"Rune '{manifest.name}' declares spell_gateway, "
+                            f"but '{self._gateway_rune_name}' already claimed "
+                            "it; ignoring."
+                        ),
+                    )
+                )
+
+    @property
+    def gateway_rune_name(self) -> str | None:
+        """Name of the designated spell-gateway rune, if any."""
+        return self._gateway_rune_name
+
+    def gateway_spell_names(self) -> list[str]:
+        """Spell names registered by the designated gateway rune.
+
+        Returns an empty list when no gateway rune is designated.
+        """
+        if self._gateway_rune_name is None:
+            return []
+        return sorted(
+            spell.name
+            for spell in self._spells.values()
+            if getattr(spell, "source_rune", None) == self._gateway_rune_name
+        )
 
     async def emit_async(self, hook: SigilHook, data: Any) -> None:
         typed_data = create_sigil_data(hook, data)

@@ -59,7 +59,7 @@ def test_install_mvge_git_url(tmp_path: Path) -> None:
 
     def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
         if cmd[:2] == ["git", "clone"]:
-            dest_dir = Path(cmd[3])
+            dest_dir = Path(cmd[-1])
             _create_mock_mvge_dir(dest_dir, "sample-mvge")
         return MagicMock(returncode=0)
 
@@ -90,7 +90,7 @@ def test_install_mvge_marketplace_success(tmp_path: Path) -> None:
 
     def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
         if cmd[:2] == ["git", "clone"]:
-            dest_dir = Path(cmd[3])
+            dest_dir = Path(cmd[-1])
             _create_mock_mvge_dir(dest_dir, "coding_mvge")
         return MagicMock(returncode=0)
 
@@ -123,7 +123,7 @@ def test_install_mvge_marketplace_with_subpath_success(tmp_path: Path) -> None:
 
     def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
         if cmd[:2] == ["git", "clone"]:
-            dest_dir = Path(cmd[5])
+            dest_dir = Path(cmd[-1])
             mvge_dir = dest_dir / "mvges" / "coding_mvge"
             _create_mock_mvge_dir(mvge_dir, "coding_mvge")
         return MagicMock(returncode=0)
@@ -292,7 +292,9 @@ def test_install_mvge_with_python_deps_and_pyproject(tmp_path: Path) -> None:
 
     target_dir = tmp_path / "agents"
     with patch("subprocess.run") as mock_run:
-        dest = install_mvge(str(source_dir), target_dir=target_dir)
+        dest = install_mvge(
+            str(source_dir), target_dir=target_dir, confirm_python_deps=True
+        )
 
     assert dest == target_dir / "deps_mvge"
     calls = [c[0][0] for c in mock_run.call_args_list]
@@ -316,7 +318,7 @@ def test_install_mvge_marketplace_alt_name_hyphen(tmp_path: Path) -> None:
 
     def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
         if cmd[:2] == ["git", "clone"]:
-            dest_dir = Path(cmd[3])
+            dest_dir = Path(cmd[-1])
             _create_mock_mvge_dir(dest_dir, "coding-mvge")
         return MagicMock(returncode=0)
 
@@ -360,7 +362,7 @@ def test_install_mvge_git_url_no_dot_git_and_dest_exists(tmp_path: Path) -> None
 
     def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
         if cmd[:2] == ["git", "clone"]:
-            dest_dir = Path(cmd[3])
+            dest_dir = Path(cmd[-1])
             _create_mock_mvge_dir(dest_dir, "no-dot-git")
         return MagicMock(returncode=0)
 
@@ -393,7 +395,7 @@ def test_install_mvge_marketplace_dest_exists(tmp_path: Path) -> None:
 
     def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
         if cmd[:2] == ["git", "clone"]:
-            dest_dir = Path(cmd[3])
+            dest_dir = Path(cmd[-1])
             _create_mock_mvge_dir(dest_dir, "coding_mvge")
         return MagicMock(returncode=0)
 
@@ -459,7 +461,7 @@ def test_install_mvge_marketplace_with_agents_fallback_and_existing_dest_file(
 
     def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
         if cmd[:2] == ["git", "clone"]:
-            dest_dir = Path(cmd[3])
+            dest_dir = Path(cmd[-1])
             _create_mock_mvge_dir(dest_dir, "fallback_mvge")
         return MagicMock(returncode=0)
 
@@ -482,7 +484,7 @@ def test_install_mvge_git_url_with_existing_dest_file(tmp_path: Path) -> None:
 
     def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
         if cmd[:2] == ["git", "clone"]:
-            dest_dir = Path(cmd[3])
+            dest_dir = Path(cmd[-1])
             _create_mock_mvge_dir(dest_dir, "git_agent")
         return MagicMock(returncode=0)
 
@@ -632,7 +634,9 @@ def test_install_mvge_uv_pip_deps_error_tolerated(tmp_path: Path) -> None:
         return MagicMock(returncode=0)
 
     with patch("subprocess.run", side_effect=fail_pip):
-        dest = install_mvge(str(source_dir), target_dir=target_dir)
+        dest = install_mvge(
+            str(source_dir), target_dir=target_dir, confirm_python_deps=True
+        )
 
     assert dest == target_dir / "deps_err_mvge"
     assert (dest / "manifest.json").is_file()
@@ -648,3 +652,78 @@ def test_fetch_marketplace_data_custom_url_without_main() -> None:
 
     assert "mvges" in data
     assert "custom" in data["mvges"]
+
+
+def test_uninstall_mvge_rejects_traversal_name(tmp_path: Path) -> None:
+    target_dir = tmp_path / "agents"
+    target_dir.mkdir()
+    sibling = tmp_path / "sibling"
+    sibling.mkdir()
+    (sibling / "keep.txt").write_text("keep", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid mvge name"):
+        uninstall_mvge("..", target_dir=target_dir)
+
+    assert (sibling / "keep.txt").is_file()
+
+
+def test_install_mvge_git_url_rejects_traversal_name(tmp_path: Path) -> None:
+    target_dir = tmp_path / "agents"
+    with (
+        patch("subprocess.run") as mock_run,
+        pytest.raises(ValueError, match="Invalid mvge name"),
+    ):
+        install_mvge("https://github.com/org/..", target_dir=target_dir)
+    mock_run.assert_not_called()
+
+
+def test_install_mvge_marketplace_rejects_traversal_name(tmp_path: Path) -> None:
+    target_dir = tmp_path / "agents"
+    marketplace_payload = {
+        "mvges": {"../evil": {"git": "https://example.com/evil.git"}}
+    }
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = marketplace_payload
+    mock_resp.raise_for_status = MagicMock()
+
+    with (
+        patch("httpx.get", return_value=mock_resp),
+        patch("subprocess.run") as mock_run,
+        pytest.raises(ValueError, match="Invalid mvge name"),
+    ):
+        install_mvge("../evil", target_dir=target_dir)
+
+    mock_run.assert_not_called()
+    assert not (tmp_path / "evil").exists()
+
+
+def test_install_mvge_git_clone_uses_option_separator(tmp_path: Path) -> None:
+    target_dir = tmp_path / "agents"
+    git_url = "https://github.com/org/sample-mvge.git"
+
+    def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
+        dest_dir = Path(cmd[-1])
+        _create_mock_mvge_dir(dest_dir, "sample-mvge")
+        return MagicMock(returncode=0)
+
+    with patch("subprocess.run", side_effect=fake_git_clone) as mock_run:
+        install_mvge(git_url, target_dir=target_dir)
+
+    clone_cmd = mock_run.call_args[0][0]
+    assert clone_cmd[:3] == ["git", "clone", "--"]
+    assert clone_cmd[3] == git_url
+
+
+def test_install_mvge_python_deps_skipped_by_default_non_interactive(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "deps_mvge"
+    _create_mock_mvge_dir(source_dir, "deps_mvge", python_deps=["dep1"])
+    target_dir = tmp_path / "agents"
+
+    with patch("subprocess.run") as mock_run:
+        dest = install_mvge(str(source_dir), target_dir=target_dir)
+
+    calls = [c[0][0] for c in mock_run.call_args_list]
+    assert ["uv", "pip", "install", "dep1"] not in calls
+    assert (dest / "manifest.json").is_file()

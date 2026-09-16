@@ -533,3 +533,57 @@ class TestResolution:
         recent = factory.open_recent("/workspace/target")
         assert recent is not None
         assert recent.id == "valid-recent"
+
+
+class TestTomeIdValidation:
+    def test_open_tome_rejects_traversal(self, tmp_path: Path) -> None:
+        outside = tmp_path / "outside.jsonl"
+        outside.write_text(
+            '{"type":"session","version":1,"id":"outside",'
+            '"timestamp":"2026-01-01T00:00:00Z","cwd":"/tmp"}\n',
+            encoding="utf-8",
+        )
+        factory = TomeHandleFactory(tmp_path / "tomes")
+        with pytest.raises(ValueError, match="Invalid tome id"):
+            factory.open_tome("../outside")
+        assert outside.exists()
+
+    def test_tome_file_rejects_traversal(self, tmp_path: Path) -> None:
+        factory = TomeHandleFactory(tmp_path / "tomes")
+        with pytest.raises(ValueError, match="Invalid tome id"):
+            factory.tome_file("../../etc/passwd")
+
+    def test_verify_integrity_rejects_traversal(self, tmp_path: Path) -> None:
+        factory = TomeHandleFactory(tmp_path / "tomes")
+        with pytest.raises(ValueError, match="Invalid tome id"):
+            factory.verify_integrity("../outside")
+
+    def test_create_tome_rejects_traversal_and_writes_nothing_outside(
+        self, tmp_path: Path
+    ) -> None:
+        factory = TomeHandleFactory(tmp_path / "tomes")
+        with pytest.raises(ValueError, match="Invalid tome id"):
+            factory.create_tome("/tmp", tome_id="../escaped")
+        assert not (tmp_path / "escaped.jsonl").exists()
+
+    def test_create_tome_rejects_absolute_id(self, tmp_path: Path) -> None:
+        factory = TomeHandleFactory(tmp_path)
+        with pytest.raises(ValueError, match="Invalid tome id"):
+            factory.create_tome("/tmp", tome_id="/abs/path")
+
+    def test_create_tome_duplicate_id_raises_and_preserves_original(
+        self, tmp_path: Path
+    ) -> None:
+        factory = TomeHandleFactory(tmp_path)
+        first = factory.create_tome("/tmp", tome_id="dup")
+        first.append(_message("m1", "user", "original"))
+        with pytest.raises(ValueError, match="already exists"):
+            factory.create_tome("/tmp", tome_id="dup")
+        assert [e.id for e in factory.get_entries("dup")] == ["m1"]
+
+    def test_create_branched_tome_duplicate_id_raises(self, tmp_path: Path) -> None:
+        factory = TomeHandleFactory(tmp_path)
+        factory.create_tome("/tmp", tome_id="parent")
+        factory.create_tome("/tmp", tome_id="taken")
+        with pytest.raises(ValueError, match="already exists"):
+            factory.create_branched_tome("parent", "/tmp", tome_id="taken")

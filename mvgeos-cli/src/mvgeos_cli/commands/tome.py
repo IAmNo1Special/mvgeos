@@ -267,7 +267,11 @@ def tome_verify(
     """Verify integrity of a tome session file."""
     factory = get_factory()
 
-    report = factory.verify_integrity(tome_id)
+    try:
+        report = factory.verify_integrity(tome_id)
+    except ValueError as e:
+        console.print(format_error(f"Failed to verify tome: {e}"))
+        raise typer.Exit(1) from e
     if report.valid:
         console.print(f"[green]Tome {report.tome_id[:8]} is valid.[/green]")
         console.print(

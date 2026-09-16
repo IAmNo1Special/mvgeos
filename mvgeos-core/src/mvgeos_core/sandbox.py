@@ -1,9 +1,24 @@
-"""MvgeOS host sandbox executor for process isolation and AST safety."""
+"""MvgeOS host sandbox executor for process isolation and AST safety.
+
+Trust model (read this before relying on it):
+
+- This sandbox is **best-effort containment, not a security boundary**.
+- It runs code in a spawned subprocess with a timeout and a restricted
+  builtins set, and it rejects obviously dangerous syntax via an AST
+  denylist. A determined adversary can still escape it (for example through
+  standard-library modules the denylist does not cover).
+- For anything security-sensitive, pass an explicit ``allowed_modules``
+  allowlist: when provided, *every* import not on the list is rejected, both
+  at AST-validation time and at runtime.
+- Do not execute genuinely hostile code here. Treat this sandbox as a guard
+  against accidents and casual misuse, not as isolation.
+"""
 
 import ast
 import builtins
 import multiprocessing
 import types
+import warnings
 from typing import Any, cast
 
 
@@ -30,12 +45,14 @@ class ASTSafetyVisitor(ast.NodeVisitor):
         """Initializes ASTSafetyVisitor.
 
         Args:
-            allowed_modules: Optional set of allowed module names.
+            allowed_modules: Optional allowlist of importable top-level
+                module names. When provided, any import not on the list is
+                rejected. When omitted, the legacy denylist applies.
         """
-        self.allowed_modules = allowed_modules or set()
+        self.allowed_modules = allowed_modules
 
     def visit_Import(self, node: ast.Import) -> None:
-        """Validates import statements against forbidden names.
+        """Validates import statements against the module policy.
 
         Args:
             node: AST import node.
@@ -45,14 +62,17 @@ class ASTSafetyVisitor(ast.NodeVisitor):
         """
         for alias in node.names:
             base_mod = alias.name.split(".")[0]
-            if base_mod == "sys" or (
-                base_mod in FORBIDDEN_NAMES and base_mod not in self.allowed_modules
-            ):
+            if self.allowed_modules is not None:
+                if base_mod not in self.allowed_modules:
+                    raise ValueError(
+                        f"Forbidden import: '{alias.name}' is not in allowed_modules."
+                    )
+            elif base_mod == "sys" or base_mod in FORBIDDEN_NAMES:
                 raise ValueError(f"Forbidden AST node: import {alias.name}")
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-        """Validates from-import statements against forbidden names.
+        """Validates from-import statements against the module policy.
 
         Args:
             node: AST import-from node.
@@ -62,10 +82,27 @@ class ASTSafetyVisitor(ast.NodeVisitor):
         """
         if node.module:
             base_mod = node.module.split(".")[0]
-            if base_mod == "sys" or (
-                base_mod in FORBIDDEN_NAMES and base_mod not in self.allowed_modules
-            ):
+            if self.allowed_modules is not None:
+                if base_mod not in self.allowed_modules:
+                    raise ValueError(
+                        f"Forbidden import: 'from {node.module} import ...' "
+                        "is not in allowed_modules."
+                    )
+            elif base_mod == "sys" or base_mod in FORBIDDEN_NAMES:
                 raise ValueError(f"Forbidden AST node: from {node.module} import ...")
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        """Blocks dunder attribute access (e.g. ``().__class__``).
+
+        Args:
+            node: AST attribute node.
+
+        Raises:
+            ValueError: If the attribute is a dunder name.
+        """
+        if node.attr.startswith("__") and node.attr.endswith("__"):
+            raise ValueError(f"Forbidden dunder attribute access: {node.attr}")
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
@@ -110,7 +147,12 @@ def _sandbox_process_target(
 
 
 class MvgeSandbox:
-    """MvgeOS host sandbox executor with AST validation and hard timeout termination."""
+    """MvgeOS host sandbox executor with AST validation and hard timeout termination.
+
+    Best-effort containment, not a security boundary: pass an explicit
+    ``allowed_modules`` allowlist to ``execute_code`` for anything
+    security-sensitive. See the module docstring for the trust model.
+    """
 
     def validate_ast(
         self, code_str: str, allowed_modules: set[str] | None = None
@@ -119,7 +161,9 @@ class MvgeSandbox:
 
         Args:
             code_str: Python code string.
-            allowed_modules: Optional set of allowed module names.
+            allowed_modules: Optional allowlist of importable top-level
+                module names. When provided, any import not on the list is
+                rejected. When omitted, the legacy denylist applies.
 
         Returns:
             Parsed AST module.
@@ -143,7 +187,9 @@ class MvgeSandbox:
         Args:
             code_str: Python code string.
             context_globals: Global variable definitions.
-            allowed_modules: Optional set of allowed module names.
+            allowed_modules: Optional allowlist of importable top-level
+                module names. When provided, any import not on the list is
+                rejected at runtime as well as at AST-validation time.
 
         Returns:
             Resulting local variables dictionary.
@@ -152,11 +198,12 @@ class MvgeSandbox:
 
         def safe_import(name: str, *args: Any, **kwargs: Any) -> Any:
             base_mod = name.split(".")[0]
-            if base_mod == "sys" or (
-                allowed_modules is not None
-                and base_mod not in allowed_modules
-                and base_mod in FORBIDDEN_NAMES
-            ):
+            if allowed_modules is not None:
+                if base_mod not in allowed_modules:
+                    raise ValueError(
+                        f"Forbidden import: '{name}' is not in allowed_modules."
+                    )
+            elif base_mod == "sys" or base_mod in FORBIDDEN_NAMES:
                 raise ValueError(f"Import of module '{name}' is forbidden.")
             return builtins.__import__(name, *args, **kwargs)
 
@@ -202,7 +249,11 @@ class MvgeSandbox:
             code_str: Code string to execute.
             context_globals: Optional globals dictionary.
             timeout_seconds: Timeout limit in seconds.
-            allowed_modules: Optional set of allowed module names.
+            allowed_modules: Optional allowlist of importable top-level
+                module names. When provided, any import not on the list is
+                rejected. When omitted, the legacy denylist applies and a
+                warning is emitted: without an allowlist this sandbox is
+                best-effort containment, not a security boundary.
 
         Returns:
             Dictionary of resulting local variables.
@@ -211,6 +262,15 @@ class MvgeSandbox:
             SandboxTimeoutError: If execution exceeds timeout threshold.
             ValueError: If code execution fails or violates AST rules.
         """
+        if allowed_modules is None:
+            warnings.warn(
+                "MvgeSandbox called without an allowed_modules allowlist: "
+                "the sandbox is best-effort containment, not a security "
+                "boundary. Pass allowed_modules={...} to restrict imports "
+                "to an allowlist.",
+                UserWarning,
+                stacklevel=2,
+            )
         self.validate_ast(code_str, allowed_modules=allowed_modules)
         ctx = multiprocessing.get_context("spawn")
         queue = ctx.Queue()

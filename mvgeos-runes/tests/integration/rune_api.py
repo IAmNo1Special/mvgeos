@@ -9,6 +9,8 @@ import pytest
 from mvgeos_runes.rune_api import RuneAPI
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
+    RuneLoad,
+    RuneManifest,
     Sandbox,
     SigilHook,
     SpellDefinition,
@@ -286,23 +288,55 @@ class TestRuneAPIGlobalAllowlist:
     ) -> None:
         assert api.get_global_spell_allowlist() is None
 
-    def test_set_global_allowlist_delegates_to_runner(
+    def test_rune_api_cannot_write_global_allowlist(
         self, api: RuneAPI, runner: RuneRunner
     ) -> None:
-        api.set_global_spell_allowlist(["tool_search", "skill_search"])
-        assert runner.get_global_spell_allowlist() == [
-            "tool_search",
-            "skill_search",
-        ]
-        assert api.get_global_spell_allowlist() == [
-            "tool_search",
-            "skill_search",
-        ]
+        """Runes must not rewrite the engine-owned global filter (untrusted code)."""
+        runner.set_global_spell_allowlist(["tool_search"])
+        with pytest.raises(AttributeError):
+            api.set_global_spell_allowlist(None)  # type: ignore[attr-defined]
+        assert runner.get_global_spell_allowlist() == ["tool_search"]
 
-    def test_set_global_allowlist_none_delegates(
+
+class TestRuneAPIWidenGlobalAllowlist:
+    async def _load_gateway(self, runner: RuneRunner, name: str = "seeker") -> RuneAPI:
+        def factory(api: RuneAPI) -> None:
+            api.register_spell(SpellDefinition(name="tool_search", description=""))
+
+        manifest = RuneManifest(
+            name=name, version="1.0.0", description="", spell_gateway=True
+        )
+        await runner.load_rune_loads([RuneLoad(manifest=manifest, factory=factory)])
+        return runner.create_api(rune_name=name)
+
+    @pytest.mark.asyncio
+    async def test_gateway_rune_can_widen(self, runner: RuneRunner) -> None:
+        api = await self._load_gateway(runner)
+        runner.set_global_spell_allowlist(["tool_search"])
+        api.widen_global_allowlist(["weather_lookup"])
+        assert set(runner.get_global_spell_allowlist()) == {
+            "tool_search",
+            "weather_lookup",
+        }
+
+    @pytest.mark.asyncio
+    async def test_non_gateway_rune_can_widen_own_spells(
         self, api: RuneAPI, runner: RuneRunner
     ) -> None:
-        api.set_global_spell_allowlist(["tool_search"])
-        assert api.get_global_spell_allowlist() is not None
-        api.set_global_spell_allowlist(None)
-        assert api.get_global_spell_allowlist() is None
+        """Widening is additive-only, so any rune may reveal its own spells
+        (e.g. heal-my-goap keeping synthesized spells visible)."""
+        await self._load_gateway(runner)
+        runner.set_global_spell_allowlist(["tool_search"])
+        api.widen_global_allowlist(["heal_spell"])
+        assert set(runner.get_global_spell_allowlist()) == {
+            "tool_search",
+            "heal_spell",
+        }
+
+    def test_widen_is_noop_without_active_allowlist(
+        self, api: RuneAPI, runner: RuneRunner
+    ) -> None:
+        """Widening must not create the filter: that would let a rune narrow
+        the model's view to just its own spells."""
+        api.widen_global_allowlist(["weather_lookup"])
+        assert runner.get_global_spell_allowlist() is None

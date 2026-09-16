@@ -5,8 +5,10 @@ import contextlib
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -18,6 +20,82 @@ logger = logging.getLogger(__name__)
 DEFAULT_MARKETPLACE_URL = (
     "https://raw.githubusercontent.com/IAmNo1Special/mvgeos-marketplace/main/index.json"
 )
+
+# Allowlist for install/uninstall directory names. Anything outside this set
+# (path separators, "..", URL-encoded tricks) is rejected before it can reach
+# the filesystem.
+_INSTALL_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _validate_install_name(name: str, *, kind: str) -> str:
+    """Validate an install/uninstall name against the allowlist.
+
+    Args:
+        name: The directory name to validate.
+        kind: Human label used in the error ("mvge" or "rune").
+
+    Raises:
+        ValueError: If the name is not a plain ``^[A-Za-z0-9_-]+$`` name.
+    """
+    if not _INSTALL_NAME_RE.fullmatch(name):
+        raise ValueError(f"Invalid {kind} name {name!r}: must match ^[A-Za-z0-9_-]+$.")
+    return name
+
+
+def _dest_within_target(target: Path, name: str) -> Path:
+    """Return ``target / name`` after asserting it stays inside ``target``.
+
+    Defense-in-depth alongside :func:`_validate_install_name`: catches
+    symlink swaps and other resolution tricks even for well-formed names.
+
+    Raises:
+        ValueError: If the resolved destination escapes the target directory.
+    """
+    dest = target / name
+    resolved_target = target.resolve()
+    resolved_dest = dest.resolve()
+    if resolved_dest != resolved_target and not resolved_dest.is_relative_to(
+        resolved_target
+    ):
+        raise ValueError(
+            f"Install destination {str(dest)!r} escapes target directory "
+            f"{str(target)!r}."
+        )
+    return dest
+
+
+def _confirm_python_deps_install(deps: list[str], *, confirm: bool | None) -> bool:
+    """Decide whether to run ``uv pip install`` for manifest-declared deps.
+
+    Args:
+        deps: The dependency specifiers from the manifest.
+        confirm: ``True`` installs without prompting, ``False`` skips,
+            ``None`` (default) prompts interactively and fails closed
+            (skips) when stdin is not a TTY.
+
+    Returns:
+        True when the dependencies should be installed.
+    """
+    if confirm is True:
+        return True
+    if confirm is False:
+        logger.info("Skipping python dependency install (confirm_python_deps=False).")
+        return False
+    if not sys.stdin.isatty():
+        logger.warning(
+            "Non-interactive session: skipping install of unreviewed python "
+            "dependencies %s. Re-run with confirm_python_deps=True to install.",
+            deps,
+        )
+        return False
+    print("The mvge manifest declares the following python dependencies:")  # noqa: T201
+    for dep in deps:
+        print(f"  - {dep}")  # noqa: T201
+    try:
+        answer = input("Install them with 'uv pip install'? [y/N] ").strip().lower()
+    except EOFError:
+        return False
+    return answer in ("y", "yes")
 
 
 def _fetch_marketplace_data(
@@ -171,7 +249,7 @@ def uninstall_mvge(name: str, target_dir: Path | None = None) -> bool:
         if target_dir is not None
         else Path("~/.agents/agents").expanduser()
     )
-    path = target / name
+    path = _dest_within_target(target, _validate_install_name(name, kind="mvge"))
     if path.exists():
         if path.is_dir():
             shutil.rmtree(path)
@@ -185,8 +263,19 @@ def install_mvge(
     source: str,
     target_dir: Path | None = None,
     marketplace_url: str = DEFAULT_MARKETPLACE_URL,
+    confirm_python_deps: bool | None = None,
 ) -> Path:
-    """Install an agent mvge from local path, Git repository, or marketplace."""
+    """Install an agent mvge from local path, Git repository, or marketplace.
+
+    Args:
+        source: Local path, git URL, or marketplace mvge name.
+        target_dir: Install target directory (default ``~/.agents/agents``).
+        marketplace_url: Marketplace index URL.
+        confirm_python_deps: Gate for installing ``python_deps`` declared in
+            the installed manifest. ``True`` installs without prompting,
+            ``False`` skips, ``None`` (default) prompts interactively and
+            fails closed (skips) in non-interactive sessions.
+    """
     stripped_source = source.strip()
     if not stripped_source:
         raise ValueError("Mvge source cannot be empty.")
@@ -200,7 +289,9 @@ def install_mvge(
 
     source_path = Path(stripped_source).expanduser()
     if source_path.exists():
-        dest = target / source_path.name
+        dest = _dest_within_target(
+            target, _validate_install_name(source_path.name, kind="mvge")
+        )
         if source_path.resolve() != dest.resolve():
             if dest.exists():
                 if dest.is_dir():
@@ -214,14 +305,15 @@ def install_mvge(
         name = stripped_source.rstrip("/").split("/")[-1]
         if name.endswith(".git"):
             name = name[:-4]
-        dest = target / name
+        _validate_install_name(name, kind="mvge")
+        dest = _dest_within_target(target, name)
         if dest.exists():
             if dest.is_dir():
                 shutil.rmtree(dest)
             else:
                 dest.unlink()
         subprocess.run(
-            ["git", "clone", stripped_source, str(dest)],
+            ["git", "clone", "--", stripped_source, str(dest)],
             check=True,
             capture_output=True,
             text=True,
@@ -253,7 +345,8 @@ def install_mvge(
         if not git_url or not isinstance(git_url, str):
             raise ValueError(f"Mvge '{stripped_source}' not found in marketplace.")
 
-        dest = target / stripped_source
+        _validate_install_name(stripped_source, kind="mvge")
+        dest = _dest_within_target(target, stripped_source)
         if dest.exists():
             if dest.is_dir():
                 shutil.rmtree(dest)
@@ -265,7 +358,7 @@ def install_mvge(
             with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
                 try:
                     subprocess.run(
-                        ["git", "clone", "--depth", "1", git_url, str(tmp_dir)],
+                        ["git", "clone", "--depth", "1", "--", git_url, str(tmp_dir)],
                         check=True,
                         capture_output=True,
                         text=True,
@@ -291,7 +384,7 @@ def install_mvge(
                         raise
         else:
             subprocess.run(
-                ["git", "clone", git_url, str(dest)],
+                ["git", "clone", "--", git_url, str(dest)],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -308,12 +401,19 @@ def install_mvge(
         if python_deps and isinstance(python_deps, list):
             deps = [str(d) for d in python_deps if str(d).strip()]
             if deps:
-                subprocess.run(
-                    ["uv", "pip", "install", *deps],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
+                if _confirm_python_deps_install(deps, confirm=confirm_python_deps):
+                    subprocess.run(
+                        ["uv", "pip", "install", *deps],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                else:
+                    logger.warning(
+                        "Skipping unreviewed python dependencies for %s: %s",
+                        dest,
+                        deps,
+                    )
         if (dest / "pyproject.toml").is_file():
             with contextlib.suppress(Exception):
                 subprocess.run(

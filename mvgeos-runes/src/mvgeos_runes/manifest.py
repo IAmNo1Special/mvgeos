@@ -64,6 +64,10 @@ def load_manifest(path: Path) -> RuneManifest | None:
     if not isinstance(enabled, bool):
         enabled = True
 
+    spell_gateway = data.get("spell_gateway", False)
+    if not isinstance(spell_gateway, bool):
+        spell_gateway = False
+
     runtime = str(data.get("runtime", "python")).strip().lower() or "python"
 
     raw_types = data.get("types")
@@ -86,4 +90,5 @@ def load_manifest(path: Path) -> RuneManifest | None:
         enabled=enabled,
         runtime=runtime,
         types=types,
+        spell_gateway=spell_gateway,
     )

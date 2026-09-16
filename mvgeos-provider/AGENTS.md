@@ -1,6 +1,6 @@
 # mvgeos-Provider — Agent Instructions
 
-This package implements the Realm protocol (provider interface) and OpenRouter provider. Realms channel model responses and manage authentication.
+This package implements the Realm protocol (provider interface), model registry, and retry policies. Realms channel model responses and manage authentication. The concrete OpenRouter provider is **not** part of this package — it ships as the `openrouter-realm` rune in `mvgeos-marketplace` and registers itself at runtime via `register_realm_factory("openrouter", ...)`.
 
 ## Package-Specific Conventions
 
@@ -27,7 +27,7 @@ Test paths follow pattern: `mvgeos-provider/tests/unit/<module>.py` and `mvgeos-
 | --- | --- |
 | `Realm` | Abstract provider protocol (`stream()`, `complete()`, `close()`) |
 | `RealmFactory` | Protocol for pluggable realm constructors (`(api_key, base_url, **kwargs) -> Realm`) |
-| `OpenRouterRealm` | OpenRouter SSE channeling implementation |
+| `OpenRouterRealm` | OpenRouter SSE channeling implementation — provided by the `openrouter-realm` marketplace rune, not this package |
 | `Model` | Model descriptor, canonical in `mvgeos-core` (has `realm`, `max_completion_mana`, `context_window`, `is_free`) |
 | `ChannelConfig` | Per-request config, canonical in `mvgeos-core` (temperature, `max_tokens`, `max_output_mana`, contemplation, tools) |
 | `RealmResponse` | Stream chunk wrapper, canonical in `mvgeos-core` (`invocation`, `mana_used`, error fields) |
@@ -56,6 +56,6 @@ Test paths follow pattern: `mvgeos-provider/tests/unit/<module>.py` and `mvgeos-
 
 - `Realm.stream(model, invocations, config)` → async generator of `RealmResponse`
 - `Realm.complete(model, messages, config)` → single non-channeled completion (e.g. for compaction)
-- `OpenRouterRealm` implements OpenRouter SSE streaming with retry/backoff
+- The `openrouter-realm` marketplace rune implements OpenRouter SSE streaming with retry/backoff
 - `RealmRegistry` creates realms and registers rune-provided providers
 - `ModelRegistry` maintains a catalog with disk cache and OpenRouter API refresh

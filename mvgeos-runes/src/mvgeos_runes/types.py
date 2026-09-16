@@ -363,6 +363,7 @@ class RuneManifest:
     enabled: bool = True
     runtime: str = "python"
     types: list[str] = field(default_factory=list)
+    spell_gateway: bool = False
 
 
 @dataclass(frozen=True)

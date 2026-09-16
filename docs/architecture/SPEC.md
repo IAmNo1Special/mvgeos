@@ -12,7 +12,7 @@ MvgeOS is a Python-based AI coding agent inspired by the pi project, built with 
 mvgeos/
 ├── mvgeos-core/              # Canonical loop vocabulary: abort, spells, events, turn loop
 ├── mvgeos-agent/             # Core agent loop, state, environment, harness
-├── mvgeos-provider/          # Realm protocol + OpenRouter provider
+├── mvgeos-provider/          # Realm protocol + model registry (OpenRouter realm is a marketplace rune)
 ├── mvgeos-tome/              # JSONL session persistence with file locking
 ├── mvgeos-runes/             # Extension system (manifest, loader, sigils)
 ├── mvgeos-cli/               # CLI entry point
@@ -35,7 +35,7 @@ mvgeos/
 | mvgeos-agent | `types.py` | `MvgeState` session state container |
 | mvgeos-agent | `harness/harness.py` | MvgeHarness - operational turn driver, compaction, and lifecycle |
 | mvgeos-provider | `base.py` | Realm protocol (abstract base) |
-| mvgeos-provider | `openrouter.py` | OpenRouterRealm implementation |
+| mvgeos-marketplace | `runes/openrouter-realm/openrouter.py` | OpenRouterRealm implementation (marketplace rune) |
 | mvgeos-provider | `types.py` | Model, ChannelConfig, RealmResponse |
 | mvgeos-tome | `ledger.py` | TomeLedger - session management |
 | mvgeos-tome | `locking.py` | FileLock - cross-process locking |
@@ -386,7 +386,7 @@ Session persistence:
 - `get_leaf_id(tome_id)` - Get current leaf for branching
 - `create_branched_tome(parent_tome_id, cwd, fork_from_leaf_id)` - Fork a tome
 - Uses `FileLock` for cross-process safety
-- Single Pi-compatible JSONL per tome (`{tome_id}.jsonl`) with header + entries
+- Single JSONL per tome (`{tome_id}.jsonl`, Pi-inspired but not Pi-compatible) with header + entries
 - In-memory index rebuilt on startup
 
 All 7 spells implemented:

@@ -170,6 +170,21 @@ class TestFactories:
         assert starts[0]["tomeId"] == resumed.id
 
     @pytest.mark.asyncio
+    async def test_open_repairs_torn_tail_before_resume(self) -> None:
+        resumed = _metadata("b" * 32)
+        factory = MagicMock()
+        write, read = _mock_handles(resumed.id)
+        read.get_metadata.return_value = resumed
+        read.get_entries.return_value = []
+        factory.open_read.return_value = read
+        factory.open_write.return_value = write
+        runner = _mock_runner()
+
+        await MvgeTome.open(factory, "b" * 32, runner=runner)
+
+        write.repair_torn_tail.assert_called_once_with()
+
+    @pytest.mark.asyncio
     async def test_open_missing_target_raises(self) -> None:
         factory = MagicMock()
         factory.open_read.side_effect = FileNotFoundError("missing-tome")

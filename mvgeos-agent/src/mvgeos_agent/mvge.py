@@ -147,6 +147,31 @@ def _validate_spell_signature(spell: Any) -> bool:
             return False
 
 
+def _apply_gateway_allowlist(runner: RuneRunner) -> str | None:
+    """Engage spell-gateway mode when a gateway rune is loaded.
+
+    When a loaded rune declares ``spell_gateway`` in its manifest, narrow the
+    model's spell view to that rune's spells via the engine-owned global
+    spell allowlist. Other runes' spells stay hidden until a rune reveals
+    them (``RuneAPI.widen_global_allowlist``), e.g. as ``tool_search`` hits.
+
+    An explicitly configured allowlist is never overridden: harness or user
+    policy wins over the manifest declaration. Returns the gateway rune
+    name when gateway mode was engaged, else ``None``.
+    """
+    if runner.get_global_spell_allowlist() is not None:
+        return None
+    gateway = runner.gateway_rune_name
+    if gateway is None:
+        return None
+    names = runner.gateway_spell_names()
+    if not names:
+        return None
+    runner.set_global_spell_allowlist(names)
+    logger.info("Spell-gateway mode engaged via rune '%s'", gateway)
+    return gateway
+
+
 class Mvge:
     """Core concrete agent implementation in MvgeOS.
 
@@ -497,6 +522,7 @@ class Mvge:
             self._runner.on_event(
                 "mvge_event", lambda ev: self._event_bus.emit(ev.type, ev.data)
             )
+            _apply_gateway_allowlist(self._runner)
         if self._rune_lifecycle.environment is not None:
             self._environment = self._rune_lifecycle.environment
         if self._environment.diagnostics:

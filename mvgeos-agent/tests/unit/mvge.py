@@ -9,10 +9,11 @@ import pytest
 from mvgeos_core.abort import AbortSignal
 from mvgeos_core.events import QueueMode
 from mvgeos_core.spells import ExecutionMode
-from mvgeos_runes.types import SpellDefinition
+from mvgeos_runes.rune_runner import RuneRunner
+from mvgeos_runes.types import RuneLoad, RuneManifest, SpellDefinition
 
 from mvgeos_agent import Mvge
-from mvgeos_agent.mvge import _validate_spell_name
+from mvgeos_agent.mvge import _apply_gateway_allowlist, _validate_spell_name
 
 
 def dummy_built_in(command: str) -> str:
@@ -516,3 +517,79 @@ class TestMvgePropertiesAndMethods:
         agent.set_environment(env)
         assert agent.environment == env
         agent.set_config_manager(None)
+
+
+def _gateway_manifest(name: str, gateway: bool = True) -> RuneManifest:
+    return RuneManifest(
+        name=name, version="1.0.0", description="", spell_gateway=gateway
+    )
+
+
+async def _gateway_runner() -> RuneRunner:
+    runner = RuneRunner()
+
+    def seeker_factory(api: Any) -> None:
+        api.register_spell(SpellDefinition(name="tool_search", description=""))
+
+    def other_factory(api: Any) -> None:
+        api.register_spell(SpellDefinition(name="weather_lookup", description=""))
+
+    await runner.load_rune_loads(
+        [
+            RuneLoad(manifest=_gateway_manifest("seeker"), factory=seeker_factory),
+            RuneLoad(
+                manifest=_gateway_manifest("other", gateway=False),
+                factory=other_factory,
+            ),
+        ]
+    )
+    return runner
+
+
+class TestApplyGatewayAllowlist:
+    @pytest.mark.asyncio
+    async def test_gateway_allowlist_engaged(self) -> None:
+        runner = await _gateway_runner()
+        assert _apply_gateway_allowlist(runner) == "seeker"
+        assert runner.get_global_spell_allowlist() == ["tool_search"]
+
+    @pytest.mark.asyncio
+    async def test_explicit_allowlist_not_clobbered(self) -> None:
+        runner = await _gateway_runner()
+        runner.set_global_spell_allowlist(["bash"])
+        assert _apply_gateway_allowlist(runner) is None
+        assert runner.get_global_spell_allowlist() == ["bash"]
+
+    @pytest.mark.asyncio
+    async def test_no_gateway_no_allowlist(self) -> None:
+        runner = RuneRunner()
+        await runner.load_rune_loads(
+            [RuneLoad(manifest=_gateway_manifest("plain", gateway=False))]
+        )
+        assert _apply_gateway_allowlist(runner) is None
+        assert runner.get_global_spell_allowlist() is None
+
+    @pytest.mark.asyncio
+    async def test_gateway_end_to_end_build_spells(self) -> None:
+        runner = await _gateway_runner()
+        agent = Mvge(api_key="test-key", spells=[])
+        agent._runner = runner  # type: ignore[assignment]
+        _apply_gateway_allowlist(runner)
+
+        names = [s.name for s in agent._build_spells()]
+        assert "tool_search" in names
+        assert "weather_lookup" not in names
+
+        gateway_api = runner.create_api(rune_name="seeker")
+        gateway_api.widen_global_allowlist(["weather_lookup"])
+        names = [s.name for s in agent._build_spells()]
+        assert "weather_lookup" in names
+
+    @pytest.mark.asyncio
+    async def test_widen_cannot_create_allowlist(self) -> None:
+        """A rune must not narrow the model's view by widening a filter
+        that was never enabled."""
+        runner = await _gateway_runner()
+        other_api = runner.create_api(rune_name="other")
+        other_api.widen_global_allowlist(["weather_lookup"])
+        assert runner.get_global_spell_allowlist() is None

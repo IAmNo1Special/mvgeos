@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 import uuid
 from collections.abc import Generator, Sequence
@@ -52,6 +53,21 @@ def _generate_short_id() -> str:
 
 def _generate_id() -> str:
     return uuid.uuid4().hex
+
+
+_TOME_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+
+def _validate_tome_id(tome_id: str) -> str:
+    """Allowlist a tome id before it touches the filesystem.
+
+    Tome ids become `{id}.jsonl` file names; anything outside the allowlist
+    (path separators, `..`, absolute paths, empty strings) is rejected so a
+    caller-supplied id can never escape the tome directory.
+    """
+    if not _TOME_ID_RE.match(tome_id):
+        raise ValueError(f"Invalid tome id: {tome_id!r}")
+    return tome_id
 
 
 def _timestamp_now() -> float:
@@ -113,9 +129,9 @@ class TomeHandle:
 
     def __init__(self, tome_dir: Path, tome_id: str, mode: str) -> None:
         self._tome_dir = Path(tome_dir).expanduser().resolve()
-        self._tome_id = tome_id
+        self._tome_id = _validate_tome_id(tome_id)
         self._mode = mode  # "r" or "w"
-        self._path = self._tome_dir / f"{tome_id}.jsonl"
+        self._path = self._tome_dir / f"{self._tome_id}.jsonl"
         self._revision: Revision | None = None
         self._entries_cache: list[TomeEntry] | None = None
         self._header: dict[str, Any] | None = None
@@ -139,6 +155,10 @@ class TomeHandle:
         """Hold this handle's local mutex across a compound operation.
 
         Reentrant: may be held while calling append/append_leaf/replace.
+        Note: this guards threads in this process only. Each mutating call
+        still acquires and releases the kernel lease independently, so two
+        processes can interleave their compound operations; keep multi-step
+        mutations to a single writer process per tome.
         """
         with self._local_lock:
             yield
@@ -284,7 +304,8 @@ class TomeHandle:
             raise RuntimeError("Read handle cannot append")
         with self._acquire():
             self._load_snapshot()
-            assert self._entries_cache is not None
+            if self._entries_cache is None:
+                raise RuntimeError("Failed to load tome snapshot before append")
             self._entries_cache.append(entry)
             self._flush_to_disk()
 
@@ -299,7 +320,8 @@ class TomeHandle:
             raise RuntimeError("Read handle cannot append")
         with self._acquire():
             self._load_snapshot()
-            assert self._entries_cache is not None
+            if self._entries_cache is None:
+                raise RuntimeError("Failed to load tome snapshot before append_leaf")
             leaf = TomeEntry(
                 id=_generate_short_id(),
                 parent_id=None,
@@ -342,7 +364,8 @@ class TomeHandle:
 
     def _flush_to_disk(self) -> None:
         """Durability barrier: append last entry, fsync file and directory."""
-        assert self._entries_cache is not None
+        if self._entries_cache is None:
+            raise RuntimeError("No snapshot loaded; nothing to flush")
         line = json.dumps(self._entries_cache[-1].to_dict()) + "\n"
         with self._path.open("a", encoding="utf-8") as f:
             f.write(line)
@@ -500,7 +523,7 @@ class TomeHandleFactory:
             candidate = Path(tome_id)
             if candidate.is_file():
                 resolved = self._resolve_tome_id(candidate.stem)
-        return self._tome_dir / f"{resolved or tome_id}.jsonl"
+        return self._tome_dir / f"{resolved or _validate_tome_id(tome_id)}.jsonl"
 
     def list_tomes(self) -> list[TomeMetadata]:
         """Rescan the directory on every call; never serve a stale list."""
@@ -528,7 +551,9 @@ class TomeHandleFactory:
         if resolved is None and Path(tome_id).is_file():
             resolved = self._resolve_tome_id(Path(tome_id).stem)
         if resolved is None:
-            return self._metadata_for(tome_id)
+            if not tome_id:
+                return None
+            return self._metadata_for(_validate_tome_id(tome_id))
         return self._metadata_for(resolved)
 
     def open_recent(self, cwd: str) -> TomeMetadata | None:
@@ -556,9 +581,14 @@ class TomeHandleFactory:
         contemplation_level: str | None = None,
         spells: Sequence[str] | None = None,
     ) -> TomeHandle:
-        """Create a new tome and return a write handle."""
+        """Create a new tome and return a write handle.
+
+        Raises ValueError when a tome with the requested id already exists.
+        """
         self._tome_dir.mkdir(parents=True, exist_ok=True)
-        tid = tome_id or _generate_id()
+        tid = _validate_tome_id(tome_id) if tome_id else _generate_id()
+        if (self._tome_dir / f"{tid}.jsonl").exists():
+            raise ValueError(f"Tome already exists: {tid}")
         header: dict[str, Any] = {
             "type": "session",
             "version": CURRENT_SESSION_VERSION,
@@ -606,7 +636,9 @@ class TomeHandleFactory:
             else list(parent_entries)
         )
 
-        tid = tome_id or _generate_id()
+        tid = _validate_tome_id(tome_id) if tome_id else _generate_id()
+        if (self._tome_dir / f"{tid}.jsonl").exists():
+            raise ValueError(f"Tome already exists: {tid}")
         header: dict[str, Any] = {
             "type": "session",
             "version": CURRENT_SESSION_VERSION,
@@ -733,7 +765,7 @@ class TomeHandleFactory:
         resolved = self._resolve_tome_id(tome_id)
         if resolved is None and Path(tome_id).is_file():
             resolved = self._resolve_tome_id(Path(tome_id).stem)
-        target = resolved or tome_id
+        target = resolved or _validate_tome_id(tome_id)
         path = self._tome_dir / f"{target}.jsonl"
         if not path.exists():
             return TomeIntegrityReport(

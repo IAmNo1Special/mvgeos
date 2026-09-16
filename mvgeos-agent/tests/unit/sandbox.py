@@ -79,3 +79,38 @@ def test_execute_sync_safe_import_forbidden() -> None:
     s = MvgeSandbox()
     with pytest.raises(ValueError, match="Forbidden AST node"):
         s._execute_sync("import os", None)
+
+
+def test_validate_ast_forbids_dunder_attribute() -> None:
+    s = MvgeSandbox()
+    with pytest.raises(ValueError, match="dunder"):
+        s.validate_ast("x = ().__class__")
+
+
+def test_validate_ast_forbids_dunder_subclass_traversal() -> None:
+    s = MvgeSandbox()
+    with pytest.raises(ValueError, match="dunder"):
+        s.validate_ast("x = ().__class__.__base__.__subclasses__()")
+
+
+def test_validate_ast_allowlist_rejects_unlisted_import() -> None:
+    s = MvgeSandbox()
+    with pytest.raises(ValueError, match="allowed_modules"):
+        s.validate_ast("import socket", allowed_modules={"math"})
+
+
+def test_validate_ast_allowlist_rejects_unlisted_from_import() -> None:
+    s = MvgeSandbox()
+    with pytest.raises(ValueError, match="allowed_modules"):
+        s.validate_ast("from pathlib import Path", allowed_modules={"math"})
+
+
+def test_validate_ast_allowlist_permits_listed_import() -> None:
+    s = MvgeSandbox()
+    s.validate_ast("import math", allowed_modules={"math"})
+
+
+def test_execute_code_warns_without_allowlist() -> None:
+    s = MvgeSandbox()
+    with pytest.warns(UserWarning, match="best-effort"):
+        s.execute_code("a = 1", timeout_seconds=10.0)

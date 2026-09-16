@@ -269,6 +269,72 @@ class TestRuneRunnerGlobalAllowlist:
         assert runner.spell_version == before_disable + 1
 
 
+def _gateway_manifest(name: str, gateway: bool = True) -> RuneManifest:
+    return RuneManifest(
+        name=name,
+        version="1.0.0",
+        description=f"{name} rune",
+        spell_gateway=gateway,
+    )
+
+
+def _gateway_spell(name: str, rune: str) -> SpellDefinition:
+    return SpellDefinition(name=name, description=name, source_rune=rune)
+
+
+class TestRuneRunnerSpellGateway:
+    @pytest.mark.asyncio
+    async def test_no_gateway_by_default(self) -> None:
+        runner = RuneRunner()
+        await runner.load_rune_loads(
+            [RuneLoad(manifest=_gateway_manifest("plain", gateway=False))]
+        )
+        assert runner.gateway_rune_name is None
+        assert runner.gateway_spell_names() == []
+
+    @pytest.mark.asyncio
+    async def test_gateway_designated_from_manifest(self) -> None:
+        runner = RuneRunner()
+
+        def seeker_factory(api: Any) -> None:
+            api.register_spell(_gateway_spell("tool_search", "seeker"))
+            api.register_spell(_gateway_spell("skill_search", "seeker"))
+
+        await runner.load_rune_loads(
+            [
+                RuneLoad(manifest=_gateway_manifest("seeker"), factory=seeker_factory),
+                RuneLoad(manifest=_gateway_manifest("other", gateway=False)),
+            ]
+        )
+        other_api = runner.create_api(rune_name="other")
+        other_api.register_spell(_gateway_spell("weather", "other"))
+
+        assert runner.gateway_rune_name == "seeker"
+        assert sorted(runner.gateway_spell_names()) == [
+            "skill_search",
+            "tool_search",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_first_gateway_wins_and_warns_on_multiple(self) -> None:
+        runner = RuneRunner()
+
+        def noop(api: Any) -> None:
+            return None
+
+        await runner.load_rune_loads(
+            [
+                RuneLoad(manifest=_gateway_manifest("first"), factory=noop),
+                RuneLoad(manifest=_gateway_manifest("second"), factory=noop),
+            ]
+        )
+        assert runner.gateway_rune_name == "first"
+        assert any(
+            d.kind == DiagnosticKind.PARSE_WARNING and "second" in d.message
+            for d in runner.diagnostics
+        )
+
+
 class TestRuneRunnerCommands:
     def test_register_and_get_commands(self) -> None:
         runner = RuneRunner()

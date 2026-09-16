@@ -1,6 +1,6 @@
 # mvgeos-Tome — Agent Instructions
 
-This package implements Tome persistence: JSONL session storage with kernel leases and disk-authoritative reads. A Tome is a tree of conversation entries stored in a single Pi-compatible JSONL file.
+This package implements Tome persistence: JSONL session storage with kernel leases and disk-authoritative reads. A Tome is a tree of conversation entries stored in a single JSONL file. The format is inspired by Pi's session format but is **not byte-compatible** with Pi session files (different header version, timestamp encoding, and entry schema) — Pi cannot open MvgeOS tomes and MvgeOS cannot open Pi sessions.
 
 ## Package-Specific Conventions
 
@@ -28,7 +28,6 @@ Test paths follow pattern: `mvgeos-tome/tests/unit/<module>.py` and `mvgeos-tome
 | `TomeHandleFactory` | Stateless entry point: create/open/fork tomes; disk-authoritative queries; no caches |
 | `TomeHandle` | Single-tome handle (read/write); stat-validated in-memory mirror; kernel lease on write |
 | `Revision` | Filesystem invalidation token (mtime_ns, size, ino) |
-| `TomeStore` | Canonical handle identity per process (no persistence state) |
 | `TomeEntry` | Single entry in a Tome (id, parent_id, type, timestamp, payload) |
 | `TomeEntryType` | Enum of entry types (MESSAGE, LABEL, COMPACTION, CUSTOM, LEAF, TOME_INFO) |
 | `TomeMetadata` | Tome header (id, created_at, cwd, parent_tome_id, active_leaf_id) |

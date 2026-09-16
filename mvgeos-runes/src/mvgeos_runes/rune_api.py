@@ -111,12 +111,30 @@ class RuneAPI:
         self._runner.set_active_spells(spell_names, self._rune_name)
 
     def get_global_spell_allowlist(self) -> list[str] | None:
-        """Get the engine-owned global spell allowlist, or None if unset."""
+        """Get the engine-owned global spell allowlist, or None if unset.
+
+        Read-only: runes cannot rewrite the engine's global filter. The
+        filter is owned by the embedding layer (agent/benchmarks), which
+        configures it directly on the runner. Runes narrow the model's
+        view of their own spells via ``set_active_spells``.
+        """
         return self._runner.get_global_spell_allowlist()
 
-    def set_global_spell_allowlist(self, spell_names: list[str] | None) -> None:
-        """Set the global spell allowlist. None disables global filtering."""
-        self._runner.set_global_spell_allowlist(spell_names)
+    def widen_global_allowlist(self, spell_names: list[str]) -> None:
+        """Widen the engine's global spell filter (additive-only).
+
+        Reveals spells to the model as the rune discovers them (e.g.
+        ``tool_search`` hits). Any rune may widen; widening can only ever
+        add visibility, never remove it.
+
+        No-op when no allowlist is active: widening cannot create the
+        filter, so a rune can never narrow the model's view through this
+        method. The filter itself is engine-owned -- runes cannot replace
+        or drop it (see ``get_global_spell_allowlist``).
+        """
+        if self._runner.get_global_spell_allowlist() is None:
+            return
+        self._runner.widen_global_allowlist(spell_names)
 
     def get_all_spells(self) -> list[SpellDefinition]:
         return self._runner.get_all_registered_spells()

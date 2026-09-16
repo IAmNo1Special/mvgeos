@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 import subprocess
 import tempfile
@@ -15,6 +16,48 @@ logger = logging.getLogger(__name__)
 DEFAULT_MARKETPLACE_URL = (
     "https://raw.githubusercontent.com/IAmNo1Special/mvgeos-marketplace/main/index.json"
 )
+
+# Allowlist for install/uninstall directory names. Anything outside this set
+# (path separators, "..", URL-encoded tricks) is rejected before it can reach
+# the filesystem.
+_INSTALL_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _validate_install_name(name: str, *, kind: str) -> str:
+    """Validate an install/uninstall name against the allowlist.
+
+    Args:
+        name: The directory name to validate.
+        kind: Human label used in the error ("mvge" or "rune").
+
+    Raises:
+        ValueError: If the name is not a plain ``^[A-Za-z0-9_-]+$`` name.
+    """
+    if not _INSTALL_NAME_RE.fullmatch(name):
+        raise ValueError(f"Invalid {kind} name {name!r}: must match ^[A-Za-z0-9_-]+$.")
+    return name
+
+
+def _dest_within_target(target: Path, name: str) -> Path:
+    """Return ``target / name`` after asserting it stays inside ``target``.
+
+    Defense-in-depth alongside :func:`_validate_install_name`: catches
+    symlink swaps and other resolution tricks even for well-formed names.
+
+    Raises:
+        ValueError: If the resolved destination escapes the target directory.
+    """
+    dest = target / name
+    resolved_target = target.resolve()
+    resolved_dest = dest.resolve()
+    if resolved_dest != resolved_target and not resolved_dest.is_relative_to(
+        resolved_target
+    ):
+        raise ValueError(
+            f"Install destination {str(dest)!r} escapes target directory "
+            f"{str(target)!r}."
+        )
+    return dest
 
 
 def fetch_marketplace_runes(
@@ -104,7 +147,7 @@ def uninstall_rune(name: str, target_dir: Path | None = None) -> bool:
         if target_dir is not None
         else Path("~/.agents/extensions").expanduser()
     )
-    path = target / name
+    path = _dest_within_target(target, _validate_install_name(name, kind="rune"))
     if path.exists():
         if path.is_dir():
             shutil.rmtree(path)
@@ -133,7 +176,9 @@ def install_rune(
 
     source_path = Path(stripped_source).expanduser()
     if source_path.exists():
-        dest = target / source_path.name
+        dest = _dest_within_target(
+            target, _validate_install_name(source_path.name, kind="rune")
+        )
         if source_path.resolve() != dest.resolve():
             if dest.exists():
                 if dest.is_dir():
@@ -147,14 +192,15 @@ def install_rune(
         name = stripped_source.rstrip("/").split("/")[-1]
         if name.endswith(".git"):
             name = name[:-4]
-        dest = target / name
+        _validate_install_name(name, kind="rune")
+        dest = _dest_within_target(target, name)
         if dest.exists():
             if dest.is_dir():
                 shutil.rmtree(dest)
             else:
                 dest.unlink()
         subprocess.run(
-            ["git", "clone", stripped_source, str(dest)],
+            ["git", "clone", "--", stripped_source, str(dest)],
             check=True,
             capture_output=True,
             text=True,
@@ -179,7 +225,8 @@ def install_rune(
         if not git_url or not isinstance(git_url, str):
             raise ValueError(f"Rune '{stripped_source}' not found in marketplace.")
 
-        dest = target / stripped_source
+        _validate_install_name(stripped_source, kind="rune")
+        dest = _dest_within_target(target, stripped_source)
         if dest.exists():
             if dest.is_dir():
                 shutil.rmtree(dest)
@@ -190,7 +237,7 @@ def install_rune(
         if subpath:
             with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
                 subprocess.run(
-                    ["git", "clone", "--depth", "1", git_url, str(tmp_dir)],
+                    ["git", "clone", "--depth", "1", "--", git_url, str(tmp_dir)],
                     check=True,
                     capture_output=True,
                     text=True,
@@ -199,7 +246,7 @@ def install_rune(
                 shutil.copytree(source_rune_dir, dest)
         else:
             subprocess.run(
-                ["git", "clone", git_url, str(dest)],
+                ["git", "clone", "--", git_url, str(dest)],
                 check=True,
                 capture_output=True,
                 text=True,

@@ -5,21 +5,21 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type Checking: mypy](https://img.shields.io/badge/type%20checking-mypy%20strict-blue.svg)](https://mypy-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-2350%2B%20passed-brightgreen.svg)]()
-[![Coverage](https://img.shields.io/badge/coverage-90%25%2B%20enforced-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-2200%2B%20passed-brightgreen.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-90%25%20target-blue.svg)]()
 
 > **MvgeOS** is a modern, extensible, protocol-compliant AI coding agent architecture built in Python.
 
-Mvges (Agents) invoke Spells (Tools) across Models through Realms (Providers) on behalf of Summoners (Users), storing state and conversation history in Pi-compatible JSONL Tomes (Sessions). See [Architecture Provenance](docs/architecture/PROVENANCE.md) for ecosystem inspirations and the cross-harness continuity roadmap.
+Mvges (Agents) invoke Spells (Tools) across Models through Realms (Providers) on behalf of Summoners (Users), storing state and conversation history in JSONL Tomes (Sessions) — a Pi-inspired format that is not byte-compatible with Pi session files. See [Architecture Provenance](docs/architecture/PROVENANCE.md) for ecosystem inspirations and the cross-harness continuity roadmap.
 
 ---
 
 ## ✨ Features
 
 - ⚡ **Event-Driven Agent Loop (`mvgeos-agent`)**: Stream-centric execution loop with parallel spell dispatching, turn management, and automatic context compaction.
-- 🌐 **Multi-Model Provider Abstraction (`mvgeos-provider`)**: Full OpenRouter integration supporting 60+ LLMs with automatic retry, exponential backoff, rate-limit handling, and reasoning effort configuration.
-- 📜 **Pi-Compatible JSONL Persistence (`mvgeos-tome`)**: Session storage format fully compatible with Pi, featuring cross-process file locking, tree branching/forking, and in-memory index caching.
-- 🔮 **Rune Extension Ecosystem (`mvgeos-runes`)**: Hot-reloadable extension modules with 23 lifecycle Sigil hooks, command registration, and host-isolated process sandboxing.
+- 🌐 **Multi-Model Provider Abstraction (`mvgeos-provider`)**: Realm protocol, model registry, and retry policies. The concrete OpenRouter realm (60+ LLMs, streaming, exponential backoff, rate-limit handling, reasoning effort configuration) ships as the `openrouter-realm` rune in `mvgeos-marketplace` and registers itself at runtime.
+- 📜 **JSONL Session Persistence (`mvgeos-tome`)**: JSONL session storage in a Pi-inspired format (not byte-compatible with Pi: Pi session files cannot be opened by MvgeOS and vice versa), featuring cross-process file locking, tree branching/forking, and in-memory index caching.
+- 🔮 **Rune Extension Ecosystem (`mvgeos-runes`)**: Hot-reloadable extension modules with 23 lifecycle Sigil hooks and command registration. Rune code executes in-process via `importlib` — extensions are *not* process-isolated; an opt-in sandbox seam exists for code that runes voluntarily submit for sandboxed execution.
 - 🖥️ **Desktop GUI (`mvgeos-gui`)**: Native desktop interface powered by NiceGUI and PyWebView offering a 1:1 Antigravity layout with interactive chat, step cards, floating dock, file tree, diff review, and artifact inspector.
 - ⌨️ **Rich CLI & TUI (`mvgeos-cli`)**: Full terminal interface featuring an interactive REPL with prompt-toolkit, terminal dashboard, and system diagnostic tooling.
 - 🛠️ **Full-Featured Coding Agent (`coding-mvge`)**: Pre-configured agent with built-in spells for bash execution, file reading, editing, creation, grep searching, and directory listing.
