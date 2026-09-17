@@ -320,12 +320,30 @@ class SkillManifest:
     description: str
     scope: SkillScope = SkillScope.PROJECT
     path: str = ""
+    location: str = ""
     version: str = ""
     license: str = ""
     compatibility: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
     allowed_tools: str = ""
     disable_model_invocation: bool = False
+    body: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.location and self.path:
+            if self.path.endswith("SKILL.md"):
+                self.location = self.path
+            else:
+                self.location = (Path(self.path) / "SKILL.md").as_posix()
+        elif self.location and not self.path:
+            self.path = self.location
+
+    @property
+    def base_dir(self) -> Path:
+        loc = self.location or self.path
+        if loc.endswith("SKILL.md"):
+            return Path(loc).parent
+        return Path(loc)
 
 
 @dataclass
@@ -336,6 +354,9 @@ class SkillLoad:
 class SkillDiagnosticKind(StrEnum):
     SHADOWED_SKILL = "shadowed_skill"
     PARSE_WARNING = "parse_warning"
+    MALFORMED_YAML = "malformed_yaml"
+    INVALID_PLUGIN = "invalid_plugin"
+    PATH_ESCAPE = "path_escape"
 
 
 @dataclass
@@ -344,6 +365,21 @@ class SkillDiagnostic:
     skill_name: str
     message: str
     scope: SkillScope | None = None
+    path: str = ""
+
+
+@dataclass
+class PluginManifest:
+    name: str
+    schema: str
+    version: str = ""
+    description: str = ""
+    author: dict[str, str] | str = field(default_factory=dict)
+    homepage: str = ""
+    repository: str = ""
+    license: str = ""
+    keywords: list[str] = field(default_factory=list)
+    extensions: dict[str, Any] = field(default_factory=dict)
     path: str = ""
 
 

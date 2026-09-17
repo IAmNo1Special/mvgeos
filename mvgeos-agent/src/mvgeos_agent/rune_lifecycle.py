@@ -17,12 +17,11 @@ from pathlib import Path
 from mvgeos_core.sandbox import MvgeSandbox
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_runes.loader import (
-    discover_plugin_skill_paths,
-    get_default_skill_paths,
+    get_prioritized_skill_search_paths,
     load_runes_from_paths,
     load_skills_from_paths,
 )
-from mvgeos_runes.rune_runner import RuneRunner
+from mvgeos_runes.rune_runner import RuneRunner, create_activate_skill_spell
 from mvgeos_runes.types import (
     ResourcesDiscoverData,
     RuneContext,
@@ -58,6 +57,7 @@ class RuneLifecycle:
         runner: RuneRunner | None = None,
         cwd: str | None = None,
         mode: str = "cli",
+        global_dir: Path | None = None,
     ) -> None:
         self._agent_name = agent_name
         self._api_key = api_key
@@ -66,6 +66,7 @@ class RuneLifecycle:
         self._provider_registry = provider_registry
         self._mode = mode
         self._cwd = cwd if cwd is not None else str(Path.cwd())
+        self._global_dir = global_dir
         self._runner = runner
         self._watchers: list[RuneWatcher] = []
         self._watched_paths: set[str] = set()
@@ -146,8 +147,13 @@ class RuneLifecycle:
         elif diagnostics:
             runner.extend_diagnostics(diagnostics)
 
-        skill_paths = list(get_default_skill_paths(self._agent_name))
-        skill_paths.extend(discover_plugin_skill_paths(cwd=Path(self._cwd)))
+        skill_paths = list(
+            get_prioritized_skill_search_paths(
+                self._agent_name,
+                cwd=Path(self._cwd),
+                global_dir=self._global_dir,
+            )
+        )
 
         # Dynamic Resource Discovery hook (SigilHook.RESOURCES_DISCOVER)
         res_data = ResourcesDiscoverData(cwd=self._cwd, reason="startup")
@@ -173,6 +179,8 @@ class RuneLifecycle:
         )
         if skill_loads:
             runner.load_skills(skill_loads, diagnostics=skill_diagnostics)
+            activate_spell = create_activate_skill_spell(runner)
+            runner.register_spell(activate_spell, override=True)
         elif skill_diagnostics:
             runner.extend_skill_diagnostics(skill_diagnostics)
 

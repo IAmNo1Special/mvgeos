@@ -732,3 +732,39 @@ class TestTomePersistence:
 
         result = await runner.force_compact(_long_transcript())
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_compaction_preserves_active_skill_content(self) -> None:
+        runner = CompactionRunner(
+            realm=_realm(),
+            model=_model(),
+            emit=Recorder(),
+            settings=CompactionSettings(reserve_mana=200, keep_recent_mana=200),
+            tome=None,
+        )
+
+        transcript = [
+            SummonerRequest(
+                role="user",
+                content=(
+                    '<skill_content name="pdf-tool">\n'
+                    "# Instructions\n"
+                    "Extract text from PDFs.\n"
+                    "</skill_content>"
+                ),
+            ),
+            *_long_transcript(),
+        ]
+
+        result = await runner.force_compact(transcript)
+        assert result is not None
+        # Check that the summary is present
+        assert "Summary of earlier conversation" in str(result[0].content)
+        # Check that skill_content for pdf-tool was preserved across compaction
+        preserved_skill_invs = [
+            inv
+            for inv in result
+            if '<skill_content name="pdf-tool">' in str(inv.content)
+        ]
+        assert len(preserved_skill_invs) == 1
+        assert "Extract text from PDFs." in str(preserved_skill_invs[0].content)

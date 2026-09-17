@@ -8,6 +8,7 @@ recording the compaction on the Tome.
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from mvgeos_core.channel import (
@@ -46,6 +47,50 @@ from mvgeos_agent.harness.compaction.compaction import (
 logger = logging.getLogger(__name__)
 
 _SUMMARY_PREFIX = "Summary of earlier conversation:\n\n"
+
+_SKILL_CONTENT_REGEX = re.compile(
+    r"(<skill_content name=\"[^\"]+\".*?</skill_content>)", re.DOTALL
+)
+_SKILL_NAME_REGEX = re.compile(r"<skill_content name=\"([^\"]+)\"")
+
+
+def _extract_skill_contents(invocations: list[MvgeInvocation]) -> dict[str, str]:
+    """Map skill name -> latest <skill_content> block in invocations."""
+    skills: dict[str, str] = {}
+    for inv in invocations:
+        content = getattr(inv, "content", "")
+        text = ""
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("type") in ("text", ContentType.TEXT):
+                        text += block.get("text", "")
+                elif isinstance(block, str):
+                    text += block
+        for match in _SKILL_CONTENT_REGEX.finditer(text):
+            full_block = match.group(1)
+            name_match = _SKILL_NAME_REGEX.search(full_block)
+            if name_match:
+                skills[name_match.group(1)] = full_block
+    return skills
+
+
+def _preserve_skill_contents(
+    to_summarize: list[MvgeInvocation],
+    retained_tail: list[MvgeInvocation],
+) -> list[str]:
+    """Extract <skill_content> blocks from summarized invocations
+    not present in retained tail.
+    """
+    summarized_skills = _extract_skill_contents(to_summarize)
+    retained_skills = _extract_skill_contents(retained_tail)
+    return [
+        block
+        for name, block in summarized_skills.items()
+        if name not in retained_skills
+    ]
 
 
 class CompactionRunner:
@@ -118,8 +163,15 @@ class CompactionRunner:
             )
             return None
 
+        preserved_skills = _preserve_skill_contents(
+            prepared.to_summarize, prepared.retained_tail
+        )
+        preserved_invocations: list[MvgeInvocation] = [
+            SummonerRequest(role="user", content=block) for block in preserved_skills
+        ]
         replacement: list[MvgeInvocation] = [
             SummonerRequest(role="user", content=f"{_SUMMARY_PREFIX}{summary}"),
+            *preserved_invocations,
             *prepared.retained_tail,
         ]
         self._previous_summary = summary
@@ -175,8 +227,15 @@ class CompactionRunner:
             )
             return None
 
-        replacement: list[MvgeInvocation] = [
+        preserved_skills = _preserve_skill_contents(
+            prepared.to_summarize, prepared.retained_tail
+        )
+        preserved_invocations = [
+            SummonerRequest(role="user", content=block) for block in preserved_skills
+        ]
+        replacement = [
             SummonerRequest(role="user", content=f"{_SUMMARY_PREFIX}{summary}"),
+            *preserved_invocations,
             *prepared.retained_tail,
         ]
         self._previous_summary = summary

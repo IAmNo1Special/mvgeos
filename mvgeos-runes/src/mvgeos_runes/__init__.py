@@ -10,8 +10,10 @@ from mvgeos_runes.installer import (
 from mvgeos_runes.loader import (
     discover_plugin_skill_paths,
     get_default_skill_paths,
+    get_prioritized_skill_search_paths,
     load_factory_from_manifest,
     load_manifests,
+    load_plugin_manifest,
     load_runes_from_paths,
     load_skill_manifest,
     load_skill_manifests,
@@ -19,10 +21,11 @@ from mvgeos_runes.loader import (
 )
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_api import RuneAPI, RuneFactory
-from mvgeos_runes.rune_runner import RuneRunner
+from mvgeos_runes.rune_runner import RuneRunner, create_activate_skill_spell
 from mvgeos_runes.types import (
     Diagnostic,
     DiagnosticKind,
+    PluginManifest,
     RegisteredCommand,
     ResourcesDiscoverData,
     RuneContext,
@@ -46,6 +49,7 @@ __all__ = [
     "Diagnostic",
     "DiagnosticKind",
     "ExecutionMode",
+    "PluginManifest",
     "RegisteredCommand",
     "ResourcesDiscoverData",
     "RuneAPI",
@@ -65,14 +69,17 @@ __all__ = [
     "SkillManifest",
     "SkillScope",
     "SpellDefinition",
+    "create_activate_skill_spell",
     "discover_plugin_skill_paths",
     "fetch_marketplace_runes",
     "get_default_skill_paths",
+    "get_prioritized_skill_search_paths",
     "install_rune",
     "list_installed_runes",
     "load_factory_from_manifest",
     "load_manifest",
     "load_manifests",
+    "load_plugin_manifest",
     "load_runes_from_paths",
     "load_skill_manifest",
     "load_skill_manifests",

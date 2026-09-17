@@ -118,6 +118,9 @@ class DummyAgent:
     def get_skills_catalog(self) -> list[dict[str, str]]:
         return []
 
+    async def activate_skill(self, name: str) -> str:
+        return f"Activated {name}"
+
     async def close(self) -> None:
         pass
 

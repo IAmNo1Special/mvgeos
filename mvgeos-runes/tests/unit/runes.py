@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import time
@@ -7,11 +8,14 @@ import pytest
 from mvgeos_core.spells import ExecutionMode
 
 from mvgeos_runes.loader import (
+    _repair_yaml_unquoted_colons,
     clear_skill_manifest_cache,
     discover_plugin_skill_paths,
     get_default_skill_paths,
+    get_prioritized_skill_search_paths,
     load_factory_from_manifest,
     load_manifests,
+    load_plugin_manifest,
     load_runes_from_paths,
     load_skill_manifest,
     load_skill_manifests,
@@ -23,6 +27,7 @@ from mvgeos_runes.types import (
     RuneManifest,
     RuneScope,
     SigilHook,
+    SkillDiagnostic,
     SkillDiagnosticKind,
     SkillScope,
     SpellDefinition,
@@ -970,6 +975,16 @@ class TestGetDefaultSkillPaths:
         (plugins_root / "empty-plugin").mkdir()
 
         plugin_dir = plugins_root / "my-plugin"
+        (plugin_dir / "plugin.json").parent.mkdir(parents=True, exist_ok=True)
+        (plugin_dir / "plugin.json").write_text(
+            json.dumps(
+                {
+                    "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+                    "name": "my-plugin",
+                }
+            ),
+            encoding="utf-8",
+        )
         plugin_skills = plugin_dir / "skills" / "my-skill"
         plugin_skills.mkdir(parents=True)
         (plugin_skills / "SKILL.md").write_text(
@@ -986,6 +1001,245 @@ class TestGetDefaultSkillPaths:
         loads, diags = load_skills_from_paths(discovered)
         assert len(loads) == 1
         assert loads[0].manifest.name == "my-skill"
+        assert loads[0].manifest.location == str(plugin_skills / "SKILL.md")
+        assert loads[0].manifest.body == "Body"
+
+    def test_load_plugin_manifest(self, tmp_path: Path) -> None:
+        valid_dir = tmp_path / "valid"
+        valid_dir.mkdir()
+        (valid_dir / "plugin.json").write_text(
+            json.dumps(
+                {
+                    "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+                    "name": "valid-plugin",
+                    "description": "Valid plugin description",
+                    "version": "1.2.0",
+                }
+            ),
+            encoding="utf-8",
+        )
+        manifest = load_plugin_manifest(valid_dir)
+        assert manifest is not None
+        assert manifest.name == "valid-plugin"
+        assert manifest.description == "Valid plugin description"
+        assert manifest.version == "1.2.0"
+
+        # Missing manifest
+        missing_dir = tmp_path / "missing"
+        missing_dir.mkdir()
+        assert load_plugin_manifest(missing_dir) is None
+
+        # Invalid schema
+        invalid_schema = tmp_path / "invalid_schema"
+        invalid_schema.mkdir()
+        (invalid_schema / "plugin.json").write_text(
+            json.dumps({"$schema": "https://example.com/schema.json", "name": "foo"}),
+            encoding="utf-8",
+        )
+        assert load_plugin_manifest(invalid_schema) is None
+
+        # Invalid name
+        invalid_name = tmp_path / "invalid_name"
+        invalid_name.mkdir()
+        (invalid_name / "plugin.json").write_text(
+            json.dumps(
+                {
+                    "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+                    "name": "Invalid_Name_With_Underscores",
+                }
+            ),
+            encoding="utf-8",
+        )
+        assert load_plugin_manifest(invalid_name) is None
+
+    def test_get_prioritized_skill_search_paths(self, tmp_path: Path) -> None:
+        cwd = tmp_path / "proj"
+        global_dir = tmp_path / "global"
+        cwd.mkdir()
+        global_dir.mkdir()
+
+        # Create project plugin
+        proj_plugin = cwd / ".agents" / "plugins" / "proj-plug"
+        (proj_plugin / "skills").mkdir(parents=True)
+        (proj_plugin / "plugin.json").write_text(
+            json.dumps(
+                {
+                    "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+                    "name": "proj-plug",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        # Create user plugin
+        user_plugin = global_dir / "plugins" / "user-plug"
+        (user_plugin / "skills").mkdir(parents=True)
+        (user_plugin / "plugin.json").write_text(
+            json.dumps(
+                {
+                    "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+                    "name": "user-plug",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        # Create agent plugin
+        agent_plugin = global_dir / "agents" / "coder" / "plugins" / "agent-plug"
+        (agent_plugin / "skills").mkdir(parents=True)
+        (agent_plugin / "plugin.json").write_text(
+            json.dumps(
+                {
+                    "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+                    "name": "agent-plug",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        paths = get_prioritized_skill_search_paths(
+            agent_name="coder", cwd=cwd, global_dir=global_dir
+        )
+        scopes = [scope for _, scope in paths]
+        assert scopes == [
+            SkillScope.PROJECT,
+            SkillScope.PROJECT,
+            SkillScope.USER,
+            SkillScope.USER,
+            SkillScope.AGENT,
+            SkillScope.AGENT,
+        ]
+        assert paths[0][0] == cwd / ".agents" / "skills"
+        assert paths[1][0] == proj_plugin / "skills"
+        assert paths[2][0] == global_dir / "skills"
+        assert paths[3][0] == user_plugin / "skills"
+        assert paths[4][0] == global_dir / "agents" / "coder" / "skills"
+        assert paths[5][0] == agent_plugin / "skills"
+
+    def test_repair_yaml_unquoted_colons(self) -> None:
+        raw = "name: my-skill\ndescription: A tool: with a colon in description\n"
+        repaired = _repair_yaml_unquoted_colons(raw)
+        assert (
+            repaired
+            == 'name: my-skill\ndescription: "A tool: with a colon in description"\n'
+        )
+
+    def test_load_plugin_manifest_diagnostics(self, tmp_path: Path) -> None:
+        # Missing plugin.json
+        empty_dir = tmp_path / "empty_plug"
+        empty_dir.mkdir()
+        diags: list[SkillDiagnostic] = []
+        assert load_plugin_manifest(empty_dir, diagnostics=diags) is None
+        assert any(d.kind == SkillDiagnosticKind.INVALID_PLUGIN for d in diags)
+
+        # Invalid JSON
+        bad_json = tmp_path / "bad_json"
+        bad_json.mkdir()
+        (bad_json / "plugin.json").write_text("{not valid json", encoding="utf-8")
+        diags.clear()
+        assert load_plugin_manifest(bad_json, diagnostics=diags) is None
+        assert any("Invalid JSON" in d.message for d in diags)
+
+        # Root not a JSON object
+        list_json = tmp_path / "list_json"
+        list_json.mkdir()
+        (list_json / "plugin.json").write_text("[1, 2, 3]", encoding="utf-8")
+        diags.clear()
+        assert load_plugin_manifest(list_json, diagnostics=diags) is None
+        assert any("must be a JSON object" in d.message for d in diags)
+
+        # Missing or invalid schema
+        no_schema = tmp_path / "no_schema"
+        no_schema.mkdir()
+        (no_schema / "plugin.json").write_text(
+            '{"name": "plug", "version": "1.0"}', encoding="utf-8"
+        )
+        diags.clear()
+        assert load_plugin_manifest(no_schema, diagnostics=diags) is None
+        assert any("Missing or unsupported $schema" in d.message for d in diags)
+
+        # Invalid plugin name
+        bad_name = tmp_path / "bad_name"
+        bad_name.mkdir()
+        (bad_name / "plugin.json").write_text(
+            '{"$schema": "https://agent-plugins.org/v1", "name": "INVALID_NAME!"}',
+            encoding="utf-8",
+        )
+        diags.clear()
+        assert load_plugin_manifest(bad_name, diagnostics=diags) is None
+        assert any("Invalid plugin name" in d.message for d in diags)
+
+    def test_load_skill_manifest_additional_diagnostics(self, tmp_path: Path) -> None:
+        # Unrepairable YAML
+        bad_yaml_dir = tmp_path / "bad-yaml"
+        bad_yaml_dir.mkdir()
+        (bad_yaml_dir / "SKILL.md").write_text(
+            "---\n[unbalanced bracket\n---\nbody", encoding="utf-8"
+        )
+        diags: list[SkillDiagnostic] = []
+        assert (
+            load_skill_manifest(bad_yaml_dir, diagnostics=diags, lenient=False) is None
+        )
+        assert any("Invalid YAML" in d.message for d in diags)
+
+        # Non-dict frontmatter
+        list_yaml_dir = tmp_path / "list-yaml"
+        list_yaml_dir.mkdir()
+        (list_yaml_dir / "SKILL.md").write_text(
+            "---\n- item1\n- item2\n---\nbody", encoding="utf-8"
+        )
+        diags.clear()
+        assert (
+            load_skill_manifest(list_yaml_dir, diagnostics=diags, lenient=False) is None
+        )
+        assert any("not a YAML mapping" in d.message for d in diags)
+
+        # Missing description
+        no_desc_dir = tmp_path / "no-desc"
+        no_desc_dir.mkdir()
+        (no_desc_dir / "SKILL.md").write_text(
+            "---\nname: no-desc\n---\nbody", encoding="utf-8"
+        )
+        diags.clear()
+        assert (
+            load_skill_manifest(no_desc_dir, diagnostics=diags, lenient=False) is None
+        )
+        assert any("description" in d.message for d in diags)
+
+        # Truncates compatibility > 500 chars and falls back to metadata version
+        long_compat_dir = tmp_path / "long-compat"
+        long_compat_dir.mkdir()
+        (long_compat_dir / "SKILL.md").write_text(
+            f"---\nname: long-compat\ndescription: Desc\ncompatibility: {'x' * 600}\n"
+            "metadata:\n  version: '2.0.0'\n---\nbody",
+            encoding="utf-8",
+        )
+        manifest = load_skill_manifest(long_compat_dir)
+        assert manifest is not None
+        assert len(manifest.compatibility) == 500
+        assert manifest.version == "2.0.0"
+
+    def test_load_skills_from_paths_shadowed_warning(self, tmp_path: Path) -> None:
+        p1 = tmp_path / "p1"
+        p2 = tmp_path / "p2"
+        s1 = p1 / "same-skill"
+        s2 = p2 / "same-skill"
+        s1.mkdir(parents=True)
+        s2.mkdir(parents=True)
+        (s1 / "SKILL.md").write_text(
+            "---\nname: same-skill\ndescription: Primary\n---\nbody",
+            encoding="utf-8",
+        )
+        (s2 / "SKILL.md").write_text(
+            "---\nname: same-skill\ndescription: Shadowed\n---\nbody",
+            encoding="utf-8",
+        )
+        loads, diags = load_skills_from_paths(
+            [(p1, SkillScope.PROJECT), (p2, SkillScope.USER)]
+        )
+        assert len(loads) == 1
+        assert loads[0].manifest.description == "Primary"
+        assert any(d.kind == SkillDiagnosticKind.SHADOWED_SKILL for d in diags)
 
 
 def test_load_factory_from_manifest_with_local_import() -> None:

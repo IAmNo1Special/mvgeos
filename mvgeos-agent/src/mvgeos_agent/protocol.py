@@ -158,6 +158,10 @@ class MvgeAgent(Protocol):
         """List registered skills with metadata."""
         ...
 
+    async def activate_skill(self, name: str) -> str:
+        """Activate a registered skill by name and return its activation content."""
+        ...
+
     async def close(self) -> None:
         """Shut down resources, runes, and sessions."""
         ...

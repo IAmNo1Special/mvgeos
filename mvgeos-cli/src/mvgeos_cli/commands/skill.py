@@ -1,19 +1,22 @@
 from __future__ import annotations
 
+import re
 import shutil
 import sys
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_runes.loader import (
-    discover_plugin_skill_paths,
-    get_default_skill_paths,
+    get_prioritized_skill_search_paths,
+    load_skill_manifest,
     load_skills_from_paths,
 )
 from mvgeos_runes.types import (
+    SkillDiagnostic,
     SkillDiagnosticKind,
     SkillScope,
 )
@@ -56,10 +59,7 @@ def plan_skill_dedupe(
     paths = (
         list(skill_paths)
         if skill_paths is not None
-        else [
-            *get_default_skill_paths(agent_name),
-            *discover_plugin_skill_paths(),
-        ]
+        else list(get_prioritized_skill_search_paths(agent_name))
     )
     loads, diagnostics = load_skills_from_paths(paths, agent_name)
     winners = {load.manifest.name: load.manifest for load in loads}
@@ -171,3 +171,139 @@ def skill_dedupe(
         shutil.rmtree(target)
         removed += 1
     console.print(f"[green]Removed {removed} shadowed skill directorie(s).[/green]")
+
+
+@skill_app.command("list")
+def skill_list(
+    agent_name: str = typer.Option(
+        DEFAULT_AGENT_NAME,
+        "--agent-name",
+        help="Agent name for agent-specific skill directory",
+    ),
+    cwd: str | None = typer.Option(
+        None,
+        "--cwd",
+        help="Custom project working directory to discover skills from",
+    ),
+) -> None:
+    """List all available skills across project, user, agent, and plugin scopes."""
+    effective_cwd = Path(cwd) if cwd else None
+    paths = get_prioritized_skill_search_paths(agent_name=agent_name, cwd=effective_cwd)
+    loads, diagnostics = load_skills_from_paths(paths, agent_name)
+
+    if not loads:
+        console.print("[yellow]No skills found.[/yellow]")
+        return
+
+    ascii_only = not is_utf8_stream(sys.stdout)
+    box_style = box.ASCII if ascii_only else box.HEAVY_HEAD
+    table = Table(title="Available Skills", box=box_style)
+    table.add_column("Skill", style="cyan")
+    table.add_column("Scope", style="green")
+    table.add_column("Description", style="white")
+    table.add_column("Path", style="yellow")
+
+    for load in loads:
+        m = load.manifest
+        table.add_row(
+            m.name,
+            m.scope.value if m.scope else "unknown",
+            clip_text(m.description, 60, ascii_only),
+            clip_text(m.location or m.path, PATH_MAX_WIDTH, ascii_only),
+        )
+
+    console.print(table)
+
+
+@skill_app.command("validate")
+def skill_validate(
+    target: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to a skill directory or SKILL.md file",
+        ),
+    ],
+) -> None:
+    """Validate a skill strictly against the agentskills.io specification."""
+    resolved = target.resolve()
+    if not resolved.exists():
+        console.print(f"[red]FAIL: Path does not exist: {target}[/red]")
+        raise typer.Exit(1)
+
+    skill_md = (
+        resolved
+        if resolved.is_file() and resolved.name == "SKILL.md"
+        else resolved / "SKILL.md"
+    )
+    if not skill_md.is_file():
+        console.print(f"[red]FAIL: Missing SKILL.md in {resolved}[/red]")
+        raise typer.Exit(1)
+
+    skill_dir = skill_md.parent
+    diagnostics: list[SkillDiagnostic] = []
+    manifest = load_skill_manifest(
+        skill_dir,
+        diagnostics=diagnostics,
+        lenient=False,
+    )
+
+    # Check path containment for files in skill directory
+    for f in skill_dir.rglob("*"):
+        try:
+            if not str(f.resolve()).startswith(str(skill_dir.resolve())):
+                diagnostics.append(
+                    SkillDiagnostic(
+                        kind=SkillDiagnosticKind.PATH_ESCAPE,
+                        skill_name=skill_dir.name,
+                        message=f"File '{f.name}' resolves outside skill directory",
+                        path=str(f),
+                    )
+                )
+        except OSError:
+            pass
+
+    # Check for relative path escapes in SKILL.md body
+    if manifest and manifest.body:
+        for match in re.finditer(r"(?:\.\./)+[a-zA-Z0-9_./-]+", manifest.body):
+            escaped_ref = match.group(0)
+            target_path = (skill_dir / escaped_ref).resolve()
+            if not str(target_path).startswith(str(skill_dir.resolve())):
+                diagnostics.append(
+                    SkillDiagnostic(
+                        kind=SkillDiagnosticKind.PATH_ESCAPE,
+                        skill_name=skill_dir.name,
+                        message=(
+                            f"Reference '{escaped_ref}' in SKILL.md "
+                            "escapes skill directory"
+                        ),
+                        path=str(skill_md),
+                    )
+                )
+
+    errors = [
+        d
+        for d in diagnostics
+        if d.kind
+        in (
+            SkillDiagnosticKind.PARSE_WARNING,
+            SkillDiagnosticKind.MALFORMED_YAML,
+            SkillDiagnosticKind.PATH_ESCAPE,
+            SkillDiagnosticKind.INVALID_PLUGIN,
+        )
+    ]
+
+    if manifest is None or errors:
+        console.print(f"[red]FAIL: Validation failed for {skill_md.parent.name}:[/red]")
+        for err in errors:
+            console.print(f"  - ({err.kind.value}) {err.message}")
+        raise typer.Exit(1)
+
+    console.print(
+        f"[green]OK: Skill '{manifest.name}' is a valid conformant "
+        "agentskills.io skill.[/green]"
+    )
+    console.print(f"  Name: {manifest.name}")
+    console.print(f"  Description: {manifest.description}")
+    console.print(f"  Location: {manifest.location}")
+    if manifest.version:
+        console.print(f"  Version: {manifest.version}")

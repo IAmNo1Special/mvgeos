@@ -3,11 +3,12 @@ from __future__ import annotations
 import dataclasses
 import importlib.util
 import inspect
+import json
 import re
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import yaml
 
@@ -16,6 +17,7 @@ from mvgeos_runes.rune_api import RuneFactory
 from mvgeos_runes.types import (
     Diagnostic,
     DiagnosticKind,
+    PluginManifest,
     RuneLoad,
     RuneManifest,
     RuneScope,
@@ -323,6 +325,23 @@ SKILL_SCOPES = [
 ]
 
 NAME_REGEX = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+PLUGIN_NAME_REGEX = re.compile(r"^(?!.*(--|\.\.))[a-z0-9]([a-z0-9.-]*[a-z0-9])?$")
+FRONTMATTER_REGEX = re.compile(r"^---\r?\n(.*?)\r?\n---\r?\n?(.*)$", re.DOTALL)
+UNQUOTED_COLON_REGEX = re.compile(
+    r"^(\s*[a-zA-Z0-9_-]+:\s*)([^\"'\r\n#].*:\s*.*)$", re.MULTILINE
+)
+
+
+def _repair_yaml_unquoted_colons(yaml_text: str) -> str:
+    """Wrap unquoted YAML values containing colons in quotes for tolerant parsing."""
+
+    def replacer(match: re.Match[str]) -> str:
+        key_part = match.group(1)
+        val_part = match.group(2).strip()
+        escaped_val = val_part.replace('"', '\\"')
+        return f'{key_part}"{escaped_val}"'
+
+    return UNQUOTED_COLON_REGEX.sub(replacer, yaml_text)
 
 
 _SKILL_MANIFEST_CACHE: dict[str, tuple[float, SkillManifest | None]] = {}
@@ -333,38 +352,156 @@ def clear_skill_manifest_cache() -> None:
     _SKILL_MANIFEST_CACHE.clear()
 
 
-def _parse_skill_manifest(path: Path) -> SkillManifest | None:
-    skill_md_path = path / "SKILL.md"
+def _parse_skill_manifest(
+    path: Path,
+    diagnostics: list[SkillDiagnostic] | None = None,
+    scope: SkillScope = SkillScope.PROJECT,
+    lenient: bool = False,
+) -> SkillManifest | None:
+    skill_md_path = (path / "SKILL.md").resolve()
+    if not skill_md_path.is_file():
+        return None
+
+    path_resolved = path.resolve()
+    if not str(skill_md_path).startswith(str(path_resolved)):
+        if diagnostics is not None:
+            diagnostics.append(
+                SkillDiagnostic(
+                    kind=SkillDiagnosticKind.PATH_ESCAPE,
+                    skill_name=path.name,
+                    message=(
+                        f"SKILL.md in {path.name} resolves outside the skill directory"
+                    ),
+                    scope=scope,
+                    path=str(path),
+                )
+            )
+        return None
+
     try:
         content = skill_md_path.read_text(encoding="utf-8")
     except OSError:
         return None
 
     content = content.lstrip("\ufeff")
-    if not content.startswith("---"):
+    match = FRONTMATTER_REGEX.match(content)
+    if not match:
+        if diagnostics is not None:
+            diagnostics.append(
+                SkillDiagnostic(
+                    kind=SkillDiagnosticKind.PARSE_WARNING,
+                    skill_name=path.name,
+                    message=(
+                        f"SKILL.md in {path.name} missing valid '---' "
+                        "frontmatter delimiters"
+                    ),
+                    scope=scope,
+                    path=str(path),
+                )
+            )
         return None
 
-    parts = content.split("---", 2)
-    if len(parts) < 3:
-        return None
+    raw_yaml, body = match.group(1), match.group(2).strip()
 
     try:
-        frontmatter = yaml.safe_load(parts[1])
-    except Exception:
-        return None
+        frontmatter = yaml.safe_load(raw_yaml)
+    except yaml.YAMLError:
+        repaired_yaml = _repair_yaml_unquoted_colons(raw_yaml)
+        try:
+            frontmatter = yaml.safe_load(repaired_yaml)
+            if diagnostics is not None:
+                diagnostics.append(
+                    SkillDiagnostic(
+                        kind=SkillDiagnosticKind.MALFORMED_YAML,
+                        skill_name=path.name,
+                        message=(
+                            "Repaired unquoted colons in YAML frontmatter for "
+                            f"{path.name}"
+                        ),
+                        scope=scope,
+                        path=str(path),
+                    )
+                )
+        except yaml.YAMLError as exc:
+            if diagnostics is not None:
+                diagnostics.append(
+                    SkillDiagnostic(
+                        kind=SkillDiagnosticKind.PARSE_WARNING,
+                        skill_name=path.name,
+                        message=f"Invalid YAML frontmatter in {path.name}: {exc}",
+                        scope=scope,
+                        path=str(path),
+                    )
+                )
+            return None
 
     if not isinstance(frontmatter, dict):
-        return None
-
-    name = frontmatter.get("name")
-    if not isinstance(name, str) or not (1 <= len(name) <= 64):
-        return None
-
-    if not NAME_REGEX.match(name) or name != path.name:
+        if diagnostics is not None:
+            diagnostics.append(
+                SkillDiagnostic(
+                    kind=SkillDiagnosticKind.PARSE_WARNING,
+                    skill_name=path.name,
+                    message=f"Frontmatter in {path.name} is not a YAML mapping",
+                    scope=scope,
+                    path=str(path),
+                )
+            )
         return None
 
     description = frontmatter.get("description")
-    if not isinstance(description, str) or not (1 <= len(description) <= 1024):
+    if (
+        not isinstance(description, str)
+        or not (1 <= len(description) <= 1024)
+        or not description.strip()
+    ):
+        if diagnostics is not None:
+            diagnostics.append(
+                SkillDiagnostic(
+                    kind=SkillDiagnosticKind.PARSE_WARNING,
+                    skill_name=path.name,
+                    message=(
+                        f"Skill in {path.name} missing or invalid 'description' "
+                        "(must be string of 1-1024 chars)"
+                    ),
+                    scope=scope,
+                    path=str(path),
+                )
+            )
+        return None
+
+    name = frontmatter.get("name")
+    if not isinstance(name, str) or not (1 <= len(name) <= 64) or not name.strip():
+        if not lenient:
+            if diagnostics is not None:
+                diagnostics.append(
+                    SkillDiagnostic(
+                        kind=SkillDiagnosticKind.PARSE_WARNING,
+                        skill_name=path.name,
+                        message=(
+                            f"Skill in {path.name} missing or invalid 'name' "
+                            "(must be string of 1-64 chars)"
+                        ),
+                        scope=scope,
+                        path=str(path),
+                    )
+                )
+            return None
+        name = path.name
+
+    if (not NAME_REGEX.match(name) or name != path.name) and not lenient:
+        if diagnostics is not None:
+            diagnostics.append(
+                SkillDiagnostic(
+                    kind=SkillDiagnosticKind.PARSE_WARNING,
+                    skill_name=name,
+                    message=(
+                        f"Skill name '{name}' does not match regex "
+                        f"^[a-z0-9]+(-[a-z0-9]+)*$ or directory '{path.name}'"
+                    ),
+                    scope=scope,
+                    path=str(path),
+                )
+            )
         return None
 
     def _get_str(key: str) -> str:
@@ -375,25 +512,40 @@ def _parse_skill_manifest(path: Path) -> SkillManifest | None:
     if not isinstance(metadata, dict):
         metadata = {}
 
+    version = _get_str("version")
+    if not version and isinstance(metadata.get("version"), str):
+        version = metadata["version"]
+
+    compatibility = _get_str("compatibility")
+    if len(compatibility) > 500:
+        compatibility = compatibility[:500]
+
     disable_model_invocation = frontmatter.get("disable-model-invocation", False)
     if not isinstance(disable_model_invocation, bool):
         disable_model_invocation = False
 
     return SkillManifest(
         name=name,
-        description=description,
-        scope=SkillScope.PROJECT,  # Will be set by caller
-        path=str(path),
-        version=_get_str("version"),
+        description=description.strip(),
+        scope=scope,
+        path=str(path_resolved),
+        location=str(skill_md_path),
+        version=version,
         license=_get_str("license"),
-        compatibility=_get_str("compatibility"),
+        compatibility=compatibility,
         metadata=metadata,
         allowed_tools=_get_str("allowed-tools"),
         disable_model_invocation=disable_model_invocation,
+        body=body,
     )
 
 
-def load_skill_manifest(path: Path) -> SkillManifest | None:
+def load_skill_manifest(
+    path: Path,
+    diagnostics: list[SkillDiagnostic] | None = None,
+    scope: SkillScope = SkillScope.PROJECT,
+    lenient: bool = False,
+) -> SkillManifest | None:
     """Load a skill manifest from a SKILL.md file with YAML frontmatter."""
     skill_md_path = path / "SKILL.md"
     if not skill_md_path.exists():
@@ -403,12 +555,14 @@ def load_skill_manifest(path: Path) -> SkillManifest | None:
     except OSError:
         return None
 
-    cache_key = str(skill_md_path.resolve())
+    cache_key = f"{skill_md_path.resolve()}:{lenient}"
     cached = _SKILL_MANIFEST_CACHE.get(cache_key)
     if cached is not None and cached[0] == mtime:
         return dataclasses.replace(cached[1]) if cached[1] is not None else None
 
-    manifest = _parse_skill_manifest(path)
+    manifest = _parse_skill_manifest(
+        path, diagnostics=diagnostics, scope=scope, lenient=lenient
+    )
     _SKILL_MANIFEST_CACHE[cache_key] = (mtime, manifest)
     return dataclasses.replace(manifest) if manifest is not None else None
 
@@ -417,19 +571,23 @@ def load_skill_manifests(
     skills_dir: Path,
     scope: SkillScope = SkillScope.PROJECT,
     diagnostics: list[SkillDiagnostic] | None = None,
+    lenient: bool = False,
 ) -> list[SkillManifest]:
     """Load all skill manifests from a skills directory."""
     if not skills_dir.exists():
         return []
     manifests: list[SkillManifest] = []
-    for entry in skills_dir.iterdir():
+    for entry in sorted(skills_dir.iterdir()):
         if not entry.is_dir():
             continue
         if entry.name.startswith("."):
             continue
-        manifest = load_skill_manifest(entry)
+        diag_len_before = len(diagnostics) if diagnostics is not None else 0
+        manifest = load_skill_manifest(
+            entry, diagnostics=diagnostics, scope=scope, lenient=lenient
+        )
         if manifest is None:
-            if diagnostics is not None:
+            if diagnostics is not None and len(diagnostics) == diag_len_before:
                 diagnostics.append(
                     SkillDiagnostic(
                         kind=SkillDiagnosticKind.PARSE_WARNING,
@@ -441,14 +599,148 @@ def load_skill_manifests(
                 )
             continue
         manifest.scope = scope
-        manifest.path = str(entry)
         manifests.append(manifest)
     return manifests
+
+
+def load_plugin_manifest(
+    plugin_dir: Path,
+    diagnostics: list[SkillDiagnostic] | None = None,
+) -> PluginManifest | None:
+    """Load and validate an Agent Plugin manifest (plugin.json) per spec v1.0.0."""
+    if not plugin_dir.is_dir():
+        return None
+
+    resolved_plugin_dir = plugin_dir.resolve()
+    plugin_json_path = (plugin_dir / "plugin.json").resolve()
+
+    if not str(plugin_json_path).startswith(str(resolved_plugin_dir)):
+        if diagnostics is not None:
+            diagnostics.append(
+                SkillDiagnostic(
+                    kind=SkillDiagnosticKind.PATH_ESCAPE,
+                    skill_name=plugin_dir.name,
+                    message=(
+                        f"plugin.json in {plugin_dir.name} resolves outside the "
+                        "plugin root"
+                    ),
+                    path=str(plugin_dir),
+                )
+            )
+        return None
+
+    if not plugin_json_path.is_file():
+        if diagnostics is not None:
+            diagnostics.append(
+                SkillDiagnostic(
+                    kind=SkillDiagnosticKind.INVALID_PLUGIN,
+                    skill_name=plugin_dir.name,
+                    message=f"Missing plugin.json manifest in {plugin_dir.name}",
+                    path=str(plugin_dir),
+                )
+            )
+        return None
+
+    try:
+        raw_text = plugin_json_path.read_text(encoding="utf-8")
+        data = json.loads(raw_text)
+    except Exception as exc:
+        if diagnostics is not None:
+            diagnostics.append(
+                SkillDiagnostic(
+                    kind=SkillDiagnosticKind.INVALID_PLUGIN,
+                    skill_name=plugin_dir.name,
+                    message=f"Invalid JSON in plugin.json for {plugin_dir.name}: {exc}",
+                    path=str(plugin_dir),
+                )
+            )
+        return None
+
+    if not isinstance(data, dict):
+        if diagnostics is not None:
+            diagnostics.append(
+                SkillDiagnostic(
+                    kind=SkillDiagnosticKind.INVALID_PLUGIN,
+                    skill_name=plugin_dir.name,
+                    message=(
+                        f"plugin.json root in {plugin_dir.name} must be a JSON object"
+                    ),
+                    path=str(plugin_dir),
+                )
+            )
+        return None
+
+    schema_val = data.get("$schema")
+    if not isinstance(schema_val, str) or "agent-plugins.org" not in schema_val:
+        if diagnostics is not None:
+            diagnostics.append(
+                SkillDiagnostic(
+                    kind=SkillDiagnosticKind.INVALID_PLUGIN,
+                    skill_name=plugin_dir.name,
+                    message=(
+                        "Missing or unsupported $schema in plugin.json for "
+                        f"{plugin_dir.name}"
+                    ),
+                    path=str(plugin_dir),
+                )
+            )
+        return None
+
+    name = data.get("name")
+    if (
+        not isinstance(name, str)
+        or not (1 <= len(name) <= 64)
+        or not PLUGIN_NAME_REGEX.match(name)
+    ):
+        if diagnostics is not None:
+            diagnostics.append(
+                SkillDiagnostic(
+                    kind=SkillDiagnosticKind.INVALID_PLUGIN,
+                    skill_name=str(name or plugin_dir.name),
+                    message=(
+                        f"Invalid plugin name '{name}' in plugin.json for "
+                        f"{plugin_dir.name}"
+                    ),
+                    path=str(plugin_dir),
+                )
+            )
+        return None
+
+    version = str(data.get("version", ""))
+    description = str(data.get("description", ""))
+    raw_author = data.get("author")
+    author: dict[str, Any] = dict(raw_author) if isinstance(raw_author, dict) else {}
+    homepage = str(data.get("homepage", ""))
+    repository = str(data.get("repository", ""))
+    license_val = str(data.get("license", ""))
+    raw_keywords = data.get("keywords")
+    keywords: list[str] = (
+        [str(k) for k in raw_keywords] if isinstance(raw_keywords, list) else []
+    )
+    raw_extensions = data.get("extensions")
+    extensions: dict[str, Any] = (
+        dict(raw_extensions) if isinstance(raw_extensions, dict) else {}
+    )
+
+    return PluginManifest(
+        name=name,
+        schema=schema_val,
+        version=version,
+        description=description,
+        author=author,
+        homepage=homepage,
+        repository=repository,
+        license=license_val,
+        keywords=keywords,
+        extensions=extensions,
+        path=str(resolved_plugin_dir),
+    )
 
 
 def load_skills_from_paths(
     paths: Sequence[tuple[str | Path, SkillScope]],
     agent_name: str | None = None,
+    lenient: bool = False,
 ) -> tuple[list[SkillLoad], list[SkillDiagnostic]]:
     """Load skills from multiple paths in precedence order (first wins).
 
@@ -456,6 +748,7 @@ def load_skills_from_paths(
         paths: List of (path, scope) tuples, paths can include ~ and
             {agent_name} placeholder
         agent_name: Agent name to substitute {agent_name} placeholder
+        lenient: Whether to tolerate non-fatal cosmetic name/directory mismatches
 
     Returns:
         Tuple of (skill_loads, diagnostics). SkillLoads are deduped
@@ -469,7 +762,9 @@ def load_skills_from_paths(
         path = _resolve_search_path(path_str, agent_name)
         if not path.exists():
             continue
-        manifests = load_skill_manifests(path, scope=scope, diagnostics=diagnostics)
+        manifests = load_skill_manifests(
+            path, scope=scope, diagnostics=diagnostics, lenient=lenient
+        )
         for manifest in manifests:
             if manifest.name in seen_names:
                 winner_scope, winner_path = seen_names[manifest.name]
@@ -493,33 +788,43 @@ def load_skills_from_paths(
     return loads, diagnostics
 
 
-def get_default_skill_paths(agent_name: str) -> list[tuple[Path, SkillScope]]:
+def get_default_skill_paths(
+    agent_name: str,
+    global_dir: Path | None = None,
+) -> list[tuple[Path, SkillScope]]:
     """Get the default skill discovery paths in precedence order (highest first)."""
     result: list[tuple[Path, SkillScope]] = []
-    for scope, path_template in SKILL_SCOPES:
-        path = _resolve_search_path(path_template, agent_name)
-        result.append((path, scope))
+    effective_global = (
+        global_dir if global_dir is not None else Path("~/.agents").expanduser()
+    )
+    result.append((Path(".agents/skills"), SkillScope.PROJECT))
+    result.append((effective_global / "skills", SkillScope.USER))
+    result.append(
+        (effective_global / "agents" / (agent_name or "") / "skills", SkillScope.AGENT)
+    )
     return result
 
 
 def discover_plugin_skill_paths(
     cwd: Path | None = None,
+    global_dir: Path | None = None,
+    diagnostics: list[SkillDiagnostic] | None = None,
 ) -> list[tuple[Path, SkillScope]]:
-    """Discover skill directories inside Agent Plugins.
+    """Discover skill directories inside valid Agent Plugins.
 
     Discovers plugins in:
     - .agents/plugins/*/skills (PROJECT scope)
     - ~/.agents/plugins/*/skills (USER scope)
-    - ~/.agents/.mvgeos/plugins/*/skills (USER scope)
-
-    Only plugins with valid ``skills/`` directories are returned.
     """
     results: list[tuple[Path, SkillScope]] = []
     base_cwd = cwd if cwd is not None else Path.cwd()
+    effective_global = (
+        global_dir if global_dir is not None else Path("~/.agents").expanduser()
+    )
 
     plugin_candidates: list[tuple[Path, SkillScope]] = [
         (base_cwd / ".agents" / "plugins", SkillScope.PROJECT),
-        (Path("~/.agents/plugins").expanduser(), SkillScope.USER),
+        (effective_global / "plugins", SkillScope.USER),
     ]
 
     for pdir, scope in plugin_candidates:
@@ -528,8 +833,74 @@ def discover_plugin_skill_paths(
         for entry in sorted(pdir.iterdir()):
             if not entry.is_dir() or entry.name.startswith("."):
                 continue
+            manifest = load_plugin_manifest(entry, diagnostics=diagnostics)
+            if manifest is None:
+                continue
             skills_sub = entry / "skills"
             if skills_sub.is_dir():
                 results.append((skills_sub, scope))
 
     return results
+
+
+def get_prioritized_skill_search_paths(
+    agent_name: str,
+    cwd: Path | None = None,
+    global_dir: Path | None = None,
+    diagnostics: list[SkillDiagnostic] | None = None,
+) -> list[tuple[Path, SkillScope]]:
+    """Return all skill discovery paths in strict precedence order (highest first):
+    1. Project standalone skills: <cwd>/.agents/skills (PROJECT)
+    2. Project plugin skills: <cwd>/.agents/plugins/*/skills (PROJECT)
+    3. User standalone skills: ~/.agents/skills or <global_dir>/skills (USER)
+    4. User plugin skills: ~/.agents/plugins/*/skills or
+       <global_dir>/plugins/*/skills (USER)
+    5. Agent standalone skills: ~/.agents/agents/{agent_name}/skills (AGENT)
+    """
+    effective_cwd = cwd if cwd is not None else Path.cwd()
+    effective_global = (
+        global_dir if global_dir is not None else Path("~/.agents").expanduser()
+    )
+
+    paths: list[tuple[Path, SkillScope]] = [
+        (effective_cwd / ".agents" / "skills", SkillScope.PROJECT),
+    ]
+
+    # Project plugins
+    proj_plugins = effective_cwd / ".agents" / "plugins"
+    if proj_plugins.is_dir():
+        for p in sorted(proj_plugins.iterdir()):
+            if not p.is_dir() or p.name.startswith("."):
+                continue
+            manifest = load_plugin_manifest(p, diagnostics=diagnostics)
+            if manifest is not None and (p / "skills").is_dir():
+                paths.append((p / "skills", SkillScope.PROJECT))
+
+    # User standalone
+    paths.append((effective_global / "skills", SkillScope.USER))
+
+    # User plugins
+    user_plugins = effective_global / "plugins"
+    if user_plugins.is_dir():
+        for p in sorted(user_plugins.iterdir()):
+            if not p.is_dir() or p.name.startswith("."):
+                continue
+            manifest = load_plugin_manifest(p, diagnostics=diagnostics)
+            if manifest is not None and (p / "skills").is_dir():
+                paths.append((p / "skills", SkillScope.USER))
+
+    # Agent standalone
+    agent_path = effective_global / "agents" / (agent_name or "") / "skills"
+    paths.append((agent_path, SkillScope.AGENT))
+
+    # Agent plugins
+    agent_plugins = effective_global / "agents" / (agent_name or "") / "plugins"
+    if agent_plugins.is_dir():
+        for p in sorted(agent_plugins.iterdir()):
+            if not p.is_dir() or p.name.startswith("."):
+                continue
+            manifest = load_plugin_manifest(p, diagnostics=diagnostics)
+            if manifest is not None and (p / "skills").is_dir():
+                paths.append((p / "skills", SkillScope.AGENT))
+
+    return paths

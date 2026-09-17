@@ -304,7 +304,143 @@ async def test_resume_session_missing_arg() -> None:
 @pytest.mark.asyncio
 async def test_unknown_command() -> None:
     agent = _create_mock_agent()
+    agent.get_skills_catalog = MagicMock(return_value=[])
     dispatcher = CommandDispatcher(agent)
     outcome = await dispatcher.dispatch("/foobar")
     assert outcome.action == CommandAction.ERROR
     assert "Unknown command: /foobar" in outcome.message
+
+
+@pytest.mark.asyncio
+async def test_skills_listed_empty() -> None:
+    agent = _create_mock_agent()
+    agent.get_skills_catalog = MagicMock(return_value=[])
+    dispatcher = CommandDispatcher(agent)
+    outcome = await dispatcher.dispatch("/skills")
+    assert outcome.action == CommandAction.SKILLS_LISTED
+    assert "No skills registered" in outcome.message
+
+
+@pytest.mark.asyncio
+async def test_skills_listed_with_skills() -> None:
+    agent = _create_mock_agent()
+    agent.get_skills_catalog = MagicMock(
+        return_value=[
+            {
+                "name": "pdf-tool",
+                "description": "Extracts PDFs",
+                "scope": "project",
+                "path": "/path/to/pdf",
+            }
+        ]
+    )
+    dispatcher = CommandDispatcher(agent)
+    outcome = await dispatcher.dispatch("/skills")
+    assert outcome.action == CommandAction.SKILLS_LISTED
+    assert "pdf-tool" in outcome.message
+    assert "Extracts PDFs" in outcome.message
+
+
+@pytest.mark.asyncio
+async def test_skill_command_missing_arg() -> None:
+    agent = _create_mock_agent()
+    dispatcher = CommandDispatcher(agent)
+    outcome = await dispatcher.dispatch("/skill")
+    assert outcome.action == CommandAction.ERROR
+    assert "Usage: /skill" in outcome.message
+
+
+@pytest.mark.asyncio
+async def test_skill_command_activates_and_steers() -> None:
+    agent = _create_mock_agent()
+    agent.activate_skill = AsyncMock(
+        return_value='<skill_content name="pdf-tool">PDF tools</skill_content>'
+    )
+    dispatcher = CommandDispatcher(agent)
+    outcome = await dispatcher.dispatch("/skill pdf-tool process report.pdf")
+    assert outcome.action == CommandAction.SKILL_ACTIVATED
+    assert outcome.data["skill"] == "pdf-tool"
+    assert outcome.data["args"] == "process report.pdf"
+    assert "Queued instruction: process report.pdf" in outcome.message
+    agent.activate_skill.assert_awaited_once_with("pdf-tool")
+    agent.steer.assert_called_once()
+    assert "process report.pdf" in agent.steer.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_dynamic_skill_slash_command() -> None:
+    agent = _create_mock_agent()
+    agent.get_skills_catalog = MagicMock(
+        return_value=[
+            {
+                "name": "hi",
+                "description": "Says hi",
+                "scope": "project",
+                "path": "/skills/hi",
+            }
+        ]
+    )
+    agent.activate_skill = AsyncMock(
+        return_value='<skill_content name="hi">Hi instructions</skill_content>'
+    )
+    dispatcher = CommandDispatcher(agent)
+
+    # Dispatch /hi directly
+    outcome = await dispatcher.dispatch("/hi")
+    assert outcome.action == CommandAction.SKILL_ACTIVATED
+    assert outcome.data["skill"] == "hi"
+    assert "Skill 'hi' activated." in outcome.message
+    agent.activate_skill.assert_awaited_once_with("hi")
+    agent.steer.assert_called_once_with(
+        '<skill_content name="hi">Hi instructions</skill_content>'
+    )
+
+
+@pytest.mark.asyncio
+async def test_dynamic_skill_slash_command_with_extra_args() -> None:
+    agent = _create_mock_agent()
+    agent.get_skills_catalog = MagicMock(
+        return_value=[
+            {
+                "name": "hi",
+                "description": "Says hi",
+                "scope": "project",
+                "path": "/skills/hi",
+            }
+        ]
+    )
+    agent.activate_skill = AsyncMock(
+        return_value='<skill_content name="hi">Hi instructions</skill_content>'
+    )
+    dispatcher = CommandDispatcher(agent)
+
+    # Dispatch /hi with extra instructions
+    outcome = await dispatcher.dispatch("/hi say hello to everyone")
+    assert outcome.action == CommandAction.SKILL_ACTIVATED
+    assert outcome.data["skill"] == "hi"
+    assert "Queued instruction: say hello to everyone" in outcome.message
+    agent.activate_skill.assert_awaited_once_with("hi")
+    agent.steer.assert_called_once()
+    steered_text = agent.steer.call_args[0][0]
+    assert '<skill_content name="hi">' in steered_text
+    assert "say hello to everyone" in steered_text
+
+
+@pytest.mark.asyncio
+async def test_help_shows_dynamic_skills() -> None:
+    agent = _create_mock_agent()
+    agent.get_skills_catalog = MagicMock(
+        return_value=[
+            {
+                "name": "hi",
+                "description": "Says hi",
+                "scope": "project",
+                "path": "/skills/hi",
+            }
+        ]
+    )
+    dispatcher = CommandDispatcher(agent)
+    outcome = await dispatcher.dispatch("/help")
+    assert outcome.action == CommandAction.HELP
+    assert "/hi" in outcome.message
+    assert "Run skill hi" in outcome.message

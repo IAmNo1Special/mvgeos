@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -32,6 +33,7 @@ SLASH_COMMANDS: dict[str, str] = {
     "/undo": "Undo the last summoner invocation",
     "/compact": "Trigger mana pool compaction on the current branch",
     "/skills": "List available skills and their locations",
+    "/skill": "Activate a skill: /skill <name> [instructions]",
     "/contemplation": "Show or set contemplation level: /contemplation [level]",
 }
 
@@ -58,6 +60,7 @@ class CommandAction(StrEnum):
     INVOCATION_UNDONE = "invocation_undone"
     MANA_COMPACTED = "mana_compacted"
     SKILLS_LISTED = "skills_listed"
+    SKILL_ACTIVATED = "skill_activated"
     CONTEMPLATION_CHANGED = "contemplation_changed"
     CONTEMPLATION_INFO = "contemplation_info"
     INFO = "info"
@@ -134,6 +137,11 @@ class CommandDispatcher:
             lines = ["Available commands:"]
             for name, desc in SLASH_COMMANDS.items():
                 lines.append(f"  {name:<16} {desc}")
+            skills = await self._get_skills_catalog_safe()
+            if skills:
+                lines.append("\nAvailable skill commands:")
+                for s in skills:
+                    lines.append(f"  /{s['name']:<15} Run skill {s['name']}")
             return CommandOutcome(
                 command=cmd,
                 action=CommandAction.HELP,
@@ -518,7 +526,7 @@ class CommandDispatcher:
             )
 
         if cmd == "/skills":
-            skills = self._agent.get_skills_catalog()
+            skills = await self._get_skills_catalog_safe()
             if not skills:
                 return CommandOutcome(
                     command=cmd,
@@ -536,12 +544,79 @@ class CommandDispatcher:
                 message="\n".join(lines),
             )
 
+        if cmd == "/skill":
+            if not args.strip():
+                return CommandOutcome(
+                    command=cmd,
+                    action=CommandAction.ERROR,
+                    data={"error": "Usage: /skill <skill_name> [instructions]"},
+                    message="Usage: /skill <skill_name> [instructions]",
+                )
+            skill_parts = args.strip().split(maxsplit=1)
+            target_skill = skill_parts[0]
+            extra_args = skill_parts[1] if len(skill_parts) > 1 else ""
+            return await self._dispatch_skill_activation(cmd, target_skill, extra_args)
+
+        # Dynamic /<skill_name>
+        potential_skill_name = cmd.lstrip("/")
+        catalog = await self._get_skills_catalog_safe()
+        known_skills = {s["name"]: s for s in catalog if "name" in s}
+        if potential_skill_name in known_skills:
+            return await self._dispatch_skill_activation(
+                cmd, potential_skill_name, args.strip()
+            )
+
         return CommandOutcome(
             command=cmd,
             action=CommandAction.ERROR,
             data={"error": f"Unknown command: {cmd}"},
             message=f"Unknown command: {cmd}\nType /help for available commands",
         )
+
+    async def _dispatch_skill_activation(
+        self, cmd: str, skill_name: str, extra_args: str
+    ) -> CommandOutcome:
+        try:
+            if hasattr(self._agent, "activate_skill"):
+                content = await self._agent.activate_skill(skill_name)
+            else:
+                content = f"Skill '{skill_name}' activated."
+
+            message = f"Skill '{skill_name}' activated."
+            steer_payload = content
+            if extra_args:
+                steer_payload = f"{content}\n\nSummoner instruction: {extra_args}"
+                message += f" Queued instruction: {extra_args}"
+
+            if hasattr(self._agent, "steer"):
+                self._agent.steer(steer_payload)
+
+            return CommandOutcome(
+                command=cmd,
+                action=CommandAction.SKILL_ACTIVATED,
+                data={"skill": skill_name, "content": content, "args": extra_args},
+                message=message,
+            )
+        except Exception as e:
+            return CommandOutcome(
+                command=cmd,
+                action=CommandAction.ERROR,
+                data={"error": str(e), "skill": skill_name},
+                message=f"Failed to activate skill '{skill_name}': {e}",
+            )
+
+    async def _get_skills_catalog_safe(self) -> list[dict[str, Any]]:
+        if not hasattr(self._agent, "get_skills_catalog"):
+            return []
+        try:
+            res: Any = self._agent.get_skills_catalog()
+            if inspect.isawaitable(res):
+                res = await res
+            if isinstance(res, list):
+                return [s for s in res if isinstance(s, dict)]
+        except Exception:
+            pass
+        return []
 
 
 __all__ = [

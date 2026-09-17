@@ -1063,6 +1063,23 @@ class Mvge:
             for s in skills
         ]
 
+    async def activate_skill(self, name: str) -> str:
+        """Activate a registered skill by name and return its activation content."""
+        if self._runner is None:
+            raise ValueError("No runner available to activate skills.")
+        spell = self._runner.get_spell("activate_skill")
+        if spell is None:
+            from mvgeos_runes.rune_runner import create_activate_skill_spell
+
+            spell = create_activate_skill_spell(self._runner)
+            self._runner.register_spell(spell, override=True)
+
+        result = await spell.execute(f"cast_activate_{name}", {"name": name})
+        content = result.get("content", "")
+        if not content and "error" in result:
+            raise ValueError(result["error"])
+        return str(content)
+
     async def close(self) -> None:
         """Teardown the agent session and release resources."""
         if self._abort_controller is not None:

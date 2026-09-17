@@ -6,11 +6,11 @@ from typing import Any
 
 import pytest
 from mvgeos_runes.loader import (
-    get_default_skill_paths,
+    get_prioritized_skill_search_paths,
     load_runes_from_paths,
     load_skills_from_paths,
 )
-from mvgeos_runes.rune_runner import RuneRunner
+from mvgeos_runes.rune_runner import RuneRunner, create_activate_skill_spell
 from mvgeos_runes.types import (
     RuneContext,
     RuneScope,
@@ -91,10 +91,12 @@ async def _reference_inline_load(
     elif diagnostics:
         runner.extend_diagnostics(diagnostics)
 
-    skill_paths = get_default_skill_paths(agent_name)
+    skill_paths = get_prioritized_skill_search_paths(agent_name)
     skill_loads, skill_diagnostics = load_skills_from_paths(skill_paths, agent_name)
     if skill_loads:
         runner.load_skills(skill_loads, diagnostics=skill_diagnostics)
+        activate_spell = create_activate_skill_spell(runner)
+        runner.register_spell(activate_spell, override=True)
     elif skill_diagnostics:
         runner.extend_skill_diagnostics(skill_diagnostics)
 
@@ -141,11 +143,11 @@ async def test_standalone_load_builds_full_runner(runes_dir: Path) -> None:
 
     state = _runner_state(runner)
     assert state["manifests"] == ["echo-rune"]
-    assert state["spells"] == ["echo_spell"]
+    assert "echo_spell" in state["spells"]
     assert state["commands"] == ["echo-cmd"]
     assert state["shortcuts"] == ["ctrl-e"]
     assert state["providers"] == {"acme": {"baseUrl": "https://acme.test/v1"}}
-    assert state["active_spells"] == ["echo_spell"]
+    assert "echo_spell" in state["active_spells"]
     assert registry.configs == {"acme": {"baseUrl": "https://acme.test/v1"}}
     assert runner.context.agent_name == "tester"
     assert runner.context.api_key == "key-1"

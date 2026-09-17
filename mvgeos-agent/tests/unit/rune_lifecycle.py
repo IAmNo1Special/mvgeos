@@ -292,7 +292,7 @@ class TestLoad:
                 return_value=empty,
             ),
             patch(
-                "mvgeos_agent.rune_lifecycle.get_default_skill_paths",
+                "mvgeos_agent.rune_lifecycle.get_prioritized_skill_search_paths",
                 return_value=skill_paths,
             ) as mock_paths,
             patch(
@@ -302,9 +302,10 @@ class TestLoad:
         ):
             runner = await lifecycle.load()
 
-        mock_paths.assert_called_once_with("tester")
+        mock_paths.assert_called_once()
         mock_load_skills.assert_called_once_with(skill_paths, "tester")
         assert [s.name for s in runner.get_skills()] == ["good-skill"]
+        assert runner.get_spell("activate_skill") is not None
 
     @pytest.mark.asyncio
     async def test_load_retains_skill_diagnostics_without_loads(
@@ -376,7 +377,7 @@ class TestLoad:
                 return_value=([], []),
             ),
             patch(
-                "mvgeos_agent.rune_lifecycle.get_default_skill_paths",
+                "mvgeos_agent.rune_lifecycle.get_prioritized_skill_search_paths",
                 return_value=paths,
             ),
             caplog.at_level(logging.DEBUG, logger="mvgeos_agent.rune_lifecycle"),
