@@ -116,3 +116,39 @@ def test_diagnostic_message_includes_declared_python_deps() -> None:
         assert len(missing) == 2
         assert missing[0].rune_name == "test_rune_failing"
         assert "mvgeos setup install" in missing[0].message
+
+
+def test_auto_discover_parent_venv_site_packages() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workspace_dir = Path(tmpdir)
+        rune_dir = workspace_dir / "runes" / "test_nested_rune"
+        rune_dir.mkdir(parents=True)
+
+        # Create Windows venv site-packages layout in parent workspace
+        site_pkg = workspace_dir / ".venv" / "Lib" / "site-packages"
+        site_pkg.mkdir(parents=True)
+
+        dep_module = site_pkg / "dummy_parent_dep.py"
+        dep_module.write_text("FLAG = 'loaded_from_parent_venv'", encoding="utf-8")
+
+        entry_point = rune_dir / "main.py"
+        entry_point.write_text(
+            "import dummy_parent_dep\n"
+            "def rune_factory(api):\n"
+            "    return dummy_parent_dep.FLAG\n",
+            encoding="utf-8",
+        )
+
+        manifest = RuneManifest(
+            name="test_nested_rune",
+            version="1.0.0",
+            description="Nested rune in workspace",
+            entry_point="main.py",
+            scope=RuneScope.PROJECT,
+        )
+
+        factory = load_factory_from_manifest(manifest, rune_dir)
+
+        assert factory is not None
+        assert factory(None) == "loaded_from_parent_venv"
+        assert str(site_pkg.resolve()) in sys.path

@@ -5,6 +5,7 @@ import importlib.util
 import inspect
 import json
 import re
+import site
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -63,20 +64,22 @@ def discover_rune_site_packages(rune_dir: Path) -> list[Path]:
     """
     rune_dir_resolved = rune_dir.resolve()
     site_pkg_paths: list[Path] = []
-    for venv_name in (".venv", "venv"):
-        venv_dir = rune_dir_resolved / venv_name
-        if venv_dir.is_dir():
-            win_sp = venv_dir / "Lib" / "site-packages"
-            if win_sp.is_dir() and win_sp not in site_pkg_paths:
-                site_pkg_paths.append(win_sp)
-            lib_dir = venv_dir / "lib"
-            if lib_dir.is_dir():
-                posix_sp = lib_dir / "site-packages"
-                if posix_sp.is_dir() and posix_sp not in site_pkg_paths:
-                    site_pkg_paths.append(posix_sp)
-                for sp in sorted(lib_dir.glob("python*/site-packages")):
-                    if sp.is_dir() and sp not in site_pkg_paths:
-                        site_pkg_paths.append(sp)
+    search_dirs = [rune_dir_resolved] + list(rune_dir_resolved.parents)[:2]
+    for candidate_dir in search_dirs:
+        for venv_name in (".venv", "venv"):
+            venv_dir = candidate_dir / venv_name
+            if venv_dir.is_dir():
+                win_sp = venv_dir / "Lib" / "site-packages"
+                if win_sp.is_dir() and win_sp not in site_pkg_paths:
+                    site_pkg_paths.append(win_sp)
+                lib_dir = venv_dir / "lib"
+                if lib_dir.is_dir():
+                    posix_sp = lib_dir / "site-packages"
+                    if posix_sp.is_dir() and posix_sp not in site_pkg_paths:
+                        site_pkg_paths.append(posix_sp)
+                    for sp in sorted(lib_dir.glob("python*/site-packages")):
+                        if sp.is_dir() and sp not in site_pkg_paths:
+                            site_pkg_paths.append(sp)
     site_pkg_paths.append(rune_dir_resolved)
     return site_pkg_paths
 
@@ -85,7 +88,9 @@ def _inject_rune_paths(rune_dir: Path, entry: Path) -> None:
     """Put rune-local import roots on ``sys.path`` so bundled deps resolve."""
     for p in discover_rune_site_packages(rune_dir):
         p_str = str(p)
-        if p_str not in sys.path:
+        if p.name == "site-packages":
+            site.addsitedir(p_str)
+        elif p_str not in sys.path:
             sys.path.insert(0, p_str)
     entry_parent = entry.parent.resolve()
     entry_parent_str = str(entry_parent)
