@@ -42,6 +42,10 @@ from mvgeos_cli.console import (
     get_console,
     prompt_api_key,
 )
+from mvgeos_cli.dynamic_commands import (
+    discover_installed_rune_commands,
+    load_rune_cli_command,
+)
 
 console = get_console()
 
@@ -266,30 +270,41 @@ async def _run_agent(
 
 
 class MvgeosGroup(TyperGroup):
+    def get_command(self, ctx: _click.Context, cmd_name: str) -> _click.Command | None:
+        cmd = super().get_command(ctx, cmd_name)
+        if cmd is not None:
+            return cmd
+        res = load_rune_cli_command(cmd_name)
+        if res is not None:
+            return cast(_click.Command, res)
+        return None
+
+    def list_commands(self, ctx: _click.Context) -> list[str]:
+        base_cmds = super().list_commands(ctx)
+        rune_cmds = list(discover_installed_rune_commands().keys())
+        return sorted(set(base_cmds + rune_cmds))
+
     def invoke(self, ctx: _click.Context) -> Any:
         if ctx._protected_args:
             args = [*ctx._protected_args, *ctx.args]
             first = args[0] if args else ""
             if not _split_opt(first)[0]:
                 is_prompt = False
-                if first not in self.commands:
+                cmd = self.get_command(ctx, first)
+                if cmd is None:
                     is_prompt = True
                 elif len(args) > 1 and not _split_opt(args[1])[0]:
-                    cmd = self.get_command(ctx, first)
-                    if cmd is not None:
-                        subcommands = (
-                            cmd.list_commands(ctx)
-                            if hasattr(cmd, "list_commands")
-                            else []
-                        )
-                        is_leaf = not bool(subcommands)
-                        params = getattr(cmd, "params", [])
-                        has_positional = any(
-                            getattr(p, "param_type_name", None) == "argument"
-                            for p in params
-                        )
-                        if is_leaf and not has_positional:
-                            is_prompt = True
+                    subcommands = (
+                        cmd.list_commands(ctx) if hasattr(cmd, "list_commands") else []
+                    )
+                    is_leaf = not bool(subcommands)
+                    params = getattr(cmd, "params", [])
+                    has_positional = any(
+                        getattr(p, "param_type_name", None) == "argument"
+                        for p in params
+                    )
+                    if is_leaf and not has_positional:
+                        is_prompt = True
 
                 if is_prompt:
                     ctx.meta["prompts"] = list(args)

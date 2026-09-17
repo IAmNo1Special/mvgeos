@@ -47,6 +47,7 @@ from mvgeos_provider.registry import RealmRegistry, get_default_realm_registry
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     Diagnostic,
+    RegisteredCommand,
     RuneShortcut,
     SkillDiagnostic,
     SpellDefinition,
@@ -423,6 +424,12 @@ class Mvge:
         if self._runner is None:
             return []
         return [c.name for c in self._runner.get_commands()]
+
+    def get_registered_commands(self) -> list[RegisteredCommand]:
+        """Return all RegisteredCommand objects from the runner."""
+        if self._runner is None:
+            return []
+        return self._runner.get_commands()
 
     @property
     def registered_shortcuts(self) -> list[RuneShortcut]:

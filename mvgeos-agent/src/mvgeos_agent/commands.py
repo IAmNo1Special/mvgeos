@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 from dataclasses import dataclass, field
@@ -61,6 +62,7 @@ class CommandAction(StrEnum):
     MANA_COMPACTED = "mana_compacted"
     SKILLS_LISTED = "skills_listed"
     SKILL_ACTIVATED = "skill_activated"
+    RUNE_COMMAND = "rune_command"
     CONTEMPLATION_CHANGED = "contemplation_changed"
     CONTEMPLATION_INFO = "contemplation_info"
     INFO = "info"
@@ -142,6 +144,16 @@ class CommandDispatcher:
                 lines.append("\nAvailable skill commands:")
                 for s in skills:
                     lines.append(f"  /{s['name']:<15} Run skill {s['name']}")
+            rune_cmds = self._get_rune_commands_safe()
+            if rune_cmds:
+                lines.append("\nAvailable extension commands:")
+                for rc in rune_cmds:
+                    rc_name = getattr(rc, "name", "")
+                    rc_desc = (
+                        getattr(rc, "description", "")
+                        or f"Run extension command {rc_name}"
+                    )
+                    lines.append(f"  /{rc_name:<15} {rc_desc}")
             return CommandOutcome(
                 command=cmd,
                 action=CommandAction.HELP,
@@ -566,12 +578,85 @@ class CommandDispatcher:
                 cmd, potential_skill_name, args.strip()
             )
 
+        # Dynamic extension commands
+        potential_rune_cmd = cmd.lstrip("/")
+        for rcmd in self._get_rune_commands_safe():
+            if getattr(rcmd, "name", "") == potential_rune_cmd:
+                return await self._dispatch_rune_command(
+                    command.strip(), rcmd, args.strip()
+                )
+
         return CommandOutcome(
             command=cmd,
             action=CommandAction.ERROR,
             data={"error": f"Unknown command: {cmd}"},
             message=f"Unknown command: {cmd}\nType /help for available commands",
         )
+
+    async def _dispatch_rune_command(
+        self, cmd: str, rcmd: Any, extra_args: str
+    ) -> CommandOutcome:
+        handler = getattr(rcmd, "handler", None)
+        cmd_name = getattr(rcmd, "name", "")
+        if handler is None:
+            return CommandOutcome(
+                command=cmd,
+                action=CommandAction.RUNE_COMMAND,
+                message=f"Command /{cmd_name} has no handler.",
+                data={"command": cmd_name},
+            )
+
+        try:
+            try:
+                sig = inspect.signature(handler)
+                accepts_args = len(sig.parameters) > 0
+            except (ValueError, TypeError):
+                accepts_args = True
+
+            if inspect.iscoroutinefunction(handler):
+                res = await handler(extra_args) if accepts_args else await handler()
+            else:
+                res = (
+                    await asyncio.to_thread(handler, extra_args)
+                    if accepts_args
+                    else await asyncio.to_thread(handler)
+                )
+
+            if isinstance(res, CommandOutcome):
+                return res
+
+            msg = str(res) if res is not None else f"Executed {cmd}."
+            return CommandOutcome(
+                command=cmd,
+                action=CommandAction.RUNE_COMMAND,
+                data={"command": cmd_name, "result": res},
+                message=msg,
+            )
+        except Exception as e:
+            return CommandOutcome(
+                command=cmd,
+                action=CommandAction.ERROR,
+                data={"error": str(e), "command": cmd_name},
+                message=f"Failed to execute {cmd}: {e}",
+            )
+
+    def _get_rune_commands_safe(self) -> list[Any]:
+        if hasattr(self._agent, "get_registered_commands"):
+            try:
+                res = self._agent.get_registered_commands()
+                if isinstance(res, list):
+                    return res
+            except Exception:
+                pass
+        runner = getattr(self._agent, "_runner", None)
+        if runner is not None and hasattr(runner, "get_commands"):
+            try:
+                cmd_list = runner.get_commands()
+                if isinstance(cmd_list, list):
+                    return list(cmd_list)
+            except Exception:
+                pass
+        return []
 
     async def _dispatch_skill_activation(
         self, cmd: str, skill_name: str, extra_args: str

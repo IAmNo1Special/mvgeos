@@ -14,10 +14,13 @@ from mvgeos_agent.environment import (
 )
 from mvgeos_agent.function_spell import (
     FunctionSpell,
+    PEP723Metadata,
+    PEP723ScriptSpell,
     RuneSpellWrapper,
     SpellUnion,
     coerce_spell,
     discover_spells_from_dir,
+    parse_pep723_metadata,
 )
 from mvgeos_agent.harness import MvgeHarness
 from mvgeos_agent.installer import (
@@ -53,6 +56,8 @@ __all__ = [
     "MvgeHarness",
     "MvgeState",
     "MvgeTome",
+    "PEP723Metadata",
+    "PEP723ScriptSpell",
     "PromptSource",
     "ResolvedPrompt",
     "RuneSpellWrapper",
@@ -72,6 +77,7 @@ __all__ = [
     "install_mvge",
     "list_installed_mvges",
     "load_api_key_from_auth",
+    "parse_pep723_metadata",
     "save_api_key_to_auth",
     "uninstall_mvge",
 ]

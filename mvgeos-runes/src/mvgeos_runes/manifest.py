@@ -77,6 +77,8 @@ def load_manifest(path: Path) -> RuneManifest | None:
     elif "type" in data and data["type"]:
         types = [str(data["type"])]
 
+    commands = _extract_string_list(data, "commands")
+
     return RuneManifest(
         name=data["name"],
         version=data["version"],
@@ -91,4 +93,5 @@ def load_manifest(path: Path) -> RuneManifest | None:
         runtime=runtime,
         types=types,
         spell_gateway=spell_gateway,
+        commands=commands,
     )

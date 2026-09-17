@@ -121,6 +121,9 @@ class DummyAgent:
     async def activate_skill(self, name: str) -> str:
         return f"Activated {name}"
 
+    def get_registered_commands(self) -> list[Any]:
+        return []
+
     async def close(self) -> None:
         pass
 
@@ -134,6 +137,7 @@ class TestMvgeAgentProtocol:
         assert agent.contemplation_level == agent._contemplation_level
         assert agent.mana_used is None
         assert isinstance(agent.enabled_spells, list)
+        assert isinstance(agent.get_registered_commands(), list)
 
     def test_coding_mvge_conforms(self) -> None:
         # Hermetic: marketplace mvges resolve from ~/.agents, absent on clean
@@ -143,6 +147,7 @@ class TestMvgeAgentProtocol:
         assert agent.session_id == agent.tome_id
         assert agent.model_id == agent._model_id
         assert isinstance(agent.enabled_spells, list)
+        assert isinstance(agent.get_registered_commands(), list)
 
     def test_dummy_agent_conforms(self) -> None:
         dummy = DummyAgent()
@@ -150,6 +155,7 @@ class TestMvgeAgentProtocol:
         assert dummy.session_id == "tome-123"
         assert dummy.mana_used == 42
         assert dummy.model_id == "test/model"
+        assert dummy.get_registered_commands() == []
 
     def test_incomplete_agent_fails_conformance(self) -> None:
         class IncompleteAgent:

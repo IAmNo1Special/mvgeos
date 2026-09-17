@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -11,6 +12,7 @@ from mvgeos_agent.commands import (
     SLASH_COMMANDS,
     CommandAction,
     CommandDispatcher,
+    CommandOutcome,
 )
 from mvgeos_agent.protocol import MvgeAgent
 
@@ -444,3 +446,119 @@ async def test_help_shows_dynamic_skills() -> None:
     assert outcome.action == CommandAction.HELP
     assert "/hi" in outcome.message
     assert "Run skill hi" in outcome.message
+
+
+@pytest.mark.asyncio
+async def test_help_shows_dynamic_rune_commands() -> None:
+    from mvgeos_runes import RegisteredCommand
+
+    agent = _create_mock_agent()
+    agent.get_registered_commands = MagicMock(
+        return_value=[
+            RegisteredCommand(name="mcp", description="Manage MCP servers"),
+        ]
+    )
+    dispatcher = CommandDispatcher(agent)
+    outcome = await dispatcher.dispatch("/help")
+    assert outcome.action == CommandAction.HELP
+    assert "/mcp" in outcome.message
+    assert "Manage MCP servers" in outcome.message
+
+
+@pytest.mark.asyncio
+async def test_dynamic_rune_command_dispatch_sync_handler() -> None:
+    from mvgeos_runes import RegisteredCommand
+
+    agent = _create_mock_agent()
+    handler_called_with = None
+
+    def mcp_handler(args: str) -> str:
+        nonlocal handler_called_with
+        handler_called_with = args
+        return f"MCP status: {args}"
+
+    agent.get_registered_commands = MagicMock(
+        return_value=[
+            RegisteredCommand(
+                name="mcp", description="Manage MCP servers", handler=mcp_handler
+            ),
+        ]
+    )
+    dispatcher = CommandDispatcher(agent)
+    outcome = await dispatcher.dispatch("/mcp status")
+    assert outcome.action == CommandAction.RUNE_COMMAND
+    assert outcome.command == "/mcp status"
+    assert outcome.data["command"] == "mcp"
+    assert outcome.message == "MCP status: status"
+    assert handler_called_with == "status"
+
+
+@pytest.mark.asyncio
+async def test_dynamic_rune_command_dispatch_async_handler() -> None:
+    from mvgeos_runes import RegisteredCommand
+
+    agent = _create_mock_agent()
+
+    async def async_handler(args: str) -> str:
+        await asyncio.sleep(0.001)
+        return f"Connected to {args}"
+
+    agent.get_registered_commands = MagicMock(
+        return_value=[
+            RegisteredCommand(
+                name="mcp", description="Manage MCP servers", handler=async_handler
+            ),
+        ]
+    )
+    dispatcher = CommandDispatcher(agent)
+    outcome = await dispatcher.dispatch("/mcp connect sse http://localhost:8000")
+    assert outcome.action == CommandAction.RUNE_COMMAND
+    assert "Connected to connect sse http://localhost:8000" in outcome.message
+
+
+@pytest.mark.asyncio
+async def test_dynamic_rune_command_dispatch_outcome_passthrough() -> None:
+    from mvgeos_runes import RegisteredCommand
+
+    agent = _create_mock_agent()
+    custom_outcome = CommandOutcome(
+        command="/mcp",
+        action=CommandAction.INFO,
+        message="Custom info outcome",
+    )
+
+    def custom_handler(args: str) -> CommandOutcome:
+        return custom_outcome
+
+    agent.get_registered_commands = MagicMock(
+        return_value=[
+            RegisteredCommand(
+                name="mcp", description="Manage MCP servers", handler=custom_handler
+            ),
+        ]
+    )
+    dispatcher = CommandDispatcher(agent)
+    outcome = await dispatcher.dispatch("/mcp")
+    assert outcome is custom_outcome
+
+
+@pytest.mark.asyncio
+async def test_dynamic_rune_command_error_handling() -> None:
+    from mvgeos_runes import RegisteredCommand
+
+    agent = _create_mock_agent()
+
+    def failing_handler(args: str) -> None:
+        raise RuntimeError("MCP server connection failed")
+
+    agent.get_registered_commands = MagicMock(
+        return_value=[
+            RegisteredCommand(
+                name="mcp", description="Manage MCP servers", handler=failing_handler
+            ),
+        ]
+    )
+    dispatcher = CommandDispatcher(agent)
+    outcome = await dispatcher.dispatch("/mcp test")
+    assert outcome.action == CommandAction.ERROR
+    assert "MCP server connection failed" in outcome.message

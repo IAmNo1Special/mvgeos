@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import ast
 import asyncio
+import contextlib
 import importlib.util
 import inspect
 import json
+import os
+import re
+import tomllib
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -18,11 +24,230 @@ from mvgeos_core.spells import (
     MvgeSpell,
     SpellExecutionMode,
     SpellResult,
+    SpellStatus,
 )
 from mvgeos_runes.types import SpellDefinition
 from pydantic import BaseModel
 
 type SpellUnion = Callable[..., Any] | MvgeSpell | SpellDefinition
+
+
+PEP723_REGEX = re.compile(
+    r"(?m)^# /// (?P<type>[a-zA-Z0-9-]+)\r?\n(?P<content>(?:^#.*?\r?\n)+?)^# ///\r?$",
+)
+
+
+@dataclass(frozen=True)
+class PEP723Metadata:
+    """Metadata extracted from a PEP 723 inline script metadata block."""
+
+    dependencies: list[str] = field(default_factory=list)
+    requires_python: str | None = None
+    raw_toml: dict[str, Any] = field(default_factory=dict)
+
+
+def parse_pep723_metadata(source: str) -> PEP723Metadata | None:
+    """Extract and parse PEP 723 (# /// script) metadata from Python source."""
+    match = PEP723_REGEX.search(source)
+    if not match:
+        return None
+
+    block_type = match.group("type")
+    if block_type != "script":
+        return None
+
+    raw_content = match.group("content")
+    toml_lines: list[str] = []
+    for line in raw_content.splitlines():
+        if line.startswith("# "):
+            toml_lines.append(line[2:])
+        elif line.startswith("#"):
+            toml_lines.append(line[1:])
+        else:
+            toml_lines.append(line)
+    toml_str = "\n".join(toml_lines)
+
+    try:
+        data = tomllib.loads(toml_str)
+    except Exception as exc:
+        raise ValueError(f"Invalid PEP 723 TOML metadata: {exc}") from exc
+
+    raw_deps = data.get("dependencies", [])
+    dependencies = [str(d) for d in raw_deps] if isinstance(raw_deps, list) else []
+    requires_python = data.get("requires-python")
+    return PEP723Metadata(
+        dependencies=dependencies,
+        requires_python=str(requires_python) if requires_python else None,
+        raw_toml=data,
+    )
+
+
+class PEP723ScriptSpell(MvgeSpell):
+    """An executable MvgeSpell executing a standalone PEP 723 Python script.
+
+    Hermetically runs via uv run.
+    """
+
+    def __init__(
+        self,
+        script_path: Path,
+        *,
+        metadata: PEP723Metadata | None = None,
+        name: str | None = None,
+        description: str | None = None,
+        parameters: dict[str, Any] | None = None,
+        execution_mode: SpellExecutionMode = SpellExecutionMode.PARALLEL,
+        timeout: float = 120.0,
+        cwd: Path | None = None,
+    ) -> None:
+        self.script_path = script_path
+        self.timeout = timeout
+        self.cwd = cwd
+
+        source = ""
+        if script_path.is_file():
+            with contextlib.suppress(Exception):
+                source = script_path.read_text(encoding="utf-8")
+
+        self.metadata = (
+            metadata
+            if metadata is not None
+            else (parse_pep723_metadata(source) or PEP723Metadata())
+        )
+
+        spell_name = name or script_path.stem
+        spell_desc = description
+        if spell_desc is None:
+            if "description" in self.metadata.raw_toml:
+                spell_desc = str(self.metadata.raw_toml["description"])
+            else:
+                with contextlib.suppress(Exception):
+                    tree = ast.parse(source)
+                    doc = ast.get_docstring(tree)
+                    if doc:
+                        spell_desc = inspect.cleandoc(doc)
+            if not spell_desc:
+                spell_desc = f"Execute standalone script {spell_name} via uv run."
+
+        spell_params = parameters
+        if spell_params is None:
+            if "parameters" in self.metadata.raw_toml and isinstance(
+                self.metadata.raw_toml["parameters"], dict
+            ):
+                raw_p = self.metadata.raw_toml["parameters"]
+                if "type" in raw_p or "properties" in raw_p:
+                    spell_params = raw_p
+                else:
+                    spell_params = {"type": "object", "properties": raw_p}
+            else:
+                spell_params = {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": True,
+                }
+
+        super().__init__(
+            name=spell_name,
+            description=spell_desc,
+            parameters=spell_params,
+            execution_mode=execution_mode,
+        )
+        if not spell_params.get("properties"):
+            self._schema_model = None
+
+    async def execute(
+        self,
+        spell_cast_id: str,
+        params: dict[str, Any],
+        signal: AbortSignal | None = None,
+        on_update: Any | None = None,
+    ) -> str | SpellResult:
+        if signal is not None and getattr(signal, "aborted", False):
+            raise AbortError("Operation aborted")
+
+        validated = self.prepare_arguments(params)
+        args_payload = json.dumps(validated)
+
+        env = os.environ.copy()
+        env["MVGEOS_PARAMS"] = args_payload
+        env["PYTHONUNBUFFERED"] = "1"
+
+        cmd = ["uv", "run", "--script", str(self.script_path)]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(self.cwd or self.script_path.parent),
+            env=env,
+        )
+
+        def _handle_abort() -> None:
+            with contextlib.suppress(ProcessLookupError, OSError):
+                proc.terminate()
+
+        if signal is not None:
+            signal.on_abort(_handle_abort)
+
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                proc.communicate(input=args_payload.encode("utf-8")),
+                timeout=self.timeout,
+            )
+        except TimeoutError:
+            with contextlib.suppress(ProcessLookupError, OSError):
+                proc.kill()
+            return SpellResult(
+                spell_name=self.name,
+                status=SpellStatus.ERROR,
+                error_message=f"Script execution timed out after {self.timeout}s",
+            )
+        except asyncio.CancelledError:
+            with contextlib.suppress(ProcessLookupError, OSError):
+                proc.kill()
+            raise
+
+        if signal is not None and getattr(signal, "aborted", False):
+            raise AbortError("Operation aborted")
+
+        stdout_str = stdout_bytes.decode("utf-8", errors="replace").strip()
+        stderr_str = stderr_bytes.decode("utf-8", errors="replace").strip()
+
+        if proc.returncode != 0:
+            err_msg = (
+                stderr_str
+                or stdout_str
+                or f"Process exited with code {proc.returncode}"
+            )
+            return SpellResult(
+                spell_name=self.name,
+                status=SpellStatus.ERROR,
+                content=stdout_str,
+                error_message=err_msg,
+            )
+
+        if stdout_str:
+            try:
+                data = json.loads(stdout_str)
+                if isinstance(data, dict) and ("status" in data or "content" in data):
+                    status_val = data.get("status", "success")
+                    status_enum = (
+                        SpellStatus(status_val)
+                        if status_val in SpellStatus._value2member_map_
+                        else SpellStatus.SUCCESS
+                    )
+                    return SpellResult(
+                        spell_name=self.name,
+                        status=status_enum,
+                        content=str(data.get("content", "")),
+                        details=data.get("details", {}),
+                        error_message=data.get("error_message"),
+                        terminate=bool(data.get("terminate", False)),
+                    )
+            except Exception:
+                pass
+
+        return stdout_str or f"{self.name} completed"
 
 
 class RuneSpellWrapper(MvgeSpell):
@@ -192,6 +417,16 @@ def discover_spells_from_dir(spells_dir: Path) -> list[MvgeSpell]:
 
     spells = []
     for py_file in py_files:
+        try:
+            source = py_file.read_text(encoding="utf-8")
+        except Exception:
+            source = ""
+
+        pep_meta = parse_pep723_metadata(source)
+        if pep_meta is not None:
+            spells.append(PEP723ScriptSpell(py_file, metadata=pep_meta))
+            continue
+
         module_name = f"mvgeos_spells_{spells_dir.name}_{py_file.stem}"
         spec = importlib.util.spec_from_file_location(module_name, py_file)
         if not spec or not spec.loader:
@@ -234,8 +469,11 @@ def discover_spells_from_dir(spells_dir: Path) -> list[MvgeSpell]:
 
 __all__ = [
     "FunctionSpell",
+    "PEP723Metadata",
+    "PEP723ScriptSpell",
     "RuneSpellWrapper",
     "SpellUnion",
     "coerce_spell",
     "discover_spells_from_dir",
+    "parse_pep723_metadata",
 ]

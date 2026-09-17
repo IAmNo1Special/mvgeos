@@ -162,6 +162,10 @@ class MvgeAgent(Protocol):
         """Activate a registered skill by name and return its activation content."""
         ...
 
+    def get_registered_commands(self) -> list[Any]:
+        """List registered extension commands."""
+        ...
+
     async def close(self) -> None:
         """Shut down resources, runes, and sessions."""
         ...
