@@ -17,6 +17,9 @@ import portalocker
 
 from mvgeos_tome.types import (
     CURRENT_SESSION_VERSION,
+    ATIFMetrics,
+    ATIFTrajectory,
+    ATIFTrajectoryStep,
     TomeEntry,
     TomeEntryType,
     TomeIntegrityIssue,
@@ -1010,3 +1013,177 @@ class TomeHandleFactory:
                     )
                 ],
             )
+
+    def replay_tome_trajectory(self, tome_id: str) -> list[ATIFTrajectoryStep]:
+        """Convert session active branch to sequential list of ATIF trajectory steps."""
+        meta = self.open_tome(tome_id)
+        leaf_id = self.get_leaf_id(tome_id)
+        branch = self.get_entries_for_context(tome_id, leaf_id=leaf_id)
+
+        steps: list[ATIFTrajectoryStep] = []
+        prev_timestamp: float | None = None
+
+        for entry in branch:
+            if entry.type != TomeEntryType.MESSAGE:
+                continue
+
+            payload = entry.payload or {}
+            raw_role = payload.get("role", "")
+            raw_content = payload.get("content", "")
+
+            role: str
+            content_str: str = ""
+            tool_calls: list[dict[str, Any]] = []
+            tool_call_id: str | None = None
+            reasoning_content: str | None = None
+            step_model = payload.get("model") or (meta.model if meta else None)
+
+            if raw_role == "user":
+                role = "user"
+                if isinstance(raw_content, str):
+                    content_str = raw_content
+                elif isinstance(raw_content, list):
+                    texts = [
+                        block.get("text", "")
+                        for block in raw_content
+                        if isinstance(block, dict) and block.get("type") == "text"
+                    ]
+                    content_str = "\n".join(texts)
+                else:
+                    content_str = str(raw_content)
+
+            elif raw_role == "assistant":
+                role = "assistant"
+                if isinstance(raw_content, str):
+                    content_str = raw_content
+                elif isinstance(raw_content, list):
+                    text_parts: list[str] = []
+                    reasoning_parts: list[str] = []
+                    for block in raw_content:
+                        if not isinstance(block, dict):
+                            continue
+                        block_type = block.get("type", "")
+                        if block_type == "text":
+                            text_parts.append(block.get("text", ""))
+                        elif block_type in ("contemplation", "thinking"):
+                            reasoning_parts.append(
+                                block.get("thinking") or block.get("text") or ""
+                            )
+                        elif block_type in ("spell_cast", "tool_use"):
+                            tool_calls.append(
+                                {
+                                    "id": block.get("id", ""),
+                                    "name": (
+                                        block.get("spell") or block.get("name") or ""
+                                    ),
+                                    "args": (
+                                        block.get("args") or block.get("input") or {}
+                                    ),
+                                }
+                            )
+                    content_str = "\n".join(text_parts)
+                    if reasoning_parts:
+                        reasoning_content = "\n".join(reasoning_parts)
+                else:
+                    content_str = str(raw_content)
+
+            elif raw_role in ("spellResult", "tool"):
+                role = "tool"
+                tool_call_id = payload.get("spell_cast_id") or payload.get(
+                    "tool_call_id"
+                )
+                if isinstance(raw_content, str):
+                    content_str = raw_content
+                elif isinstance(raw_content, list):
+                    texts = [
+                        b.get("text", "")
+                        for b in raw_content
+                        if isinstance(b, dict) and "text" in b
+                    ]
+                    content_str = "\n".join(texts) if texts else json.dumps(raw_content)
+                else:
+                    content_str = (
+                        json.dumps(raw_content)
+                        if isinstance(raw_content, (dict, list))
+                        else str(raw_content)
+                    )
+            else:
+                continue
+
+            latency_ms = 0.0
+            if prev_timestamp is not None and entry.timestamp >= prev_timestamp:
+                latency_ms = round((entry.timestamp - prev_timestamp) * 1000.0, 2)
+            prev_timestamp = entry.timestamp
+
+            steps.append(
+                ATIFTrajectoryStep(
+                    step_id=entry.id,
+                    role=role,
+                    content=content_str,
+                    tool_calls=tool_calls,
+                    tool_call_id=tool_call_id,
+                    timestamp=entry.timestamp,
+                    latency_ms=latency_ms,
+                    model=step_model,
+                    reasoning_content=reasoning_content,
+                )
+            )
+
+        return steps
+
+    def export_atif_trajectory(
+        self,
+        tome_id: str,
+        agent_name: str = "coding_mvge",
+    ) -> dict[str, Any]:
+        """Export session trajectory conforming to ATIF."""
+        resolved = self._resolve_tome_id(tome_id)
+        if resolved is None and Path(tome_id).is_file():
+            resolved = self._resolve_tome_id(Path(tome_id).stem)
+        target = resolved or _validate_tome_id(tome_id)
+
+        meta = self.open_tome(target)
+        steps = self.replay_tome_trajectory(target)
+
+        # Aggregate metrics from messages along the active branch
+        input_tokens = 0
+        output_tokens = 0
+        reasoning_tokens = 0
+
+        leaf_id = self.get_leaf_id(target)
+        branch = self.get_entries_for_context(target, leaf_id=leaf_id)
+        for entry in branch:
+            if entry.type == TomeEntryType.MESSAGE:
+                payload = entry.payload or {}
+                mana = payload.get("mana_usage") or payload.get("usage") or {}
+                in_tok = int(mana.get("prompt_tokens") or mana.get("input_tokens") or 0)
+                out_tok = int(
+                    mana.get("completion_tokens") or mana.get("output_tokens") or 0
+                )
+                reason_tok = int(
+                    mana.get("reasoning_tokens")
+                    or mana.get("contemplation_tokens")
+                    or 0
+                )
+                input_tokens += in_tok
+                output_tokens += out_tok
+                reasoning_tokens += reason_tok
+
+        metrics = ATIFMetrics(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=input_tokens + output_tokens,
+            reasoning_tokens=reasoning_tokens,
+        )
+
+        trajectory = ATIFTrajectory(
+            trajectory_id=target,
+            agent_name=agent_name,
+            model=meta.model if meta and meta.model else "",
+            created_at=meta.created_at if meta else datetime.now(UTC).isoformat(),
+            steps=steps,
+            metrics=metrics,
+            completed=True,
+        )
+
+        return trajectory.to_dict()

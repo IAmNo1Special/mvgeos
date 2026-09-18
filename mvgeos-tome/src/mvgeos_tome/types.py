@@ -74,3 +74,72 @@ class TomeIntegrityReport:
 
     def __bool__(self) -> bool:
         return self.valid
+
+
+@dataclass
+class ATIFTrajectoryStep:
+    step_id: str
+    role: str
+    content: str = ""
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    tool_call_id: str | None = None
+    timestamp: float = 0.0
+    latency_ms: float = 0.0
+    model: str | None = None
+    reasoning_content: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
+            "step_id": self.step_id,
+            "role": self.role,
+            "content": self.content,
+            "timestamp": self.timestamp,
+            "latency_ms": self.latency_ms,
+        }
+        if self.tool_calls:
+            d["tool_calls"] = self.tool_calls
+        if self.tool_call_id:
+            d["tool_call_id"] = self.tool_call_id
+        if self.model:
+            d["model"] = self.model
+        if self.reasoning_content:
+            d["reasoning_content"] = self.reasoning_content
+        return d
+
+
+@dataclass
+class ATIFMetrics:
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    reasoning_tokens: int = 0
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "reasoning_tokens": self.reasoning_tokens,
+        }
+
+
+@dataclass
+class ATIFTrajectory:
+    trajectory_id: str
+    agent_name: str
+    model: str
+    created_at: str
+    steps: list[ATIFTrajectoryStep] = field(default_factory=list)
+    metrics: ATIFMetrics = field(default_factory=ATIFMetrics)
+    completed: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "trajectory_id": self.trajectory_id,
+            "agent_name": self.agent_name,
+            "model": self.model,
+            "created_at": self.created_at,
+            "steps": [s.to_dict() for s in self.steps],
+            "metrics": self.metrics.to_dict(),
+            "completed": self.completed,
+        }

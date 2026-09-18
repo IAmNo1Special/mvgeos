@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -675,6 +676,110 @@ def test_tome_verify_corrupted_session(tmp_path: Path) -> None:
         assert result.exit_code == 1
         assert "integrity issue" in result.stdout
         assert "Line 2:" in result.stdout
+
+
+def test_tome_replay_help() -> None:
+    result = runner.invoke(tome_app, ["replay", "--help"])
+    assert result.exit_code == 0
+    assert "Replay" in result.stdout
+
+
+def test_tome_export_atif(tmp_path: Path) -> None:
+    factory = TomeHandleFactory(tmp_path)
+    write = factory.create_tome("/workspace", tome_id="tome_atif_1")
+    e1 = TomeEntry(
+        id="m1",
+        parent_id=None,
+        type=TomeEntryType.MESSAGE,
+        timestamp=1000.0,
+        payload={"role": "user", "content": "hi"},
+    )
+    write.append(e1)
+    write.append_leaf(e1.id)
+
+    with patch("mvgeos_cli.commands.tome.get_tome_dir", return_value=tmp_path):
+        result = runner.invoke(tome_app, ["export", "tome_atif_1", "--format", "atif"])
+        assert result.exit_code == 0
+        parsed = json.loads(result.stdout)
+        assert parsed["trajectory_id"] == "tome_atif_1"
+        assert len(parsed["steps"]) == 1
+        assert parsed["steps"][0]["role"] == "user"
+
+
+def test_tome_replay_execution(tmp_path: Path) -> None:
+    factory = TomeHandleFactory(tmp_path)
+    write = factory.create_tome("/workspace", tome_id="tome_replay_test")
+    e1 = TomeEntry(
+        id="m1",
+        parent_id=None,
+        type=TomeEntryType.MESSAGE,
+        timestamp=1000.0,
+        payload={"role": "user", "content": "solve x"},
+    )
+    e2 = TomeEntry(
+        id="m2",
+        parent_id="m1",
+        type=TomeEntryType.MESSAGE,
+        timestamp=1001.0,
+        payload={
+            "role": "assistant",
+            "content": [
+                {"type": "contemplation", "thinking": "Let's think"},
+                {
+                    "type": "spell_cast",
+                    "id": "c1",
+                    "spell": "solver",
+                    "args": {"eq": "x=5"},
+                },
+                {"type": "text", "text": "x is 5"},
+            ],
+        },
+    )
+    e3 = TomeEntry(
+        id="m3",
+        parent_id="m2",
+        type=TomeEntryType.MESSAGE,
+        timestamp=1002.0,
+        payload={
+            "role": "tool",
+            "tool_call_id": "c1",
+            "content": "ok",
+        },
+    )
+    write.append(e1)
+    write.append_leaf(e1.id)
+    write.append(e2)
+    write.append_leaf(e2.id)
+    write.append(e3)
+    write.append_leaf(e3.id)
+
+    with patch("mvgeos_cli.commands.tome.get_tome_dir", return_value=tmp_path):
+        result = runner.invoke(tome_app, ["replay", "tome_replay_test"])
+        assert result.exit_code == 0
+        assert "Replaying Tome: tome_rep" in result.stdout
+        assert "USER" in result.stdout
+        assert "ASSISTANT" in result.stdout
+        assert "Contemplation: Let's think" in result.stdout
+        assert "Tool Call: solver" in result.stdout
+        assert "Call ID: c1" in result.stdout
+        assert "x is 5" in result.stdout
+
+
+def test_render_tome_export_atif_no_factory() -> None:
+    from mvgeos_cli.commands.tome import _render_tome_export
+
+    meta = _make_meta("tome_fallback", "/workspace")
+    e1 = TomeEntry(
+        id="m1",
+        parent_id=None,
+        type=TomeEntryType.MESSAGE,
+        timestamp=1000.0,
+        payload={"role": "user", "content": "hi"},
+    )
+    out = _render_tome_export(meta, [e1], "atif", factory=None)
+    parsed = json.loads(out)
+    assert parsed["trajectory_id"] == "tome_fallback"
+    assert len(parsed["steps"]) == 1
 
 
 if __name__ == "__main__":

@@ -10,7 +10,12 @@ from typing import Any
 import typer
 from mvgeos_core.constants import DEFAULT_TOME_DIR
 from mvgeos_tome.handle import TomeHandleFactory
-from mvgeos_tome.types import TomeEntry, TomeMetadata, TomeVersionError
+from mvgeos_tome.types import (
+    TomeEntry,
+    TomeEntryType,
+    TomeMetadata,
+    TomeVersionError,
+)
 from rich import box
 from rich.console import Console
 from rich.table import Table
@@ -79,10 +84,40 @@ def _format_timestamp(ts: Any) -> str:
 
 
 def _render_tome_export(
-    meta: TomeMetadata, entries: list[TomeEntry], format: str
+    meta: TomeMetadata,
+    entries: list[TomeEntry],
+    format: str,
+    factory: TomeHandleFactory | None = None,
 ) -> str:
-    """Render tome metadata and entries as JSON or Markdown."""
-    if format == "json":
+    """Render tome metadata and entries as JSON, Markdown, or ATIF trajectory."""
+    if format in ("atif", "trajectory"):
+        if factory is not None:
+            data = factory.export_atif_trajectory(meta.id)
+            return json.dumps(data, indent=2)
+        steps = []
+        for e in entries:
+            if e.type == TomeEntryType.MESSAGE:
+                steps.append(
+                    {
+                        "step_id": e.id,
+                        "role": e.payload.get("role", "user"),
+                        "content": str(e.payload.get("content", "")),
+                        "timestamp": e.timestamp,
+                    }
+                )
+        return json.dumps(
+            {
+                "trajectory_id": meta.id,
+                "agent_name": "coding_mvge",
+                "model": meta.model or "",
+                "created_at": meta.created_at,
+                "steps": steps,
+                "metrics": {},
+                "completed": True,
+            },
+            indent=2,
+        )
+    elif format == "json":
         data = {
             "metadata": {
                 "id": meta.id,
@@ -152,7 +187,9 @@ def tome_show(
 
     if format is not None:
         try:
-            output_text = _render_tome_export(meta, tome_entries, format)
+            output_text = _render_tome_export(
+                meta, tome_entries, format, factory=factory
+            )
             console.print(output_text)
             return
         except ValueError:
@@ -178,18 +215,18 @@ def tome_show(
 def tome_export(
     tome_id: str = typer.Argument(..., help="Tome ID to export"),
     format: str = typer.Option(
-        "json", "--format", "-f", help="Export format (json, markdown)"
+        "json", "--format", "-f", help="Export format (json, markdown, atif)"
     ),
     output: str | None = typer.Option(None, "--output", "-o", help="Output file"),
 ) -> None:
-    """Export a tome to JSON or Markdown."""
+    """Export a tome to JSON, Markdown, or ATIF trajectory."""
     factory = get_factory()
     meta = _open_tome_or_exit(factory, tome_id)
 
     entries = factory.get_entries(meta.id)
 
     try:
-        output_text = _render_tome_export(meta, entries, format)
+        output_text = _render_tome_export(meta, entries, format, factory=factory)
     except ValueError:
         console.print(format_error(f"Unknown format: {format}"))
         raise typer.Exit(1) from None
@@ -199,6 +236,51 @@ def tome_export(
         console.print(f"[green]Exported to {output}[/green]")
     else:
         console.print(output_text)
+
+
+@tome_app.command("replay")
+def tome_replay(
+    tome_id: str = typer.Argument(..., help="Tome ID to replay"),
+) -> None:
+    """Replay a session's turns sequentially."""
+    factory = get_factory()
+    meta = _open_tome_or_exit(factory, tome_id)
+    steps = factory.replay_tome_trajectory(meta.id)
+
+    console.print(
+        f"[bold cyan]Replaying Tome:[/bold cyan] {meta.id[:8]} "
+        f"[dim]({meta.model or 'unknown'})[/dim]"
+    )
+    console.print(f"[dim]Created: {meta.created_at} | CWD: {meta.cwd}[/dim]\n")
+
+    for i, step in enumerate(steps, 1):
+        role_style = (
+            "green"
+            if step.role == "user"
+            else ("cyan" if step.role == "assistant" else "yellow")
+        )
+        role_tag = step.role.upper()
+        time_str = _format_timestamp(step.timestamp)
+        console.print(
+            f"[{role_style}][Step {i}] {role_tag}[/{role_style}] "
+            f"[dim]({time_str})[/dim]"
+        )
+        if step.reasoning_content:
+            console.print(
+                f"  [dim italic]Contemplation: {step.reasoning_content}[/dim italic]"
+            )
+        if step.content:
+            console.print(f"  {step.content}")
+        if step.tool_calls:
+            for call in step.tool_calls:
+                args_json = json.dumps(call.get("args", {}))
+                console.print(
+                    f"  [magenta]Tool Call:[/magenta] {call.get('name')} "
+                    f"[dim]{args_json}[/dim]"
+                )
+        if step.tool_call_id:
+            console.print(f"  [dim]Call ID: {step.tool_call_id}[/dim]")
+        console.print()
 
 
 @tome_app.command("create")
