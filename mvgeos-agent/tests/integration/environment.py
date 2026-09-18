@@ -8,8 +8,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from mvgeos_core.channel import Model
 from mvgeos_runes.rune_runner import RuneRunner
-from mvgeos_runes.types import SigilHook
+from mvgeos_runes.types import BeforeMvgeStartData, SigilHook
 
+from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.mvge import Mvge
 
 
@@ -105,10 +106,8 @@ async def test_initialize_fires_before_mvge_start_once() -> None:
 
 
 @pytest.mark.asyncio
-async def test_agent_initialization_with_steering_environment() -> None:
-    """Mvge with steering environment correctly renders <project_context>."""
-    from mvgeos_agent.environment import MvgeEnvironment
-
+async def test_agent_initialization_without_rune_omits_steering() -> None:
+    """Without steering-bridge, the microkernel renders no <project_context>."""
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         proj_dir = tmp_path / "project"
@@ -136,10 +135,39 @@ async def test_agent_initialization_with_steering_environment() -> None:
 
         assert agent._state is not None
         rendered = agent._state.system_prompt
-        assert "<project_context>" in rendered
-        assert '<global_instructions path="' in rendered
-        assert "Global dev standard." in rendered
-        assert '<project_instructions path=".agents/AGENTS.md">' in rendered
-        assert "Strict mode always." in rendered
-        assert "- Global Rules:" in rendered
-        assert "- Project Rules: .agents/AGENTS.md" in rendered
+        assert "<project_context>" not in rendered
+        assert "Strict mode always." not in rendered
+        assert "Global dev standard." not in rendered
+        assert "Active spells:" in rendered
+
+
+@pytest.mark.asyncio
+async def test_rune_can_contribute_steering_via_before_mvge_start() -> None:
+    """Steering-bridge style injection via BEFORE_MVGE_START lands in prompt."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        env = MvgeEnvironment.resolve(
+            "test-agent",
+            project_dir=tmp_path,
+            config_dir=tmp_path / "config",
+        )
+        agent = Mvge(api_key="test-key", environment=env, tome_dir=tmp_path / "tomes")
+        agent._provider_registry.resolve = MagicMock(
+            return_value=(_mock_model(), MagicMock())
+        )
+        await agent._load_runes()
+
+        def steering_injector(data: Any) -> None:
+            assert isinstance(data, BeforeMvgeStartData)
+            data.base_prompt = (
+                f"{data.base_prompt}\n\n<project_context>\n"
+                "Rune-contributed steering.\n</project_context>"
+            )
+
+        assert agent._runner is not None
+        agent._runner.register_handler(SigilHook.BEFORE_MVGE_START, steering_injector)
+        await agent.initialize()
+
+        assert agent._state is not None
+        assert "Rune-contributed steering." in agent._state.system_prompt
+        assert "Active spells:" in agent._state.system_prompt
