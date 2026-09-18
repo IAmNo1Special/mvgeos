@@ -266,8 +266,6 @@ class TestRuneAPISkillRegistration:
         api.register_skill(manifest)
         assert runner.get_skills() == [manifest]
         assert api.get_skills() == [manifest]
-        assert "api-skill" in runner.get_skill_catalog()
-        assert "api-skill" in api.get_skill_catalog()
 
     def test_context_property_delegates(self, api: RuneAPI, runner: RuneRunner) -> None:
         assert api.context is runner.context

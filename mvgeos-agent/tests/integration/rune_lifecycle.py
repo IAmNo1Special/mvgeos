@@ -6,11 +6,9 @@ from typing import Any
 
 import pytest
 from mvgeos_runes.loader import (
-    get_prioritized_skill_search_paths,
     load_runes_from_paths,
-    load_skills_from_paths,
 )
-from mvgeos_runes.rune_runner import RuneRunner, create_activate_skill_spell
+from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     RuneContext,
     RuneScope,
@@ -91,15 +89,6 @@ async def _reference_inline_load(
     elif diagnostics:
         runner.extend_diagnostics(diagnostics)
 
-    skill_paths = get_prioritized_skill_search_paths(agent_name)
-    skill_loads, skill_diagnostics = load_skills_from_paths(skill_paths, agent_name)
-    if skill_loads:
-        runner.load_skills(skill_loads, diagnostics=skill_diagnostics)
-        activate_spell = create_activate_skill_spell(runner)
-        runner.register_spell(activate_spell, override=True)
-    elif skill_diagnostics:
-        runner.extend_skill_diagnostics(skill_diagnostics)
-
     return runner
 
 
@@ -112,7 +101,6 @@ def _runner_state(runner: RuneRunner) -> dict[str, Any]:
         "providers": dict(sorted(runner.get_registered_providers().items())),
         "active_spells": runner.get_active_spells(),
         "skills": [s.name for s in runner.get_skills()],
-        "skill_catalog": runner.get_skill_catalog(),
         "context": runner.context,
         "diagnostics": [
             (d.kind.value, d.rune_name, d.message) for d in runner.diagnostics
@@ -235,19 +223,7 @@ async def test_standalone_watchers_start_and_stop(runes_dir: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_rune_resources_discover_dynamic_skills(tmp_path: Path) -> None:
-    custom_skills_root = tmp_path / "custom_skills"
-    dynamic_skill = custom_skills_root / "dynamic-skill"
-    dynamic_skill.mkdir(parents=True)
-    (dynamic_skill / "SKILL.md").write_text(
-        "---\n"
-        "name: dynamic-skill\n"
-        "description: Dynamically yielded skill\n"
-        "---\n"
-        "# Instructions\n",
-        encoding="utf-8",
-    )
-
+async def test_rune_resources_discover_invoked(tmp_path: Path) -> None:
     runes_root = tmp_path / "runes_disc"
     disc_rune = runes_root / "disc-rune"
     disc_rune.mkdir(parents=True)
@@ -262,9 +238,8 @@ async def test_rune_resources_discover_dynamic_skills(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    path_escaped = str(dynamic_skill).replace("\\", "\\\\")
     (disc_rune / "rune.py").write_text(
-        f"""
+        """
 from mvgeos_runes.types import (
     ResourcesDiscoverData,
     SigilHook,
@@ -272,7 +247,7 @@ from mvgeos_runes.types import (
 
 def rune_factory(api):
     async def on_discover(data: ResourcesDiscoverData) -> ResourcesDiscoverData:
-        data.skill_paths.append(r"{path_escaped}")
+        api.send_message("resource_discover_invoked")
         return data
 
     api.on(SigilHook.RESOURCES_DISCOVER, on_discover)
@@ -286,8 +261,4 @@ def rune_factory(api):
         cwd=str(tmp_path),
     )
     runner = await lifecycle.load()
-
-    skills = runner.get_skills()
-    skill_names = [s.name for s in skills]
-    assert "dynamic-skill" in skill_names
-    assert "dynamic-skill" in runner.get_skill_catalog()
+    assert "resource_discover_invoked" in runner._message_queue

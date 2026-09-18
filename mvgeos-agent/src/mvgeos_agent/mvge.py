@@ -1076,10 +1076,10 @@ class Mvge:
             raise ValueError("No runner available to activate skills.")
         spell = self._runner.get_spell("activate_skill")
         if spell is None:
-            from mvgeos_runes.rune_runner import create_activate_skill_spell
-
-            spell = create_activate_skill_spell(self._runner)
-            self._runner.register_spell(spell, override=True)
+            raise ValueError(
+                "No activate_skill spell registered. "
+                "Ensure skills-bridge rune is installed."
+            )
 
         result = await spell.execute(f"cast_activate_{name}", {"name": name})
         content = result.get("content", "")

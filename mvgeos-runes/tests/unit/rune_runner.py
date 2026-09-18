@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -811,72 +810,6 @@ class TestRuneRunnerSkills:
         runner = RuneRunner()
         assert runner.get_skills() == []
 
-    def test_get_skill_catalog(self) -> None:
-        runner = RuneRunner()
-        skill1 = SkillManifest(
-            name="skill-one",
-            description="First skill",
-            scope=SkillScope.PROJECT,
-            path="/tmp/skill-one",
-            version="1.0.0",
-        )
-        skill2 = SkillManifest(
-            name="skill-two",
-            description="Second skill",
-            scope=SkillScope.USER,
-            path="/tmp/skill-two",
-        )
-        runner.load_skills([SkillLoad(manifest=skill1), SkillLoad(manifest=skill2)])
-
-        catalog = runner.get_skill_catalog()
-        assert "<available_skills>" in catalog
-        assert "<name>skill-one</name>" in catalog
-        assert "<description>First skill</description>" in catalog
-        assert "SKILL.md" in catalog
-        assert "<name>skill-two</name>" in catalog
-        assert "<description>Second skill</description>" in catalog
-        assert "</available_skills>" in catalog
-
-    @pytest.mark.asyncio
-    async def test_activate_skill_spell(self, tmp_path: Path) -> None:
-        from mvgeos_runes.rune_runner import create_activate_skill_spell
-
-        runner = RuneRunner()
-        skill_dir = tmp_path / "pdf-tool"
-        skill_dir.mkdir()
-        (skill_dir / "scripts").mkdir()
-        (skill_dir / "scripts" / "extract.py").write_text("# script", encoding="utf-8")
-        (skill_dir / "SKILL.md").write_text(
-            "---\nname: pdf-tool\ndescription: Handles PDFs\n---\n"
-            "# PDF Instructions\nDo pdf stuff.",
-            encoding="utf-8",
-        )
-
-        manifest = SkillManifest(
-            name="pdf-tool",
-            description="Handles PDFs",
-            location=str(skill_dir / "SKILL.md"),
-            path=str(skill_dir),
-            body="# PDF Instructions\nDo pdf stuff.",
-        )
-        runner.load_skills([SkillLoad(manifest=manifest)])
-
-        spell = create_activate_skill_spell(runner)
-        assert spell.name == "activate_skill"
-        assert spell.parameters["properties"]["name"]["enum"] == ["pdf-tool"]
-
-        # First activation
-        result = await spell.execute("call_1", {"name": "pdf-tool"})
-        assert '<skill_content name="pdf-tool">' in result["content"]
-        assert "# PDF Instructions" in result["content"]
-        assert "<skill_resources>" in result["content"]
-        assert "<file>scripts/extract.py</file>" in result["content"]
-        assert runner.is_skill_active("pdf-tool") is True
-
-        # Second activation (deduplicated)
-        result2 = await spell.execute("call_2", {"name": "pdf-tool"})
-        assert 'status="already_active"' in result2["content"]
-
     def test_load_skills_stores_diagnostics(self) -> None:
         runner = RuneRunner()
         skill = SkillManifest(
@@ -944,34 +877,6 @@ class TestRuneRunnerSkills:
         )
         runner.extend_skill_diagnostics([sdiag])
         assert runner.skill_diagnostics == [sdiag]
-
-    def test_get_skill_catalog_empty(self) -> None:
-        runner = RuneRunner()
-        assert runner.get_skill_catalog() == ""
-
-    def test_suppress_skill_catalog(self) -> None:
-        runner = RuneRunner()
-        skill = SkillManifest(
-            name="test-skill",
-            description="Test skill",
-            scope=SkillScope.PROJECT,
-            path="/tmp/test",
-        )
-        runner.load_skills([SkillLoad(manifest=skill)])
-
-        # By default, not suppressed
-        assert not runner.is_skill_catalog_suppressed()
-        assert runner.get_skill_catalog() != ""
-
-        # Suppress it
-        runner.suppress_skill_catalog(True)
-        assert runner.is_skill_catalog_suppressed()
-        assert runner.get_skill_catalog() == ""
-
-        # Unsuppress it
-        runner.suppress_skill_catalog(False)
-        assert not runner.is_skill_catalog_suppressed()
-        assert runner.get_skill_catalog() != ""
 
 
 class TestRuneRunnerSigils:

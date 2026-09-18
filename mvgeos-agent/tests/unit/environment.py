@@ -614,40 +614,6 @@ class TestMvgeEnvironmentAssemble:
         assert "Runes were here." in result
         assert "Active spells:" in result
 
-    @pytest.mark.asyncio
-    async def test_skill_catalog_appended(self, tmp_path: Path) -> None:
-        runner = _mock_runner(catalog="## Available Skills\n\n### demo")
-        env = MvgeEnvironment.resolve(
-            "test-agent", project_dir=tmp_path, config_dir=tmp_path / "cfg"
-        )
-
-        result = await env.assemble_system_prompt(runner=runner, base_prompt="Body.")
-        assert "Body." in result
-        assert "Active spells:" in result
-        assert "## Available Skills\n\n### demo" in result
-
-    @pytest.mark.asyncio
-    async def test_suppressed_catalog_not_appended(self, tmp_path: Path) -> None:
-        runner = _mock_runner(suppressed=True, catalog="## Available Skills")
-        env = MvgeEnvironment.resolve(
-            "test-agent", project_dir=tmp_path, config_dir=tmp_path / "cfg"
-        )
-
-        result = await env.assemble_system_prompt(runner=runner, base_prompt="Body.")
-        assert "Body." in result
-        assert "## Available Skills" not in result
-
-    @pytest.mark.asyncio
-    async def test_empty_catalog_not_appended(self, tmp_path: Path) -> None:
-        runner = _mock_runner(catalog="")
-        env = MvgeEnvironment.resolve(
-            "test-agent", project_dir=tmp_path, config_dir=tmp_path / "cfg"
-        )
-
-        result = await env.assemble_system_prompt(runner=runner, base_prompt="Body.")
-        assert "Body." in result
-        assert "## Available Skills" not in result
-
 
 # ---------------------------------------------------------------------------
 # Snapshots and BaseMvge Parity
@@ -679,15 +645,9 @@ class TestMvgeEnvironmentSnapshot:
             scope=RuneScope.USER,
         )
 
-        with (
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
-                return_value=([], [diag]),
-            ),
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
-                return_value=([], []),
-            ),
+        with patch(
+            "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
+            return_value=([], [diag]),
         ):
             agent = Mvge(api_key="test-key")
             await agent._load_runes()

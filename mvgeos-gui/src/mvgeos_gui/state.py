@@ -21,7 +21,6 @@ from mvgeos_agent import (
     list_installed_mvges,
     uninstall_mvge,
 )
-from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_provider import (
     get_default_realm_registry,
     get_model_options,
@@ -36,7 +35,6 @@ from mvgeos_runes import (
     list_installed_runes,
     uninstall_rune,
 )
-from mvgeos_runes.loader import get_default_skill_paths, load_skills_from_paths
 from mvgeos_runes.types import SkillManifest
 from mvgeos_tome.types import TomeEntryType, TomeVersionError
 
@@ -283,10 +281,25 @@ class AppState:
         return self._autocomplete_service
 
     def load_skills(self) -> list[SkillManifest]:
-        """Load skill manifests from default discovery paths."""
-        paths = get_default_skill_paths(DEFAULT_AGENT_NAME)
-        loads, _diagnostics = load_skills_from_paths(paths)
-        return [load.manifest for load in loads]
+        """Load skill manifests from project and user skill directories."""
+        skills: list[SkillManifest] = []
+        search_dirs = [
+            self.project_path / ".agents" / "skills",
+            Path("~/.agents/skills").expanduser(),
+        ]
+        for sdir in search_dirs:
+            if not sdir.is_dir():
+                continue
+            for item in sorted(sdir.iterdir()):
+                if item.is_dir() and (item / "SKILL.md").is_file():
+                    skills.append(
+                        SkillManifest(
+                            name=item.name,
+                            description=f"Skill {item.name}",
+                            path=str(item),
+                        )
+                    )
+        return skills
 
     @staticmethod
     def skill_info_from_manifest(manifest: SkillManifest) -> SkillInfo:

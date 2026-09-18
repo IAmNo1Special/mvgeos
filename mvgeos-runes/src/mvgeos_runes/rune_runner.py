@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import re
 import traceback
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -117,7 +116,6 @@ class RuneRunner:
         self._current_loading_rune: str | None = None
         self._loaded_skills: list[SkillLoad] = []
         self._skill_diagnostics: list[SkillDiagnostic] = []
-        self._suppress_skill_catalog: bool = False
         self._spell_version: int = 0
         # The effective active-spell set is the *union* of each rune's own
         # contribution: ``_active_spells_by_rune`` maps a rune name (or ``None``
@@ -421,54 +419,6 @@ class RuneRunner:
         """Get names of all skills activated in this session."""
         return set(self._active_skills)
 
-    def get_skill_catalog(self) -> str:
-        """Get the skill catalog formatted for system prompt injection.
-
-        Returns a formatted XML string conforming to the agentskills.io
-        progressive disclosure specification. Returns empty string if suppressed
-        or if no model-invocable skills exist.
-        """
-        if self._suppress_skill_catalog or not self._loaded_skills:
-            return ""
-
-        visible_skills = [
-            load.manifest
-            for load in self._loaded_skills
-            if not load.manifest.disable_model_invocation
-        ]
-        if not visible_skills:
-            return ""
-
-        lines = [
-            "<available_skills>",
-            "  <!-- The following skills provide specialized instructions for tasks.",
-            "       When a task matches a skill's description, call activate_skill",
-            "       with the skill's name (or read SKILL.md) to load its instructions.",
-            "       When a skill references relative paths, resolve them against the",
-            "       skill directory (parent of SKILL.md) and use absolute paths. -->",
-        ]
-        for m in visible_skills:
-            loc = m.location or (Path(m.path) / "SKILL.md").as_posix()
-            lines.append("  <skill>")
-            lines.append(f"    <name>{m.name}</name>")
-            lines.append(f"    <description>{m.description}</description>")
-            lines.append(f"    <location>{loc}</location>")
-            lines.append("  </skill>")
-        lines.append("</available_skills>")
-        return "\n".join(lines)
-
-    def suppress_skill_catalog(self, suppress: bool = True) -> None:
-        """Suppress or enable skill catalog injection into system prompt.
-
-        When suppressed, the skill catalog will not be included in the system
-        prompt, allowing a rune (e.g., seeker) to own the skill surface.
-        """
-        self._suppress_skill_catalog = suppress
-
-    def is_skill_catalog_suppressed(self) -> bool:
-        """Check if skill catalog injection is suppressed."""
-        return self._suppress_skill_catalog
-
     def send_message(self, content: str) -> None:
         self._message_queue.append(content)
 
@@ -600,116 +550,3 @@ class RuneRunner:
         changes. Used by MvgeHarness to skip redundant spell resolution rebuilds.
         """
         return self._spell_version
-
-
-SKILL_BODY_REGEX = re.compile(r"^---\r?\n(.*?)\r?\n---\r?\n?(.*)$", re.DOTALL)
-
-
-def create_activate_skill_spell(runner: RuneRunner) -> SpellDefinition:
-    """Create the canonical activate_skill spell adhering to agentskills.io."""
-    visible_manifests = {
-        m.name: m for m in runner.get_skills() if not m.disable_model_invocation
-    }
-    valid_names = sorted(visible_manifests.keys())
-
-    parameters = {
-        "type": "object",
-        "properties": {
-            "name": {
-                "type": "string",
-                "enum": valid_names if valid_names else ["none"],
-                "description": (
-                    "The exact name of the skill to activate from available_skills."
-                ),
-            }
-        },
-        "required": ["name"],
-    }
-
-    async def handler(
-        params: dict[str, Any], signal: Any = None, on_update: Any = None
-    ) -> dict[str, Any]:
-        skill_name = str(params.get("name", "")).strip()
-        manifest = None
-        for load in runner._loaded_skills:
-            if (
-                load.manifest.name == skill_name
-                and not load.manifest.disable_model_invocation
-            ):
-                manifest = load.manifest
-                break
-
-        if manifest is None:
-            available = sorted(
-                [
-                    load.manifest.name
-                    for load in runner._loaded_skills
-                    if not load.manifest.disable_model_invocation
-                ]
-            )
-            return {
-                "error": (
-                    f"Skill '{skill_name}' not found or unavailable for "
-                    "model invocation."
-                ),
-                "available_skills": available,
-            }
-
-        if runner.is_skill_active(skill_name):
-            return {
-                "content": (
-                    f'<skill_content name="{skill_name}" status="already_active">\n'
-                    f"Skill '{skill_name}' is already loaded in conversation context. "
-                    f"Refer to previously loaded instructions.\n"
-                    f"</skill_content>"
-                )
-            }
-
-        base_dir = manifest.base_dir
-        body = manifest.body
-        if not body:
-            try:
-                raw_text = Path(manifest.location).read_text(encoding="utf-8")
-                match = SKILL_BODY_REGEX.match(raw_text.lstrip("\ufeff"))
-                body = match.group(2).strip() if match else raw_text.strip()
-            except OSError:
-                body = ""
-
-        resources: list[str] = []
-        for sub in ("scripts", "references", "assets"):
-            sub_dir = base_dir / sub
-            if sub_dir.is_dir():
-                for res_file in sorted(sub_dir.rglob("*")):
-                    if res_file.is_file():
-                        try:
-                            rel = res_file.relative_to(base_dir).as_posix()
-                            resources.append(rel)
-                        except ValueError:
-                            continue
-
-        res_xml = ""
-        if resources:
-            res_items = "\n".join(f"    <file>{r}</file>" for r in resources[:50])
-            res_xml = f"\n  <skill_resources>\n{res_items}\n  </skill_resources>"
-
-        formatted_content = (
-            f'<skill_content name="{manifest.name}">\n'
-            f"{body}\n\n"
-            f"Skill directory: {base_dir.as_posix()}\n"
-            "Relative paths in this skill are relative to the skill directory."
-            f"{res_xml}\n"
-            f"</skill_content>"
-        )
-
-        runner.mark_skill_active(skill_name)
-        return {"content": formatted_content}
-
-    return SpellDefinition(
-        name="activate_skill",
-        description=(
-            "Load specialized instructions, workflows, and bundled resources "
-            "for a declared skill from available_skills."
-        ),
-        parameters=parameters,
-        handler=handler,
-    )

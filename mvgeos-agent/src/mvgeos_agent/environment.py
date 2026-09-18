@@ -268,7 +268,6 @@ def render_prompt(
     append_text: str = "",
     *,
     spells_dir: Path | None = None,
-    skills_paths: Sequence[Path] = (),
     runes_paths: Sequence[Path] = (),
     system_path: Path | None = None,
     global_dir: Path | None = None,
@@ -308,10 +307,6 @@ def render_prompt(
     if spells_dir is not None and spells_dir.is_dir():
         self_mod_lines.append(f"- Spells: {spells_dir.as_posix()}/AGENTS.md")
         has_self_mod = True
-    if skills_paths:
-        for sp in skills_paths:
-            self_mod_lines.append(f"- Skills: {sp.as_posix()}/AGENTS.md")
-            has_self_mod = True
     if runes_paths:
         for rp in runes_paths:
             self_mod_lines.append(f"- Runes: {rp.as_posix()}/AGENTS.md")
@@ -851,23 +846,14 @@ class MvgeEnvironment:
             elif hasattr(result_data, "base_prompt"):
                 effective_base = str(result_data.base_prompt)
 
-        skill_catalog = ""
-        if (
-            effective_runner is not None
-            and not effective_runner.is_skill_catalog_suppressed()
-        ):
-            skill_catalog = effective_runner.get_skill_catalog()
-
         if not render_scaffolding or "Active spells:" in effective_base:
-            if skill_catalog:
-                return f"{effective_base}\n\n{skill_catalog}"
             return effective_base
 
         return self.render_prompt(
             body=effective_base,
             spells=effective_spells,
             cwd=effective_cwd,
-            append_text=skill_catalog,
+            append_text="",
             runes_paths=self.runes_paths,
             system_path=self.resolved_prompt.path,
             global_dir=self.global_dir,
@@ -881,7 +867,6 @@ class MvgeEnvironment:
         append_text: str = "",
         *,
         spells_dir: Path | None = None,
-        skills_paths: Sequence[Path] = (),
         runes_paths: Sequence[Path] = (),
         system_path: Path | None = None,
         global_dir: Path | None = None,
@@ -893,7 +878,6 @@ class MvgeEnvironment:
             cwd=cwd,
             append_text=append_text,
             spells_dir=spells_dir,
-            skills_paths=skills_paths,
             runes_paths=runes_paths,
             system_path=system_path,
             global_dir=global_dir,

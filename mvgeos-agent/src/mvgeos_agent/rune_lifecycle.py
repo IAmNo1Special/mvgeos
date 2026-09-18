@@ -17,18 +17,14 @@ from pathlib import Path
 from mvgeos_core.sandbox import MvgeSandbox
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_runes.loader import (
-    get_prioritized_skill_search_paths,
     load_runes_from_paths,
-    load_skills_from_paths,
 )
-from mvgeos_runes.rune_runner import RuneRunner, create_activate_skill_spell
+from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     ResourcesDiscoverData,
     RuneContext,
     RuneScope,
     SigilHook,
-    SkillDiagnosticKind,
-    SkillScope,
 )
 from mvgeos_runes.watcher import RuneWatcher
 
@@ -147,59 +143,9 @@ class RuneLifecycle:
         elif diagnostics:
             runner.extend_diagnostics(diagnostics)
 
-        skill_paths = list(
-            get_prioritized_skill_search_paths(
-                self._agent_name,
-                cwd=Path(self._cwd),
-                global_dir=self._global_dir,
-            )
-        )
-
         # Dynamic Resource Discovery hook (SigilHook.RESOURCES_DISCOVER)
         res_data = ResourcesDiscoverData(cwd=self._cwd, reason="startup")
-        res_result = await runner.emit_chain(SigilHook.RESOURCES_DISCOVER, res_data)
-
-        dynamic_paths: list[str | Path] = []
-        if isinstance(res_result, ResourcesDiscoverData):
-            dynamic_paths.extend(res_result.skill_paths)
-        elif isinstance(res_result, dict):
-            dynamic_paths.extend(res_result.get("skill_paths", []))
-        dynamic_paths.extend(runner.get_registered_skill_paths())
-
-        for dp in dynamic_paths:
-            resolved_dp = Path(dp).expanduser().resolve()
-            if resolved_dp.exists():
-                if (resolved_dp / "SKILL.md").is_file():
-                    skill_paths.append((resolved_dp.parent, SkillScope.PROJECT))
-                else:
-                    skill_paths.append((resolved_dp, SkillScope.PROJECT))
-
-        skill_loads, skill_diagnostics = await asyncio.to_thread(
-            load_skills_from_paths, skill_paths, self._agent_name
-        )
-        if skill_loads:
-            runner.load_skills(skill_loads, diagnostics=skill_diagnostics)
-            activate_spell = create_activate_skill_spell(runner)
-            runner.register_spell(activate_spell, override=True)
-        elif skill_diagnostics:
-            runner.extend_skill_diagnostics(skill_diagnostics)
-
-        shadow_count = sum(
-            1 for d in skill_diagnostics if d.kind == SkillDiagnosticKind.SHADOWED_SKILL
-        )
-        for sdiag in skill_diagnostics:
-            logger.debug(
-                "Skill diagnostic: %s (skill=%s, scope=%s, path=%s)",
-                sdiag.message,
-                sdiag.skill_name,
-                sdiag.scope.value if sdiag.scope else "unknown",
-                sdiag.path,
-            )
-        if shadow_count:
-            logger.warning(
-                "Skill diagnostics: %d shadows (user-scope takes precedence)",
-                shadow_count,
-            )
+        await runner.emit_chain(SigilHook.RESOURCES_DISCOVER, res_data)
 
         self._paths_with_scope = paths_with_scope
 

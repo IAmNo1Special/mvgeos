@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -17,11 +16,6 @@ from mvgeos_runes.types import (
     RuneManifest,
     RuneScope,
     RuneShortcut,
-    SkillDiagnostic,
-    SkillDiagnosticKind,
-    SkillLoad,
-    SkillManifest,
-    SkillScope,
 )
 
 from mvgeos_agent.environment import MvgeEnvironment
@@ -45,27 +39,6 @@ def _diag(name: str = "broken") -> Diagnostic:
         message="failed to load",
         scope=RuneScope.USER,
         path="/tmp/runes",
-    )
-
-
-def _skill_diag() -> SkillDiagnostic:
-    return SkillDiagnostic(
-        kind=SkillDiagnosticKind.PARSE_WARNING,
-        skill_name="bad-skill",
-        message="could not parse skill manifest",
-        scope=SkillScope.PROJECT,
-        path="/tmp/skills/bad-skill",
-    )
-
-
-def _skill_load(name: str = "good-skill") -> SkillLoad:
-    return SkillLoad(
-        manifest=SkillManifest(
-            name=name,
-            description=f"{name} skill",
-            scope=SkillScope.PROJECT,
-            path=f"/tmp/skills/{name}",
-        )
     )
 
 
@@ -140,10 +113,6 @@ class TestLoad:
                 "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
                 return_value=([], []),
             ),
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
-                return_value=([], []),
-            ),
         ):
             runner = await lifecycle.load()
 
@@ -166,10 +135,6 @@ class TestLoad:
                 "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
                 return_value=([], []),
             ),
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
-                return_value=([], []),
-            ),
         ):
             runner = await lifecycle.load()
 
@@ -180,15 +145,9 @@ class TestLoad:
         lifecycle = RuneLifecycle(agent_name="tester")
 
         empty: tuple[list[Any], list[Any]] = ([], [])
-        with (
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
-                return_value=empty,
-            ),
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
-                return_value=empty,
-            ),
+        with patch(
+            "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
+            return_value=empty,
         ):
             first = await lifecycle.load()
             second = await lifecycle.load()
@@ -205,10 +164,6 @@ class TestLoad:
                 "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
                 return_value=(loads, []),
             ) as mock_load,
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
-                return_value=([], []),
-            ),
         ):
             runner = await lifecycle.load()
 
@@ -225,10 +180,6 @@ class TestLoad:
             patch(
                 "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
                 return_value=([], [diag]),
-            ),
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
-                return_value=([], []),
             ),
         ):
             runner = await lifecycle.load()
@@ -248,10 +199,6 @@ class TestLoad:
             patch(
                 "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
                 return_value=(loads, []),
-            ),
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
-                return_value=([], []),
             ),
         ):
             await lifecycle.load()
@@ -273,141 +220,8 @@ class TestLoad:
                 "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
                 return_value=(loads, []),
             ),
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
-                return_value=([], []),
-            ),
         ):
             await lifecycle.load()
-
-    @pytest.mark.asyncio
-    async def test_load_skills_via_default_paths(self) -> None:
-        skill_paths = [(Path("/skills"), SkillScope.USER)]
-        lifecycle = RuneLifecycle(agent_name="tester")
-
-        empty: tuple[list[Any], list[Any]] = ([], [])
-        with (
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
-                return_value=empty,
-            ),
-            patch(
-                "mvgeos_agent.rune_lifecycle.get_prioritized_skill_search_paths",
-                return_value=skill_paths,
-            ) as mock_paths,
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
-                return_value=([_skill_load()], []),
-            ) as mock_load_skills,
-        ):
-            runner = await lifecycle.load()
-
-        mock_paths.assert_called_once()
-        mock_load_skills.assert_called_once_with(skill_paths, "tester")
-        assert [s.name for s in runner.get_skills()] == ["good-skill"]
-        assert runner.get_spell("activate_skill") is not None
-
-    @pytest.mark.asyncio
-    async def test_load_retains_skill_diagnostics_without_loads(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        sdiag = _skill_diag()
-        lifecycle = RuneLifecycle(agent_name="tester")
-
-        empty: tuple[list[Any], list[Any]] = ([], [])
-        with (
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
-                return_value=empty,
-            ),
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
-                return_value=([], [sdiag]),
-            ),
-            caplog.at_level(logging.DEBUG, logger="mvgeos_agent.rune_lifecycle"),
-        ):
-            runner = await lifecycle.load()
-
-        assert runner.skill_diagnostics == [sdiag]
-        # Individual diagnostic now logged at DEBUG
-        assert len(caplog.records) == 1
-        assert caplog.records[0].levelno == logging.DEBUG
-        assert "bad-skill" in caplog.records[0].message
-
-    @pytest.mark.asyncio
-    async def test_load_skills_scope_order_dedupe(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Skills with same name in different scopes: highest scope wins."""
-        # Create skill directories with same name in different scopes
-        user_skills = tmp_path / "user_skills"
-        agent_skills = tmp_path / "agent_skills"
-        user_skills.mkdir()
-        agent_skills.mkdir()
-
-        # USER scope skill (higher precedence in SKILL_SCOPES order)
-        user_skill_dir = user_skills / "duplicate-skill"
-        user_skill_dir.mkdir()
-        md_user = (
-            "---\nname: duplicate-skill\n"
-            "description: user scope skill\nversion: 1.0.0\n---\n"
-        )
-        (user_skill_dir / "SKILL.md").write_text(md_user)
-
-        # AGENT scope skill (lower precedence)
-        agent_skill_dir = agent_skills / "duplicate-skill"
-        agent_skill_dir.mkdir()
-        md_agent = (
-            "---\nname: duplicate-skill\n"
-            "description: agent scope skill\nversion: 1.0.0\n---\n"
-        )
-        (agent_skill_dir / "SKILL.md").write_text(md_agent)
-
-        # Paths in precedence order: USER first, then AGENT
-        paths = [
-            (str(user_skills), SkillScope.USER),
-            (str(agent_skills), SkillScope.AGENT),
-        ]
-
-        lifecycle = RuneLifecycle(agent_name="tester")
-
-        with (
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
-                return_value=([], []),
-            ),
-            patch(
-                "mvgeos_agent.rune_lifecycle.get_prioritized_skill_search_paths",
-                return_value=paths,
-            ),
-            caplog.at_level(logging.DEBUG, logger="mvgeos_agent.rune_lifecycle"),
-            caplog.at_level(logging.DEBUG, logger="mvgeos_runes.loader"),
-        ):
-            runner = await lifecycle.load()
-
-        # Verify dedupe logic: only 1 skill loaded (USER scope wins)
-        skills = runner.get_skills()
-        assert len(skills) == 1
-        assert skills[0].name == "duplicate-skill"
-        assert skills[0].scope == SkillScope.USER
-
-        # Verify individual shadow diagnostic was logged at DEBUG level
-        shadow_logs = [
-            r
-            for r in caplog.records
-            if "shadowed" in r.message.lower() and r.levelno == logging.DEBUG
-        ]
-        assert len(shadow_logs) == 1
-
-        # Verify summary warning with count
-        summary_logs = [
-            r
-            for r in caplog.records
-            if "shadows (user-scope takes precedence)" in r.message
-        ]
-        assert len(summary_logs) == 1
-        assert summary_logs[0].levelno == logging.WARNING
-        assert "1 shadows" in summary_logs[0].message
 
     @pytest.mark.asyncio
     async def test_environment_refreshed_after_load(self, tmp_path: Path) -> None:
@@ -417,7 +231,6 @@ class TestLoad:
             config_dir=tmp_path / "agent_config",
         )
         diag = _diag()
-        sdiag = _skill_diag()
         lifecycle = RuneLifecycle(
             agent_name="tester",
             environment=environment,
@@ -427,10 +240,6 @@ class TestLoad:
             patch(
                 "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
                 return_value=([], [diag]),
-            ),
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
-                return_value=([], [sdiag]),
             ),
         ):
             runner = await lifecycle.load()
@@ -470,10 +279,6 @@ class TestStartAndShutdown:
                 "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
                 return_value=([], []),
             ),
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
-                return_value=([], []),
-            ),
         ):
             await lifecycle.load()
 
@@ -498,10 +303,6 @@ class TestStartAndShutdown:
                 "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
                 return_value=([], []),
             ),
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
-                return_value=([], []),
-            ),
         ):
             runner = await lifecycle.load()
 
@@ -522,10 +323,6 @@ class TestStartAndShutdown:
         with (
             patch(
                 "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
-                return_value=([], []),
-            ),
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
                 return_value=([], []),
             ),
         ):
@@ -572,10 +369,6 @@ class TestStartAndShutdown:
                 "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
                 return_value=([], []),
             ),
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
-                return_value=([], []),
-            ),
         ):
             await lifecycle.load()
 
@@ -599,10 +392,6 @@ class TestStartAndShutdown:
         with (
             patch(
                 "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
-                return_value=([], []),
-            ),
-            patch(
-                "mvgeos_agent.rune_lifecycle.load_skills_from_paths",
                 return_value=([], []),
             ),
         ):

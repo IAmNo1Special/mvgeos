@@ -33,7 +33,6 @@ from mvgeos_cli.commands.repl import (
 )
 from mvgeos_cli.commands.rune import rune_app
 from mvgeos_cli.commands.setup import DefaultCheckGroup, setup_app
-from mvgeos_cli.commands.skill import skill_app
 from mvgeos_cli.commands.tome import tome_app
 from mvgeos_cli.commands.tui import run_tui
 from mvgeos_cli.console import (
@@ -443,7 +442,6 @@ app.add_typer(build_app, name="build")
 app.add_typer(config_app, name="config")
 app.add_typer(info_app, name="info")
 app.add_typer(tome_app, name="tome")
-app.add_typer(skill_app, name="skill")
 app.add_typer(rune_app, name="rune")
 app.add_typer(mvge_app, name="mvge")
 app.add_typer(mvge_app, name="agent")

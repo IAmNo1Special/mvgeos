@@ -154,10 +154,6 @@ class RuneAPI:
         """Dynamically register an in-memory SkillManifest."""
         self._runner.register_skill(manifest)
 
-    def get_skill_catalog(self) -> str:
-        """Get the skill catalog formatted for system prompt injection."""
-        return self._runner.get_skill_catalog()
-
     def send_message(self, content: str) -> None:
         self._runner.send_message(content)
 
