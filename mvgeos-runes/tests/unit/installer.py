@@ -189,7 +189,7 @@ def test_install_rune_executes_python_deps(tmp_path: Path) -> None:
 
     assert dest == target_dir / "rune_with_deps"
     mock_subproc.assert_called_once_with(
-        ["uv", "pip", "install", "fastapi>=0.100.0", "pydantic>=2.0"],
+        ["uv", "add", "fastapi>=0.100.0", "pydantic>=2.0"],
         check=True,
         capture_output=True,
         text=True,
@@ -463,12 +463,12 @@ def test_install_rune_marketplace_overwrite(tmp_path: Path) -> None:
         assert not (dest / "old.txt").exists()
 
 
-def test_install_rune_uv_pip_install_failure(tmp_path: Path) -> None:
+def test_install_rune_uv_add_install_failure(tmp_path: Path) -> None:
     source_dir = tmp_path / "dep_rune"
     _create_mock_rune_dir(source_dir, "dep_rune", python_deps=["failing-dep"])
 
     def fake_run(cmd: list[str], **kwargs: object) -> MagicMock:
-        if cmd[:3] == ["uv", "pip", "install"]:
+        if cmd[:2] == ["uv", "add"]:
             raise subprocess.CalledProcessError(1, cmd, output="error")
         return MagicMock(returncode=0)
 

@@ -34,7 +34,7 @@ def check_python_dep_installed(dep: str) -> bool:
     distribution names that differ from their importable top-level module
     (``python-dotenv`` -> ``dotenv``, ``PyYAML`` -> ``yaml``) are handled.
     A version pin alone never fails the check: any installed distribution of
-    that name counts, matching the installer's ``uv pip install`` behavior.
+    that name counts, matching the installer's ``uv add`` behavior.
     """
     requirement = _parse_requirement(dep)
     if requirement is None:

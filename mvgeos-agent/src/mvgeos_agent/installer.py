@@ -65,7 +65,7 @@ def _dest_within_target(target: Path, name: str) -> Path:
 
 
 def _confirm_python_deps_install(deps: list[str], *, confirm: bool | None) -> bool:
-    """Decide whether to run ``uv pip install`` for manifest-declared deps.
+    """Decide whether to run ``uv add`` for manifest-declared deps.
 
     Args:
         deps: The dependency specifiers from the manifest.
@@ -92,7 +92,7 @@ def _confirm_python_deps_install(deps: list[str], *, confirm: bool | None) -> bo
     for dep in deps:
         print(f"  - {dep}")  # noqa: T201
     try:
-        answer = input("Install them with 'uv pip install'? [y/N] ").strip().lower()
+        answer = input("Install them with 'uv add'? [y/N] ").strip().lower()
     except EOFError:
         return False
     return answer in ("y", "yes")
@@ -403,7 +403,7 @@ def install_mvge(
             if deps:
                 if _confirm_python_deps_install(deps, confirm=confirm_python_deps):
                     subprocess.run(
-                        ["uv", "pip", "install", *deps],
+                        ["uv", "add", *deps],
                         check=True,
                         capture_output=True,
                         text=True,
@@ -417,7 +417,7 @@ def install_mvge(
         if (dest / "pyproject.toml").is_file():
             with contextlib.suppress(Exception):
                 subprocess.run(
-                    ["uv", "pip", "install", "-e", str(dest)],
+                    ["uv", "add", "--editable", str(dest)],
                     check=True,
                     capture_output=True,
                     text=True,

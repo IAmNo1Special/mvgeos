@@ -298,8 +298,8 @@ def test_install_mvge_with_python_deps_and_pyproject(tmp_path: Path) -> None:
 
     assert dest == target_dir / "deps_mvge"
     calls = [c[0][0] for c in mock_run.call_args_list]
-    assert ["uv", "pip", "install", "dep1", "dep2"] in calls
-    assert ["uv", "pip", "install", "-e", str(dest)] in calls
+    assert ["uv", "add", "dep1", "dep2"] in calls
+    assert ["uv", "add", "--editable", str(dest)] in calls
 
 
 def test_install_mvge_marketplace_alt_name_hyphen(tmp_path: Path) -> None:
@@ -418,12 +418,12 @@ def test_install_mvge_pyproject_install_error_tolerated(tmp_path: Path) -> None:
 
     target_dir = tmp_path / "agents"
 
-    def fail_pip_install(cmd: list[str], **kwargs: object) -> MagicMock:
-        if "pip" in cmd and "-e" in cmd:
-            raise OSError("pip error")
+    def fail_uv_add_install(cmd: list[str], **kwargs: object) -> MagicMock:
+        if "add" in cmd and "--editable" in cmd:
+            raise OSError("uv add error")
         return MagicMock(returncode=0)
 
-    with patch("subprocess.run", side_effect=fail_pip_install):
+    with patch("subprocess.run", side_effect=fail_uv_add_install):
         dest = install_mvge(str(source_dir), target_dir=target_dir)
 
     assert dest == target_dir / "error_mvge"
@@ -622,18 +622,18 @@ def test_install_mvge_git_failure_no_local_dir_raises(
         install_mvge("coding_mvge", target_dir=target_dir)
 
 
-def test_install_mvge_uv_pip_deps_error_tolerated(tmp_path: Path) -> None:
+def test_install_mvge_uv_add_deps_error_tolerated(tmp_path: Path) -> None:
     source_dir = tmp_path / "deps_err_mvge"
     _create_mock_mvge_dir(source_dir, "deps_err_mvge", python_deps=["pkg_a", "pkg_b"])
 
     target_dir = tmp_path / "agents"
 
-    def fail_pip(cmd: list[str], **kwargs: object) -> MagicMock:
-        if "uv" in cmd and "pip" in cmd:
+    def fail_uv_add(cmd: list[str], **kwargs: object) -> MagicMock:
+        if cmd[:2] == ["uv", "add"]:
             raise subprocess.CalledProcessError(1, cmd)
         return MagicMock(returncode=0)
 
-    with patch("subprocess.run", side_effect=fail_pip):
+    with patch("subprocess.run", side_effect=fail_uv_add):
         dest = install_mvge(
             str(source_dir), target_dir=target_dir, confirm_python_deps=True
         )
@@ -725,5 +725,5 @@ def test_install_mvge_python_deps_skipped_by_default_non_interactive(
         dest = install_mvge(str(source_dir), target_dir=target_dir)
 
     calls = [c[0][0] for c in mock_run.call_args_list]
-    assert ["uv", "pip", "install", "dep1"] not in calls
+    assert ["uv", "add", "dep1"] not in calls
     assert (dest / "manifest.json").is_file()

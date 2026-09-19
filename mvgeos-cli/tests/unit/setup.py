@@ -118,11 +118,11 @@ async def test_install_package_success_and_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_install_python_dep_by_name() -> None:
-    """install_python_dep_by_name runs uv pip install."""
+    """install_python_dep_by_name runs uv add."""
     with patch("shutil.which", return_value="/bin/uv"):
         success_dry, msg_dry = await install_python_dep_by_name("rich", dry_run=True)
         assert success_dry is True
-        assert "Would run: uv pip install rich" in msg_dry
+        assert "Would run: uv add rich" in msg_dry
 
         with patch("asyncio.to_thread") as mock_thread:
             mock_res = MagicMock(returncode=0)
@@ -134,17 +134,17 @@ async def test_install_python_dep_by_name() -> None:
 
 @pytest.mark.asyncio
 async def test_run_uv_editable(tmp_path: Path) -> None:
-    """_run_uv_editable runs uv pip install -e <path>."""
+    """_run_uv_editable runs uv add --editable <path>."""
     success_dry, msg_dry = await _run_uv_editable(tmp_path, dry_run=True)
     assert success_dry is True
-    assert "Would run: uv pip install -e" in msg_dry
+    assert "Would run: uv add --editable" in msg_dry
 
     with patch("asyncio.to_thread") as mock_thread:
         mock_res = MagicMock(returncode=0)
         mock_thread.return_value = mock_res
         success, msg = await _run_uv_editable(tmp_path, dry_run=False)
         assert success is True
-        assert "Installed via uv pip install -e" in msg
+        assert "Installed via uv add --editable" in msg
 
 
 @pytest.mark.asyncio
@@ -165,7 +165,7 @@ async def test_install_rune_python_deps(tmp_path: Path) -> None:
         patch("shutil.which", return_value="/bin/uv"),
         patch("mvgeos_cli.commands.setup._run_uv_editable") as mock_edit,
     ):
-        mock_edit.return_value = (True, "Installed via uv pip install -e")
+        mock_edit.return_value = (True, "Installed via uv add --editable")
         (tmp_path / "pyproject.toml").touch()
         ok, msg = await install_rune_python_deps(tmp_path, manifest)
         assert ok is True

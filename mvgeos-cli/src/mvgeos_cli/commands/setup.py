@@ -162,10 +162,10 @@ def _has_build_config(rune_dir: Path) -> bool:
 async def install_python_dep_by_name(
     dep: str, dry_run: bool = False
 ) -> tuple[bool, str]:
-    """Install a single declared Python dependency by name via uv pip install."""
+    """Install a single declared Python dependency by name via uv add."""
     if not shutil.which("uv"):
         return False, "uv not found on PATH"
-    cmd = ["uv", "pip", "install", dep]
+    cmd = ["uv", "add", dep]
     console.print(f"[dim]Trying: {' '.join(cmd)}[/dim]")
     if dry_run:
         return True, f"Would run: {' '.join(cmd)}"
@@ -179,16 +179,16 @@ async def install_python_dep_by_name(
         )
         if result.returncode == 0:
             return True, f"Installed python dep {dep} via uv"
-        return False, f"uv pip install {dep} failed: {result.stderr[:200]}"
+        return False, f"uv add {dep} failed: {result.stderr[:200]}"
     except subprocess.TimeoutExpired:
-        return False, f"uv pip install {dep} timed out"
+        return False, f"uv add {dep} timed out"
     except Exception as e:
-        return False, f"uv pip install {dep} error: {e}"
+        return False, f"uv add {dep} error: {e}"
 
 
 async def _run_uv_editable(rune_dir: Path, dry_run: bool = False) -> tuple[bool, str]:
-    """Editable-install a rune directory via uv pip install -e."""
-    cmd = ["uv", "pip", "install", "-e", str(rune_dir)]
+    """Editable-install a rune directory via uv add --editable."""
+    cmd = ["uv", "add", "--editable", str(rune_dir)]
     console.print(f"[dim]Trying: {' '.join(cmd)}[/dim]")
     if dry_run:
         return True, f"Would run: {' '.join(cmd)}"
@@ -201,12 +201,12 @@ async def _run_uv_editable(rune_dir: Path, dry_run: bool = False) -> tuple[bool,
             timeout=600,
         )
         if result.returncode == 0:
-            return True, f"Installed via uv pip install -e {rune_dir.name}"
-        return False, f"uv pip install failed: {result.stderr[:200]}"
+            return True, f"Installed via uv add --editable {rune_dir.name}"
+        return False, f"uv add failed: {result.stderr[:200]}"
     except subprocess.TimeoutExpired:
-        return False, "uv pip install timed out"
+        return False, "uv add timed out"
     except Exception as e:
-        return False, f"uv install error: {e}"
+        return False, f"uv add error: {e}"
 
 
 async def install_rune_python_deps(
@@ -216,7 +216,7 @@ async def install_rune_python_deps(
 ) -> tuple[bool, str]:
     """Install a rune's Python deps.
 
-    Declared ``python_deps`` are installed by name (``uv pip install <dep>``).
+    Declared ``python_deps`` are installed by name (``uv add <dep>``).
     When the rune directory ships a build config (``pyproject.toml`` /
     ``setup.py``) we fall back to an editable install of the directory,
     which also covers runes like heal-my-goap that ship no package.

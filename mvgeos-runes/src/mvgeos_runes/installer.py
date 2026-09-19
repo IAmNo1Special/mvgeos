@@ -264,7 +264,7 @@ def install_rune(
             deps = [str(d) for d in python_deps if str(d).strip()]
             if deps:
                 subprocess.run(
-                    ["uv", "pip", "install", *deps],
+                    ["uv", "add", *deps],
                     check=True,
                     capture_output=True,
                     text=True,
