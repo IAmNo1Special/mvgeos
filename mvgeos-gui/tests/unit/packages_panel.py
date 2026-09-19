@@ -693,32 +693,131 @@ async def test_packages_panel_mvge_refresh_exceptions(user: User) -> None:
 
 
 @pytest.mark.asyncio
-async def test_marketplace_tab_panels_do_not_wrap_cards_into_side_column(
+async def test_marketplace_merged_list_shows_mvges_and_runes_together(
     user: User,
 ) -> None:
-    """Tab panels must not carry Quasar's `flex` class.
-
-    Regression: `flex` (Quasar `.flex`) also sets `flex-wrap: wrap`, and the
-    tab panel has a constrained height (`.q-panel > div { height: 100% }`).
-    A column-direction flex container with wrap pushes the tall cards column
-    into a second visual column to the right of the search bar and filters.
-    NiceGUI's own `.nicegui-tab-panel` already provides
-    `display: flex; flex-direction: column` without wrap, so `flex flex-col`
-    must stay off the tab panels.
-    """
+    """Mvges and runes render in one list with a Kind filter, no tabs."""
     state = AppState()
-    state.fetch_marketplace_runes_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.fetch_marketplace_runes_async = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "alpha-rune": {
+                "name": "alpha-rune",
+                "version": "1.0.0",
+                "description": "A test rune",
+                "types": ["Spell"],
+            },
+        }
+    )
     state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
-    state.fetch_marketplace_mvges_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "coding_mvge": {
+                "name": "coding_mvge",
+                "version": "0.2.6",
+                "description": "Coding agent for MvgeOS",
+                "spells": ["bash"],
+            },
+        }
+    )
     state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
-    @ui.page("/test_marketplace_tab_panel_wrap")
+    @ui.page("/test_marketplace_merged")
     def page() -> None:
         render_packages_panel(state)
 
-    await user.open("/test_marketplace_tab_panel_wrap")
+    await user.open("/test_marketplace_merged")
     await user.should_see("Marketplace")
 
-    for marker in ("marketplace_mvges_tab_panel", "marketplace_runes_tab_panel"):
-        panel_el = next(iter(user.find(marker=marker).elements))
-        assert "flex" not in panel_el._classes
+    # Both kinds visible together without switching tabs
+    await user.should_see("alpha-rune")
+    await user.should_see("coding_mvge")
+
+    # No tabs remain
+    with pytest.raises(AssertionError, match="expected to find"):
+        user.find(marker="marketplace_mvges_tab")
+    with pytest.raises(AssertionError, match="expected to find"):
+        user.find(marker="marketplace_runes_tab")
+
+    # Kind filter exists and defaults to All
+    kind_el = next(iter(user.find(marker="package_filter_kind_select").elements))
+    assert kind_el.value == "All"
+
+
+@pytest.mark.asyncio
+async def test_marketplace_kind_filter_narrows_to_mvge(user: User) -> None:
+    """Kind filter set to Mvge hides runes."""
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "alpha-rune": {
+                "name": "alpha-rune",
+                "version": "1.0.0",
+                "description": "A test rune",
+            },
+        }
+    )
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "coding_mvge": {
+                "name": "coding_mvge",
+                "version": "0.2.6",
+                "description": "Coding agent for MvgeOS",
+            },
+        }
+    )
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+
+    @ui.page("/test_marketplace_kind_mvge")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_marketplace_kind_mvge")
+    await user.should_see("alpha-rune")
+    await user.should_see("coding_mvge")
+
+    kind_el = next(iter(user.find(marker="package_filter_kind_select").elements))
+    kind_el.set_value("Mvge")
+
+    await user.should_see("coding_mvge")
+    await user.should_not_see("alpha-rune")
+
+
+@pytest.mark.asyncio
+async def test_marketplace_kind_filter_narrows_to_rune(user: User) -> None:
+    """Kind filter set to Rune hides mvges."""
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "alpha-rune": {
+                "name": "alpha-rune",
+                "version": "1.0.0",
+                "description": "A test rune",
+            },
+        }
+    )
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "coding_mvge": {
+                "name": "coding_mvge",
+                "version": "0.2.6",
+                "description": "Coding agent for MvgeOS",
+            },
+        }
+    )
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+
+    @ui.page("/test_marketplace_kind_rune")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_marketplace_kind_rune")
+    await user.should_see("alpha-rune")
+    await user.should_see("coding_mvge")
+
+    kind_el = next(iter(user.find(marker="package_filter_kind_select").elements))
+    kind_el.set_value("Rune")
+
+    await user.should_see("alpha-rune")
+    await user.should_not_see("coding_mvge")
