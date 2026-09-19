@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-09-19
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (dfcc91f)
+
+- **release:** v0.5.2 (a52518b)
+
+
+### Features
+
+- **gui:** merge mvges and runes into single marketplace list with Kind filter (409e95a)
+
+
+### Refactoring
+
+- **gui:** drop Kind filter, make Mvge a rune type in Type filter (f57b87d)
+
+
+### Tests
+
+- **gui:** increase retries on timing-sensitive marketplace assertions (05cbd0d)
+
+- **gui:** mock mvge fetchers in marketplace panel tests (ded5f47)
+
+
 ## [0.5.1] - 2026-09-19
 
 
