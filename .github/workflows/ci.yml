@@ -13,9 +13,8 @@ jobs:
   # the per-leg union then matches it once combined. The gate is
   # disabled here because a single package cannot clear the combined
   # floor -- enforcement happens once, in the aggregate job below.
+  # Each leg uploads its .coverage.* data file for the aggregate job.
   test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -27,33 +26,15 @@ jobs:
           - mvgeos-tome
           - mvgeos-cli
           - mvgeos-gui
-    env:
-      COVERAGE_FILE: .coverage.${{ matrix.package }}
-    steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-      - run: uv sync --all-packages
-      - name: Test ${{ matrix.package }} (unit + integration)
-        run: >-
-          uv run python -m pytest
-          --cov
-          --cov-report=term-missing
-          --cov-fail-under=0
-          ${{ matrix.package }}/tests/unit
-          ${{ matrix.package }}/tests/integration
-      - name: Upload coverage data
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-data-${{ matrix.package }}
-          path: .coverage.*
-          include-hidden-files: true
-          if-no-files-found: error
+    uses: IAmNo1Special/actions/.github/workflows/python-ci.yml@v1
+    with:
+      install-command: "uv sync --all-packages"
+      run-lint: false
+      test-env-json: '{"COVERAGE_FILE": ".coverage-${{ matrix.package }}"}'
+      test-commands: "uv run python -m pytest --cov --cov-report=term-missing --cov-fail-under=0 ${{ matrix.package }}/tests/unit ${{ matrix.package }}/tests/integration"
+      coverage-artifact-name: "coverage-data-${{ matrix.package }}"
+      timeout-minutes: 20
 
-  # Aggregates the per-leg data files and enforces the combined floor.
-  # The floor lives only in pyproject [tool.coverage.report]
-  # fail_under; `coverage report` reads it from there.
   coverage:
     needs: test
     runs-on: ubuntu-latest
@@ -75,34 +56,25 @@ jobs:
         run: uv run python -m coverage report
 
   lint:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-      - run: uv sync --all-packages
-      - run: uv run ruff check
-      - run: uv run ruff format --check
-      - run: uv run mypy .
+    uses: IAmNo1Special/actions/.github/workflows/python-ci.yml@v1
+    with:
+      install-command: "uv sync --all-packages"
+      run-tests: false
+      timeout-minutes: 10
 
   # Cross-platform test verification: validates execution on Windows and macOS.
   test-crossplatform:
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
-    steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-      - run: uv sync --all-packages
-      - name: Full test suite on ${{ matrix.os }}
-        run: uv run python -m pytest
+    uses: IAmNo1Special/actions/.github/workflows/python-ci.yml@v1
+    with:
+      runs-on: ${{ matrix.os }}
+      install-command: "uv sync --all-packages"
+      run-lint: false
+      test-commands: "uv run python -m pytest"
+      timeout-minutes: 25
 
   # Release automation: needs IS the wait-for-green. This job only starts
   # once test + coverage + lint + crossplatform all succeeded, so every tag sits on verified
