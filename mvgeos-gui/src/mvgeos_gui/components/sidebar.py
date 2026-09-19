@@ -1,5 +1,7 @@
 """Left navigation sidebar for MvgeOS desktop."""
 
+from collections.abc import Callable
+
 from nicegui import ui
 
 from mvgeos_gui import __version__
@@ -143,14 +145,27 @@ def render_sidebar(state: AppState) -> ui.column:
 
         with ui.column().classes("w-full px-2 py-1 gap-0.5 shrink-0"):
             for label, view, icon in nav_items:
-                _sidebar_item(
-                    label,
-                    view,
-                    icon,
-                    state.current_view == view,
-                    state,
-                    collapsed,
-                )
+                if view == "settings":
+                    # Settings is a modal, not a view: open it directly.
+                    # (There is no "settings" view branch in shell.py.)
+                    _sidebar_item(
+                        label,
+                        view,
+                        icon,
+                        False,
+                        state,
+                        collapsed,
+                        on_click=state.open_app_settings,
+                    )
+                else:
+                    _sidebar_item(
+                        label,
+                        view,
+                        icon,
+                        state.current_view == view,
+                        state,
+                        collapsed,
+                    )
 
         # Current Session & Recent Sessions
         if not collapsed:
@@ -245,12 +260,16 @@ def _sidebar_item(
     active: bool,
     state: AppState,
     collapsed: bool,
+    on_click: Callable[[], None] | None = None,
 ) -> None:
     """Render a single sidebar navigation item."""
     active_cls = (
         "nav-link-active text-primary"
         if active
         else "text-[#9c94b3] hover:text-[#eceaf4] hover:bg-[#0e0e12]/60"
+    )
+    handle_click = (
+        on_click if on_click is not None else lambda: state.set_current_view(view)
     )
     if collapsed:
         with (
@@ -259,7 +278,8 @@ def _sidebar_item(
                 f"w-full justify-center py-2 rounded-md "
                 f"cursor-pointer transition-colors {active_cls}"
             )
-            .on("click", lambda _, v=view: state.set_current_view(v))
+            .on("click", lambda _: handle_click())
+            .mark(f"sidebar_nav_{view}")
         ):
             ui.icon(icon, size="16px").classes(
                 "shrink-0 " + ("nav-icon-active" if active else "text-[#9c94b3]")
@@ -272,7 +292,8 @@ def _sidebar_item(
                 f"w-full items-center gap-2.5 px-3 py-2 rounded-md "
                 f"cursor-pointer text-xs transition-colors {active_cls} no-wrap"
             )
-            .on("click", lambda _, v=view: state.set_current_view(v))
+            .on("click", lambda _: handle_click())
+            .mark(f"sidebar_nav_{view}")
         ):
             ui.icon(icon, size="14px").classes(
                 "shrink-0 " + ("nav-icon-active" if active else "text-[#9c94b3]")

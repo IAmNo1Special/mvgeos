@@ -286,3 +286,24 @@ async def test_chat_panel_cascading_selector(user: User) -> None:
     assert user.find("provider_select") is not None
     assert user.find("model_select") is not None
     assert user.find("contemplation_select") is not None
+
+
+@pytest.mark.asyncio
+async def test_chat_panel_toolbar_settings_opens_modal(user: User) -> None:
+    """Toolbar Settings button must open the app settings modal, not a view.
+
+    Regression test: it used to call set_current_view("settings"), which
+    shell.py has no branch for, so it fell through to the chat view.
+    """
+    state = AppState()
+    state.open_app_settings = MagicMock()
+
+    @ui.page("/test_chat_toolbar_settings")
+    def page() -> None:
+        render_chat_panel(state)
+
+    await user.open("/test_chat_toolbar_settings")
+    settings_btn = user.find(marker="chat_toolbar_settings_btn")
+    assert settings_btn is not None
+    settings_btn.click()
+    state.open_app_settings.assert_called_once()

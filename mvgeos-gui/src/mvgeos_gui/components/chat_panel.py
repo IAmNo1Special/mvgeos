@@ -85,7 +85,8 @@ def render_chat_panel(state: AppState) -> ui.column:
                     _toolbar_button(
                         icon="tune",
                         title="Settings",
-                        on_click=lambda: state.set_current_view("settings"),
+                        on_click=state.open_app_settings,
+                        marker="chat_toolbar_settings_btn",
                     )
 
         toolbar_view()

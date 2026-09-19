@@ -41,7 +41,12 @@ def render_command_palette(state: AppState) -> None:
         ]
 
         def open_view(view_name: str) -> None:
-            state.set_current_view(view_name)
+            # Settings is a modal, not a view: open it directly.
+            # (There is no "settings" view branch in shell.py.)
+            if view_name == "settings":
+                state.open_app_settings()
+            else:
+                state.set_current_view(view_name)
             close_palette()
 
         with ui.column().classes("px-4 pb-4 gap-1 max-h-96 overflow-y-auto"):

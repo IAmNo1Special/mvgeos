@@ -70,6 +70,33 @@ async def test_render_command_palette_select_view(user: User) -> None:
 
 
 @pytest.mark.asyncio
+async def test_render_command_palette_settings_opens_modal(user: User) -> None:
+    """Clicking Settings in the palette must open the settings modal, not a view.
+
+    Regression test: the palette Settings entry used to call
+    set_current_view("settings"), which shell.py has no branch for, so it
+    fell through to the chat view.
+    """
+    state = AppState()
+    state._command_palette_open = True
+    state.set_current_view = MagicMock()
+    state.open_app_settings = MagicMock()
+
+    @ui.page("/test_palette_settings")
+    def page() -> None:
+        render_command_palette(state)
+
+    await user.open("/test_palette_settings")
+    label = next(iter(user.find("Settings").elements))
+    row = label.parent_slot.parent
+    UserInteraction(user, [row], target=None).click()
+
+    state.open_app_settings.assert_called_once()
+    state.set_current_view.assert_not_called()
+    assert state._command_palette_open is False
+
+
+@pytest.mark.asyncio
 async def test_render_command_palette_escape_key(user: User) -> None:
     """Pressing escape on search input should close palette."""
     state = AppState()

@@ -100,6 +100,49 @@ async def test_sidebar_expand_button_triggers_toggle(user: User) -> None:
 
 
 @pytest.mark.asyncio
+async def test_sidebar_settings_opens_modal_not_view(user: User) -> None:
+    """Clicking Settings must open the app settings modal, not switch views.
+
+    Regression test: the sidebar Settings item used to call
+    set_current_view("settings"), which shell.py has no branch for, so it
+    fell through to the chat view.
+    """
+    state = AppState(project_path=Path("C:/demo/project"), sidebar_open=True)
+    state.current_user = _mock_user()
+    state.set_current_view("chat")
+
+    @ui.page("/test_sidebar_settings_modal")
+    def page() -> None:
+        render_sidebar(state)
+
+    await user.open("/test_sidebar_settings_modal")
+    settings_btn = user.find(marker="sidebar_nav_settings")
+    assert settings_btn is not None
+    settings_btn.click()
+    assert state._show_app_settings is True
+    assert state.current_view == "chat"
+
+
+@pytest.mark.asyncio
+async def test_sidebar_settings_collapsed_opens_modal(user: User) -> None:
+    """Collapsed sidebar Settings icon must also open the settings modal."""
+    state = AppState(project_path=Path("C:/demo/project"), sidebar_open=False)
+    state.current_user = _mock_user()
+    state.set_current_view("chat")
+
+    @ui.page("/test_sidebar_settings_modal_collapsed")
+    def page() -> None:
+        render_sidebar(state)
+
+    await user.open("/test_sidebar_settings_modal_collapsed")
+    settings_btn = user.find(marker="sidebar_nav_settings")
+    assert settings_btn is not None
+    settings_btn.click()
+    assert state._show_app_settings is True
+    assert state.current_view == "chat"
+
+
+@pytest.mark.asyncio
 async def test_sidebar_sign_in_button_rendered_when_no_user(user: User) -> None:
     """When user is not logged in, Sign In button should be present in both modes."""
     state = AppState(sidebar_open=True)
