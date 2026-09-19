@@ -64,6 +64,51 @@ def _dest_within_target(target: Path, name: str) -> Path:
     return dest
 
 
+def _manifest_install_name(source_dir: Path, *, kind: str) -> str:
+    """Read the install directory name from a staged source's manifest.
+
+    The manifest ``name`` is the single source of truth for install, list,
+    and uninstall, so the three commands always agree on where a mvge lives.
+
+    Raises:
+        ValueError: If the manifest is missing, unreadable, nameless, or
+            the name fails the install-name allowlist (e.g. traversal).
+    """
+    manifest_path = source_dir / "manifest.json"
+    if not manifest_path.is_file():
+        raise ValueError(f"Invalid {kind}: manifest.json missing.")
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Invalid {kind}: manifest.json unreadable: {exc}") from exc
+    name = data.get("name") if isinstance(data, dict) else None
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError(f"Invalid {kind}: manifest.json missing 'name'.")
+    return _validate_install_name(name.strip(), kind=kind)
+
+
+def _clear_dest(dest: Path) -> None:
+    """Remove an existing install destination (dir or file)."""
+    if dest.exists():
+        if dest.is_dir() and not dest.is_symlink():
+            shutil.rmtree(dest)
+        else:
+            dest.unlink()
+
+
+def _local_marketplace_candidate(subpath: str) -> Path | None:
+    """Find a local checkout of a marketplace subpath (clone fallback)."""
+    for base in (
+        os.environ.get("MVGEOS_MARKETPLACE_DIR"),
+        str(Path.home() / "Desktop" / "mvgeos-marketplace"),
+    ):
+        if base:
+            cand = Path(base).expanduser() / subpath.strip().strip("/\\")
+            if cand.is_dir():
+                return cand
+    return None
+
+
 def _confirm_python_deps_install(deps: list[str], *, confirm: bool | None) -> bool:
     """Decide whether to run ``uv add`` for manifest-declared deps.
 
@@ -289,35 +334,38 @@ def install_mvge(
 
     source_path = Path(stripped_source).expanduser()
     if source_path.exists():
-        dest = _dest_within_target(
-            target, _validate_install_name(source_path.name, kind="mvge")
-        )
+        if not source_path.is_dir():
+            raise ValueError(f"Invalid mvge: not a directory: {source_path}")
+        # The manifest name is the single source of truth for the install
+        # directory, so install/list/uninstall always agree (BUG-4). Read it
+        # before touching the target: a bad manifest fails without copying.
+        name = _manifest_install_name(source_path, kind="mvge")
+        dest = _dest_within_target(target, name)
         if source_path.resolve() != dest.resolve():
-            if dest.exists():
-                if dest.is_dir():
-                    shutil.rmtree(dest)
-                else:
-                    dest.unlink()
+            _clear_dest(dest)
             shutil.copytree(source_path, dest)
     elif stripped_source.startswith(
         ("git@", "git://", "http://", "https://", "ssh://")
     ) or stripped_source.endswith(".git"):
-        name = stripped_source.rstrip("/").split("/")[-1]
-        if name.endswith(".git"):
-            name = name[:-4]
-        _validate_install_name(name, kind="mvge")
-        dest = _dest_within_target(target, name)
-        if dest.exists():
-            if dest.is_dir():
-                shutil.rmtree(dest)
-            else:
-                dest.unlink()
-        subprocess.run(
-            ["git", "clone", "--", stripped_source, str(dest)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        # Preflight: reject obviously-malicious URLs before cloning. The
+        # URL basename is only a sanity check here -- the manifest name
+        # decides the actual install directory below.
+        url_basename = stripped_source.rstrip("/").split("/")[-1].removesuffix(".git")
+        _validate_install_name(url_basename, kind="mvge")
+        # Clone to a staging dir first so the manifest name (not the URL
+        # basename) decides the install directory.
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+            staged = Path(tmp_dir) / "repo"
+            subprocess.run(
+                ["git", "clone", "--", stripped_source, str(staged)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            name = _manifest_install_name(staged, kind="mvge")
+            dest = _dest_within_target(target, name)
+            _clear_dest(dest)
+            shutil.copytree(staged, dest)
     else:
         try:
             marketplace_data = _fetch_marketplace_data(marketplace_url, timeout=15.0)
@@ -346,16 +394,12 @@ def install_mvge(
             raise ValueError(f"Mvge '{stripped_source}' not found in marketplace.")
 
         _validate_install_name(stripped_source, kind="mvge")
-        dest = _dest_within_target(target, stripped_source)
-        if dest.exists():
-            if dest.is_dir():
-                shutil.rmtree(dest)
-            else:
-                dest.unlink()
-
         subpath = mvge_entry.get("path") if isinstance(mvge_entry, dict) else None
-        if subpath:
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+        # Stage in a temp dir first so the manifest name (not the marketplace
+        # key) decides the install directory.
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+            if subpath:
+                staged_path: Path
                 try:
                     subprocess.run(
                         ["git", "clone", "--depth", "1", "--", git_url, str(tmp_dir)],
@@ -363,37 +407,28 @@ def install_mvge(
                         capture_output=True,
                         text=True,
                     )
-                    source_mvge_dir = Path(tmp_dir) / str(subpath).strip().strip("/\\")
-                    shutil.copytree(source_mvge_dir, dest)
+                    staged_path = Path(tmp_dir) / str(subpath).strip().strip("/\\")
                 except (subprocess.CalledProcessError, OSError):
-                    local_candidate: Path | None = None
-                    for base in (
-                        os.environ.get("MVGEOS_MARKETPLACE_DIR"),
-                        str(Path.home() / "Desktop" / "mvgeos-marketplace"),
-                    ):
-                        if base:
-                            cand = Path(base).expanduser() / str(subpath).strip().strip(
-                                "/\\"
-                            )
-                            if cand.is_dir():
-                                local_candidate = cand
-                                break
-                    if local_candidate is not None:
-                        shutil.copytree(local_candidate, dest)
-                    else:
+                    candidate = _local_marketplace_candidate(subpath)
+                    if candidate is None:
                         raise
-        else:
-            subprocess.run(
-                ["git", "clone", "--", git_url, str(dest)],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
+                    staged_path = candidate
+            else:
+                subprocess.run(
+                    ["git", "clone", "--", git_url, str(tmp_dir)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                staged_path = Path(tmp_dir)
+            name = _manifest_install_name(staged_path, kind="mvge")
+            dest = _dest_within_target(target, name)
+            _clear_dest(dest)
+            shutil.copytree(staged_path, dest)
 
+    # The manifest was already validated from the staged source; dest carries
+    # an identical copy.
     manifest_path = dest / "manifest.json"
-    if not manifest_path.is_file():
-        raise ValueError("Invalid mvge: manifest.json missing.")
-
     try:
         with manifest_path.open("r", encoding="utf-8-sig") as f:
             manifest_data = json.load(f)

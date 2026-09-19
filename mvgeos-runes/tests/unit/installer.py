@@ -411,7 +411,8 @@ def test_install_rune_git_url_overwrite(tmp_path: Path) -> None:
     (existing_dest / "old.txt").write_text("old", encoding="utf-8")
 
     def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
-        _create_mock_rune_dir(existing_dest, "git-rune")
+        # Clone targets the staging dir (last arg), not the final dest.
+        _create_mock_rune_dir(Path(cmd[-1]), "git-rune")
         return MagicMock(returncode=0)
 
     with patch("subprocess.run", side_effect=fake_git_clone):
@@ -451,7 +452,8 @@ def test_install_rune_marketplace_overwrite(tmp_path: Path) -> None:
     mock_resp.raise_for_status.return_value = None
 
     def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
-        _create_mock_rune_dir(existing_dest, "market-rune")
+        # Clone targets the staging dir (last arg), not the final dest.
+        _create_mock_rune_dir(Path(cmd[-1]), "market-rune")
         return MagicMock(returncode=0)
 
     with (
@@ -498,3 +500,30 @@ def test_install_rune_git_url_rejects_traversal_name(tmp_path: Path) -> None:
     ):
         install_rune("https://github.com/org/..", target_dir=target_dir)
     mock_run.assert_not_called()
+
+
+def test_install_rune_local_path_uses_manifest_name(tmp_path: Path) -> None:
+    """Same latent BUG-4 as mvges: the install directory must come from the
+    manifest ``name``, not the source directory basename."""
+    source_dir = tmp_path / "weird_rune_dir"
+    _create_mock_rune_dir(source_dir, "canonical_rune_name")
+    target_dir = tmp_path / "extensions"
+
+    dest = install_rune(str(source_dir), target_dir=target_dir)
+
+    assert dest == target_dir / "canonical_rune_name"
+    assert (dest / "manifest.json").is_file()
+    assert not (target_dir / "weird_rune_dir").exists()
+    assert uninstall_rune("canonical_rune_name", target_dir=target_dir) is True
+
+
+def test_install_rune_local_path_rejects_manifest_name_traversal(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "evil_rune_src"
+    _create_mock_rune_dir(source_dir, "../evil")
+    target_dir = tmp_path / "extensions"
+
+    with pytest.raises(ValueError, match="Invalid rune name"):
+        install_rune(str(source_dir), target_dir=target_dir)
+    assert list(target_dir.iterdir()) == []

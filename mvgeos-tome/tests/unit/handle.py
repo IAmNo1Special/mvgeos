@@ -664,6 +664,82 @@ class TestForeignFilenames:
         assert not (tmp_path / "with.dot.jsonl").exists()
 
 
+class TestExplicitPathOperations:
+    """BUG-1/2/3: factory operations must work on explicit foreign paths.
+
+    The CLI threads the user's locator through; these tests pin the factory
+    side of that contract: verify/export/branch must treat an explicit path
+    as authoritative and never re-resolve through the header id.
+    """
+
+    def _foreign(self, tmp_path: Path) -> tuple[TomeHandleFactory, Path]:
+        factory = TomeHandleFactory(tmp_path / "tomes")
+        target = tmp_path / "my.pi.session.backup.jsonl"
+        _write_v1_file(target, "dotheaderid")
+        with target.open("a", encoding="utf-8") as f:
+            for eid, parent, role, content in (
+                ("m1", None, "user", "hello"),
+                ("m2", "m1", "assistant", "hi there"),
+            ):
+                f.write(
+                    json.dumps(
+                        {
+                            "id": eid,
+                            "parentId": parent,
+                            "type": "message",
+                            "timestamp": 1000.0,
+                            "payload": {"role": role, "content": content},
+                        }
+                    )
+                    + "\n"
+                )
+        return factory, target
+
+    def test_verify_integrity_explicit_path_is_header_authoritative(
+        self, tmp_path: Path
+    ) -> None:
+        """BUG-3: a file opened by explicit path is identified by its header;
+        the stem-vs-header check must not fire."""
+        factory, target = self._foreign(tmp_path)
+
+        report = factory.verify_integrity(str(target))
+
+        assert report.valid is True, [i.message for i in report.issues]
+
+    def test_verify_integrity_id_lookup_still_flags_stem_mismatch(
+        self, tmp_path: Path
+    ) -> None:
+        """In-dir lookups by id keep the strict stem check: a file whose
+        header id disagrees with its filename is still flagged."""
+        factory = TomeHandleFactory(tmp_path / "tomes")
+        (tmp_path / "tomes").mkdir(parents=True, exist_ok=True)
+        _write_v1_file(tmp_path / "tomes" / "other.jsonl", "dotheaderid")
+
+        report = factory.verify_integrity("other")
+
+        assert report.valid is False
+        assert any("Header ID mismatch" in i.message for i in report.issues)
+
+    def test_export_atif_trajectory_explicit_path(self, tmp_path: Path) -> None:
+        factory, target = self._foreign(tmp_path)
+
+        data = factory.export_atif_trajectory(str(target))
+
+        assert data["trajectory_id"] == "dotheaderid"
+        assert len(data["steps"]) == 2
+
+    def test_create_branched_tome_accepts_explicit_path_parent(
+        self, tmp_path: Path
+    ) -> None:
+        factory, target = self._foreign(tmp_path)
+        (tmp_path / "tomes").mkdir(parents=True, exist_ok=True)
+
+        forked = factory.create_branched_tome(parent_tome_id=str(target), cwd="/tmp")
+
+        assert [e.id for e in forked.get_entries()] == ["m1", "m2"]
+        assert forked.path.parent == tmp_path / "tomes"
+
+
 class TestPlanAppendHandle:
     def test_rewrite_plan_replaces_file_atomically(self, tmp_path: Path) -> None:
         class RewriteCodec(TomeV1Codec):

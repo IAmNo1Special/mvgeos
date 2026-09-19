@@ -103,11 +103,17 @@ def _render_tome_export(
     entries: list[TomeEntry],
     format: str,
     factory: TomeHandleFactory | None = None,
+    tome_ref: str | None = None,
 ) -> str:
-    """Render tome metadata and entries as JSON, Markdown, or ATIF trajectory."""
+    """Render tome metadata and entries as JSON, Markdown, or ATIF trajectory.
+
+    ``tome_ref`` is the original locator (id or explicit path) the user gave;
+    it is threaded through so explicit paths keep resolving to the pointed-at
+    file instead of being re-resolved through the header id.
+    """
     if format in ("atif", "trajectory"):
         if factory is not None:
-            data = factory.export_atif_trajectory(meta.id)
+            data = factory.export_atif_trajectory(tome_ref or meta.id)
             return json.dumps(data, indent=2)
         steps = []
         for e in entries:
@@ -198,12 +204,15 @@ def tome_show(
     factory = get_factory()
     meta = _open_tome_or_exit(factory, tome_id)
 
-    tome_entries = factory.get_entries(meta.id)
+    # Thread the user's locator through: an explicit path must keep
+    # resolving to the pointed-at file, never re-resolve via the header id
+    # (which may not exist in the session dir, or may collide with one).
+    tome_entries = factory.get_entries(tome_id)
 
     if format is not None:
         try:
             output_text = _render_tome_export(
-                meta, tome_entries, format, factory=factory
+                meta, tome_entries, format, factory=factory, tome_ref=tome_id
             )
             console.print(output_text)
             return
@@ -238,10 +247,12 @@ def tome_export(
     factory = get_factory()
     meta = _open_tome_or_exit(factory, tome_id)
 
-    entries = factory.get_entries(meta.id)
+    entries = factory.get_entries(tome_id)
 
     try:
-        output_text = _render_tome_export(meta, entries, format, factory=factory)
+        output_text = _render_tome_export(
+            meta, entries, format, factory=factory, tome_ref=tome_id
+        )
     except ValueError:
         console.print(format_error(f"Unknown format: {format}"))
         raise typer.Exit(1) from None
@@ -260,7 +271,7 @@ def tome_replay(
     """Replay a session's turns sequentially."""
     factory = get_factory()
     meta = _open_tome_or_exit(factory, tome_id)
-    steps = factory.replay_tome_trajectory(meta.id)
+    steps = factory.replay_tome_trajectory(tome_id)
 
     console.print(
         f"[bold cyan]Replaying Tome:[/bold cyan] {meta.id[:8]} "
@@ -334,18 +345,18 @@ def tome_fork(
     factory = get_factory()
     meta = _open_tome_or_exit(factory, tome_id)
 
-    target_leaf = leaf_id or factory.get_leaf_id(meta.id)
+    target_leaf = leaf_id or factory.get_leaf_id(tome_id)
     if target_leaf is None:
         console.print(format_error("No leaf ID available. Specify --leaf."))
         raise typer.Exit(1)
 
-    if factory.get_entry(meta.id, target_leaf) is None:
+    if factory.get_entry(tome_id, target_leaf) is None:
         console.print(format_error(f"Leaf entry not found: {target_leaf}"))
         raise typer.Exit(1)
 
     try:
         forked = factory.create_branched_tome(
-            parent_tome_id=meta.id,
+            parent_tome_id=tome_id,
             cwd=meta.cwd,
             fork_from_leaf_id=target_leaf,
         )

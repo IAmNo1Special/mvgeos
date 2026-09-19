@@ -219,17 +219,22 @@ def main() -> None:
     app.on_shutdown(_cleanup)
 
     with contextlib.suppress(KeyboardInterrupt):
-        ui.run(
-            native=not args.web,
-            host=args.host,
-            port=args.port,
-            title=APP_TITLE,
-            window_size=(width, height),
-            reload=args.reload,
-            dark=True,
-            reconnect_timeout=60.0,
-            storage_secret=_get_storage_secret(),
-        )
+        # BUG-5: NiceGUI 3.x treats any window_size as native mode, so in web
+        # mode the keyword must be omitted entirely -- passing it spawns an
+        # unwanted pywebview window next to the browser tab.
+        run_kwargs = {
+            "native": not args.web,
+            "host": args.host,
+            "port": args.port,
+            "title": APP_TITLE,
+            "reload": args.reload,
+            "dark": True,
+            "reconnect_timeout": 60.0,
+            "storage_secret": _get_storage_secret(),
+        }
+        if not args.web:
+            run_kwargs["window_size"] = (width, height)
+        ui.run(**run_kwargs)
     _cleanup()
 
 

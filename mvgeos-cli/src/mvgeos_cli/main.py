@@ -444,7 +444,6 @@ app.add_typer(info_app, name="info")
 app.add_typer(tome_app, name="tome")
 app.add_typer(rune_app, name="rune")
 app.add_typer(mvge_app, name="mvge")
-app.add_typer(mvge_app, name="agent")
 app.add_typer(setup_app, name="setup", cls=DefaultCheckGroup)
 
 

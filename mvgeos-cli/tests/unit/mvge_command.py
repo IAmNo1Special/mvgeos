@@ -67,14 +67,21 @@ def test_mvge_uninstall_success() -> None:
 def test_mvge_uninstall_not_found() -> None:
     with patch("mvgeos_cli.commands.mvge.uninstall_mvge", return_value=False):
         result = runner.invoke(mvge_app, ["uninstall", "nonexistent"])
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         assert "Mvge 'nonexistent' is not installed" in result.stdout
 
 
-def test_agent_alias_subcommand(tmp_path: Path) -> None:
+def test_agent_alias_removed() -> None:
+    """The `agent` command was renamed to `mvge`; the old name is gone."""
+    group_names = [group.name for group in app.registered_groups]
+    assert "mvge" in group_names
+    assert "agent" not in group_names
+
+
+def test_mvge_command_reachable_via_app(tmp_path: Path) -> None:
     dest_path = tmp_path / "coding_mvge"
     with patch("mvgeos_cli.commands.mvge.install_mvge", return_value=dest_path):
-        result = runner.invoke(app, ["agent", "install", "coding_mvge"])
+        result = runner.invoke(app, ["mvge", "install", "coding_mvge"])
         assert result.exit_code == 0
         assert "Successfully installed mvge 'coding_mvge'" in result.stdout
 

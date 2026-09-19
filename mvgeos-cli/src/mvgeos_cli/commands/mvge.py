@@ -27,7 +27,9 @@ def mvge_install(
     """Install an agent mvge from the marketplace, Git URL, or local path."""
     try:
         dest = install_mvge(spec)
-        console.print(f"[green]Successfully installed mvge '{spec}' to {dest}[/green]")
+        console.print(
+            f"[green]Successfully installed mvge '{dest.name}' to {dest}[/green]"
+        )
     except Exception as exc:
         console.print(format_error(exc))
         raise typer.Exit(1) from exc
@@ -77,6 +79,7 @@ def mvge_uninstall(
             console.print(f"[green]Successfully uninstalled mvge '{name}'[/green]")
         else:
             console.print(f"[yellow]Mvge '{name}' is not installed[/yellow]")
+            raise typer.Exit(1)
     except Exception as exc:
         console.print(format_error(exc))
         raise typer.Exit(1) from exc

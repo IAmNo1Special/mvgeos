@@ -727,3 +727,67 @@ def test_install_mvge_python_deps_skipped_by_default_non_interactive(
     calls = [c[0][0] for c in mock_run.call_args_list]
     assert ["uv", "add", "dep1"] not in calls
     assert (dest / "manifest.json").is_file()
+
+
+def test_install_mvge_local_path_uses_manifest_name(tmp_path: Path) -> None:
+    """BUG-4: the install directory must come from the manifest ``name``,
+    not the source directory basename, so install/list/uninstall agree."""
+    source_dir = tmp_path / "weird_dir_name"
+    _create_mock_mvge_dir(source_dir, "canonical_mvge_name")
+    target_dir = tmp_path / "agents"
+
+    dest = install_mvge(str(source_dir), target_dir=target_dir)
+
+    assert dest == target_dir / "canonical_mvge_name"
+    assert (dest / "manifest.json").is_file()
+    assert not (target_dir / "weird_dir_name").exists()
+    # Round trip: the name `list` shows is the name `uninstall` removes.
+    assert uninstall_mvge("canonical_mvge_name", target_dir=target_dir) is True
+    assert not (target_dir / "canonical_mvge_name").exists()
+
+
+def test_install_mvge_local_path_rejects_manifest_name_traversal(
+    tmp_path: Path,
+) -> None:
+    """A hostile manifest ``name`` must never escape the target directory."""
+    source_dir = tmp_path / "evil_src"
+    _create_mock_mvge_dir(source_dir, "../evil")
+    target_dir = tmp_path / "agents"
+
+    with pytest.raises(ValueError, match="Invalid mvge name"):
+        install_mvge(str(source_dir), target_dir=target_dir)
+    assert list(target_dir.iterdir()) == []
+    assert not (tmp_path / "evil").exists()
+
+
+def test_install_mvge_local_path_rejects_missing_manifest_name(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "noname_src"
+    source_dir.mkdir()
+    (source_dir / "manifest.json").write_text(
+        json.dumps({"version": "1.0.0"}), encoding="utf-8"
+    )
+    target_dir = tmp_path / "agents"
+
+    with pytest.raises(ValueError, match="manifest.json missing 'name'"):
+        install_mvge(str(source_dir), target_dir=target_dir)
+
+
+def test_install_mvge_git_url_uses_manifest_name(tmp_path: Path) -> None:
+    """BUG-4 (git branch): the install directory comes from the cloned
+    manifest ``name``, not the repo URL basename."""
+    target_dir = tmp_path / "agents"
+    git_url = "https://github.com/org/weird-repo-name.git"
+
+    def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
+        if cmd[:2] == ["git", "clone"]:
+            _create_mock_mvge_dir(Path(cmd[-1]), "canonical_git_mvge")
+        return MagicMock(returncode=0)
+
+    with patch("subprocess.run", side_effect=fake_git_clone):
+        dest = install_mvge(git_url, target_dir=target_dir)
+
+    assert dest == target_dir / "canonical_git_mvge"
+    assert (dest / "manifest.json").is_file()
+    assert not (target_dir / "weird-repo-name").exists()

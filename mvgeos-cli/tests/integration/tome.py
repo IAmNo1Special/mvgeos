@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -780,6 +781,154 @@ def test_render_tome_export_atif_no_factory() -> None:
     parsed = json.loads(out)
     assert parsed["trajectory_id"] == "tome_fallback"
     assert len(parsed["steps"]) == 1
+
+
+class TestTomeExplicitForeignPaths:
+    """Regression tests: operating on session files by explicit path.
+
+    Covers BUG-1 (raw traceback on foreign paths), BUG-2 (silent wrong-file
+    reads when the header id collides with an in-dir tome), and BUG-3
+    (bogus 'Header ID mismatch' from verify). Per the v0.4.9 design the
+    header id is authoritative for explicit paths; the filename stem is
+    irrelevant.
+    """
+
+    def _foreign_file(self, tmp_path: Path) -> tuple[Path, Path]:
+        """Return (sessions_dir, foreign_file): a Tome v1 session file whose
+        stem ('my.pi.session.backup') differs from its header id
+        ('dotheaderid'), living outside the session dir."""
+        sessions_dir = tmp_path / "sessions"
+        factory = TomeHandleFactory(sessions_dir)
+        write = factory.create_tome("/workspace", tome_id="dotheaderid")
+        write.append(
+            TomeEntry(
+                id="m1",
+                parent_id=None,
+                type=TomeEntryType.MESSAGE,
+                timestamp=1000.0,
+                payload={"role": "user", "content": "hello"},
+            )
+        )
+        write.append(
+            TomeEntry(
+                id="m2",
+                parent_id="m1",
+                type=TomeEntryType.MESSAGE,
+                timestamp=1001.0,
+                payload={"role": "assistant", "content": "hi there"},
+            )
+        )
+        write.append_leaf("m2")
+        foreign = tmp_path / "foreign" / "my.pi.session.backup.jsonl"
+        foreign.parent.mkdir(parents=True)
+        shutil.copy(sessions_dir / "dotheaderid.jsonl", foreign)
+        # Truly foreign: the header id must NOT exist in the session dir,
+        # otherwise the id re-resolves to the in-dir file (the BUG-2 setup).
+        (sessions_dir / "dotheaderid.jsonl").unlink()
+        return sessions_dir, foreign
+
+    def test_show_explicit_foreign_path(self, tmp_path: Path) -> None:
+        sessions_dir, foreign = self._foreign_file(tmp_path)
+        with patch(
+            "mvgeos_cli.commands.tome.get_factory",
+            return_value=TomeHandleFactory(sessions_dir),
+        ):
+            result = runner.invoke(tome_app, ["show", str(foreign)])
+        assert result.exit_code == 0, result.output
+        assert "Entries: 3" in result.output
+
+    def test_show_explicit_path_reads_pointed_file_not_id_collision(
+        self, tmp_path: Path
+    ) -> None:
+        """BUG-2: when the header id collides with an in-dir tome, the CLI
+        must read the file the user pointed at, not the in-dir original."""
+        sessions_dir = tmp_path / "sessions"
+        factory = TomeHandleFactory(sessions_dir)
+        factory.create_tome("/workspace", tome_id="original0")  # 0 entries
+        pointed = tmp_path / "foreign" / "normal-copy.jsonl"
+        pointed.parent.mkdir(parents=True)
+        shutil.copy(sessions_dir / "original0.jsonl", pointed)
+        # Append a marker entry to the COPY via a factory rooted elsewhere.
+        other = TomeHandleFactory(tmp_path / "other")
+        writer = other.open_write(str(pointed))
+        writer.append(
+            TomeEntry(
+                id="mx",
+                parent_id=None,
+                type=TomeEntryType.MESSAGE,
+                timestamp=1000.0,
+                payload={"role": "user", "content": "marker"},
+            )
+        )
+        assert len(other.get_entries(str(pointed))) == 1
+        assert len(factory.get_entries("original0")) == 0
+
+        with patch(
+            "mvgeos_cli.commands.tome.get_factory",
+            return_value=TomeHandleFactory(sessions_dir),
+        ):
+            result = runner.invoke(tome_app, ["show", str(pointed)])
+        assert result.exit_code == 0, result.output
+        assert "Entries: 1" in result.output
+
+    def test_export_json_explicit_foreign_path(self, tmp_path: Path) -> None:
+        sessions_dir, foreign = self._foreign_file(tmp_path)
+        with patch(
+            "mvgeos_cli.commands.tome.get_factory",
+            return_value=TomeHandleFactory(sessions_dir),
+        ):
+            result = runner.invoke(
+                tome_app, ["export", str(foreign), "--format", "json"]
+            )
+        assert result.exit_code == 0, result.output
+        parsed = json.loads(result.output)
+        assert parsed["metadata"]["id"] == "dotheaderid"
+        assert len(parsed["entries"]) == 3
+
+    def test_export_atif_explicit_foreign_path(self, tmp_path: Path) -> None:
+        sessions_dir, foreign = self._foreign_file(tmp_path)
+        with patch(
+            "mvgeos_cli.commands.tome.get_factory",
+            return_value=TomeHandleFactory(sessions_dir),
+        ):
+            result = runner.invoke(
+                tome_app, ["export", str(foreign), "--format", "atif"]
+            )
+        assert result.exit_code == 0, result.output
+        parsed = json.loads(result.output)
+        assert parsed["trajectory_id"] == "dotheaderid"
+        assert len(parsed["steps"]) == 2
+
+    def test_replay_explicit_foreign_path(self, tmp_path: Path) -> None:
+        sessions_dir, foreign = self._foreign_file(tmp_path)
+        with patch(
+            "mvgeos_cli.commands.tome.get_factory",
+            return_value=TomeHandleFactory(sessions_dir),
+        ):
+            result = runner.invoke(tome_app, ["replay", str(foreign)])
+        assert result.exit_code == 0, result.output
+        assert "Replaying Tome: dotheade" in result.output
+        assert "hello" in result.output
+
+    def test_fork_explicit_foreign_path(self, tmp_path: Path) -> None:
+        sessions_dir, foreign = self._foreign_file(tmp_path)
+        with patch(
+            "mvgeos_cli.commands.tome.get_factory",
+            return_value=TomeHandleFactory(sessions_dir),
+        ):
+            result = runner.invoke(tome_app, ["fork", str(foreign)])
+        assert result.exit_code == 0, result.output
+        assert "Forked tome:" in result.output
+
+    def test_verify_explicit_foreign_path(self, tmp_path: Path) -> None:
+        sessions_dir, foreign = self._foreign_file(tmp_path)
+        with patch(
+            "mvgeos_cli.commands.tome.get_factory",
+            return_value=TomeHandleFactory(sessions_dir),
+        ):
+            result = runner.invoke(tome_app, ["verify", str(foreign)])
+        assert result.exit_code == 0, result.output
+        assert "is valid" in result.output
 
 
 if __name__ == "__main__":

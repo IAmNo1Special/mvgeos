@@ -60,6 +60,38 @@ def _dest_within_target(target: Path, name: str) -> Path:
     return dest
 
 
+def _manifest_install_name(source_dir: Path, *, kind: str) -> str:
+    """Read the install directory name from a staged source's manifest.
+
+    The manifest ``name`` is the single source of truth for install, list,
+    and uninstall, so the three commands always agree on where a rune lives.
+
+    Raises:
+        ValueError: If the manifest is missing, unreadable, nameless, or
+            the name fails the install-name allowlist (e.g. traversal).
+    """
+    manifest_path = source_dir / "manifest.json"
+    if not manifest_path.is_file():
+        raise ValueError(f"Invalid {kind}: manifest.json missing.")
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Invalid {kind}: manifest.json unreadable: {exc}") from exc
+    name = data.get("name") if isinstance(data, dict) else None
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError(f"Invalid {kind}: manifest.json missing 'name'.")
+    return _validate_install_name(name.strip(), kind=kind)
+
+
+def _clear_dest(dest: Path) -> None:
+    """Remove an existing install destination (dir or file)."""
+    if dest.exists():
+        if dest.is_dir() and not dest.is_symlink():
+            shutil.rmtree(dest)
+        else:
+            dest.unlink()
+
+
 def fetch_marketplace_runes(
     marketplace_url: str = DEFAULT_MARKETPLACE_URL,
     timeout: float = 15.0,
@@ -176,35 +208,38 @@ def install_rune(
 
     source_path = Path(stripped_source).expanduser()
     if source_path.exists():
-        dest = _dest_within_target(
-            target, _validate_install_name(source_path.name, kind="rune")
-        )
+        if not source_path.is_dir():
+            raise ValueError(f"Invalid rune: not a directory: {source_path}")
+        # The manifest name is the single source of truth for the install
+        # directory, so install/list/uninstall always agree. Read it before
+        # touching the target: a bad manifest fails without copying.
+        name = _manifest_install_name(source_path, kind="rune")
+        dest = _dest_within_target(target, name)
         if source_path.resolve() != dest.resolve():
-            if dest.exists():
-                if dest.is_dir():
-                    shutil.rmtree(dest)
-                else:
-                    dest.unlink()
+            _clear_dest(dest)
             shutil.copytree(source_path, dest)
     elif stripped_source.startswith(
         ("git@", "git://", "http://", "https://", "ssh://")
     ) or stripped_source.endswith(".git"):
-        name = stripped_source.rstrip("/").split("/")[-1]
-        if name.endswith(".git"):
-            name = name[:-4]
-        _validate_install_name(name, kind="rune")
-        dest = _dest_within_target(target, name)
-        if dest.exists():
-            if dest.is_dir():
-                shutil.rmtree(dest)
-            else:
-                dest.unlink()
-        subprocess.run(
-            ["git", "clone", "--", stripped_source, str(dest)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        # Preflight: reject obviously-malicious URLs before cloning. The
+        # URL basename is only a sanity check here -- the manifest name
+        # decides the actual install directory below.
+        url_basename = stripped_source.rstrip("/").split("/")[-1].removesuffix(".git")
+        _validate_install_name(url_basename, kind="rune")
+        # Clone to a staging dir first so the manifest name (not the URL
+        # basename) decides the install directory.
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+            staged = Path(tmp_dir) / "repo"
+            subprocess.run(
+                ["git", "clone", "--", stripped_source, str(staged)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            name = _manifest_install_name(staged, kind="rune")
+            dest = _dest_within_target(target, name)
+            _clear_dest(dest)
+            shutil.copytree(staged, dest)
     else:
         try:
             response = httpx.get(marketplace_url, timeout=15.0)
@@ -226,36 +261,34 @@ def install_rune(
             raise ValueError(f"Rune '{stripped_source}' not found in marketplace.")
 
         _validate_install_name(stripped_source, kind="rune")
-        dest = _dest_within_target(target, stripped_source)
-        if dest.exists():
-            if dest.is_dir():
-                shutil.rmtree(dest)
-            else:
-                dest.unlink()
-
         subpath = rune_entry.get("path") if isinstance(rune_entry, dict) else None
-        if subpath:
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+        # Stage in a temp dir first so the manifest name (not the marketplace
+        # key) decides the install directory.
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+            if subpath:
                 subprocess.run(
                     ["git", "clone", "--depth", "1", "--", git_url, str(tmp_dir)],
                     check=True,
                     capture_output=True,
                     text=True,
                 )
-                source_rune_dir = Path(tmp_dir) / str(subpath).strip().strip("/\\")
-                shutil.copytree(source_rune_dir, dest)
-        else:
-            subprocess.run(
-                ["git", "clone", "--", git_url, str(dest)],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
+                staged = Path(tmp_dir) / str(subpath).strip().strip("/\\")
+            else:
+                subprocess.run(
+                    ["git", "clone", "--", git_url, str(tmp_dir)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                staged = Path(tmp_dir)
+            name = _manifest_install_name(staged, kind="rune")
+            dest = _dest_within_target(target, name)
+            _clear_dest(dest)
+            shutil.copytree(staged, dest)
 
+    # The manifest was already validated from the staged source; dest carries
+    # an identical copy.
     manifest_path = dest / "manifest.json"
-    if not manifest_path.is_file():
-        raise ValueError("Invalid rune: manifest.json missing.")
-
     try:
         with manifest_path.open("r", encoding="utf-8-sig") as f:
             manifest_data = json.load(f)

@@ -212,3 +212,31 @@ def test_main_registers_shutdown_cleanup(
         cleanup_cb = mock_on_shutdown.call_args[0][0]
         # Calling cleanup callback shouldn't raise
         cleanup_cb()
+
+
+@patch("mvgeos_gui.main.ui.run")
+def test_main_web_mode_passes_no_window_size(mock_ui_run: MagicMock) -> None:
+    """BUG-5: --web must not pass window_size — NiceGUI forces native mode
+    whenever window_size is set, spawning an unwanted pywebview window."""
+    with patch("sys.argv", ["mvgeos-gui", "--web"]):
+        main()
+        mock_ui_run.assert_called_once()
+        kwargs = mock_ui_run.call_args.kwargs
+        assert kwargs.get("native") is False
+        assert "window_size" not in kwargs
+
+
+@patch("mvgeos_gui.main.ui.run")
+@patch("mvgeos_gui.main.platform.system", return_value="Linux")
+def test_main_native_mode_passes_window_size(
+    mock_system: MagicMock, mock_ui_run: MagicMock
+) -> None:
+    """Native mode still gets an explicit window size."""
+    with patch("sys.argv", ["mvgeos-gui"]):
+        main()
+        mock_ui_run.assert_called_once()
+        kwargs = mock_ui_run.call_args.kwargs
+        assert kwargs.get("native") is True
+        window_size = kwargs.get("window_size")
+        assert isinstance(window_size, tuple)
+        assert len(window_size) == 2

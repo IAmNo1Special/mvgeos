@@ -774,7 +774,13 @@ class TomeHandleFactory:
         """
         resolved_parent = self._resolve_tome_id(parent_tome_id)
         if resolved_parent is None:
-            raise ValueError(f"Parent tome not found: {parent_tome_id}")
+            # Explicit file paths are authoritative (foreign-filename
+            # tolerance): a parent given as a path resolves to the file
+            # itself instead of demanding an in-dir stem.
+            if parent_tome_id and Path(parent_tome_id).is_file():
+                resolved_parent = parent_tome_id
+            else:
+                raise ValueError(f"Parent tome not found: {parent_tome_id}")
 
         parent_read = self.open_read(resolved_parent)
         parent_codec = parent_read.codec
@@ -949,6 +955,10 @@ class TomeHandleFactory:
         the report carries the version issue instead of raising.
         """
         path = self._resolve_path(tome_id)
+        # Explicit file paths are authoritative: the header id is the
+        # session's identity, so the stem-vs-header check below does not
+        # apply (it only guards in-dir tomes against filename tampering).
+        explicit_path = bool(tome_id) and Path(tome_id).is_file()
         target = path.stem if path is not None else _validate_tome_id(tome_id)
         if path is None or not path.exists():
             return TomeIntegrityReport(
@@ -1040,7 +1050,7 @@ class TomeHandleFactory:
                                         raw_line=header_raw,
                                     )
                                 )
-                            elif header.get("id") != path.stem:
+                            elif header.get("id") != path.stem and not explicit_path:
                                 issues.append(
                                     TomeIntegrityIssue(
                                         line_number=1,
@@ -1336,8 +1346,11 @@ class TomeHandleFactory:
         """Export session trajectory conforming to ATIF."""
         resolved = self._resolve_tome_id(tome_id)
         if resolved is None and Path(tome_id).is_file():
-            resolved = self._resolve_tome_id(Path(tome_id).stem)
-        target = resolved or _validate_tome_id(tome_id)
+            # Explicit file paths are authoritative: operate on the file as
+            # given instead of demanding an in-dir stem.
+            target = tome_id
+        else:
+            target = resolved or _validate_tome_id(tome_id)
 
         meta = self.open_tome(target)
         steps = self.replay_tome_trajectory(target)
@@ -1374,7 +1387,7 @@ class TomeHandleFactory:
         )
 
         trajectory = ATIFTrajectory(
-            trajectory_id=target,
+            trajectory_id=meta.id if meta else target,
             agent_name=agent_name,
             model=meta.model if meta and meta.model else "",
             created_at=meta.created_at if meta else datetime.now(UTC).isoformat(),
