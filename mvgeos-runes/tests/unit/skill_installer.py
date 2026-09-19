@@ -56,9 +56,7 @@ def test_install_skill_from_git_url(tmp_path: Path) -> None:
     def fake_clone(url: str, dest: Path) -> None:
         _create_mock_skill_dir(dest, "cloned-skill")
 
-    with patch(
-        "mvgeos_runes.skill_installer._clone_git_repo", side_effect=fake_clone
-    ):
+    with patch("mvgeos_runes.skill_installer._clone_git_repo", side_effect=fake_clone):
         dest = install_skill(
             "https://github.com/example/skill-repo.git", target_dir=target
         )
