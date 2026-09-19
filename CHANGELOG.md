@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4] - 2026-09-19
+
+
+### Bug Fixes
+
+- **gui:** settings entries open the settings modal instead of the chat view (7755c80)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (2fcc0e1)
+
+- **release:** v0.5.4 (d4cd61c)
+
+
 ## [0.5.3] - 2026-09-19
 
 
