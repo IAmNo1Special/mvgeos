@@ -26,15 +26,12 @@ jobs:
           - mvgeos-tome
           - mvgeos-cli
           - mvgeos-gui
-    # Caller job env propagates into the reusable workflow (same as the old
-    # job-level env). This selects each leg's coverage data file.
-    env:
-      COVERAGE_FILE: .coverage.${{ matrix.package }}
     uses: IAmNo1Special/actions/.github/workflows/python-ci.yml@v1
     with:
       install-command: "uv sync --all-packages"
       run-lint: false
-      test-commands: "uv run python -m pytest --cov --cov-report=term-missing --cov-fail-under=0 ${{ matrix.package }}/tests/unit ${{ matrix.package }}/tests/integration"
+      # COVERAGE_FILE inline: each matrix leg writes its own data file for the aggregate job.
+      test-commands: "COVERAGE_FILE=.coverage.${{ matrix.package }} uv run python -m pytest --cov --cov-report=term-missing --cov-fail-under=0 ${{ matrix.package }}/tests/unit ${{ matrix.package }}/tests/integration"
       coverage-artifact-name: "coverage-data-${{ matrix.package }}"
       timeout-minutes: 20
 
