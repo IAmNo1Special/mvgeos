@@ -4,11 +4,11 @@
 The mission is to refactor **MvgeOS** into an unopinionated microkernel by decoupling all capability layers (Layers 1, 2, 3, 4, 5) out of the core monorepo (`mvgeos`) into standalone marketplace runes (`mvgeos-marketplace`).
 
 ### Capability Layer Architecture
-- **Layer 1**: Repository Steering (`AGENTS.md`, `.agents` protocol) -> `steering-bridge` rune [NEXT: Phase 2]
-- **Layer 2**: Open Knowledge Format (`.okf/` bundle) -> `okf-bridge` rune [Phase 4]
-- **Layer 3**: Model Context Protocol & PEP 723 -> `mcp-bridge` rune [Phase 3]
+- **Layer 1**: Repository Steering (`AGENTS.md`, `.agents` protocol) -> `steering-bridge` rune [COMPLETE: Phase 2]
+- **Layer 2**: Open Knowledge Format (`.okf/` bundle) -> `okf-bridge` rune [Phase 4: rune exists, core clean, verification only]
+- **Layer 3**: Model Context Protocol & PEP 723 -> `mcp-bridge` rune [COMPLETE: Phase 3 verify-only — zero MCP coupling in core; PEP 723 kept in core by decision, see §6]
 - **Layer 4**: Agent Skills & Capability Packaging (`agentskills.io`) -> `skills-bridge` rune [COMPLETE: Phase 1]
-- **Layer 5**: Architectural Decision Records (MADR) -> `adr-bridge` rune [Phase 4]
+- **Layer 5**: Architectural Decision Records (MADR) -> `adr-bridge` rune [Phase 4: rune exists, core clean, verification only]
 - **Layer 6**: OpenTelemetry Observability -> `opentelemetry-bridge` rune [In Marketplace]
 
 ---
@@ -39,26 +39,18 @@ The mission is to refactor **MvgeOS** into an unopinionated microkernel by decou
 
 ---
 
-## 3. Next Session Focus: Phase 2 (Decouple Layer 1: `steering-bridge` Rune)
+## 3. Next Session Focus: APPEND_SYSTEM.md Decision + Phase 4 Verification
 
-### Requirements for Phase 2:
-1. **Create `runes/steering-bridge` in `mvgeos-marketplace`**:
-   - Strictly follow the [.agents protocol](https://dotagentsprotocol.com) and `dot-agents-protocol` skill.
-   - Global steering: discover `~/.agents/AGENTS.md`.
-   - Workspace steering: discover `<project_root>/AGENTS.md` and fallback `<project_root>/.agents/AGENTS.md`.
-   - Precedence: project steering overrides/supplements global steering.
-   - Inject `<project_context>` containing `<global_instructions path="...">` and `<project_instructions path="...">`.
-   - Progressive disclosure: scan first-level subdirectories for localized `AGENTS.md` and declare pointers.
-   - Hook into `BEFORE_MVGE_START` sigil to inject instructions into `BeforeMvgeStartData.base_prompt`.
-   - Hook into `SESSION_START` for path resolution.
-2. **Decouple Steering from `mvgeos` Core**:
-   - Remove hardcoded `resolve_workspace_agents_file`, `resolve_global_agents_file`, and `<project_context>` formatting from `mvgeos-agent/src/mvgeos_agent/environment.py`.
-   - Core prompt rendering remains focused strictly on Layer 2 invariant scaffolding: base system prompt, active spells listing, environment info (OS, shell, date/time UTC), and PowerShell rules.
-   - Ensure `MvgeEnvironment` accepts dynamic steering sections contributed by runes via `BEFORE_MVGE_START`.
-3. **Verification**:
-   - Monorepo suite: `uv run python -m pytest --cov` (>= 90.0% branch coverage).
-   - Ruff lint & format: `uv run ruff check` ; `uv run ruff format --check`.
-   - Mypy: `uv run mypy`.
+### Phase 3 Close-Out (Layer 3: MCP & PEP 723) — COMPLETE (verify-only)
+- `mcp-bridge` rune: 39 tests passing, 92% branch coverage (config.py 88% on defensive branches only).
+- Core verification: no `mcp` in any `pyproject.toml`, no `mcp` in `uv.lock`, no MCP imports in `mvgeos-*/src`. Only references are string fixtures (`"mcp"` command name in `commands.py` tests) and `external_runes.py` tests behind the justified `ollama_realm` host-skip.
+- PEP 723 decision: **keep in core** (`parse_pep723_metadata`, `PEP723ScriptSpell` stay in `mvgeos-agent/function_spell.py`). No code moved.
+
+### Open Question: `APPEND_SYSTEM.md` Chain
+- `resolve_append_system_prompts` + `resolve_system_prompt` (global/project/caller cascade) still live in `mvgeos-agent/environment.py`. Never scoped by this mission. Under exploration — no code changes yet.
+
+### Phase 4 (Layers 2 & 5: `okf-bridge`, `adr-bridge`)
+- Both runes exist in `mvgeos-marketplace` with full module/test suites; core has no OKF/ADR coupling. Expected to be verification-only (coverage check + zero-coupling grep), same pattern as Phase 3.
 
 ---
 
@@ -79,3 +71,14 @@ When picking up the next session, the agent should invoke:
 2. **`tdd`**: For red-green-refactor cycle across marketplace rune and core decoupling.
 3. **`codebase-design`**: To maintain clean seam separation and deep module design.
 4. **`ruff`**: For formatting and lint verification.
+
+---
+
+## 6. Decision Record: PEP 723 Stays in Core (Phase 3)
+
+`parse_pep723_metadata` and `PEP723ScriptSpell` remain in `mvgeos-agent/function_spell.py`. Nothing moved.
+
+1. **Wrong-layer lumping**: MCP (external wire protocol) and PEP 723 (neutral Python standard, stdlib `tomllib`) are different seams sharing a handoff label. The stdlib parser violates no protocol boundary.
+2. **No correct home**: `mcp-bridge` is semantically wrong (script execution is not MCP); a new single-purpose rune adds packaging overhead for ~150 lines with no protocol win.
+3. **Deletion test fails**: script-spell execution is load-bearing spell machinery — removal pushes reimplementation onto every consumer (coding_mvge, CLI script discovery).
+4. **Goal already met**: zero MCP coupling in core, so Phase 3 closed verify-only.
