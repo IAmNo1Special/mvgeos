@@ -5,10 +5,10 @@ The mission is to refactor **MvgeOS** into an unopinionated microkernel by decou
 
 ### Capability Layer Architecture
 - **Layer 1**: Repository Steering (`AGENTS.md`, `.agents` protocol) -> `steering-bridge` rune [COMPLETE: Phase 2]
-- **Layer 2**: Open Knowledge Format (`.okf/` bundle) -> `okf-bridge` rune [Phase 4: rune exists, core clean, verification only]
+- **Layer 2**: Open Knowledge Format (`.okf/` bundle) -> `okf-bridge` rune [COMPLETE: Phase 4 verify-only — rune exists, core clean]
 - **Layer 3**: Model Context Protocol & PEP 723 -> `mcp-bridge` rune [COMPLETE: Phase 3 verify-only — zero MCP coupling in core; PEP 723 kept in core by decision, see §6]
 - **Layer 4**: Agent Skills & Capability Packaging (`agentskills.io`) -> `skills-bridge` rune [COMPLETE: Phase 1]
-- **Layer 5**: Architectural Decision Records (MADR) -> `adr-bridge` rune [Phase 4: rune exists, core clean, verification only]
+- **Layer 5**: Architectural Decision Records (MADR) -> `adr-bridge` rune [COMPLETE: Phase 4 verify-only — rune exists, core clean]
 - **Layer 6**: OpenTelemetry Observability -> `opentelemetry-bridge` rune [In Marketplace]
 
 ---
@@ -51,8 +51,13 @@ The mission is to refactor **MvgeOS** into an unopinionated microkernel by decou
 - Rationale: persona base resolution is kernel load-bearing (deletion test — every embedder reimplements it); `caller_dir` derivation is interpreter-coupled (stack inspection in `Mvge.__init__`); `APPEND_SYSTEM.md` is MvgeOS-internal convention with no external protocol boundary (unlike agentskills.io/MCP/.agents); runes already rewrite `base_prompt` via `BEFORE_MVGE_START`.
 - Revisit triggers (not fully closed): if core must stop touching `~/.agents`/project dirs at prompt time, either move the global/project `APPEND_SYSTEM` cascade to `steering-bridge` (cheaper, but muddies its interface) or create a dedicated `persona-bridge` rune (cleaner seam, heavier; needs async persona resolution since `MvgeEnvironment.resolve` is sync and pre-runner).
 
-### Phase 4 (Layers 2 & 5: `okf-bridge`, `adr-bridge`)
-- Both runes exist in `mvgeos-marketplace` with full module/test suites; core has no OKF/ADR coupling. Expected to be verification-only (coverage check + zero-coupling grep), same pattern as Phase 3.
+### Phase 4 (Layers 2 & 5: `okf-bridge`, `adr-bridge`) — COMPLETE (verify-only)
+- `okf-bridge`: 36 tests passing, 91% branch coverage (validator 86%, parser/migrator 88%, graph/rune 89% — defensive/error branches only).
+- `adr-bridge`: 26 tests passing, 91% branch coverage (rune.py 85% on slash-subcommand branches only).
+- Core verification: zero OKF/ADR references in all six `mvgeos-*/src` trees, no `okf`/`adr` in any `pyproject.toml`, no `mvgeos_runes_okf`/`mvgeos_runes_adr` imports anywhere in the monorepo. No code moved.
+
+## 4. Mission Status: COMPLETE
+All five capability layers are decoupled or verified decoupled. Remaining optional follow-up: `APPEND_SYSTEM.md` revisit triggers (§3) — explicitly deferred, not blocking.
 
 ---
 
