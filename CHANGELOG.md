@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.8] - 2026-09-19
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (0f83ecf)
+
+- **release:** v0.4.8 (97677bc)
+
+
+### Continuous Integration
+
+- delegate to shared reusable workflow (e9fa0d6)
+
+- set COVERAGE_FILE via caller job env (not test-env-json) (6ec3b82)
+
+- re-trigger after COVERAGE_FILE fix (7ee815d)
+
+- set COVERAGE_FILE inline in test command (env+matrix rejected on reusable caller) (c69e0dd)
+
+
+### Features
+
+- **tome,runes:** session codec architecture with native Pi v3/v4 support (984b173)
+
+
 ## [0.4.7] - 2026-09-19
 
 
