@@ -46,8 +46,10 @@ The mission is to refactor **MvgeOS** into an unopinionated microkernel by decou
 - Core verification: no `mcp` in any `pyproject.toml`, no `mcp` in `uv.lock`, no MCP imports in `mvgeos-*/src`. Only references are string fixtures (`"mcp"` command name in `commands.py` tests) and `external_runes.py` tests behind the justified `ollama_realm` host-skip.
 - PEP 723 decision: **keep in core** (`parse_pep723_metadata`, `PEP723ScriptSpell` stay in `mvgeos-agent/function_spell.py`). No code moved.
 
-### Open Question: `APPEND_SYSTEM.md` Chain
-- `resolve_append_system_prompts` + `resolve_system_prompt` (global/project/caller cascade) still live in `mvgeos-agent/environment.py`. Never scoped by this mission. Under exploration — no code changes yet.
+### Open Question: `APPEND_SYSTEM.md` Chain — DECIDED: keep in core (for now)
+- Decision: `resolve_append_system_prompts` + `resolve_system_prompt` stay in `mvgeos-agent/environment.py`.
+- Rationale: persona base resolution is kernel load-bearing (deletion test — every embedder reimplements it); `caller_dir` derivation is interpreter-coupled (stack inspection in `Mvge.__init__`); `APPEND_SYSTEM.md` is MvgeOS-internal convention with no external protocol boundary (unlike agentskills.io/MCP/.agents); runes already rewrite `base_prompt` via `BEFORE_MVGE_START`.
+- Revisit triggers (not fully closed): if core must stop touching `~/.agents`/project dirs at prompt time, either move the global/project `APPEND_SYSTEM` cascade to `steering-bridge` (cheaper, but muddies its interface) or create a dedicated `persona-bridge` rune (cleaner seam, heavier; needs async persona resolution since `MvgeEnvironment.resolve` is sync and pre-runner).
 
 ### Phase 4 (Layers 2 & 5: `okf-bridge`, `adr-bridge`)
 - Both runes exist in `mvgeos-marketplace` with full module/test suites; core has no OKF/ADR coupling. Expected to be verification-only (coverage check + zero-coupling grep), same pattern as Phase 3.
