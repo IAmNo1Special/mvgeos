@@ -8,7 +8,6 @@ from mvgeos_gui.components.command_palette import render_command_palette
 from mvgeos_gui.components.diagnostics_panel import render_diagnostics_panel
 from mvgeos_gui.components.home_screen import render_home_screen
 from mvgeos_gui.components.login_screen import render_login_screen
-from mvgeos_gui.components.notes_panel import render_notes_panel
 from mvgeos_gui.components.packages_panel import render_packages_panel
 from mvgeos_gui.components.review_rail import render_review_rail
 from mvgeos_gui.components.sessions_panel import render_sessions_panel
@@ -16,7 +15,6 @@ from mvgeos_gui.components.settings_modal import render_app_settings_modal
 from mvgeos_gui.components.sidebar import render_sidebar
 from mvgeos_gui.components.skills_panel import render_skills_panel
 from mvgeos_gui.components.status_bar import render_status_bar
-from mvgeos_gui.components.timeline_panel import render_timeline_panel
 from mvgeos_gui.components.workspace_settings_modal import (
     render_workspace_settings_modal,
 )
@@ -85,12 +83,8 @@ def render_shell(state: AppState) -> None:
                         render_sessions_panel(state)
                     elif view == "skills":
                         render_skills_panel(state)
-                    elif view == "notes":
-                        render_notes_panel(state)
                     elif view == "diagnostics":
                         render_diagnostics_panel(state)
-                    elif view == "timeline":
-                        render_timeline_panel(state)
                     elif view == "packages":
                         render_packages_panel(state)
                     else:
@@ -147,7 +141,6 @@ def render_shell(state: AppState) -> None:
                     state.is_channeling,
                     state.sidebar_open,
                     state.review_open,
-                    state.terminal_open,
                 )
             ]
 
@@ -161,7 +154,6 @@ def render_shell(state: AppState) -> None:
                     state.is_channeling,
                     state.sidebar_open,
                     state.review_open,
-                    state.terminal_open,
                 )
 
             status_bar_container()
@@ -174,7 +166,6 @@ def render_shell(state: AppState) -> None:
                     state.is_channeling,
                     state.sidebar_open,
                     state.review_open,
-                    state.terminal_open,
                 )
                 if cur != last_status_state[0]:
                     status_bar_container.refresh()

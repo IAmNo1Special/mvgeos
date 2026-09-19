@@ -34,3 +34,19 @@ async def test_render_home_screen_with_tomes(user: User, tmp_path) -> None:
 
     await user.open("/test_home_tomes")
     await user.should_see("Recent Sessions")
+
+
+@pytest.mark.asyncio
+async def test_home_screen_has_no_placeholders(user: User, tmp_path) -> None:
+    """Home should not show placeholder buttons or duplicate actions."""
+    state = AppState(project_path=tmp_path)
+
+    @ui.page("/test_home_no_placeholders")
+    def page() -> None:
+        render_home_screen(state)
+
+    await user.open("/test_home_no_placeholders")
+    await user.should_not_see("Open Project")
+    await user.should_not_see("Quick Start")
+    # New Conversation is the single entry point to chat
+    await user.should_see("New Conversation")

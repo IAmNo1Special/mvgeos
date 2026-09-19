@@ -32,7 +32,9 @@ from mvgeos_provider import (
 from mvgeos_runes import (
     fetch_marketplace_runes,
     install_rune,
+    install_skill,
     list_installed_runes,
+    set_rune_enabled,
     uninstall_rune,
 )
 from mvgeos_runes.types import SkillManifest
@@ -125,7 +127,6 @@ class AppState:
     sidebar_open: bool = True
     review_open: bool = False
     mvge_status: str = "idle"
-    terminal_open: bool = False
     chat_side_panel: str | None = None
     _sidebar_width: int = 260
     _review_width: int = 320
@@ -926,11 +927,6 @@ class AppState:
         self.review_open = not self.review_open
         self.notify()
 
-    def toggle_terminal(self) -> None:
-        """Toggle terminal panel visibility."""
-        self.terminal_open = not self.terminal_open
-        self.notify()
-
     def show_login(self) -> None:
         """Open the login dialog."""
         self._show_login = True
@@ -1003,6 +999,27 @@ class AppState:
         get_default_realm_registry().unregister_realm_factory(rune_name)
         self.notify()
         return result
+
+    async def set_rune_enabled_async(self, rune_name: str, enabled: bool) -> bool:
+        """Enable or disable an installed rune by updating its manifest."""
+        result = bool(await asyncio.to_thread(set_rune_enabled, rune_name, enabled))
+        self.notify()
+        return result
+
+    async def install_skill_async(
+        self, source: str, name: str | None = None
+    ) -> str | None:
+        """Install a skill from a local path or git URL.
+
+        Returns the installed skill name on success, None on failure.
+        """
+        try:
+            dest = await asyncio.to_thread(install_skill, source, name)
+            self.notify()
+            return dest.name
+        except Exception as exc:
+            logger.warning("Failed to install skill from '%s': %s", source, exc)
+            return None
 
     def is_mvge_installed(self, mvge_name: str) -> bool:
         """Check if an mvge agent is installed in ~/.agents/agents."""

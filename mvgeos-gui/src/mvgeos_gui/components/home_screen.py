@@ -43,32 +43,12 @@ def render_home_screen(state: AppState) -> None:
                     icon="settings",
                     on_click=state.open_workspace_settings,
                 ).props("flat dense round text-color=grey-5 size=xs")
-                ui.button(
-                    icon="edit",
-                    on_click=lambda: ui.notify("Project editing not yet implemented"),
-                ).props("flat dense round text-color=grey-5 size=xs")
 
         # Quick actions
         with ui.row().classes("gap-3 flex-wrap justify-center mb-8"):
             ui.button(
                 "New Conversation",
                 icon="add",
-                on_click=lambda: state.set_current_view("chat"),
-            ).props("unelevated no-caps").classes(
-                "bg-[#0e0e12] hover:bg-[#16161d] text-[#eceaf4] border "
-                "border-[#292335] text-xs px-4 py-2 rounded-lg"
-            )
-            ui.button(
-                "Open Project",
-                icon="folder_open",
-                on_click=lambda: ui.notify("Project picker not yet implemented"),
-            ).props("unelevated no-caps").classes(
-                "bg-[#0e0e12] hover:bg-[#16161d] text-[#eceaf4] border "
-                "border-[#292335] text-xs px-4 py-2 rounded-lg"
-            )
-            ui.button(
-                "Quick Start",
-                icon="bolt",
                 on_click=lambda: state.set_current_view("chat"),
             ).props("unelevated no-caps").classes(
                 "bg-[#0e0e12] hover:bg-[#16161d] text-[#eceaf4] border "

@@ -798,3 +798,40 @@ async def test_marketplace_type_filter_mvge_shows_only_mvges(user: User) -> None
 
     await user.should_see("coding_mvge", retries=10)
     await user.should_not_see("alpha-rune", retries=10)
+
+
+@pytest.mark.asyncio
+async def test_packages_panel_rune_settings_dialog(user: User) -> None:
+    """Clicking settings on an installed rune opens a dialog to toggle enabled."""
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_runes_async = AsyncMock(  # type: ignore[method-assign]
+        return_value=[
+            {
+                "name": "my-tool",
+                "version": "1.0.0",
+                "path": "/home/user/.agents/extensions/my-tool",
+                "description": "Installed tool description",
+                "hooks": [],
+                "python_deps": [],
+            }
+        ]
+    )
+    state.fetch_marketplace_mvges_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.set_rune_enabled_async = AsyncMock(return_value=True)  # type: ignore[method-assign]
+
+    @ui.page("/test_packages_rune_settings")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_packages_rune_settings")
+    await user.should_see("my-tool")
+
+    # Click settings button on the installed rune card
+    user.find(marker="package_settings_item_my-tool").click()
+    await user.should_see("my-tool Settings")
+    await user.should_see("Enabled")
+
+    # Toggle enabled off and save
+    state.set_rune_enabled_async.assert_not_called()

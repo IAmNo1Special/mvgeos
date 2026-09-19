@@ -39,3 +39,41 @@ async def test_render_sessions_with_tome(user: User, tmp_path) -> None:
 
     await user.open("/test_sessions_tome")
     await user.should_see("My Tome")
+
+
+@pytest.mark.asyncio
+async def test_sessions_search_filters_list(user: User, tmp_path) -> None:
+    """Typing in the search field should filter the session list."""
+    from types import SimpleNamespace
+
+    state = AppState(project_path=tmp_path)
+    state.loaded_tomes = [
+        SimpleNamespace(
+            tome_id="t1",
+            title="Alpha Session",
+            relative_time="1h ago",
+            git_branch="main",
+            is_active=True,
+        ),
+        SimpleNamespace(
+            tome_id="t2",
+            title="Beta Session",
+            relative_time="2h ago",
+            git_branch="main",
+            is_active=False,
+        ),
+    ]
+
+    @ui.page("/test_sessions_search")
+    def page() -> None:
+        render_sessions_panel(state)
+
+    await user.open("/test_sessions_search")
+    await user.should_see("Alpha Session")
+    await user.should_see("Beta Session")
+
+    # Type in the search field
+    search = user.find(marker="sessions_search_input")
+    search.type("Alpha")
+    await user.should_see("Alpha Session")
+    await user.should_not_see("Beta Session")

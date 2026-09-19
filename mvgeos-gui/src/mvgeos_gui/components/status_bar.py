@@ -45,12 +45,6 @@ def render_status_bar(state: AppState) -> ui.row:
         # Context / compact toggles
         with ui.row().classes("items-center gap-3"):
             ui.button(
-                icon="terminal",
-                on_click=state.toggle_terminal,
-            ).props("flat dense round text-color=grey-5 size=xs").mark(
-                "toggle_terminal_btn"
-            )
-            ui.button(
                 icon="dock" if state.review_open else "view_sidebar",
                 on_click=state.toggle_review,
             ).props("flat dense round text-color=grey-5 size=xs").mark(

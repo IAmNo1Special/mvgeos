@@ -5,6 +5,7 @@ from mvgeos_runes.installer import (
     fetch_marketplace_runes,
     install_rune,
     list_installed_runes,
+    set_rune_enabled,
     uninstall_rune,
 )
 from mvgeos_runes.loader import (
@@ -15,6 +16,7 @@ from mvgeos_runes.loader import (
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_api import RuneAPI, RuneFactory
 from mvgeos_runes.rune_runner import RuneRunner
+from mvgeos_runes.skill_installer import install_skill
 from mvgeos_runes.types import (
     Diagnostic,
     DiagnosticKind,
@@ -69,5 +71,7 @@ __all__ = [
     "load_manifest",
     "load_manifests",
     "load_runes_from_paths",
+    "set_rune_enabled",
+    "install_skill",
     "uninstall_rune",
 ]

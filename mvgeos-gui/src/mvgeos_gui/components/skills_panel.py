@@ -1,4 +1,6 @@
-"""Skills panel: browse available runes/skills."""
+"""Skills panel: manage active skills, add available ones, install new ones."""
+
+from __future__ import annotations
 
 from nicegui import ui
 
@@ -6,19 +8,47 @@ from mvgeos_gui.state import AppState
 
 
 def render_skills_panel(state: AppState) -> None:
-    """Render the skills browser view."""
+    """Render the skills management view."""
     with ui.column().classes("w-full h-full overflow-y-auto p-6 gap-4"):
-        ui.label("Skills").classes("text-2xl font-semibold text-[#eceaf4]")
+        with ui.row().classes("w-full items-center justify-between"):
+            ui.label("Skills").classes("text-2xl font-semibold text-[#eceaf4]")
+            ui.button(
+                "Install Skill",
+                icon="add",
+                on_click=lambda: _render_install_dialog(state, skills_view.refresh),
+            ).props("unelevated dense color=purple-7").classes(
+                "text-white text-sm font-medium"
+            ).mark("skill_install_btn")
 
-        skills = state.active_skills
-        if not skills:
-            ui.label("No skills loaded").classes("text-xs text-[#6e6584] mt-4")
-        else:
-            for skill in skills:
-                with ui.card().classes(
-                    "w-full p-4 bg-[#0e0e12] border border-[#292335] rounded-lg"
-                ):
-                    with ui.row().classes("w-full items-center justify-between"):
+        @ui.refreshable
+        def skills_view() -> None:
+            _render_skills_lists(state, skills_view.refresh)
+
+        skills_view()
+
+        with ui.row().classes("mt-4"):
+            ui.button(
+                "Back to Chat",
+                on_click=lambda: state.set_current_view("chat"),
+            ).props("unelevated").classes("mvge-glow-btn text-white")
+
+
+def _render_skills_lists(state: AppState, refresh: object) -> None:
+    """Render the active and available skill sections."""
+    # Active skills
+    ui.label("Active Skills").classes(
+        "text-sm font-semibold text-[#b8b3c9] uppercase tracking-wide mt-2"
+    )
+    skills = state.active_skills
+    if not skills:
+        ui.label("No skills loaded").classes("text-xs text-[#6e6584] mt-1")
+    else:
+        for skill in skills:
+            with ui.card().classes(
+                "w-full p-4 bg-[#0e0e12] border border-[#292335] rounded-lg"
+            ):
+                with ui.row().classes("w-full items-center justify-between"):
+                    with ui.row().classes("items-center gap-2"):
                         ui.label(skill.name).classes(
                             "text-sm font-semibold text-[#eceaf4]"
                         )
@@ -26,15 +56,141 @@ def render_skills_panel(state: AppState) -> None:
                             ui.badge("Invoked", color="green").props(
                                 "rounded dense"
                             ).classes("text-[10px]")
-                    ui.label(skill.description or "No description").classes(
-                        "text-xs text-[#9c94b3] mt-1"
+                    ui.button(
+                        icon="delete",
+                        on_click=lambda s=skill: _remove_skill(state, s.name, refresh),
+                    ).props("flat dense round text-color=grey-5 size=sm").mark(
+                        f"skill_remove_{skill.name}"
                     )
-                    ui.label(skill.scope).classes(
-                        "text-[10px] text-[#6e6584] mt-1 font-mono"
+                ui.label(skill.description or "No description").classes(
+                    "text-xs text-[#9c94b3] mt-1"
+                )
+                ui.label(skill.scope).classes(
+                    "text-[10px] text-[#6e6584] mt-1 font-mono"
+                )
+
+    # Available (discovered but not active) skills
+    ui.label("Available Skills").classes(
+        "text-sm font-semibold text-[#b8b3c9] uppercase tracking-wide mt-4"
+    )
+    try:
+        discovered = state.load_skills()
+    except Exception:
+        discovered = []
+    active_names = {s.name for s in state.active_skills}
+    available = [m for m in discovered if m.name not in active_names]
+    if not available:
+        ui.label("No additional skills found").classes("text-xs text-[#6e6584] mt-1")
+    else:
+        for manifest in available:
+            with ui.card().classes(
+                "w-full p-4 bg-[#0e0e12] border border-[#292335] rounded-lg"
+            ):
+                with ui.row().classes("w-full items-center justify-between"):
+                    ui.label(manifest.name).classes(
+                        "text-sm font-semibold text-[#eceaf4]"
+                    )
+                    ui.button(
+                        "Add",
+                        on_click=lambda m=manifest: _add_skill(state, m, refresh),
+                    ).props("unelevated dense size=sm color=purple-7").classes(
+                        "text-white text-xs font-medium"
+                    ).mark(f"skill_add_{manifest.name}")
+                ui.label(manifest.description or "No description").classes(
+                    "text-xs text-[#9c94b3] mt-1"
+                )
+                if manifest.path:
+                    ui.label(manifest.path).classes(
+                        "text-[10px] text-[#6e6584] mt-1 font-mono break-all"
                     )
 
-        with ui.row().classes("mt-4"):
-            ui.button(
-                "Back to Chat",
-                on_click=lambda: state.set_current_view("chat"),
-            ).props("unelevated").classes("mvge-glow-btn text-white")
+
+def _remove_skill(state: AppState, name: str, refresh: object) -> None:
+    """Remove a skill from the active list."""
+    if state.remove_skill(name):
+        ui.notify(f"Removed skill '{name}'.", type="positive")
+    else:
+        ui.notify(f"Skill '{name}' was not active.", type="warning")
+    if callable(refresh):
+        refresh()
+
+
+def _add_skill(state: AppState, manifest: object, refresh: object) -> None:
+    """Add a discovered skill to the active list."""
+    # manifest is a SkillManifest; typed as object to avoid a hard import cycle.
+    from mvgeos_runes.types import SkillManifest
+
+    assert isinstance(manifest, SkillManifest)
+    if state.add_skill(manifest):
+        ui.notify(f"Added skill '{manifest.name}'.", type="positive")
+    else:
+        ui.notify(f"Skill '{manifest.name}' is already active.", type="warning")
+    if callable(refresh):
+        refresh()
+
+
+def _render_install_dialog(state: AppState, refresh: object) -> None:
+    """Render a dialog to install a skill from a git URL or local path."""
+    with (
+        ui.dialog() as dialog,
+        ui.card().classes(
+            "w-[440px] max-w-[90vw] bg-[#0e0e12] border border-[#292335] "
+            "rounded-xl p-5 gap-4"
+        ),
+    ):
+        with ui.row().classes("w-full items-center justify-between"):
+            ui.label("Install Skill").classes("text-base font-semibold text-[#eceaf4]")
+            ui.button(icon="close", on_click=dialog.close).props(
+                "flat dense round text-color=grey-5 size=sm"
+            )
+
+        ui.label(
+            "Install from a git repository or a local folder containing SKILL.md."
+        ).classes("text-xs text-[#9c94b3]")
+
+        source_input = (
+            ui.input(
+                label="Git URL or local path",
+                placeholder="https://github.com/... or /path/to/skill",
+            )
+            .classes("w-full")
+            .props("dark dense outlined")
+        )
+        name_input = (
+            ui.input(
+                label="Name (optional)",
+                placeholder="Defaults to folder or repo name",
+            )
+            .classes("w-full")
+            .props("dark dense outlined")
+        )
+
+        with ui.row().classes("w-full justify-end gap-2 mt-2"):
+            ui.button("Cancel", on_click=dialog.close).props(
+                "flat dense text-color=grey-5"
+            )
+
+            async def _install() -> None:
+                source = (source_input.value or "").strip()
+                if not source:
+                    ui.notify("Enter a git URL or local path.", type="warning")
+                    return
+                name = (name_input.value or "").strip() or None
+                ui.notify(f"Installing skill from {source}...", type="info")
+                installed = await state.install_skill_async(source, name)
+                if installed:
+                    ui.notify(f"Installed skill '{installed}'.", type="positive")
+                    dialog.close()
+                    if callable(refresh):
+                        refresh()
+                else:
+                    ui.notify(
+                        "Failed to install skill. Check the source and try again.",
+                        type="negative",
+                    )
+
+            ui.button("Install", on_click=_install).props(
+                "unelevated dense color=purple-7"
+            ).classes("text-white text-sm font-medium")
+
+    dialog.open()

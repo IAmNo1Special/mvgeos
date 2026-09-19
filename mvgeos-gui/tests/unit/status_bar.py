@@ -49,7 +49,6 @@ async def test_render_status_bar_channeling(user: User) -> None:
 async def test_render_status_bar_toggle_buttons(user: User) -> None:
     """Toggle buttons in status bar should call their corresponding state toggles."""
     state = AppState()
-    state.toggle_terminal = MagicMock()
     state.toggle_review = MagicMock()
     state.toggle_sidebar = MagicMock()
 
@@ -58,8 +57,13 @@ async def test_render_status_bar_toggle_buttons(user: User) -> None:
         render_status_bar(state)
 
     await user.open("/test_status_bar_toggles")
-    user.find(marker="toggle_terminal_btn").click()
-    state.toggle_terminal.assert_called_once()
+    # Terminal placeholder was removed: no terminal toggle should exist.
+    try:
+        user.find(marker="toggle_terminal_btn")
+        terminal_found = True
+    except AssertionError:
+        terminal_found = False
+    assert not terminal_found, "terminal toggle button should not exist"
 
     user.find(marker="toggle_review_btn").click()
     state.toggle_review.assert_called_once()

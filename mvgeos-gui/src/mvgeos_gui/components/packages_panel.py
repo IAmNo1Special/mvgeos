@@ -513,6 +513,86 @@ def render_packages_panel(state: AppState) -> None:
                                     "border border-[#292335]"
                                 )
 
+    def _render_rune_settings_dialog(
+        state: AppState,
+        r: dict[str, Any],
+        on_saved: Any,
+    ) -> None:
+        """Render a settings dialog for an installed rune.
+
+        Currently exposes the rune's enabled flag, which is persisted
+        to the rune's manifest.json.
+        """
+        name = r["name"]
+        version = r["version"]
+        desc = r.get("description", "")
+        path = r.get("path", "")
+        # Default to enabled when the manifest omits the flag.
+        enabled = r.get("enabled", True)
+
+        with (
+            ui.dialog() as dialog,
+            ui.card().classes(
+                "w-[420px] max-w-[90vw] bg-[#0e0e12] border border-[#292335] "
+                "rounded-xl p-5 gap-4"
+            ),
+        ):
+            with ui.row().classes("w-full items-center justify-between"):
+                ui.label(f"{name} Settings").classes(
+                    "text-base font-semibold text-[#eceaf4]"
+                )
+                ui.button(icon="close", on_click=dialog.close).props(
+                    "flat dense round text-color=grey-5 size=sm"
+                )
+
+            ui.label(f"v{version}").classes("text-xs text-[#9c94b3] font-mono -mt-3")
+            if desc:
+                ui.label(desc).classes("text-sm text-[#b8b3c9]")
+
+            ui.separator().classes("bg-[#292335]")
+
+            with ui.row().classes("w-full items-center justify-between"):
+                with ui.column().classes("gap-0"):
+                    ui.label("Enabled").classes("text-sm font-medium text-[#eceaf4]")
+                    ui.label("Disabled runes are not loaded by the agent.").classes(
+                        "text-xs text-[#6e6584]"
+                    )
+                enabled_switch = ui.switch(value=bool(enabled)).props("color=purple-6")
+
+            if path:
+                ui.label(path).classes("text-[11px] text-[#6e6584] font-mono break-all")
+
+            with ui.row().classes("w-full justify-end gap-2 mt-2"):
+                ui.button("Cancel", on_click=dialog.close).props(
+                    "flat dense text-color=grey-5"
+                )
+
+                async def _save_settings() -> None:
+                    new_enabled = bool(enabled_switch.value)
+                    ui.notify(
+                        f"Saving {name} settings...",
+                        type="info",
+                    )
+                    success = await state.set_rune_enabled_async(name, new_enabled)
+                    if success:
+                        ui.notify(
+                            f"{name} {'enabled' if new_enabled else 'disabled'}.",
+                            type="positive",
+                        )
+                        dialog.close()
+                        await on_saved()
+                    else:
+                        ui.notify(
+                            f"Failed to save {name} settings.",
+                            type="negative",
+                        )
+
+                ui.button("Save", on_click=_save_settings).props(
+                    "unelevated dense color=purple-7"
+                ).classes("text-white text-sm font-medium")
+
+        dialog.open()
+
     def _render_rune_card(r: dict[str, Any]) -> None:
         """Render a single rune card in the merged list."""
         name = r["name"]
@@ -546,6 +626,17 @@ def render_packages_panel(state: AppState) -> None:
 
                 with ui.row().classes("items-center gap-2"):
                     if is_installed:
+
+                        def _open_rune_settings(r: dict[str, Any] = r) -> None:
+                            """Open the settings dialog for an installed rune."""
+                            _render_rune_settings_dialog(state, r, _refresh_data)
+
+                        ui.button(
+                            icon="settings",
+                            on_click=_open_rune_settings,
+                        ).props("flat dense round size=sm text-color=grey-5").mark(
+                            f"package_settings_item_{name}",
+                        )
 
                         async def _uninstall_item(
                             r_name: str = name,

@@ -13,6 +13,7 @@ from mvgeos_runes.installer import (
     fetch_marketplace_runes,
     install_rune,
     list_installed_runes,
+    set_rune_enabled,
     uninstall_rune,
 )
 
@@ -527,3 +528,33 @@ def test_install_rune_local_path_rejects_manifest_name_traversal(
     with pytest.raises(ValueError, match="Invalid rune name"):
         install_rune(str(source_dir), target_dir=target_dir)
     assert list(target_dir.iterdir()) == []
+
+
+def test_set_rune_enabled_disables_rune(tmp_path: Path) -> None:
+    target_rune = tmp_path / "my-rune"
+    target_rune.mkdir()
+    (target_rune / "manifest.json").write_text(
+        json.dumps({"name": "my-rune", "version": "1.0.0", "enabled": True}),
+        encoding="utf-8",
+    )
+
+    assert set_rune_enabled("my-rune", False, target_dir=tmp_path) is True
+    manifest = json.loads((target_rune / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["enabled"] is False
+
+
+def test_set_rune_enabled_enables_rune(tmp_path: Path) -> None:
+    target_rune = tmp_path / "my-rune"
+    target_rune.mkdir()
+    (target_rune / "manifest.json").write_text(
+        json.dumps({"name": "my-rune", "version": "1.0.0", "enabled": False}),
+        encoding="utf-8",
+    )
+
+    assert set_rune_enabled("my-rune", True, target_dir=tmp_path) is True
+    manifest = json.loads((target_rune / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["enabled"] is True
+
+
+def test_set_rune_enabled_nonexistent_returns_false(tmp_path: Path) -> None:
+    assert set_rune_enabled("nonexistent-rune", False, target_dir=tmp_path) is False

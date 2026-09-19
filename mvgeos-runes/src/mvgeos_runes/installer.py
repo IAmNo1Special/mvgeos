@@ -189,6 +189,38 @@ def uninstall_rune(name: str, target_dir: Path | None = None) -> bool:
     return False
 
 
+def set_rune_enabled(name: str, enabled: bool, target_dir: Path | None = None) -> bool:
+    """Set the enabled flag in an installed rune's manifest.json.
+
+    Returns True when the manifest was updated, False when the rune
+    is not installed or its manifest cannot be read/written.
+    """
+    target = (
+        target_dir.expanduser()
+        if target_dir is not None
+        else Path("~/.agents/extensions").expanduser()
+    )
+    rune_dir = _dest_within_target(target, _validate_install_name(name, kind="rune"))
+    manifest_path = rune_dir / "manifest.json"
+    if not manifest_path.is_file():
+        return False
+    try:
+        with manifest_path.open("r", encoding="utf-8-sig") as f:
+            manifest = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return False
+    if not isinstance(manifest, dict):
+        return False
+    manifest["enabled"] = bool(enabled)
+    try:
+        with manifest_path.open("w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=2)
+            f.write("\n")
+    except OSError:
+        return False
+    return True
+
+
 def install_rune(
     source: str,
     target_dir: Path | None = None,

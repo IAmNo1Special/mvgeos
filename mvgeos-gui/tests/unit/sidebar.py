@@ -41,12 +41,13 @@ async def test_sidebar_expanded_rendering(user: User) -> None:
     await user.should_see("Home")
     await user.should_see("Chat")
     await user.should_see("Sessions")
-    await user.should_see("Timeline")
     await user.should_see("Marketplace")
-    await user.should_see("Notes")
     await user.should_see("Skills")
     await user.should_see("Diagnostics")
     await user.should_see("Settings")
+    # Placeholder panels were removed: they had no reason to exist.
+    await user.should_not_see("Timeline")
+    await user.should_not_see("Notes")
     btn = user.find(marker="collapse_sidebar_btn")
     assert btn is not None
 

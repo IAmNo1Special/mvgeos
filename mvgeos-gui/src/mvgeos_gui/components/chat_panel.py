@@ -12,7 +12,6 @@ from mvgeos_gui.autocomplete import AutocompleteService
 from mvgeos_gui.components.diff_viewer import render_diff_viewer
 from mvgeos_gui.components.file_tree import render_file_tree
 from mvgeos_gui.components.message_parts import render_assistant_message
-from mvgeos_gui.components.terminal_panel import render_terminal_panel
 from mvgeos_gui.state import AppState
 
 EXAMPLE_PROMPTS = [
@@ -59,12 +58,6 @@ def render_chat_panel(state: AppState) -> ui.column:
                     active=state.review_open,
                     on_click=state.toggle_review,
                 )
-                _toolbar_button(
-                    icon="terminal",
-                    title="Terminal",
-                    active=state.terminal_open,
-                    on_click=state.toggle_terminal,
-                )
 
                 # Right toolbar actions
                 with ui.row().classes("items-center gap-1 ml-auto"):
@@ -100,7 +93,6 @@ def render_chat_panel(state: AppState) -> ui.column:
         last_toolbar_state = [
             (
                 state.review_open,
-                state.terminal_open,
                 state.chat_side_panel,
                 str(state.project_path),
             )
@@ -109,7 +101,6 @@ def render_chat_panel(state: AppState) -> ui.column:
         def _on_toolbar_check() -> None:
             cur = (
                 state.review_open,
-                state.terminal_open,
                 state.chat_side_panel,
                 str(state.project_path),
             )
@@ -193,9 +184,6 @@ def render_chat_panel(state: AppState) -> ui.column:
 
                 # Composer
                 _render_composer(state)
-
-                # Terminal overlay
-                render_terminal_panel(state)
 
             # Side panel
             @ui.refreshable
@@ -576,15 +564,26 @@ def _render_composer(state: AppState) -> None:
                 with ui.row().classes(
                     "w-full items-center gap-2 pt-1 mvge-composer-toolbar pl-2"
                 ):
-                    with (
-                        ui.button(icon="add")
-                        .props("flat dense round text-color=grey-4 size=sm")
-                        .on(
-                            "click",
-                            lambda: ui.notify("File upload not yet implemented"),
-                        )
-                    ):
-                        ui.tooltip("Add context files")
+
+                    def _handle_upload(e: Any) -> None:
+                        """Add uploaded file names as pending attachments."""
+                        # e.files is a list of uploaded file objects with .name
+                        for f in getattr(e, "files", []):
+                            name = getattr(f, "name", "")
+                            if name:
+                                state.add_attachment(name)
+                        if getattr(e, "files", []):
+                            ui.notify(
+                                f"Added {len(e.files)} attachment(s).",
+                                type="positive",
+                            )
+
+                    ui.upload(
+                        on_upload=_handle_upload,
+                        label="",
+                    ).props("flat dense round color=grey-5").classes(
+                        "mvge-upload-btn"
+                    ).mark("composer_upload_btn")
 
                     @ui.refreshable
                     def cascading_selector_view() -> None:

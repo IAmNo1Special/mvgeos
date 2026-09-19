@@ -393,9 +393,7 @@ async def test_command_palette_opens_and_lists_views(user: User) -> None:
     await user.open("/test_palette")
     await user.should_see("Quick Switcher")
     await user.should_see("Sessions")
-    await user.should_see("Timeline")
     await user.should_see("Marketplace")
-    await user.should_see("Notes")
     await user.should_see("Skills")
     await user.should_see("Diagnostics")
     await user.should_see("Settings")
@@ -463,32 +461,6 @@ async def test_skills_panel_renders_data(user: User) -> None:
     await user.should_see("Skills")
     await user.should_see("code-review")
     await user.should_see("Review code")
-
-
-@pytest.mark.asyncio
-async def test_notes_panel_renders(user: User) -> None:
-    """Verify notes panel renders properly."""
-    state = AppState(current_view="notes")
-
-    @ui.page("/test_notes_panel")
-    def page() -> None:
-        build_page(state)
-
-    await user.open("/test_notes_panel")
-    await user.should_see("Notes")
-
-
-@pytest.mark.asyncio
-async def test_timeline_panel_renders(user: User) -> None:
-    """Verify timeline panel renders properly."""
-    state = AppState(current_view="timeline")
-
-    @ui.page("/test_timeline_panel")
-    def page() -> None:
-        build_page(state)
-
-    await user.open("/test_timeline_panel")
-    await user.should_see("Timeline")
 
 
 @pytest.mark.asyncio
