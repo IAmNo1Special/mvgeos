@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import importlib.util
 import platform
-import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -13,6 +11,7 @@ import typer
 import typer._click as _click
 from mvgeos_agent.config_manager import validate_agent_name
 from mvgeos_core.constants import DEFAULT_AGENT_NAME, resolve_rune_paths
+from mvgeos_runes.loader import check_python_dep_installed
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.types import RuneManifest
 from typer.core import TyperGroup
@@ -114,14 +113,8 @@ def check_tool_installed(tool: str) -> bool:
 
 
 def check_python_dep(module_name: str) -> bool:
-    """Check if a Python package is importable."""
-    base_name = re.split(r"[><=!~;\[]", module_name)[0].strip().replace("-", "_")
-    if not base_name:
-        return False
-    try:
-        return importlib.util.find_spec(base_name) is not None
-    except (ModuleNotFoundError, ValueError):
-        return False
+    """Check if a Python package is installed (PEP 508 aware)."""
+    return check_python_dep_installed(module_name)
 
 
 async def install_package(package: str, dry_run: bool = False) -> tuple[bool, str]:

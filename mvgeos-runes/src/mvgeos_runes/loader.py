@@ -6,8 +6,11 @@ import re
 import site
 import sys
 from collections.abc import Sequence
+from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 from typing import cast
+
+from packaging.requirements import InvalidRequirement, Requirement
 
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_api import RuneFactory
@@ -20,15 +23,72 @@ from mvgeos_runes.types import (
 )
 
 
-def check_python_dep_installed(module_name: str) -> bool:
-    """Return True if a Python module is importable by importlib."""
-    base_name = re.split(r"[><=!~;\[]", module_name)[0].strip().replace("-", "_")
-    if not base_name:
-        return False
+def check_python_dep_installed(dep: str) -> bool:
+    """Return True if a declared python dependency is satisfied.
+
+    ``dep`` is a PEP 508 requirement string: bare names (``httpx``), version
+    pins (``httpx>=0.27``), extras (``uvicorn[standard]``), environment markers
+    (``pywin32; sys_platform == 'win32'``), and direct references
+    (``goapauto @ git+https://github.com/IAmNo1Special/goapauto@main``).
+    Satisfaction is resolved against installed-distribution metadata, so
+    distribution names that differ from their importable top-level module
+    (``python-dotenv`` -> ``dotenv``, ``PyYAML`` -> ``yaml``) are handled.
+    A version pin alone never fails the check: any installed distribution of
+    that name counts, matching the installer's ``uv pip install`` behavior.
+    """
+    requirement = _parse_requirement(dep)
+    if requirement is None:
+        return _legacy_module_present(dep)
+    if requirement.marker is not None and not requirement.marker.evaluate():
+        return True  # Dependency does not apply to this environment.
+    top_levels = _installed_top_levels(requirement.name)
+    if top_levels is None:
+        # No installed distribution under that name: fall back to the
+        # import-name guess so stdlib modules (``json``) still resolve.
+        return _module_importable(requirement.name.replace("-", "_"))
+    return any(_module_importable(top) for top in top_levels)
+
+
+def _parse_requirement(dep: str) -> Requirement | None:
+    """Parse a PEP 508 requirement string, returning None when it is not one."""
     try:
-        return importlib.util.find_spec(base_name) is not None
+        return Requirement(dep)
+    except InvalidRequirement:
+        return None
+
+
+def _installed_top_levels(dist_name: str) -> list[str] | None:
+    """Return the importable top-level modules of an installed distribution.
+
+    Returns None when no distribution of that name is installed.
+    """
+    try:
+        dist = distribution(dist_name)
+    except PackageNotFoundError:
+        return None
+    top_level = dist.read_text("top_level.txt")
+    if top_level:
+        names = [
+            line.strip()
+            for line in top_level.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        if names:
+            return names
+    return [dist_name.replace("-", "_")]
+
+
+def _module_importable(module_name: str) -> bool:
+    try:
+        return importlib.util.find_spec(module_name) is not None
     except (ModuleNotFoundError, ValueError):
         return False
+
+
+def _legacy_module_present(dep: str) -> bool:
+    """Pre-PEP 508 fallback: split off version/marker/extras, probe the head."""
+    base_name = re.split(r"[><=!~;\[]", dep)[0].strip().replace("-", "_")
+    return bool(base_name) and _module_importable(base_name)
 
 
 def _missing_dep_diagnostic(manifest: RuneManifest, dep: str) -> Diagnostic:

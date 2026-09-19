@@ -3,7 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from mvgeos_runes.loader import load_factory_from_manifest, load_runes_from_paths
+import pytest
+
+from mvgeos_runes.loader import (
+    check_python_dep_installed,
+    load_factory_from_manifest,
+    load_runes_from_paths,
+)
 from mvgeos_runes.types import (
     Diagnostic,
     DiagnosticKind,
@@ -170,4 +176,123 @@ def test_preflight_does_not_flag_venv_bundled_dep(tmp_path: Path) -> None:
         diagnostics=diagnostics,
     )
     assert factory is not None
+    assert not any(d.kind == DiagnosticKind.MISSING_DEP for d in diagnostics)
+
+
+def _install_fake_dist(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    dist_name: str,
+    top_levels: list[str],
+    version: str = "1.0",
+) -> None:
+    """Create a fake installed distribution with importable top-level modules.
+
+    Both the ``.dist-info`` metadata and the top-level ``.py`` modules live in
+    ``tmp_path``, which is prepended to ``sys.path`` so ``importlib.metadata``
+    and the real import system resolve them exactly like an installed package.
+    """
+    dist_info = tmp_path / f"{dist_name.replace('-', '_')}-{version}.dist-info"
+    dist_info.mkdir(parents=True)
+    (dist_info / "METADATA").write_text(
+        f"Metadata-Version: 2.4\nName: {dist_name}\nVersion: {version}\n",
+        encoding="utf-8",
+    )
+    (dist_info / "top_level.txt").write_text(
+        "\n".join(top_levels) + "\n", encoding="utf-8"
+    )
+    for module in top_levels:
+        (tmp_path / f"{module}.py").write_text("PRESENT = True\n", encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+
+def test_preflight_dist_name_differs_from_import_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``python-dotenv`` is satisfied when the ``dotenv`` module is installed."""
+    _install_fake_dist(tmp_path, monkeypatch, "python-dotenv", ["dotenv"])
+    assert check_python_dep_installed("python-dotenv") is True
+
+
+def test_preflight_direct_url_dep_installed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A PEP 508 direct reference resolves via its distribution name."""
+    _install_fake_dist(tmp_path, monkeypatch, "mygopkg", ["mygopkg"])
+    assert (
+        check_python_dep_installed("mygopkg @ git+https://example.com/mygopkg@main")
+        is True
+    )
+
+
+def test_preflight_direct_url_dep_missing() -> None:
+    """A direct reference with no installed distribution is still missing."""
+    assert (
+        check_python_dep_installed("mygopkg @ git+https://example.com/mygopkg@main")
+        is False
+    )
+
+
+def test_preflight_version_pin_uses_dist_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``PyYAML>=6.0`` is satisfied by the installed ``pyyaml`` distribution."""
+    _install_fake_dist(tmp_path, monkeypatch, "pyyaml", ["yaml"])
+    assert check_python_dep_installed("PyYAML>=6.0") is True
+
+
+def test_preflight_extras_do_not_block(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Extras are ignored for the presence check."""
+    _install_fake_dist(tmp_path, monkeypatch, "python-dotenv", ["dotenv"])
+    assert check_python_dep_installed("python-dotenv[cli]") is True
+
+
+def test_preflight_inapplicable_marker_counts_as_satisfied() -> None:
+    """A dependency whose marker excludes this interpreter is vacuous."""
+    assert check_python_dep_installed("mygopkg; python_version < '2.0'") is True
+
+
+def test_preflight_applicable_marker_still_gates() -> None:
+    """A dependency whose marker applies is still checked normally."""
+    assert check_python_dep_installed("mygopkg; python_version >= '3.0'") is False
+
+
+def test_preflight_invalid_spec_falls_back_to_legacy() -> None:
+    """A string that is not a valid requirement never crashes the check."""
+    assert check_python_dep_installed("!!!not a requirement!!!") is False
+
+
+def test_preflight_version_pin_not_enforced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Any installed distribution satisfies the dep; pins are not enforced."""
+    _install_fake_dist(
+        tmp_path, monkeypatch, "python-dotenv", ["dotenv"], version="1.0"
+    )
+    assert check_python_dep_installed("python-dotenv>=99.0") is True
+
+
+def test_preflight_direct_url_dep_no_diagnostic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An installed direct-reference dep produces no MISSING_DEP diagnostic."""
+    _install_fake_dist(tmp_path, monkeypatch, "mygopkg", ["mygopkg"])
+    dep = "mygopkg @ git+https://example.com/mygopkg@main"
+    rune_dir = tmp_path / "url_dep"
+    _write_rune(rune_dir, "def rune_factory(api):\n    pass\n", python_deps=[dep])
+    diagnostics: list[Diagnostic] = []
+    load_factory_from_manifest(
+        RuneManifest(
+            name="url_dep",
+            version="1.0.0",
+            description="",
+            entry_point="rune.py",
+            python_deps=[dep],
+            scope=RuneScope.PROJECT,
+        ),
+        rune_dir,
+        diagnostics=diagnostics,
+    )
     assert not any(d.kind == DiagnosticKind.MISSING_DEP for d in diagnostics)
