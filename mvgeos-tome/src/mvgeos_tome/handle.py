@@ -74,6 +74,27 @@ def _validate_tome_id(tome_id: str) -> str:
     return tome_id
 
 
+def _validate_path_label(label: str) -> str:
+    """Allowlist a handle label derived from an explicit file path.
+
+    Path-derived labels never touch the filesystem — the handle already
+    holds a resolved path — so they may contain dots, spaces, and tildes:
+    anything a foreign naming convention (Pi's timestamp-prefixed names,
+    dotted backup names) might use. Separators, parent segments, and NUL
+    are still rejected so the label can never be mistaken for a path on a
+    later ``open_read(label)`` round-trip.
+    """
+    if (
+        not label
+        or "\x00" in label
+        or "/" in label
+        or "\\" in label
+        or label in (".", "..")
+    ):
+        raise ValueError(f"Invalid session label: {label!r}")
+    return label
+
+
 def _timestamp_now() -> float:
     return datetime.now(UTC).timestamp()
 
@@ -134,12 +155,18 @@ class TomeHandle:
         path: Path | None = None,
     ) -> None:
         self._tome_dir = Path(tome_dir).expanduser().resolve()
-        self._tome_id = _validate_tome_id(tome_id)
         self._mode = mode  # "r" or "w"
         self._codec = codec if codec is not None else TomeV1Codec()
         if path is not None:
+            # Explicit file: the id is an informational label only — the
+            # resolved path is authoritative — so foreign naming conventions
+            # (Pi's timestamp-prefixed names, dotted names) are tolerated.
+            self._tome_id = _validate_path_label(tome_id)
             self._path = Path(path).expanduser().resolve()
         else:
+            # The id becomes the file name; keep the strict allowlist so a
+            # caller-supplied id can never escape the tome directory.
+            self._tome_id = _validate_tome_id(tome_id)
             self._path = self._tome_dir / f"{self._tome_id}.jsonl"
         self._revision: Revision | None = None
         self._entries_cache: list[TomeEntry] | None = None
@@ -594,6 +621,22 @@ class TomeHandleFactory:
                     return matches[0]
         raise FileNotFoundError(f"Tome not found: {tome_id}")
 
+    def _label_for(self, path: Path) -> str:
+        """Best-effort session identity for a file opened by explicit path.
+
+        Prefers the session id parsed from the file's header — the file's
+        true identity, e.g. a Pi session UUID — over the filename stem, so
+        foreign naming conventions never leak into the handle's identity.
+        Falls back to the stem when the header is unreadable.
+        """
+        meta = self._metadata_for(path)
+        if meta is not None and meta.id:
+            try:
+                return _validate_path_label(meta.id)
+            except ValueError:
+                pass
+        return _validate_path_label(path.stem)
+
     def _metadata_for(self, path: Path) -> TomeMetadata | None:
         """Parse one file's header to metadata; None when unreadable.
 
@@ -795,7 +838,8 @@ class TomeHandleFactory:
     def open_read(self, tome_id: str) -> TomeHandle:
         """Open a read handle; raises FileNotFoundError when unknown."""
         path, codec = self._locate(tome_id)
-        handle = TomeHandle(self._tome_dir, path.stem, "r", codec, path=path)
+        label = self._label_for(path)
+        handle = TomeHandle(self._tome_dir, label, "r", codec, path=path)
         handle.get_metadata()
         return handle
 
@@ -806,7 +850,8 @@ class TomeHandleFactory:
         recorded cwd is always the project directory, never the tome dir.
         """
         path, codec = self._locate(tome_id)
-        handle = TomeHandle(self._tome_dir, path.stem, "w", codec, path=path)
+        label = self._label_for(path)
+        handle = TomeHandle(self._tome_dir, label, "w", codec, path=path)
         if handle.get_metadata() is None:
             raise ValueError(f"Tome has no readable header: {tome_id}")
         return handle

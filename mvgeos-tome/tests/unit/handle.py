@@ -590,6 +590,80 @@ class TestTomeIdValidation:
             factory.create_branched_tome("parent", "/tmp", tome_id="taken")
 
 
+def _write_v1_file(path: Path, session_id: str) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "type": "session",
+                "version": 1,
+                "id": session_id,
+                "timestamp": "2026-01-01T00:00:00Z",
+                "cwd": "/tmp",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+class TestForeignFilenames:
+    """Files opened by explicit path may follow foreign naming conventions.
+
+    Pi names sessions ``{timestamp}_{id}.jsonl``; users may also hand us
+    dotted names like ``my.session.backup.jsonl``. The handle must tolerate
+    any safe filename and identify the session by its header, not its stem.
+    """
+
+    def test_open_read_dotted_filename_by_path(self, tmp_path: Path) -> None:
+        target = tmp_path / "my.session.backup.jsonl"
+        _write_v1_file(target, "real-session-id")
+        factory = TomeHandleFactory(tmp_path / "tomes")
+
+        handle = factory.open_read(str(target))
+
+        assert handle.get_metadata() is not None
+        assert handle.get_metadata().id == "real-session-id"  # type: ignore[union-attr]
+
+    def test_open_read_prefers_header_session_id_over_stem(
+        self, tmp_path: Path
+    ) -> None:
+        target = tmp_path / "2026-09-19T03-22-11-234Z_abc123.jsonl"
+        _write_v1_file(target, "session-uuid-here")
+        factory = TomeHandleFactory(tmp_path / "tomes")
+
+        handle = factory.open_read(str(target))
+
+        assert handle.tome_id == "session-uuid-here"
+
+    def test_open_write_dotted_filename_appends(self, tmp_path: Path) -> None:
+        target = tmp_path / "my.session.backup.jsonl"
+        _write_v1_file(target, "real-session-id")
+        factory = TomeHandleFactory(tmp_path / "tomes")
+
+        writer = factory.open_write(str(target))
+        writer.append(_message("m1", "user", "hello"))
+
+        assert [e.id for e in factory.open_read(str(target)).get_entries()] == ["m1"]
+
+    def test_open_read_unparseable_dotted_file_falls_back_to_stem(
+        self, tmp_path: Path
+    ) -> None:
+        target = tmp_path / "odd.name.jsonl"
+        target.write_text("not json at all\n", encoding="utf-8")
+        factory = TomeHandleFactory(tmp_path / "tomes")
+
+        handle = factory.open_read(str(target))
+
+        assert handle.tome_id == "odd.name"
+        assert handle.get_entries() == []
+
+    def test_create_tome_still_rejects_dotted_id(self, tmp_path: Path) -> None:
+        factory = TomeHandleFactory(tmp_path)
+        with pytest.raises(ValueError, match="Invalid tome id"):
+            factory.create_tome("/tmp", tome_id="with.dot")
+        assert not (tmp_path / "with.dot.jsonl").exists()
+
+
 class TestPlanAppendHandle:
     def test_rewrite_plan_replaces_file_atomically(self, tmp_path: Path) -> None:
         class RewriteCodec(TomeV1Codec):
