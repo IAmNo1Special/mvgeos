@@ -1,6 +1,6 @@
 [project]
 name = "mvgeos-provider"
-version = "0.4.8"
+version = "0.4.9"
 description = "Provider abstraction protocol, model registry, and retry policies (OpenRouter realm ships as a marketplace rune)"
 requires-python = ">=3.13"
 license = "MIT"
