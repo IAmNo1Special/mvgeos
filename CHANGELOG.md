@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5] - 2026-09-19
+
+
+### Bug Fixes
+
+- **runes:** PEP 508 aware python_dep preflight (426a5d1)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (7d6618e)
+
+- **release:** v0.4.5 (1b0c78a)
+
+
 ## [0.4.4] - 2026-09-18
 
 
@@ -37,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Refactoring
 
 - **runes,agent,cli:** decouple declarative skills into marketplace skills-bridge rune (6b69c03)
+
+- **agent:** decouple repository steering into marketplace steering-bridge rune (079746d)
 
 
 ## [0.4.3] - 2026-09-17
