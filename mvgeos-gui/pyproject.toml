@@ -1,6 +1,6 @@
 [project]
 name = "mvgeos-gui"
-version = "0.5.2"
+version = "0.5.3"
 description = "Desktop GUI for MvgeOS powered by NiceGUI"
 requires-python = ">=3.13"
 license = "MIT"
