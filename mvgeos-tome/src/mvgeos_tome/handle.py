@@ -15,6 +15,7 @@ from typing import Any
 
 import portalocker
 
+from mvgeos_tome.codec import SessionCodec, TomeV1Codec
 from mvgeos_tome.types import (
     CURRENT_SESSION_VERSION,
     ATIFMetrics,
@@ -81,16 +82,6 @@ def _timestamp_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _parse_tome_entry(raw: dict[str, Any]) -> TomeEntry:
-    return TomeEntry(
-        id=raw["id"],
-        parent_id=raw.get("parentId"),
-        type=TomeEntryType(raw["type"]),
-        timestamp=float(raw["timestamp"]),
-        payload=raw.get("payload", {}),
-    )
-
-
 def _filter_entries_to_leaf(entries: list[TomeEntry], leaf_id: str) -> list[TomeEntry]:
     """Filter entries to only include the branch ending at leaf_id."""
     entry_by_id = {e.id: e for e in entries}
@@ -128,13 +119,28 @@ class TomeHandle:
     in-memory mirror that is revalidated against a filesystem revision token
     on every read, so any number of handles across threads and processes stay
     coherent without shared caches.
+
+    The handle is format-agnostic: a SessionCodec owns header parsing, entry
+    parsing/serialisation, and branch-tip bookkeeping for the file's format.
     """
 
-    def __init__(self, tome_dir: Path, tome_id: str, mode: str) -> None:
+    def __init__(
+        self,
+        tome_dir: Path,
+        tome_id: str,
+        mode: str,
+        codec: SessionCodec | None = None,
+        *,
+        path: Path | None = None,
+    ) -> None:
         self._tome_dir = Path(tome_dir).expanduser().resolve()
         self._tome_id = _validate_tome_id(tome_id)
         self._mode = mode  # "r" or "w"
-        self._path = self._tome_dir / f"{self._tome_id}.jsonl"
+        self._codec = codec if codec is not None else TomeV1Codec()
+        if path is not None:
+            self._path = Path(path).expanduser().resolve()
+        else:
+            self._path = self._tome_dir / f"{self._tome_id}.jsonl"
         self._revision: Revision | None = None
         self._entries_cache: list[TomeEntry] | None = None
         self._header: dict[str, Any] | None = None
@@ -144,6 +150,10 @@ class TomeHandle:
     @property
     def tome_id(self) -> str:
         return self._tome_id
+
+    @property
+    def codec(self) -> SessionCodec:
+        return self._codec
 
     @property
     def path(self) -> Path:
@@ -211,49 +221,24 @@ class TomeHandle:
             self._header = None
             self._revision = Revision.from_path(self._path)
             return []
-        if not isinstance(header, dict) or header.get("type") != "session":
+        if not isinstance(header, dict) or not self._codec.detect(header):
+            # Not this codec's session document. A session-looking header at
+            # an unsupported version still raises (legacy contract); anything
+            # else reads as empty.
+            if isinstance(header, dict) and self._codec.looks_like_session(header):
+                self._codec.parse_header(header)  # raises TomeVersionError
             self._entries_cache = []
             self._header = None
             self._revision = Revision.from_path(self._path)
             return []
-        version_raw = header.get("version", CURRENT_SESSION_VERSION)
-        try:
-            version = int(version_raw)
-        except (ValueError, TypeError) as e:
-            raise TomeVersionError(
-                version_raw, f"Invalid session version: {version_raw}"
-            ) from e
-        if version != CURRENT_SESSION_VERSION:
-            raise TomeVersionError(version, f"Unsupported session version: {version}")
+        # The codec owns version validation from here on.
+        self._codec.parse_header(header)
+        if self._codec.repair_on_open(str(self._path)):
+            # The codec rewrote the file (e.g. Pi's torn-tail repair);
+            # reload from the repaired file.
+            return self._load_snapshot()
         self._header = header
-        entries: list[TomeEntry] = []
-        for idx, raw_line in enumerate(lines[1:], start=2):
-            line = raw_line.strip()
-            if not line:
-                continue
-            try:
-                raw = json.loads(line)
-                if not isinstance(raw, dict):
-                    logger.warning(
-                        "Malformed entry in tome %s at line %d: expected JSON object",
-                        self._tome_id,
-                        idx,
-                    )
-                    continue
-                entries.append(_parse_tome_entry(raw))
-            except (
-                json.JSONDecodeError,
-                KeyError,
-                ValueError,
-                TypeError,
-            ) as e:
-                logger.warning(
-                    "Damaged entry in tome %s at line %d: %s",
-                    self._tome_id,
-                    idx,
-                    e,
-                )
-                continue
+        entries = self._codec.parse_entries(header, lines[1:], source=str(self._path))
         self._entries_cache = entries
         self._revision = Revision.from_path(self._path)
         return entries
@@ -271,25 +256,22 @@ class TomeHandle:
         with self._local_lock:
             rev = Revision.from_path(self._path)
             if self._header is not None and self._revision == rev:
-                return self._header_to_metadata(self._header)
+                return self._codec.parse_header(self._header)
             self._load_snapshot()
             if self._header is not None:
-                return self._header_to_metadata(self._header)
+                return self._codec.parse_header(self._header)
             return None
 
-    def _header_to_metadata(self, header: dict[str, Any]) -> TomeMetadata:
-        return TomeMetadata(
-            id=header["id"],
-            created_at=header["timestamp"],
-            cwd=header["cwd"],
-            parent_tome_id=header.get("parentSession"),
-            active_leaf_id=header.get("activeLeafId"),
-            schema_version=header.get("schema_version", "1.0"),
-            version=header.get("version", CURRENT_SESSION_VERSION),
-            model=header.get("model"),
-            contemplation_level=header.get("contemplationLevel"),
-            spells=list(header.get("spells", []) or []),
-        )
+    def get_header(self) -> dict[str, Any] | None:
+        """Return the raw format-native header document, if any."""
+        with self._local_lock:
+            rev = Revision.from_path(self._path)
+            if self._header is not None and self._revision == rev:
+                return dict(self._header)
+            self._load_snapshot()
+            if self._header is not None:
+                return dict(self._header)
+            return None
 
     def iter_entries(self) -> Generator[TomeEntry]:
         """Snapshot iteration over a materialized copy; holds no locks."""
@@ -302,22 +284,40 @@ class TomeHandle:
     # ── Write API (write mode only) ────────────────────────────
 
     def append(self, entry: TomeEntry) -> None:
-        """Append a single entry plus a durability barrier."""
+        """Append a single entry plus a durability barrier.
+
+        Persistence is codec-planned: most codecs append one line, while a
+        codec performing a format migration (Pi's v3-to-v4 upgrade on first
+        write) gets an atomic whole-file rewrite.
+        """
         if self._mode != "w":
             raise RuntimeError("Read handle cannot append")
         with self._acquire():
             self._load_snapshot()
             if self._entries_cache is None:
                 raise RuntimeError("Failed to load tome snapshot before append")
-            self._entries_cache.append(entry)
-            self._flush_to_disk()
+            plan = self._codec.plan_append(
+                entry, self._entries_cache, dict(self._header or {})
+            )
+            if plan.rewrite:
+                if plan.header is None:
+                    raise RuntimeError(
+                        f"Codec {self._codec.name} requested a rewrite "
+                        "without a new header"
+                    )
+                self._rewrite_lines_locked(plan.header, plan.lines)
+            else:
+                for line in plan.lines:
+                    self._flush_line(line)
+            self._entries_cache.append(plan.stored)
 
     def append_leaf(self, target_id: str) -> TomeEntry:
-        """Point the Tome's Leaf at an entry, syncing header and entries.
+        """Point the session's Leaf at an entry.
 
-        A single atomic step under the lease: appends the LEAF marker entry
-        and records it as the header's activeLeafId, mirroring the previous
-        whole-file rewrite cost without ever serving a split header/log.
+        Branch-tip bookkeeping is codec-owned: Tome v1 appends a LEAF marker
+        entry and records the header's activeLeafId; other formats record the
+        tip the way their own readers expect (e.g. Pi stores it as a value
+        write, not a marker entry).
         """
         if self._mode != "w":
             raise RuntimeError("Read handle cannot append")
@@ -332,11 +332,17 @@ class TomeHandle:
                 timestamp=_timestamp_now(),
                 payload={"targetId": target_id},
             )
-            entries = list(self._entries_cache)
-            entries.append(leaf)
-            header = dict(self._header or {})
-            header["activeLeafId"] = target_id
-            self._replace_locked(header, entries)
+            tip_lines = self._codec.append_tip_lines(
+                dict(self._header or {}), list(self._entries_cache), leaf
+            )
+            if tip_lines is None:
+                header, entries = self._codec.apply_leaf(
+                    dict(self._header or {}), list(self._entries_cache), leaf
+                )
+                self._replace_locked(header, entries)
+            else:
+                for line in tip_lines:
+                    self._flush_line(line)
         return leaf
 
     def replace(self, header: dict[str, Any], entries: list[TomeEntry]) -> None:
@@ -353,11 +359,14 @@ class TomeHandle:
             with tmp.open("w", encoding="utf-8") as f:
                 f.write(json.dumps(header) + "\n")
                 for e in entries:
-                    f.write(json.dumps(e.to_dict()) + "\n")
+                    line = self._codec.serialize_entry(e)
+                    if line is None:
+                        continue
+                    f.write(json.dumps(line) + "\n")
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp, self._path)
-            _fsync_dir(self._tome_dir)
+            _fsync_dir(self._path.parent)
             self._entries_cache = list(entries)
             self._header = dict(header)
             self._revision = Revision.from_path(self._path)
@@ -365,16 +374,43 @@ class TomeHandle:
             if tmp.exists():
                 tmp.unlink(missing_ok=True)
 
-    def _flush_to_disk(self) -> None:
-        """Durability barrier: append last entry, fsync file and directory."""
+    def _rewrite_lines_locked(self, header: dict[str, Any], lines: list[Any]) -> None:
+        """Atomically replace the file with a header plus raw body lines.
+
+        The body lines are JSON values (one per file line); the entries
+        cache is left for the caller to update. Used for codec-planned
+        rewrites such as format migrations.
+        """
+        tmp = self._path.with_name(f".{self._path.name}.{os.getpid()}.tmp")
+        try:
+            with tmp.open("w", encoding="utf-8") as f:
+                f.write(json.dumps(header) + "\n")
+                for line in lines:
+                    f.write(json.dumps(line) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self._path)
+            _fsync_dir(self._path.parent)
+            self._header = dict(header)
+            self._revision = Revision.from_path(self._path)
+        finally:
+            if tmp.exists():
+                tmp.unlink(missing_ok=True)
+
+    def _flush_line(self, line: dict[str, Any] | list[Any]) -> None:
+        """Durability barrier: append one serialised line, fsync file and dir.
+
+        A line is usually a JSON object; codecs with multi-write
+        transactions (Pi) flush a JSON array as one line.
+        """
         if self._entries_cache is None:
             raise RuntimeError("No snapshot loaded; nothing to flush")
-        line = json.dumps(self._entries_cache[-1].to_dict()) + "\n"
+        text = json.dumps(line) + "\n"
         with self._path.open("a", encoding="utf-8") as f:
-            f.write(line)
+            f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        _fsync_dir(self._tome_dir)
+        _fsync_dir(self._path.parent)
         self._revision = Revision.from_path(self._path)
 
     # ── Repair (resumer calls, not readers) ────────────────────
@@ -431,22 +467,34 @@ class TomeHandle:
 
 
 class TomeHandleFactory:
-    """Stateless entry point for tome persistence.
+    """Stateless entry point for session persistence.
 
     Holds no caches: every query rescans the directory or revalidates the
     file revision, so any number of factories, handles, threads, and
     processes stay coherent. The JSONL file is the source of truth.
+
+    The factory is format-agnostic: each file is claimed by the first
+    SessionCodec whose ``detect`` accepts its header. The built-in Tome v1
+    codec always comes first; rune-registered codecs follow in registration
+    order. New sessions are always created in the built-in format.
     """
 
-    def __init__(self, tome_dir: Path) -> None:
+    def __init__(
+        self, tome_dir: Path, codecs: Sequence[SessionCodec] | None = None
+    ) -> None:
         self._tome_dir = Path(tome_dir).expanduser().resolve()
+        self._codecs: list[SessionCodec] = [TomeV1Codec(), *(codecs or [])]
 
     @property
     def dir(self) -> Path:
         return self._tome_dir
 
+    @property
+    def codecs(self) -> list[SessionCodec]:
+        return list(self._codecs)
+
     def _resolve_tome_id(self, tome_id: str) -> str | None:
-        """Resolve a full, case-insensitive, or prefix id to a full tome id."""
+        """Resolve a full, case-insensitive, or prefix id to a file stem."""
         if not tome_id:
             return None
         if not self._tome_dir.exists():
@@ -462,82 +510,134 @@ class TomeHandleFactory:
             return prefix[0]
         return None
 
-    def _read_header(self, path: Path) -> dict[str, Any] | None:
-        """Read and validate a session header; None when absent or corrupt."""
-        if not path.exists():
+    def _detect_file(self, path: Path) -> tuple[SessionCodec, dict[str, Any]] | None:
+        """Claim a file for the first codec that detects its header.
+
+        Returns None when the file has no readable session header or no
+        codec claims it. A misbehaving codec's detect() never breaks the scan.
+        """
+        if not path.is_file():
             return None
+        header = self._peek_header(path)
+        if not isinstance(header, dict):
+            return None
+        for codec in self._codecs:
+            try:
+                if codec.detect(header):
+                    return codec, header
+            except Exception:
+                logger.warning(
+                    "Session codec %s failed to detect %s; skipping",
+                    getattr(codec, "name", codec),
+                    path,
+                )
+        return None
+
+    def _peek_header(self, path: Path) -> Any:
+        """Read and JSON-parse a file's first line; None when unreadable."""
         try:
             with path.open("r", encoding="utf-8") as f:
                 first = f.readline()
-            if not first:
+            if not first.strip():
                 return None
-            header = json.loads(first)
-            if not isinstance(header, dict) or header.get("type") != "session":
-                return None
-            version_raw = header.get("version", CURRENT_SESSION_VERSION)
-            try:
-                version = int(version_raw)
-            except (ValueError, TypeError) as e:
-                raise TomeVersionError(
-                    version_raw, f"Invalid session version: {version_raw}"
-                ) from e
-            if version != CURRENT_SESSION_VERSION:
-                raise TomeVersionError(
-                    version, f"Unsupported session version: {version}"
-                )
-            return header
-        except TomeVersionError:
-            raise
-        except (json.JSONDecodeError, KeyError, ValueError, OSError):
+            return json.loads(first)
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             return None
 
-    def _header_to_metadata(self, header: dict[str, Any]) -> TomeMetadata:
-        return TomeMetadata(
-            id=header["id"],
-            created_at=header["timestamp"],
-            cwd=header["cwd"],
-            parent_tome_id=header.get("parentSession"),
-            active_leaf_id=header.get("activeLeafId"),
-            schema_version=header.get("schema_version", "1.0"),
-            version=header.get("version", CURRENT_SESSION_VERSION),
-            model=header.get("model"),
-            contemplation_level=header.get("contemplationLevel"),
-            spells=list(header.get("spells", []) or []),
-        )
+    def _claim(self, path: Path) -> tuple[Path, SessionCodec]:
+        """Pair a file with its codec.
 
-    def _metadata_for(self, stem: str) -> TomeMetadata | None:
+        Files no codec detects are claimed by the built-in codec so reads
+        degrade the legacy way: foreign documents read as empty, and
+        session-looking headers at bad versions raise TomeVersionError from
+        the read path.
+        """
+        detected = self._detect_file(path)
+        if detected is not None:
+            codec, _header = detected
+            return path, codec
+        return path, self._codecs[0]
+
+    def _locate(self, tome_id: str) -> tuple[Path, SessionCodec]:
+        """Resolve an id, prefix, stem, or file path to (file, codec).
+
+        Raises FileNotFoundError when nothing matches.
+        """
+        if tome_id:
+            candidate = Path(tome_id)
+            if candidate.is_file():
+                return self._claim(candidate)
+            if self._tome_dir.exists():
+                stem = self._resolve_tome_id(tome_id)
+                if stem is not None:
+                    return self._claim(self._tome_dir / f"{stem}.jsonl")
+                # Fallback: codecs whose file name differs from the session id
+                # (e.g. Pi's timestamp-prefixed file names).
+                matches: list[tuple[Path, SessionCodec]] = []
+                for f in sorted(self._tome_dir.glob("*.jsonl")):
+                    detected = self._detect_file(f)
+                    if detected is None:
+                        continue
+                    codec, header = detected
+                    try:
+                        meta = codec.parse_header(header)
+                    except TomeVersionError:
+                        raise
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    wanted = tome_id.lower()
+                    if meta.id.lower() == wanted:
+                        return f, codec
+                    if meta.id.lower().startswith(wanted):
+                        matches.append((f, codec))
+                if len(matches) == 1:
+                    return matches[0]
+        raise FileNotFoundError(f"Tome not found: {tome_id}")
+
+    def _metadata_for(self, path: Path) -> TomeMetadata | None:
+        """Parse one file's header to metadata; None when unreadable.
+
+        Raises TomeVersionError for session-looking headers no codec claims.
+        """
+        detected = self._detect_file(path)
+        if detected is None:
+            header = self._peek_header(path)
+            if isinstance(header, dict):
+                for codec in self._codecs:
+                    try:
+                        if codec.looks_like_session(header):
+                            codec.parse_header(header)  # raises TomeVersionError
+                    except TomeVersionError:
+                        raise
+                    except Exception:
+                        continue
+            return None
+        codec, header = detected
         try:
-            header = self._read_header(self._tome_dir / f"{stem}.jsonl")
+            return codec.parse_header(header)
         except TomeVersionError:
             raise
-        except OSError:
-            return None
-        if header is None:
-            return None
-        try:
-            return self._header_to_metadata(header)
-        except KeyError:
+        except (KeyError, TypeError, ValueError):
             return None
 
     def tome_file(self, tome_id: str) -> Path:
         """Resolve a tome id (or file path) to its JSONL file."""
-        resolved = self._resolve_tome_id(tome_id)
-        if resolved is None:
-            candidate = Path(tome_id)
-            if candidate.is_file():
-                resolved = self._resolve_tome_id(candidate.stem)
-        return self._tome_dir / f"{resolved or _validate_tome_id(tome_id)}.jsonl"
+        try:
+            path, _codec = self._locate(tome_id)
+            return path
+        except FileNotFoundError:
+            return self._tome_dir / f"{_validate_tome_id(tome_id)}.jsonl"
 
     def list_tomes(self) -> list[TomeMetadata]:
         """Rescan the directory on every call; never serve a stale list."""
         if not self._tome_dir.exists():
             return []
         metas: list[TomeMetadata] = []
-        for f in self._tome_dir.glob("*.jsonl"):
+        for f in sorted(self._tome_dir.glob("*.jsonl")):
             if not f.is_file():
                 continue
             try:
-                meta = self._metadata_for(f.stem)
+                meta = self._metadata_for(f)
             except TomeVersionError as e:
                 logger.warning("Failed to load header for %s: %s", f, e)
                 continue
@@ -550,14 +650,15 @@ class TomeHandleFactory:
 
         Returns None when missing; raises TomeVersionError on bad versions.
         """
-        resolved = self._resolve_tome_id(tome_id)
-        if resolved is None and Path(tome_id).is_file():
-            resolved = self._resolve_tome_id(Path(tome_id).stem)
-        if resolved is None:
+        try:
+            path, _codec = self._locate(tome_id)
+        except FileNotFoundError:
             if not tome_id:
                 return None
-            return self._metadata_for(_validate_tome_id(tome_id))
-        return self._metadata_for(resolved)
+            return self._metadata_for(
+                self._tome_dir / f"{_validate_tome_id(tome_id)}.jsonl"
+            )
+        return self._metadata_for(path)
 
     def open_recent(self, cwd: str) -> TomeMetadata | None:
         """Most recently modified tome for a working directory."""
@@ -568,7 +669,7 @@ class TomeHandleFactory:
         )
         for f in reversed(candidates):
             try:
-                meta = self._metadata_for(f.stem)
+                meta = self._metadata_for(f)
             except TomeVersionError:
                 continue
             if meta is not None and meta.cwd == cwd:
@@ -607,7 +708,7 @@ class TomeHandleFactory:
         if spells:
             header["spells"] = list(spells)
 
-        write_handle = TomeHandle(self._tome_dir, tid, "w")
+        write_handle = TomeHandle(self._tome_dir, tid, "w", self._codecs[0])
         write_handle.replace(header, [])
         return write_handle
 
@@ -622,12 +723,37 @@ class TomeHandleFactory:
         contemplation_level: str | None = None,
         spells: Sequence[str] | None = None,
     ) -> TomeHandle:
-        """Branch a tome by copying the ancestor chain up to a leaf entry."""
+        """Branch a tome by copying the ancestor chain up to a leaf entry.
+
+        Forks stay format-native: a non-default codec forks through its own
+        ``fork`` implementation (e.g. Pi produces a Pi v4 fork). Codecs
+        without a native fork raise instead of silently converting formats.
+        """
         resolved_parent = self._resolve_tome_id(parent_tome_id)
         if resolved_parent is None:
             raise ValueError(f"Parent tome not found: {parent_tome_id}")
 
         parent_read = self.open_read(resolved_parent)
+        parent_codec = parent_read.codec
+        if not isinstance(parent_codec, TomeV1Codec):
+            tid = _validate_tome_id(tome_id) if tome_id else _generate_id()
+            parent_path, _ = self._locate(resolved_parent)
+            try:
+                new_path = parent_codec.fork(
+                    source=str(parent_path),
+                    dest_dir=str(self._tome_dir),
+                    new_id=tid,
+                    leaf_id=fork_from_leaf_id,
+                    cwd=cwd,
+                )
+            except NotImplementedError as exc:
+                raise ValueError(
+                    f"Cannot fork {parent_codec.name} sessions: {exc}"
+                ) from exc
+            return TomeHandle(
+                self._tome_dir, tid, "w", parent_codec, path=Path(new_path)
+            )
+
         parent_meta = parent_read.get_metadata()
         if parent_meta is None:
             raise ValueError(f"Parent tome metadata not found: {parent_tome_id}")
@@ -662,18 +788,14 @@ class TomeHandleFactory:
             list(spells) if spells is not None else list(parent_meta.spells)
         )
 
-        write_handle = TomeHandle(self._tome_dir, tid, "w")
+        write_handle = TomeHandle(self._tome_dir, tid, "w", self._codecs[0])
         write_handle.replace(header, entries)
         return write_handle
 
     def open_read(self, tome_id: str) -> TomeHandle:
         """Open a read handle; raises FileNotFoundError when unknown."""
-        resolved = self._resolve_tome_id(tome_id)
-        if resolved is None and Path(tome_id).is_file():
-            resolved = self._resolve_tome_id(Path(tome_id).stem)
-        if resolved is None:
-            raise FileNotFoundError(f"Tome not found: {tome_id}")
-        handle = TomeHandle(self._tome_dir, resolved, "r")
+        path, codec = self._locate(tome_id)
+        handle = TomeHandle(self._tome_dir, path.stem, "r", codec, path=path)
         handle.get_metadata()
         return handle
 
@@ -683,10 +805,8 @@ class TomeHandleFactory:
         Tomes are only created via create_tome/create_branched_tome so the
         recorded cwd is always the project directory, never the tome dir.
         """
-        resolved = self._resolve_tome_id(tome_id)
-        if resolved is None:
-            raise FileNotFoundError(f"Tome not found: {tome_id}")
-        handle = TomeHandle(self._tome_dir, resolved, "w")
+        path, codec = self._locate(tome_id)
+        handle = TomeHandle(self._tome_dir, path.stem, "w", codec, path=path)
         if handle.get_metadata() is None:
             raise ValueError(f"Tome has no readable header: {tome_id}")
         return handle
@@ -711,15 +831,14 @@ class TomeHandleFactory:
         return None
 
     def get_leaf_id(self, tome_id: str) -> str | None:
-        """The entry the Tome's Leaf currently points at."""
-        for entry in reversed(self.get_entries(tome_id)):
-            if entry.type == TomeEntryType.LEAF:
-                target = entry.payload.get("targetId")
-                return str(target) if target is not None else None
-        meta = self.open_tome(tome_id)
-        if meta is not None and meta.active_leaf_id:
-            return meta.active_leaf_id
-        return None
+        """The entry the session's Leaf currently points at.
+
+        Branch-tip resolution is codec-owned: whatever the format uses to
+        track its tip (Tome v1's LEAF entries, Pi's branch-tip value writes),
+        the codec resolves it from the raw header and entries.
+        """
+        handle = self.open_read(tome_id)
+        return handle.codec.leaf_id(handle.get_header() or {}, handle.get_entries())
 
     def list_leaves(self, tome_id: str) -> list[str]:
         """Content entries never referenced as another entry's parent."""
@@ -763,14 +882,30 @@ class TomeHandleFactory:
             return []
         return self.get_entries(tome_id)[-limit:]
 
+    def _resolve_path(self, tome_id: str) -> Path | None:
+        """Resolve an id, prefix, stem, or file path to a file, without any
+        codec detection. Returns None when nothing matches."""
+        if not tome_id:
+            return None
+        candidate = Path(tome_id)
+        if candidate.is_file():
+            return candidate
+        stem = self._resolve_tome_id(tome_id)
+        if stem is not None:
+            return self._tome_dir / f"{stem}.jsonl"
+        return None
+
     def verify_integrity(self, tome_id: str) -> TomeIntegrityReport:
-        """Audit a tome file without touching any cache."""
-        resolved = self._resolve_tome_id(tome_id)
-        if resolved is None and Path(tome_id).is_file():
-            resolved = self._resolve_tome_id(Path(tome_id).stem)
-        target = resolved or _validate_tome_id(tome_id)
-        path = self._tome_dir / f"{target}.jsonl"
-        if not path.exists():
+        """Audit a tome file without touching any cache.
+
+        The deep structural audit is Tome v1-specific; files owned by other
+        codecs get a report that says so instead of a bogus pass/fail.
+        Session-looking files no codec claims are audited as (broken) v1 so
+        the report carries the version issue instead of raising.
+        """
+        path = self._resolve_path(tome_id)
+        target = path.stem if path is not None else _validate_tome_id(tome_id)
+        if path is None or not path.exists():
             return TomeIntegrityReport(
                 valid=False,
                 tome_id=target,
@@ -778,6 +913,23 @@ class TomeHandleFactory:
                     TomeIntegrityIssue(
                         line_number=0,
                         message=f"Tome file does not exist: {path}",
+                    )
+                ],
+            )
+        detected = self._detect_file(path)
+        codec = detected[0] if detected is not None else None
+        if codec is not None and not isinstance(codec, TomeV1Codec):
+            return TomeIntegrityReport(
+                valid=False,
+                tome_id=target,
+                issues=[
+                    TomeIntegrityIssue(
+                        line_number=0,
+                        message=(
+                            "Integrity audit only supports Tome v1 sessions; "
+                            f"'{path.name}' is owned by the "
+                            f"{getattr(codec, 'name', codec)} codec."
+                        ),
                     )
                 ],
             )

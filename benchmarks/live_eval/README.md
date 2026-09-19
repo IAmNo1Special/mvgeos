@@ -11,7 +11,7 @@ This directory contains a **live-model evaluation** that runs real tasks against
 
 1. **OpenRouter API key** — Required for live model calls
    - Set `OPENROUTER_API_KEY` environment variable, OR
-   - Create `~/.agents/.mvgeos/auth/openrouter.json`:
+   - Create `~/.agents/auth/openrouter.json`:
      ```json
      {"api_key": "sk-or-v1-..."}
      ```

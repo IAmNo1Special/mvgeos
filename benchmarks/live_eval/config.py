@@ -34,7 +34,7 @@ class EvalConfig:
     def api_key(self) -> str:
         key = os.getenv("OPENROUTER_API_KEY")
         if not key:
-            auth_file = Path.home() / ".agents" / ".mvgeos" / "auth" / "openrouter.json"
+            auth_file = Path.home() / ".agents" / "auth" / "openrouter.json"
             if auth_file.exists():
                 import json
 
@@ -44,7 +44,7 @@ class EvalConfig:
         if not key:
             raise RuntimeError(
                 "No OpenRouter API key. Set OPENROUTER_API_KEY env var "
-                "or create ~/.agents/.mvgeos/auth/openrouter.json with api_key field"
+                "or create ~/.agents/auth/openrouter.json with api_key field"
             )
         return key
 

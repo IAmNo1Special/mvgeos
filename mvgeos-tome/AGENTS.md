@@ -1,6 +1,6 @@
 # mvgeos-Tome — Agent Instructions
 
-This package implements Tome persistence: JSONL session storage with kernel leases and disk-authoritative reads. A Tome is a tree of conversation entries stored in a single JSONL file. The format is inspired by Pi's session format but is **not byte-compatible** with Pi session files (different header version, timestamp encoding, and entry schema) — Pi cannot open MvgeOS tomes and MvgeOS cannot open Pi sessions.
+This package implements Tome persistence: JSONL session storage with kernel leases and disk-authoritative reads. A Tome is a tree of conversation entries stored in a single JSONL file. The format is inspired by Pi's session format but is **not byte-compatible** with Pi session files (different header version, timestamp encoding, and entry schema) — Pi cannot open MvgeOS tomes, and this package on its own cannot open Pi sessions. Native Pi support is an opt-in codec rune (`pi-codec` in mvgeos-marketplace): with it installed, MvgeOS opens, resumes, appends to, compacts, and forks real Pi v3/v4 session files natively, without converting them into Tomes.
 
 ## Package-Specific Conventions
 
