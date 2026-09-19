@@ -77,6 +77,8 @@ async def test_packages_panel_marketplace_listing_and_search(user: User) -> None
     state.list_installed_runes_async = AsyncMock(  # type: ignore[method-assign]
         return_value=[]
     )
+    state.fetch_marketplace_mvges_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
     @ui.page("/test_packages_marketplace")
     def page() -> None:
@@ -115,6 +117,8 @@ async def test_packages_panel_installed_items_and_uninstall(user: User) -> None:
             }
         ]
     )
+    state.fetch_marketplace_mvges_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
     state.uninstall_rune_async = AsyncMock(return_value=True)  # type: ignore[method-assign]
 
     @ui.page("/test_packages_installed")
@@ -168,6 +172,8 @@ async def test_packages_panel_marketplace_install_flow(user: User) -> None:
         }
     )
     state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
     state.is_rune_installed = MagicMock(  # type: ignore[method-assign]
         side_effect=lambda name: name == "installed-rune"
     )
@@ -198,6 +204,8 @@ async def test_packages_panel_install_dialog(user: User) -> None:
     state = AppState()
     state.fetch_marketplace_runes_async = AsyncMock(return_value={})  # type: ignore[method-assign]
     state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
     state.install_rune_async = AsyncMock(return_value=True)  # type: ignore[method-assign]
 
     @ui.page("/test_packages_dialog")
@@ -242,6 +250,8 @@ async def test_packages_panel_refresh_data_exceptions(user: User) -> None:
     state.list_installed_runes_async = AsyncMock(  # type: ignore[method-assign]
         side_effect=RuntimeError("installed error")
     )
+    state.fetch_marketplace_mvges_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
     @ui.page("/test_packages_exceptions")
     def page() -> None:
@@ -274,6 +284,8 @@ async def test_packages_panel_filters_by_type_hook_dep(user: User) -> None:
         }
     )
     state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
     @ui.page("/test_packages_filters")
     def page() -> None:
@@ -330,6 +342,8 @@ async def test_packages_panel_sorting(user: User) -> None:
         }
     )
     state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
     @ui.page("/test_packages_sorting")
     def page() -> None:
