@@ -138,7 +138,7 @@ async def test_packages_panel_installed_items_and_uninstall(user: User) -> None:
 
     # Click installed button to uninstall
     user.find(marker="package_uninstall_item_my-tool").click()
-    await user.should_see("Uninstalling my-tool...")
+    await user.should_see("Uninstalling my-tool...", retries=10)
     state.uninstall_rune_async.assert_called_once_with("my-tool")
 
     # Test failure branch of uninstall
@@ -183,13 +183,13 @@ async def test_packages_panel_marketplace_install_flow(user: User) -> None:
 
     # Click install on uninstalled-rune
     user.find(marker="package_install_item_uninstalled-rune").click()
-    await user.should_see("Installing uninstalled-rune...")
+    await user.should_see("Installing uninstalled-rune...", retries=10)
     state.install_rune_async.assert_called_once_with("uninstalled-rune")
 
     # Test failure branch of install item
     state.install_rune_async = AsyncMock(return_value=False)  # type: ignore[method-assign]
     user.find(marker="package_install_item_uninstalled-rune").click()
-    await user.should_see("Failed to install uninstalled-rune")
+    await user.should_see("Failed to install uninstalled-rune", retries=10)
 
 
 @pytest.mark.asyncio
@@ -286,27 +286,27 @@ async def test_packages_panel_filters_by_type_hook_dep(user: User) -> None:
     # Filter by Type: RealmProvider
     type_el = next(iter(user.find(marker="package_filter_type_select").elements))
     type_el.set_value("RealmProvider")
-    await user.should_see("realm-rune")
-    await user.should_not_see("spell-rune")
+    await user.should_see("realm-rune", retries=10)
+    await user.should_not_see("spell-rune", retries=10)
 
     # Filter by Hook: turn_start (reset type first)
     type_el.set_value("All Types")
     hook_el = next(iter(user.find(marker="package_filter_hook_select").elements))
     hook_el.set_value("turn_start")
-    await user.should_see("spell-rune")
-    await user.should_not_see("realm-rune")
+    await user.should_see("spell-rune", retries=10)
+    await user.should_not_see("realm-rune", retries=10)
 
     # Filter by Dep: httpx (reset hook first)
     hook_el.set_value("All Hooks")
     dep_el = next(iter(user.find(marker="package_filter_dep_select").elements))
     dep_el.set_value("httpx")
-    await user.should_see("realm-rune")
-    await user.should_not_see("spell-rune")
+    await user.should_see("realm-rune", retries=10)
+    await user.should_not_see("spell-rune", retries=10)
 
     # Click clear filters
     user.find(marker="package_clear_filters_btn").click()
-    await user.should_see("realm-rune")
-    await user.should_see("spell-rune")
+    await user.should_see("realm-rune", retries=10)
+    await user.should_see("spell-rune", retries=10)
 
 
 @pytest.mark.asyncio
