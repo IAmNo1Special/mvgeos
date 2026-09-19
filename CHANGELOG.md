@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-09-18
+
+
+### Bug Fixes
+
+- **runes:** support parent workspace venv discovery and pth processing (d1e809c)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (f0f321b)
+
+- **release:** v0.4.4 (6c8dc2e)
+
+
+### Documentation
+
+- add handoff documentation for marketplace rune decoupling (8a7f9de)
+
+
+### Features
+
+- **skills:** implement agentskills.io and agent plugins v1.0.0 specification (1c69143)
+
+- **agent,cli:** implement PEP 723 inline script metadata and dynamic rune command dispatch (b98c919)
+
+- **telemetry:** add OTel GenAI semantic conventions and ATIF session trajectory serialization (e42938d)
+
+
+### Refactoring
+
+- **runes,agent,cli:** decouple declarative skills into marketplace skills-bridge rune (6b69c03)
+
+
 ## [0.4.3] - 2026-09-17
 
 
