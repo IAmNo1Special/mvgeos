@@ -219,6 +219,7 @@ def _extract_mvge_info(
         "git_url": git_url,
         "path": path,
         "is_installed": is_installed,
+        "types": ["Mvge"],
         "spells": spells,
         "python_deps": python_deps,
         "created_at": created_ts,
@@ -234,7 +235,6 @@ def render_packages_panel(state: AppState) -> None:
     installed_mvges_data: list[dict[str, Any]] = []
     search_state: dict[str, str] = {
         "query": "",
-        "kind": "All",
         "type": "All Types",
         "hook": "All Hooks",
         "dep": "All Deps",
@@ -337,6 +337,7 @@ def render_packages_panel(state: AppState) -> None:
         m_git_url = m["git_url"]
         m_is_installed = m["is_installed"]
         m_path = m["path"]
+        m_types = m.get("types", [])
         m_spells = m["spells"]
         m_deps = m["python_deps"]
 
@@ -431,7 +432,9 @@ def render_packages_panel(state: AppState) -> None:
                         new_tab=True,
                     ).classes("text-[11px] text-[#7b6cf6] underline")
 
-            has_mvge_details = bool((m_is_installed and m_path) or m_spells or m_deps)
+            has_mvge_details = bool(
+                (m_is_installed and m_path) or m_types or m_spells or m_deps
+            )
             if has_mvge_details:
                 with ui.column().classes(
                     "w-full gap-1 pt-1 mt-1 border-t border-[#292335]/50"
@@ -467,6 +470,20 @@ def render_packages_panel(state: AppState) -> None:
                                 "underline font-mono truncate "
                                 "cursor-pointer"
                             ).on("click", _open_agent_folder)
+
+                    if m_types:
+                        with ui.row().classes("items-center gap-1 flex-wrap"):
+                            ui.label("Type:").classes(
+                                "text-[10px] uppercase font-semibold text-[#6e6584]"
+                            )
+                            for t in m_types:
+                                ui.badge(str(t), color="purple-9").props(
+                                    "rounded dense"
+                                ).classes(
+                                    "text-[9px] text-[#e0daf7] "
+                                    "font-mono "
+                                    "border border-[#7b6cf6]/30"
+                                )
 
                     if m_spells:
                         with ui.row().classes("items-center gap-1 flex-wrap"):
@@ -730,63 +747,59 @@ def render_packages_panel(state: AppState) -> None:
                 search_state[key] = val
                 render_packages.refresh()
 
-            def _set_kind(val: str) -> None:
-                search_state["kind"] = val
-                render_filters.refresh()
-                render_packages.refresh()
+            # Build dynamic type options from all available packages.
+            # Mvges are a type of rune, so "Mvge" appears alongside
+            # rune types like "Spell", "Sigil", "Command".
+            available_types: set[str] = set()
+            for meta in list(marketplace_data.values()):
+                if isinstance(meta, dict):
+                    available_types.update(str(t) for t in meta.get("types", []))
+            for meta in installed_data:
+                if isinstance(meta, dict):
+                    available_types.update(str(t) for t in meta.get("types", []))
+            if marketplace_mvges_data or installed_mvges_data:
+                available_types.add("Mvge")
+            type_options = ["All Types"] + sorted(available_types)
 
             with ui.row().classes("w-full items-center gap-2 flex-wrap"):
                 ui.icon("filter_list", size="16px").classes("text-[#6e6584]")
                 ui.select(
-                    options=["All", "Mvge", "Rune"],
-                    value=search_state["kind"],
-                    on_change=lambda e: _set_kind(str(e.value or "All")),
+                    options=type_options,
+                    value=search_state["type"],
+                    on_change=lambda e: _set_filter(
+                        "type", str(e.value or "All Types")
+                    ),
                 ).props("dense dark outlined rounded options-dense").classes(
-                    "min-w-[110px] text-xs"
-                ).mark("package_filter_kind_select")
+                    "min-w-[130px] text-xs"
+                ).mark("package_filter_type_select")
 
-                kind = search_state["kind"]
-                if kind in ("All", "Rune"):
-                    ui.select(
-                        options=["All Types"],
-                        value=search_state["type"],
-                        on_change=lambda e: _set_filter(
-                            "type", str(e.value or "All Types")
-                        ),
-                    ).props("dense dark outlined rounded options-dense").classes(
-                        "min-w-[130px] text-xs"
-                    ).mark("package_filter_type_select")
+                ui.select(
+                    options=["All Hooks"],
+                    value=search_state["hook"],
+                    on_change=lambda e: _set_filter(
+                        "hook", str(e.value or "All Hooks")
+                    ),
+                ).props("dense dark outlined rounded options-dense").classes(
+                    "min-w-[140px] text-xs"
+                ).mark("package_filter_hook_select")
 
-                    ui.select(
-                        options=["All Hooks"],
-                        value=search_state["hook"],
-                        on_change=lambda e: _set_filter(
-                            "hook", str(e.value or "All Hooks")
-                        ),
-                    ).props("dense dark outlined rounded options-dense").classes(
-                        "min-w-[140px] text-xs"
-                    ).mark("package_filter_hook_select")
+                ui.select(
+                    options=["All Deps"],
+                    value=search_state["dep"],
+                    on_change=lambda e: _set_filter("dep", str(e.value or "All Deps")),
+                ).props("dense dark outlined rounded options-dense").classes(
+                    "min-w-[130px] text-xs"
+                ).mark("package_filter_dep_select")
 
-                    ui.select(
-                        options=["All Deps"],
-                        value=search_state["dep"],
-                        on_change=lambda e: _set_filter(
-                            "dep", str(e.value or "All Deps")
-                        ),
-                    ).props("dense dark outlined rounded options-dense").classes(
-                        "min-w-[130px] text-xs"
-                    ).mark("package_filter_dep_select")
-
-                if kind in ("All", "Mvge"):
-                    ui.select(
-                        options=["All Spells"],
-                        value=search_state["spell"],
-                        on_change=lambda e: _set_filter(
-                            "spell", str(e.value or "All Spells")
-                        ),
-                    ).props("dense dark outlined rounded options-dense").classes(
-                        "min-w-[140px] text-xs"
-                    ).mark("mvge_filter_spell_select")
+                ui.select(
+                    options=["All Spells"],
+                    value=search_state["spell"],
+                    on_change=lambda e: _set_filter(
+                        "spell", str(e.value or "All Spells")
+                    ),
+                ).props("dense dark outlined rounded options-dense").classes(
+                    "min-w-[140px] text-xs"
+                ).mark("mvge_filter_spell_select")
 
                 with ui.row().classes("items-center gap-1.5 ml-auto"):
                     ui.icon("sort", size="16px").classes("text-[#6e6584]")
@@ -816,7 +829,6 @@ def render_packages_panel(state: AppState) -> None:
         @ui.refreshable
         def render_packages() -> None:
             query = search_state["query"]
-            kind = search_state["kind"]
             selected_type = search_state["type"]
             selected_hook = search_state["hook"]
             selected_dep = search_state["dep"]
@@ -836,7 +848,6 @@ def render_packages_panel(state: AppState) -> None:
                 inst_meta = installed_by_name.get(r_name, {})
                 is_installed = state.is_rune_installed(r_name) or bool(inst_meta)
                 info = _extract_rune_info(r_name, mp_meta, inst_meta, is_installed)
-                info["kind"] = "rune"
                 all_infos.append(info)
             for m_name in set(marketplace_mvges_data.keys()) | set(
                 installed_mvges_by_name.keys()
@@ -845,54 +856,44 @@ def render_packages_panel(state: AppState) -> None:
                 inst_m_meta = installed_mvges_by_name.get(m_name, {})
                 is_inst = state.is_mvge_installed(m_name) or bool(inst_m_meta)
                 info = _extract_mvge_info(m_name, mp_m_meta, inst_m_meta, is_inst)
-                info["kind"] = "mvge"
                 all_infos.append(info)
 
             filtered: list[dict[str, Any]] = []
             for info in all_infos:
-                if kind != "All" and info["kind"] != kind.lower():
-                    continue
-
                 if query:
                     q = query.lower()
-                    if info["kind"] == "rune":
-                        name_match = q in info["name"].lower()
-                        desc_match = q in info["description"].lower()
-                        type_match = any(q in t.lower() for t in info["types"])
-                        hook_match = any(q in h.lower() for h in info["hooks"])
-                        dep_match = any(q in d.lower() for d in info["python_deps"])
-                        if not (
-                            name_match
-                            or desc_match
-                            or type_match
-                            or hook_match
-                            or dep_match
-                        ):
-                            continue
-                    else:
-                        name_match = q in info["name"].lower()
-                        desc_match = q in info["description"].lower()
-                        spell_match = any(q in s.lower() for s in info["spells"])
-                        if not (name_match or desc_match or spell_match):
-                            continue
+                    name_match = q in info["name"].lower()
+                    desc_match = q in info["description"].lower()
+                    type_match = any(q in t.lower() for t in info.get("types", []))
+                    hook_match = any(q in h.lower() for h in info.get("hooks", []))
+                    dep_match = any(q in d.lower() for d in info["python_deps"])
+                    spell_match = any(q in s.lower() for s in info.get("spells", []))
+                    if not (
+                        name_match
+                        or desc_match
+                        or type_match
+                        or hook_match
+                        or dep_match
+                        or spell_match
+                    ):
+                        continue
 
-                if info["kind"] == "rune":
-                    if selected_type != "All Types" and not any(
-                        t.lower() == selected_type.lower() for t in info["types"]
-                    ):
-                        continue
-                    if selected_hook != "All Hooks" and not any(
-                        h.lower() == selected_hook.lower() for h in info["hooks"]
-                    ):
-                        continue
-                    if selected_dep != "All Deps" and not any(
-                        selected_dep.lower() in d.lower()
-                        or d.lower() in selected_dep.lower()
-                        for d in info["python_deps"]
-                    ):
-                        continue
-                elif selected_spell != "All Spells" and not any(
-                    s.lower() == selected_spell.lower() for s in info["spells"]
+                if selected_type != "All Types" and not any(
+                    t.lower() == selected_type.lower() for t in info.get("types", [])
+                ):
+                    continue
+                if selected_hook != "All Hooks" and not any(
+                    h.lower() == selected_hook.lower() for h in info.get("hooks", [])
+                ):
+                    continue
+                if selected_dep != "All Deps" and not any(
+                    selected_dep.lower() in d.lower()
+                    or d.lower() in selected_dep.lower()
+                    for d in info["python_deps"]
+                ):
+                    continue
+                if selected_spell != "All Spells" and not any(
+                    s.lower() == selected_spell.lower() for s in info.get("spells", [])
                 ):
                     continue
 
@@ -903,14 +904,9 @@ def render_packages_panel(state: AppState) -> None:
                     "items-center justify-center p-8 gap-2 w-full"
                 ):
                     ui.icon("search_off", size="32px").classes("text-[#6e6584]")
-                    empty_label = {
-                        "Mvge": "No agents found",
-                        "Rune": "No extensions found",
-                    }.get(kind, "No packages found")
-                    ui.label(empty_label).classes("text-xs text-[#6e6584]")
+                    ui.label("No packages found").classes("text-xs text-[#6e6584]")
                     has_active_filters = (
                         bool(query)
-                        or kind != "All"
                         or selected_type != "All Types"
                         or selected_hook != "All Hooks"
                         or selected_dep != "All Deps"
@@ -940,15 +936,14 @@ def render_packages_panel(state: AppState) -> None:
 
             with ui.column().classes("w-full gap-3 mt-2"):
                 for info in filtered:
-                    if info["kind"] == "rune":
-                        _render_rune_card(info)
-                    else:
+                    if "Mvge" in info.get("types", []):
                         _render_mvge_card(info)
+                    else:
+                        _render_rune_card(info)
 
         def _clear_filters() -> None:
             search_input.value = ""
             search_state["query"] = ""
-            search_state["kind"] = "All"
             search_state["type"] = "All Types"
             search_state["hook"] = "All Hooks"
             search_state["dep"] = "All Deps"

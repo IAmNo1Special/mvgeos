@@ -696,7 +696,7 @@ async def test_packages_panel_mvge_refresh_exceptions(user: User) -> None:
 async def test_marketplace_merged_list_shows_mvges_and_runes_together(
     user: User,
 ) -> None:
-    """Mvges and runes render in one list with a Kind filter, no tabs."""
+    """Mvges and runes render in one list, no tabs, no Kind filter."""
     state = AppState()
     state.fetch_marketplace_runes_async = AsyncMock(  # type: ignore[method-assign]
         return_value={
@@ -738,14 +738,14 @@ async def test_marketplace_merged_list_shows_mvges_and_runes_together(
     with pytest.raises(AssertionError, match="expected to find"):
         user.find(marker="marketplace_runes_tab")
 
-    # Kind filter exists and defaults to All
-    kind_el = next(iter(user.find(marker="package_filter_kind_select").elements))
-    assert kind_el.value == "All"
+    # No Kind filter — Type filter handles it
+    with pytest.raises(AssertionError, match="expected to find"):
+        user.find(marker="package_filter_kind_select")
 
 
 @pytest.mark.asyncio
-async def test_marketplace_kind_filter_narrows_to_mvge(user: User) -> None:
-    """Kind filter set to Mvge hides runes."""
+async def test_marketplace_type_filter_mvge_shows_only_mvges(user: User) -> None:
+    """Type filter set to Mvge shows only mvges (Mvge is a type)."""
     state = AppState()
     state.fetch_marketplace_runes_async = AsyncMock(  # type: ignore[method-assign]
         return_value={
@@ -753,6 +753,7 @@ async def test_marketplace_kind_filter_narrows_to_mvge(user: User) -> None:
                 "name": "alpha-rune",
                 "version": "1.0.0",
                 "description": "A test rune",
+                "types": ["Spell"],
             },
         }
     )
@@ -763,61 +764,23 @@ async def test_marketplace_kind_filter_narrows_to_mvge(user: User) -> None:
                 "name": "coding_mvge",
                 "version": "0.2.6",
                 "description": "Coding agent for MvgeOS",
+                "spells": ["bash"],
             },
         }
     )
     state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
-    @ui.page("/test_marketplace_kind_mvge")
+    @ui.page("/test_marketplace_type_mvge")
     def page() -> None:
         render_packages_panel(state)
 
-    await user.open("/test_marketplace_kind_mvge")
+    await user.open("/test_marketplace_type_mvge")
     await user.should_see("alpha-rune")
     await user.should_see("coding_mvge")
 
-    kind_el = next(iter(user.find(marker="package_filter_kind_select").elements))
-    kind_el.set_value("Mvge")
+    # Type filter includes Mvge option
+    type_el = next(iter(user.find(marker="package_filter_type_select").elements))
+    type_el.set_value("Mvge")
 
-    await user.should_see("coding_mvge")
-    await user.should_not_see("alpha-rune")
-
-
-@pytest.mark.asyncio
-async def test_marketplace_kind_filter_narrows_to_rune(user: User) -> None:
-    """Kind filter set to Rune hides mvges."""
-    state = AppState()
-    state.fetch_marketplace_runes_async = AsyncMock(  # type: ignore[method-assign]
-        return_value={
-            "alpha-rune": {
-                "name": "alpha-rune",
-                "version": "1.0.0",
-                "description": "A test rune",
-            },
-        }
-    )
-    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
-    state.fetch_marketplace_mvges_async = AsyncMock(  # type: ignore[method-assign]
-        return_value={
-            "coding_mvge": {
-                "name": "coding_mvge",
-                "version": "0.2.6",
-                "description": "Coding agent for MvgeOS",
-            },
-        }
-    )
-    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
-
-    @ui.page("/test_marketplace_kind_rune")
-    def page() -> None:
-        render_packages_panel(state)
-
-    await user.open("/test_marketplace_kind_rune")
-    await user.should_see("alpha-rune")
-    await user.should_see("coding_mvge")
-
-    kind_el = next(iter(user.find(marker="package_filter_kind_select").elements))
-    kind_el.set_value("Rune")
-
-    await user.should_see("alpha-rune")
-    await user.should_not_see("coding_mvge")
+    await user.should_see("coding_mvge", retries=10)
+    await user.should_not_see("alpha-rune", retries=10)
