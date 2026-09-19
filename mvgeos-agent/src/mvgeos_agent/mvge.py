@@ -44,6 +44,7 @@ from mvgeos_core.spells import MvgeSpell
 from mvgeos_provider.base import Realm
 from mvgeos_provider.model_registry import ModelRegistry
 from mvgeos_provider.registry import RealmRegistry, get_default_realm_registry
+from mvgeos_runes.codecs import load_session_codecs
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     Diagnostic,
@@ -179,6 +180,25 @@ class Mvge:
     Configured with tools (spells), prompt, model, environment, and persistence.
     """
 
+    @staticmethod
+    def _default_tome_factory(
+        tome_dir: Path, runes_paths: Sequence[str]
+    ) -> TomeHandleFactory:
+        """Build the default session factory with rune-provided codecs.
+
+        Runes opt in through ``session_codecs`` in manifest.json; ordinary
+        runes are never imported here. The built-in Tome v1 codec always
+        stays first regardless of rune codecs.
+        """
+        codecs, diagnostics = load_session_codecs(runes_paths)
+        for diag in diagnostics:
+            logger.warning(
+                "Session codec issue in rune %s: %s",
+                diag.rune_name,
+                diag.message,
+            )
+        return TomeHandleFactory(tome_dir, codecs=codecs)
+
     def __init__(
         self,
         api_key: str | None = None,
@@ -296,8 +316,8 @@ class Mvge:
 
         self._custom_system_prompt = custom_system_prompt
         self._extension_dir = extension_dir
-        self._tome_factory = tome_factory or TomeHandleFactory(
-            tome_dir or DEFAULT_TOME_DIR
+        self._tome_factory = tome_factory or self._default_tome_factory(
+            tome_dir or DEFAULT_TOME_DIR, resolved_runes_paths
         )
         self._tome_dir = tome_dir or DEFAULT_TOME_DIR
         self._tome_resume = tome_resume

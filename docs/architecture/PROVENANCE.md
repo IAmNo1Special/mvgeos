@@ -17,11 +17,8 @@ While MvgeOS implements its own clean-room design and domain model (Mvges, Spell
 
 MvgeOS was deliberately engineered with immediate, frictionless interoperability for users transitioning from other ecosystems:
 
-### 1. Pi Compatibility (Current)
-The persistence layer (mvgeos-tome) implements full schema and wire compatibility with Pi's session format. Users and developers migrating from Pi can:
-- Drop existing session JSONL files into MvgeOS without schema translation.
-- Resume historical agent trajectories without data loss.
-- Transition existing extensions into MvgeOS Runes using lifecycle Sigil hooks.
+### 1. Pi Session Compatibility
+The Tome format (`mvgeos-tome`) was inspired by Pi's streaming JSONL session logs, but it is **not byte-compatible** with Pi session files (different header version, timestamp encoding, and entry schema). Native Pi support lives in the session codec architecture: `mvgeos-tome` defines a format-agnostic `SessionCodec` protocol, and the marketplace `pi-codec` rune provides a codec that reads, resumes, appends to, compacts, and forks real Pi session logs (JSONL v3/v4) natively — a Pi session stays a Pi session, with no conversion. Tome v1 remains the built-in default for new MvgeOS sessions.
 
 ### 2. Universal Agent Session Reconstruction (Roadmap)
 MvgeOS's persistence and session abstractions are designed to expand beyond Pi. The roadmap includes universal session reconstructors capable of parsing and resuming trajectories originated in:

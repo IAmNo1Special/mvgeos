@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from mvgeos_tome.codec import AppendPlan, TomeV1Codec
 from mvgeos_tome.handle import Revision, TomeHandle, TomeHandleFactory
 from mvgeos_tome.types import TomeEntry, TomeEntryType, TomeVersionError
 
@@ -587,3 +588,72 @@ class TestTomeIdValidation:
         factory.create_tome("/tmp", tome_id="taken")
         with pytest.raises(ValueError, match="already exists"):
             factory.create_branched_tome("parent", "/tmp", tome_id="taken")
+
+
+class TestPlanAppendHandle:
+    def test_rewrite_plan_replaces_file_atomically(self, tmp_path: Path) -> None:
+        class RewriteCodec(TomeV1Codec):
+            name = "rewrite"
+
+            def plan_append(self, entry, existing, header):
+                return AppendPlan(
+                    lines=[{"entry": entry.id}],
+                    stored=entry,
+                    rewrite=True,
+                    header={**header, "migrated": True},
+                )
+
+        factory = TomeHandleFactory(tmp_path)
+        factory.create_tome("/tmp", tome_id="t1")
+
+        write = TomeHandle(
+            tmp_path, "t1", "w", RewriteCodec(), path=tmp_path / "t1.jsonl"
+        )
+        write.append(_message("m1", "user", "hello"))
+
+        lines = (tmp_path / "t1.jsonl").read_text().splitlines()
+        assert json.loads(lines[0])["migrated"] is True
+        assert json.loads(lines[1]) == {"entry": "m1"}
+        assert list(tmp_path.glob("*.tmp")) == []
+
+    def test_multi_line_plan_appends_each_line(self, tmp_path: Path) -> None:
+        class TxnCodec(TomeV1Codec):
+            name = "txn"
+
+            def plan_append(self, entry, existing, header):
+                return AppendPlan(
+                    lines=[[{"w": 1}, {"w": 2}], {"w": 3}],
+                    stored=entry,
+                )
+
+        factory = TomeHandleFactory(tmp_path)
+        factory.create_tome("/tmp", tome_id="t1")
+
+        write = TomeHandle(tmp_path, "t1", "w", TxnCodec(), path=tmp_path / "t1.jsonl")
+        write.append(_message("m1", "user", "hello"))
+
+        lines = (tmp_path / "t1.jsonl").read_text().splitlines()
+        assert json.loads(lines[1]) == [{"w": 1}, {"w": 2}]
+        assert json.loads(lines[2]) == {"w": 3}
+
+
+class TestAppendTipLinesHandle:
+    def test_tip_lines_append_without_rewrite(self, tmp_path: Path) -> None:
+        class TipCodec(TomeV1Codec):
+            name = "tip"
+
+            def append_tip_lines(self, header, entries, leaf):
+                return [{"tip": leaf.payload["targetId"]}]
+
+        factory = TomeHandleFactory(tmp_path)
+        factory.create_tome("/tmp", tome_id="t1")
+
+        write = TomeHandle(tmp_path, "t1", "w", TipCodec(), path=tmp_path / "t1.jsonl")
+        leaf = write.append_leaf("entry-9")
+
+        assert leaf.payload == {"targetId": "entry-9"}
+        lines = (tmp_path / "t1.jsonl").read_text().splitlines()
+        assert len(lines) == 2
+        assert json.loads(lines[1]) == {"tip": "entry-9"}
+        # the leaf marker is not a file entry for tip-only codecs
+        assert [e.id for e in write.get_entries()] == []

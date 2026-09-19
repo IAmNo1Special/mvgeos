@@ -78,6 +78,7 @@ def load_manifest(path: Path) -> RuneManifest | None:
         types = [str(data["type"])]
 
     commands = _extract_string_list(data, "commands")
+    session_codecs = _extract_string_list(data, "session_codecs")
 
     return RuneManifest(
         name=data["name"],
@@ -94,4 +95,5 @@ def load_manifest(path: Path) -> RuneManifest | None:
         types=types,
         spell_gateway=spell_gateway,
         commands=commands,
+        session_codecs=session_codecs,
     )

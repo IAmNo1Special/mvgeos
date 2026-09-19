@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from datetime import UTC, datetime
 from io import StringIO
@@ -9,6 +10,7 @@ from typing import Any
 
 import typer
 from mvgeos_core.constants import DEFAULT_TOME_DIR
+from mvgeos_runes.codecs import load_session_codecs
 from mvgeos_tome.handle import TomeHandleFactory
 from mvgeos_tome.types import (
     TomeEntry,
@@ -21,6 +23,9 @@ from rich.console import Console
 from rich.table import Table
 
 from mvgeos_cli.console import clip_text, format_error, get_console, is_utf8_stream
+from mvgeos_cli.dynamic_commands import get_extension_dirs
+
+logger = logging.getLogger(__name__)
 
 console = get_console()
 tome_app = typer.Typer(name="tome", help="Session tome management")
@@ -42,7 +47,17 @@ def get_tome_dir() -> Path:
 
 
 def get_factory() -> TomeHandleFactory:
-    return TomeHandleFactory(get_tome_dir())
+    """Tome factory with rune-provided session codecs discovered.
+
+    Codecs are opt-in through ``session_codecs`` in rune manifests; the
+    built-in Tome v1 codec always stays first.
+    """
+    codecs, diagnostics = load_session_codecs(get_extension_dirs())
+    for diag in diagnostics:
+        logger.warning(
+            "Session codec issue in rune %s: %s", diag.rune_name, diag.message
+        )
+    return TomeHandleFactory(get_tome_dir(), codecs=codecs)
 
 
 @tome_app.command("list")

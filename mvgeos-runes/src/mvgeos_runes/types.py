@@ -401,6 +401,7 @@ class RuneManifest:
     types: list[str] = field(default_factory=list)
     spell_gateway: bool = False
     commands: list[str] = field(default_factory=list)
+    session_codecs: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
