@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.9] - 2026-09-19
+
+
+### Bug Fixes
+
+- **tome:** tolerate foreign filenames when opening sessions by path (2bfda34)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (2cc49d6)
+
+- **release:** v0.4.9 (af3412d)
+
+
 ## [0.4.8] - 2026-09-19
 
 
@@ -24,6 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - re-trigger after COVERAGE_FILE fix (7ee815d)
 
 - set COVERAGE_FILE inline in test command (env+matrix rejected on reusable caller) (c69e0dd)
+
+
+### Documentation
+
+- close Phase 3 verify-only and record PEP 723 keep-in-core decision (cf3e695)
+
+- record APPEND_SYSTEM.md keep-in-core decision with revisit triggers (c6de4f3)
+
+- close Phase 4 verify-only, mark capability-layer decoupling complete (27f5d14)
 
 
 ### Features
