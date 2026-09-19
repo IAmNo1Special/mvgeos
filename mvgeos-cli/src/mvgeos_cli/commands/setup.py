@@ -249,7 +249,10 @@ def collect_rune_dirs(
     for base in resolve_rune_paths(agent_name, extension_dir):
         if not base.exists():
             continue
-        for entry in base.iterdir():
+        # Sort for deterministic duplicate resolution: iterdir() order is
+        # filesystem-dependent, so without this the winning duplicate would
+        # vary from machine to machine.
+        for entry in sorted(base.iterdir()):
             if not entry.is_dir():
                 continue
             manifest = load_manifest(entry)
