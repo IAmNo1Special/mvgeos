@@ -356,7 +356,11 @@ def render_packages_panel(state: AppState) -> None:
 
         with ui.tab_panels(tabs, value=mvges_tab).classes("w-full bg-transparent p-0"):
             # MVGES TAB PANEL
-            with ui.tab_panel(mvges_tab).classes("p-0 gap-4 flex flex-col"):
+            with (
+                ui.tab_panel(mvges_tab)
+                .classes("p-0 gap-4")
+                .mark("marketplace_mvges_tab_panel")
+            ):
                 with ui.row().classes("w-full items-center justify-between gap-4 mt-2"):
 
                     def _on_mvge_search(val: str) -> None:
@@ -737,7 +741,11 @@ def render_packages_panel(state: AppState) -> None:
                 render_mvges()
 
             # RUNES TAB PANEL
-            with ui.tab_panel(runes_tab).classes("p-0 gap-4 flex flex-col"):
+            with (
+                ui.tab_panel(runes_tab)
+                .classes("p-0 gap-4")
+                .mark("marketplace_runes_tab_panel")
+            ):
                 with ui.row().classes("w-full items-center justify-between gap-4 mt-2"):
 
                     def _on_search(val: str) -> None:

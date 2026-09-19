@@ -690,3 +690,35 @@ async def test_packages_panel_mvge_refresh_exceptions(user: User) -> None:
 
     await user.open("/test_mvges_refresh_exc")
     await user.should_see("Marketplace")
+
+
+@pytest.mark.asyncio
+async def test_marketplace_tab_panels_do_not_wrap_cards_into_side_column(
+    user: User,
+) -> None:
+    """Tab panels must not carry Quasar's `flex` class.
+
+    Regression: `flex` (Quasar `.flex`) also sets `flex-wrap: wrap`, and the
+    tab panel has a constrained height (`.q-panel > div { height: 100% }`).
+    A column-direction flex container with wrap pushes the tall cards column
+    into a second visual column to the right of the search bar and filters.
+    NiceGUI's own `.nicegui-tab-panel` already provides
+    `display: flex; flex-direction: column` without wrap, so `flex flex-col`
+    must stay off the tab panels.
+    """
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+
+    @ui.page("/test_marketplace_tab_panel_wrap")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_marketplace_tab_panel_wrap")
+    await user.should_see("Marketplace")
+
+    for marker in ("marketplace_mvges_tab_panel", "marketplace_runes_tab_panel"):
+        panel_el = next(iter(user.find(marker=marker).elements))
+        assert "flex" not in panel_el._classes
