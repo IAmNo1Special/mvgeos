@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,7 +16,7 @@ from mvgeos_tome.types import TomeEntry, TomeEntryType
 from mvgeos_gui.autocomplete import MentionChip
 from mvgeos_gui.models import ChangedFile, ChatMessage, DiffView
 from mvgeos_gui.services.tome_service import TomeService
-from mvgeos_gui.state import AppState
+from mvgeos_gui.state import AppState, format_channeling_elapsed
 from mvgeos_gui.transcript import InvocationTranscript
 
 
@@ -212,6 +213,74 @@ def test_stop_channeling_cancels_active_task() -> None:
     assert msg.is_streaming is False
     mock_task.cancel.assert_called_once()
     mock_service.cancel.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_submit_prompt_records_channeling_start_time() -> None:
+    """Verify submit_prompt stamps when channeling started for the elapsed timer."""
+    state = AppState()
+    assert state.channeling_started_at is None
+    mock_service = MagicMock()
+    mock_service.run_prompt = AsyncMock()
+    state.agent_service = mock_service
+
+    state.submit_prompt("Build a widget")
+
+    assert state.is_channeling is True
+    assert state.channeling_started_at is not None
+    elapsed = state.elapsed_channeling_seconds()
+    assert elapsed is not None
+    assert elapsed >= 0.0
+
+
+def test_stop_channeling_clears_channeling_start_time() -> None:
+    """Verify stop_channeling clears the elapsed-timer stamp."""
+    state = AppState()
+    state.is_channeling = True
+    state.channeling_started_at = 1234.5
+
+    state.agent_service = MagicMock()
+    state.stop_channeling()
+
+    assert state.channeling_started_at is None
+    assert state.elapsed_channeling_seconds() is None
+
+
+def test_elapsed_channeling_seconds_none_when_not_channeling() -> None:
+    """Verify the elapsed helper returns None outside channeling."""
+    state = AppState()
+    assert state.elapsed_channeling_seconds() is None
+
+    state.channeling_started_at = 1234.5
+    assert state.elapsed_channeling_seconds() is None
+
+
+def test_elapsed_channeling_seconds_measures_from_start() -> None:
+    """Verify elapsed time is measured from the recorded start stamp."""
+    state = AppState()
+    state.is_channeling = True
+    state.channeling_started_at = time.monotonic() - 7.5
+
+    elapsed = state.elapsed_channeling_seconds()
+    assert elapsed is not None
+    assert elapsed >= 7.5
+    assert elapsed < 9.0
+
+
+@pytest.mark.parametrize(
+    ("seconds", "expected"),
+    [
+        (0, "0s"),
+        (5, "5s"),
+        (59, "59s"),
+        (60, "1m 00s"),
+        (65, "1m 05s"),
+        (125, "2m 05s"),
+    ],
+)
+def test_format_channeling_elapsed(seconds: float, expected: str) -> None:
+    """Verify the channeling timer formats seconds compactly."""
+    assert format_channeling_elapsed(seconds) == expected
 
 
 # --- Tome service integration tests ---
@@ -1465,3 +1534,110 @@ class TestRuneManagementState:
         with patch("mvgeos_gui.state.uninstall_mvge", side_effect=RuntimeError("fail")):
             result = await state.uninstall_mvge_async("bad-mvge")
             assert result is False
+
+
+class TestRenameTome:
+    def test_rename_updates_title_and_appends_tome_info(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        tome_id = _create_tome(tome_dir, "/proj/a")
+        state.active_tome_id = tome_id
+        state.tome_title = "Old Title"
+
+        assert state.rename_tome("New Title") is True
+
+        assert state.tome_title == "New Title"
+        assert state.tome_service.get_tome_title(tome_id) == "New Title"
+        info_entries = [
+            e
+            for e in TomeHandleFactory(tome_dir).get_entries(tome_id)
+            if e.type == TomeEntryType.TOME_INFO
+        ]
+        assert info_entries
+        assert info_entries[-1].payload["title"] == "New Title"
+
+    def test_rename_no_active_tome_returns_false(self) -> None:
+        state, _ = _make_state_with_tomes("/proj/a")
+
+        assert state.rename_tome("Anything") is False
+        assert state.tome_title == "New Conversation"
+
+    def test_rename_blank_title_returns_false(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        tome_id = _create_tome(tome_dir, "/proj/a")
+        state.active_tome_id = tome_id
+
+        assert state.rename_tome("   ") is False
+
+        info_entries = [
+            e
+            for e in TomeHandleFactory(tome_dir).get_entries(tome_id)
+            if e.type == TomeEntryType.TOME_INFO
+        ]
+        assert info_entries == []
+
+    def test_rename_latest_title_wins(self) -> None:
+        state, tome_dir = _make_state_with_tomes("/proj/a")
+        tome_id = _create_tome(tome_dir, "/proj/a")
+        state.active_tome_id = tome_id
+
+        assert state.rename_tome("First") is True
+        assert state.rename_tome("Second") is True
+
+        assert state.tome_title == "Second"
+        assert state.tome_service.get_tome_title(tome_id) == "Second"
+
+    def test_rename_missing_tome_file_returns_false(self) -> None:
+        state, _ = _make_state_with_tomes("/proj/a")
+        state.active_tome_id = "does-not-exist"
+
+        assert state.rename_tome("Ghost") is False
+
+
+def test_switch_to_tome_resets_cached_agent() -> None:
+    """Verify switching tomes drops the cached agent.
+
+    Otherwise the next send would run against the previously attached tome
+    instead of the newly active one.
+    """
+    state, tome_dir = _make_state_with_tomes("/proj/a")
+    tome_id = _create_tome(tome_dir, "/proj/a")
+    state.agent_service = MagicMock()
+
+    state.switch_to_tome(tome_id)
+
+    state.agent_service.reset_agent.assert_called_once_with()
+
+
+def test_new_conversation_resets_cached_agent() -> None:
+    """Verify starting a new session drops the cached agent.
+
+    Otherwise the next send would resume the old tome instead of creating
+    a fresh one.
+    """
+    state, _tome_dir = _make_state_with_tomes("/proj/a")
+    state.agent_service = MagicMock()
+
+    state.new_conversation()
+
+    state.agent_service.reset_agent.assert_called_once_with()
+
+
+def test_fork_tome_preserves_custom_title() -> None:
+    """Verify a forked session keeps the parent's custom title.
+
+    The engine fork copies the message chain up to the leaf, which drops
+    the parent_id-less TOME_INFO title entry, so the GUI re-applies it.
+    """
+    state, tome_dir = _make_state_with_tomes("/proj/a")
+    tome_id = _create_tome(tome_dir, "/proj/a")
+    entry = _append_message(tome_dir, tome_id, "user", "hello", "m1")
+    _append_leaf(tome_dir, tome_id, entry.id, "l1")
+    _append_tome_info(tome_dir, tome_id, {"title": "My Session"})
+    state.active_tome_id = tome_id
+    state.tome_title = "My Session"
+
+    forked_id = state.fork_tome()
+
+    assert forked_id is not None
+    assert state.tome_title == "My Session"
+    assert state.tome_service.get_tome_title(forked_id) == "My Session"

@@ -99,6 +99,7 @@ class PEP723ScriptSpell(MvgeSpell):
         execution_mode: SpellExecutionMode = SpellExecutionMode.PARALLEL,
         timeout: float = 120.0,
         cwd: Path | None = None,
+        read_only: bool = False,
     ) -> None:
         self.script_path = script_path
         self.timeout = timeout
@@ -151,6 +152,7 @@ class PEP723ScriptSpell(MvgeSpell):
             description=spell_desc,
             parameters=spell_params,
             execution_mode=execution_mode,
+            read_only=read_only,
         )
         if not spell_params.get("properties"):
             self._schema_model = None
@@ -261,6 +263,7 @@ class RuneSpellWrapper(MvgeSpell):
             execution_mode=getattr(
                 spell_def, "execution_mode", SpellExecutionMode.PARALLEL
             ),
+            read_only=getattr(spell_def, "read_only", False),
         )
         self._spell_def = spell_def
 
@@ -300,6 +303,7 @@ class FunctionSpell(MvgeSpell):
         description: str | None = None,
         parameters: dict[str, Any] | None = None,
         execution_mode: SpellExecutionMode = SpellExecutionMode.PARALLEL,
+        read_only: bool = False,
     ) -> None:
         func_name = (
             name if name is not None else getattr(func, "__name__", "custom_spell")
@@ -316,6 +320,7 @@ class FunctionSpell(MvgeSpell):
             description=doc,
             parameters=schema,
             execution_mode=execution_mode,
+            read_only=read_only,
         )
         self.func = func
 
@@ -367,7 +372,7 @@ def coerce_spell(
     if isinstance(spell, SpellDefinition):
         return RuneSpellWrapper(spell)
     if callable(spell):
-        return FunctionSpell(func=spell)
+        return FunctionSpell(func=spell, read_only=getattr(spell, "read_only", False))
     raise TypeError(
         f"Expected Callable, MvgeSpell, or SpellDefinition, got {type(spell).__name__}"
     )

@@ -4,13 +4,15 @@ import argparse
 import asyncio
 import contextlib
 import ctypes
+import importlib.util
 import os
 import platform
 import secrets
+import sys
 import threading
 from pathlib import Path
+from types import ModuleType
 
-import webview
 from nicegui import app, ui
 
 from mvgeos_gui.app import init_app
@@ -19,6 +21,33 @@ from mvgeos_gui.state import AppState
 DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 APP_TITLE = "MvgeOS"
 _STORAGE_SECRET_FILE = Path.home() / ".mvgeos" / ".storage_secret"
+
+# importlib-level handle for pywebview. Resolving the spec executes only the
+# import finders, never the module itself, so no GUI backend is probed here.
+_WEBVIEW_SPEC = importlib.util.find_spec("webview")
+
+
+def _load_webview() -> ModuleType | None:
+    """Load pywebview on first use, probing GUI backends only then.
+
+    Prefers an already-imported ``webview`` module (e.g. pulled in by a
+    dependency); otherwise executes the module from its spec. Returns None
+    when pywebview is unavailable or fails to initialize, so callers fall
+    back to default geometry instead of crashing.
+    """
+    module = sys.modules.get("webview")
+    if module is not None:
+        return module
+    if _WEBVIEW_SPEC is None or _WEBVIEW_SPEC.loader is None:
+        return None
+    module = importlib.util.module_from_spec(_WEBVIEW_SPEC)
+    sys.modules["webview"] = module
+    try:
+        _WEBVIEW_SPEC.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop("webview", None)
+        return None
+    return module
 
 
 def _shutdown_thread_excepthook(args: threading.ExceptHookArgs) -> None:
@@ -73,9 +102,17 @@ def calculate_initial_window_geometry(
     Uses pywebview's cross-platform screens API (``webview.screens``) to determine
     the display resolution and center coordinates across Windows, macOS, and Linux.
 
+    pywebview is loaded lazily through :func:`_load_webview`: importing it at
+    module load would probe for GUI backends (GTK/Qt) even in --web mode,
+    which can abort the process on machines where a backend partially
+    initializes without a display.
+
     Returns:
         tuple[int, int, int | None, int | None]: (width, height, x, y)
     """
+    webview = _load_webview()
+    if webview is None:
+        return target_width, target_height, None, None
     try:
         screens = getattr(webview, "screens", None)
         if screens:
@@ -192,7 +229,11 @@ def main() -> None:
     )
     init_app(state)
 
-    width, height, x, y = calculate_initial_window_geometry()
+    # Window placement is a native-mode concern only. Probing the display in
+    # web mode would needlessly touch pywebview's GUI backends.
+    width, height, x, y = (1400, 900, None, None)
+    if not args.web:
+        width, height, x, y = calculate_initial_window_geometry()
 
     if not args.web:
         app.native.window_args["background_color"] = "#000000"

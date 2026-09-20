@@ -26,7 +26,6 @@ async def test_render_review_rail_empty_changes(user: User) -> None:
 
     await user.open("/test_rail_empty")
     await user.should_see("Review")
-    await user.should_see("Permission mode")
     await user.should_see("Changed files")
     await user.should_see("No changes detected")
 
@@ -109,3 +108,18 @@ async def test_render_review_rail_refresh_button(user: User) -> None:
     await user.open("/test_rail_refresh")
     user.find(marker="refresh_changes_btn").click()
     state.refresh_changed_files.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_review_rail_has_no_permission_dropdown(user: User) -> None:
+    """The decorative permission dropdown is gone from the Review rail."""
+    state = AppState()
+    state.changed_files = []
+
+    @ui.page("/test_rail_no_permission")
+    def page() -> None:
+        render_review_rail(state)
+
+    await user.open("/test_rail_no_permission")
+    await user.should_not_see("Permission mode")
+    await user.should_see("Changed files")

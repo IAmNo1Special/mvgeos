@@ -4,7 +4,10 @@ from nicegui import ui
 
 from mvgeos_gui.components.artifact_drawer import render_artifact_drawer
 from mvgeos_gui.components.chat_panel import render_chat_panel
-from mvgeos_gui.components.command_palette import render_command_palette
+from mvgeos_gui.components.command_palette import (
+    render_command_palette,
+    render_rename_dialog,
+)
 from mvgeos_gui.components.diagnostics_panel import render_diagnostics_panel
 from mvgeos_gui.components.home_screen import render_home_screen
 from mvgeos_gui.components.login_screen import render_login_screen
@@ -37,6 +40,7 @@ def render_shell(state: AppState) -> None:
                     state.sidebar_open,
                     state.current_view,
                     state.active_tome_id,
+                    state.tome_title,
                     len(state.loaded_tomes),
                     str(state.project_path),
                 )
@@ -49,6 +53,7 @@ def render_shell(state: AppState) -> None:
                     state.sidebar_open,
                     state.current_view,
                     state.active_tome_id,
+                    state.tome_title,
                     len(state.loaded_tomes),
                     str(state.project_path),
                 )
@@ -60,6 +65,7 @@ def render_shell(state: AppState) -> None:
                     state.sidebar_open,
                     state.current_view,
                     state.active_tome_id,
+                    state.tome_title,
                     len(state.loaded_tomes),
                     str(state.project_path),
                 )
@@ -138,6 +144,8 @@ def render_shell(state: AppState) -> None:
                     state.mvge_status,
                     state.selected_model,
                     state.total_mana_used,
+                    state.context_input_tokens,
+                    state.context_output_tokens,
                     state.is_channeling,
                     state.sidebar_open,
                     state.review_open,
@@ -151,6 +159,8 @@ def render_shell(state: AppState) -> None:
                     state.mvge_status,
                     state.selected_model,
                     state.total_mana_used,
+                    state.context_input_tokens,
+                    state.context_output_tokens,
                     state.is_channeling,
                     state.sidebar_open,
                     state.review_open,
@@ -163,6 +173,8 @@ def render_shell(state: AppState) -> None:
                     state.mvge_status,
                     state.selected_model,
                     state.total_mana_used,
+                    state.context_input_tokens,
+                    state.context_output_tokens,
                     state.is_channeling,
                     state.sidebar_open,
                     state.review_open,
@@ -179,6 +191,7 @@ def render_shell(state: AppState) -> None:
             getattr(state, "_show_app_settings", False),
             getattr(state, "_show_workspace_settings", False),
             getattr(state, "_show_login", False),
+            getattr(state, "_show_rename_dialog", False),
             len(state.artifacts),
         )
     ]
@@ -186,6 +199,7 @@ def render_shell(state: AppState) -> None:
     @ui.refreshable
     def overlay_dialogs() -> None:
         render_command_palette(state)
+        render_rename_dialog(state)
         render_artifact_drawer(state)
         render_app_settings_modal(state)
         render_workspace_settings_modal(state)
@@ -197,6 +211,7 @@ def render_shell(state: AppState) -> None:
             getattr(state, "_show_app_settings", False),
             getattr(state, "_show_workspace_settings", False),
             getattr(state, "_show_login", False),
+            getattr(state, "_show_rename_dialog", False),
             len(state.artifacts),
         )
 
@@ -209,6 +224,7 @@ def render_shell(state: AppState) -> None:
             getattr(state, "_show_app_settings", False),
             getattr(state, "_show_workspace_settings", False),
             getattr(state, "_show_login", False),
+            getattr(state, "_show_rename_dialog", False),
             len(state.artifacts),
         )
         if cur != last_overlay_state[0]:

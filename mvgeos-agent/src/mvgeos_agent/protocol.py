@@ -81,6 +81,10 @@ class MvgeAgent(Protocol):
         """Filter which spells are enabled for execution."""
         ...
 
+    def set_plan_mode(self, enabled: bool) -> None:
+        """Enable or disable plan mode (read-only spells only)."""
+        ...
+
     @property
     def environment(self) -> MvgeEnvironment:
         """The resolved environment configuration."""

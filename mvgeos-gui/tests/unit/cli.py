@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import mvgeos_gui.main as main_module
 from mvgeos_gui.main import (
     _shutdown_thread_excepthook,
     calculate_initial_window_geometry,
@@ -240,3 +241,85 @@ def test_main_native_mode_passes_window_size(
         window_size = kwargs.get("window_size")
         assert isinstance(window_size, tuple)
         assert len(window_size) == 2
+
+
+@patch("mvgeos_gui.main.ui.run")
+@patch("mvgeos_gui.main.calculate_initial_window_geometry")
+def test_main_web_mode_skips_window_geometry(
+    mock_geometry: MagicMock, mock_ui_run: MagicMock
+) -> None:
+    """Web mode must not touch pywebview: no screen probing, no native window."""
+    with patch("sys.argv", ["mvgeos-gui", "--web", "--port", "9090"]):
+        main()
+        mock_geometry.assert_not_called()
+        kwargs = mock_ui_run.call_args.kwargs
+        assert kwargs.get("native") is False
+        assert "window_size" not in kwargs
+
+
+@patch("mvgeos_gui.main.ui.run")
+@patch("mvgeos_gui.main.calculate_initial_window_geometry")
+def test_main_native_mode_calculates_window_geometry(
+    mock_geometry: MagicMock, mock_ui_run: MagicMock
+) -> None:
+    """Native mode still probes the display for window placement."""
+    mock_geometry.return_value = (1400, 900, None, None)
+    with patch("sys.argv", ["mvgeos-gui"]):
+        main()
+        mock_geometry.assert_called_once()
+        kwargs = mock_ui_run.call_args.kwargs
+        assert kwargs.get("native") is True
+        assert kwargs.get("window_size") == (1400, 900)
+
+
+def test_no_inline_imports_in_main_module() -> None:
+    """Every import statement in main.py lives at module top level.
+
+    Project standard (AGENTS.md): no inline imports. The pywebview lazy
+    load must go through top-level importlib machinery, never an import
+    inside a function body.
+    """
+    import ast
+
+    source = Path(main_module.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    offenders = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for child in ast.walk(node):
+                if child is not node and isinstance(
+                    child, (ast.Import, ast.ImportFrom)
+                ):
+                    offenders.append(f"{node.name}:{child.lineno}")
+    assert not offenders, f"inline imports found: {offenders}"
+
+
+def test_geometry_uses_already_imported_webview(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A webview already in sys.modules is reused without re-executing it."""
+    import sys
+
+    stub = MagicMock()
+    stub.screens = [MagicMock(width=1920, height=1080, x=0, y=0)]
+    monkeypatch.setitem(sys.modules, "webview", stub)
+    w, h, x, y = calculate_initial_window_geometry()
+    assert w == 1400
+    assert h == 900
+    assert x == (1920 - 1400) // 2
+    assert y == (1080 - 900) // 2
+
+
+def test_geometry_falls_back_when_webview_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No webview anywhere: geometry falls back instead of probing."""
+    import sys
+
+    monkeypatch.delitem(sys.modules, "webview", raising=False)
+    monkeypatch.setattr(main_module, "_WEBVIEW_SPEC", None)
+    w, h, x, y = calculate_initial_window_geometry()
+    assert w == 1400
+    assert h == 900
+    assert x is None
+    assert y is None

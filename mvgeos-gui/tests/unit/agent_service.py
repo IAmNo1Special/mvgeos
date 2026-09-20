@@ -7,6 +7,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mvgeos_core.channel import Model, MvgeResponse, RealmResponse
 from mvgeos_core.errors import AuthenticationError, RateLimitError
 from mvgeos_core.events import (
     MvgeEvent,
@@ -289,6 +290,53 @@ def test_handle_provider_response_mana_tracking(
     )
     agent_service.handle_event(event, msg, app_state)
     assert msg.mana_used == 150
+    assert app_state.total_mana_used == 150
+
+
+def test_handle_provider_response_records_context_usage(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify AFTER_PROVIDER_RESPONSE records real token usage for the gauge."""
+
+    model = Model(
+        id="test/model",
+        name="Test",
+        realm="openrouter",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="<redacted>",
+    )
+    response = RealmResponse(
+        model=model,
+        invocation=MvgeResponse(
+            mana_usage={"input": 44.0, "output": 1048.0, "total": 1092.0}
+        ),
+    )
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    event = MvgeEvent(
+        type=MvgeEventType.AFTER_PROVIDER_RESPONSE,
+        data={"response": response, "mana_used": 1092},
+    )
+    agent_service.handle_event(event, msg, app_state)
+    assert app_state.context_input_tokens == 44
+    assert app_state.context_output_tokens == 1048
+
+
+def test_handle_provider_response_without_usage_keeps_gauge_hidden(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """No usage on the response: gauge stays hidden, mana still tracked."""
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    event = MvgeEvent(
+        type=MvgeEventType.AFTER_PROVIDER_RESPONSE,
+        data={"mana_used": 150},
+    )
+    agent_service.handle_event(event, msg, app_state)
+    assert app_state.context_input_tokens is None
+    assert app_state.context_output_tokens is None
     assert app_state.total_mana_used == 150
 
 
@@ -1721,3 +1769,171 @@ async def test_run_prompt_handles_no_realm_registered_error(
     assert msg.missing_rune == "openrouter-realm"
     assert "Missing Realm Extension" in msg.content
     assert "openrouter-realm" in msg.content
+
+
+def _make_compact_agent(
+    tome_id: str | None, result: str = "Compaction completed"
+) -> MagicMock:
+    """Fake Mvge agent whose _agent_tome carries the given tome id."""
+    agent = MagicMock()
+    agent_tome = MagicMock()
+    agent_tome.tome_id = tome_id
+    agent._agent_tome = agent_tome
+    agent.compact = AsyncMock(return_value=result)
+    return agent
+
+
+class TestCompactActiveTome:
+    @pytest.mark.asyncio
+    async def test_compact_no_active_tome_refuses(
+        self, agent_service: AgentService, app_state: AppState
+    ) -> None:
+        app_state.active_tome_id = None
+
+        result = await agent_service.compact_active_tome(app_state)
+
+        assert "No active session" in result
+
+    @pytest.mark.asyncio
+    async def test_compact_while_channeling_refuses(
+        self, agent_service: AgentService, app_state: AppState
+    ) -> None:
+        app_state.active_tome_id = "tome-1"
+        app_state.is_channeling = True
+        agent_service._agent = _make_compact_agent("tome-1")
+
+        result = await agent_service.compact_active_tome(app_state)
+
+        assert "channeling" in result.lower()
+        agent_service._agent.compact.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_compact_agent_tome_mismatch_refuses(
+        self, agent_service: AgentService, app_state: AppState
+    ) -> None:
+        app_state.active_tome_id = "tome-1"
+        agent_service._agent = _make_compact_agent("tome-2")
+
+        result = await agent_service.compact_active_tome(app_state)
+
+        assert "not attached" in result
+        agent_service._agent.compact.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_compact_no_agent_refuses(
+        self, agent_service: AgentService, app_state: AppState
+    ) -> None:
+        app_state.active_tome_id = "tome-1"
+        agent_service._agent = None
+        agent_service._api_key = None
+        agent_service._agent_factory = None
+
+        result = await agent_service.compact_active_tome(app_state)
+
+        assert "not attached" in result
+
+    @pytest.mark.asyncio
+    async def test_compact_agent_tome_none_refuses(
+        self, agent_service: AgentService, app_state: AppState
+    ) -> None:
+        app_state.active_tome_id = "tome-1"
+        agent_service._agent = _make_compact_agent(None)
+
+        result = await agent_service.compact_active_tome(app_state)
+
+        assert "not attached" in result
+        agent_service._agent.compact.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_compact_runtime_error_becomes_message(
+        self, agent_service: AgentService, app_state: AppState
+    ) -> None:
+        app_state.active_tome_id = "tome-1"
+        agent = _make_compact_agent("tome-1")
+        agent.compact = AsyncMock(side_effect=RuntimeError("boom"))
+        agent_service._agent = agent
+
+        result = await agent_service.compact_active_tome(app_state)
+
+        assert "boom" in result
+        assert "failed" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_compact_success_returns_engine_result(
+        self, agent_service: AgentService, app_state: AppState
+    ) -> None:
+        app_state.active_tome_id = "tome-1"
+        agent_service._agent = _make_compact_agent("tome-1", "Compaction completed")
+
+        result = await agent_service.compact_active_tome(app_state)
+
+        assert result == "Compaction completed"
+        agent_service._agent.compact.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_adopts_agent_tome_when_no_active_tome(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify run_prompt adopts the engine-created tome id.
+
+    Without adoption the session lifecycle commands (rename/fork/export/
+    compact) stay disabled forever because they gate on active_tome_id.
+    """
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock()
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.on = MagicMock()
+    mock_agent.tome_id = "abc123tome"
+    agent_service._agent = mock_agent
+
+    assert app_state.active_tome_id is None
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("Hello", app_state, msg)
+
+    assert app_state.active_tome_id == "abc123tome"
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_keeps_existing_active_tome(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify run_prompt never overwrites an already-active tome."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock()
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.on = MagicMock()
+    mock_agent.tome_id = "new-tome-id"
+    agent_service._agent = mock_agent
+
+    app_state.active_tome_id = "existing-tome"
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("Hello", app_state, msg)
+
+    assert app_state.active_tome_id == "existing-tome"
+
+
+@pytest.mark.asyncio
+async def test_compact_active_tome_attaches_fresh_agent(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify compact binds a fresh agent when none is cached.
+
+    After a fork or session switch the cached agent is dropped; compact
+    must attach to the active tome on demand instead of refusing.
+    """
+    fresh = _make_compact_agent("tome-1", "Compaction completed")
+    fresh.initialize = AsyncMock()
+    agent_service._agent = None
+    agent_service._agent_factory = lambda **kwargs: fresh  # noqa: E731
+    app_state.active_tome_id = "tome-1"
+
+    result = await agent_service.compact_active_tome(app_state)
+
+    assert result == "Compaction completed"
+    fresh.initialize.assert_awaited_once()
+    fresh.compact.assert_awaited_once()

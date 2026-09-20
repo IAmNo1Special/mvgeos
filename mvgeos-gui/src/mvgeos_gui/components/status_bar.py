@@ -2,6 +2,7 @@
 
 from nicegui import ui
 
+from mvgeos_gui.components.context_gauge import render_context_gauge
 from mvgeos_gui.state import AppState
 
 
@@ -34,6 +35,9 @@ def render_status_bar(state: AppState) -> ui.row:
             ui.label(f"{state.total_mana_used:,} Mana").classes(
                 "text-[10px] text-[#f59e0b] font-mono mr-4"
             )
+
+        # Context window gauge (real provider usage vs verified registry window)
+        render_context_gauge(state)
 
         # Streaming indicator
         if state.is_channeling:

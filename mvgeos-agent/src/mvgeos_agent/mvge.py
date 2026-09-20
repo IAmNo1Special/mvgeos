@@ -275,6 +275,8 @@ class Mvge:
             else:
                 self._spells = []
 
+        self._plan_mode = False
+
         resolved_runes_paths = list(runes_paths) if runes_paths is not None else []
         if caller_dir is not None and (caller_dir / "runes").is_dir():
             colocated_runes = str(caller_dir / "runes")
@@ -413,11 +415,40 @@ class Mvge:
 
     @property
     def available_spells(self) -> list[str]:
-        """List of all available spell names (builtin + rune-registered)."""
+        """List of all available spell names (builtin + rune-registered).
+
+        In plan mode this reflects the plan-mode filter: only spells
+        marked read_only are reported as available.
+        """
+        if self._plan_mode:
+            return [s.name for s in self._build_spells()]
         names: list[str] = [coerce_spell(s).name for s in self._spells]
         if self._runner is not None:
             names.extend([s.name for s in self._runner.get_all_registered_spells()])
         return list(dict.fromkeys(names))
+
+    def set_plan_mode(self, enabled: bool) -> None:
+        """Enable or disable plan mode (read-only spells only).
+
+        When enabled, _build_spells() drops every spell not marked
+        read_only=True. MvgeState.spells refreshes immediately and the
+        harness is rebuilt through the normal construction path, so the
+        next run's LoopContext carries the new spell set. A run already
+        in flight keeps the LoopContext it was built with. Enabling plan
+        mode with no read-only spells leaves the agent without tools and
+        logs a warning.
+        """
+        self._plan_mode = enabled
+        spells = self._build_spells()
+        if self._state is not None:
+            self._state.spells = spells
+            if self._harness is not None:
+                self._harness = self._build_harness()
+        if enabled and not spells:
+            logger.warning(
+                "Plan mode enabled but no spells are marked read-only; "
+                "the agent has no tools available in this mode.",
+            )
 
     def set_enabled_spells(self, spell_names: Sequence[str]) -> None:
         """Filter which spells are enabled for execution."""
@@ -737,6 +768,9 @@ class Mvge:
                 allowlist_set = set(global_allowlist)
                 spells = [s for s in spells if s.name in allowlist_set]
 
+        if self._plan_mode:
+            spells = [s for s in spells if s.read_only]
+
         return spells
 
     def _build_system_prompt(self) -> str:
@@ -925,7 +959,16 @@ class Mvge:
             event_bus=self._event_bus,
         )
 
-        self._harness = MvgeHarness(
+        self._harness = self._build_harness()
+
+    def _build_harness(self) -> MvgeHarness:
+        """Construct the MvgeHarness from the wired collaborators.
+
+        Single construction path used both at wire-up and when plan mode
+        retires the harness for a fresh one carrying the new spell set.
+        """
+        assert self._state is not None
+        harness = MvgeHarness(
             state=self._state,
             tome=self._agent_tome,
             realm=self._realm,
@@ -934,7 +977,8 @@ class Mvge:
             compaction_settings=self._compaction_settings,
             refresh_spells=self._build_spells,
         )
-        self._compaction = self._harness.compaction
+        self._compaction = harness.compaction
+        return harness
 
     async def run(self, prompt: str) -> MvgeInvocation:
         """Template method for processing a turn."""

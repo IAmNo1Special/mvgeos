@@ -1,5 +1,6 @@
 """Integration tests for live agent channeling, Mana tracking, and step cards."""
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -147,6 +148,24 @@ async def test_streaming_indicator_and_stop_button(user: User) -> None:
     # Click stop button
     user.find("stop_channeling_btn").click()
     assert state.is_channeling is False
+
+
+@pytest.mark.asyncio
+async def test_channeling_elapsed_timer_beside_stop_button(user: User) -> None:
+    """Verify the elapsed channeling timer renders beside the stop button."""
+    state = AppState(project_path=Path("C:/demo/project"), is_channeling=True)
+    state.channeling_started_at = time.monotonic() - 65
+
+    @ui.page("/test_channeling_elapsed")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_channeling_elapsed")
+
+    (elapsed_element,) = user.find("channeling_elapsed").elements
+    assert elapsed_element.text == "1m 05s"
+    # The stop button itself still renders untouched
+    user.find("stop_channeling_btn")
 
 
 @pytest.mark.asyncio

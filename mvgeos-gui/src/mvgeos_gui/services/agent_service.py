@@ -36,6 +36,7 @@ from mvgeos_core.events import (
 from mvgeos_provider import NoRealmRegisteredError
 from mvgeos_provider.model_registry import ModelRegistry
 
+from mvgeos_gui.context_usage import extract_token_usage
 from mvgeos_gui.models import (
     Artifact,
     ArtifactType,
@@ -261,6 +262,9 @@ class AgentService:
                 if target_state is not None:
                     target_state.total_mana_used = mana
                     target_state.notify()
+            usage = extract_token_usage(data.get("response"))
+            if usage is not None and target_state is not None:
+                target_state.record_context_usage(*usage)
 
         elif event.type == MvgeEventType.SPELL_CASTING_START:
             spell_id = data.get("spellCastId", "")
@@ -566,6 +570,7 @@ class AgentService:
             )
             message.is_streaming = False
             state.is_channeling = False
+            state.channeling_started_at = None
             state.set_mvge_status("idle")
             self._is_running = False
             self._active_message = None
@@ -720,12 +725,21 @@ class AgentService:
         finally:
             message.is_streaming = False
             state.is_channeling = False
+            state.channeling_started_at = None
             state.set_mvge_status("idle")
             self._is_running = False
             self._active_message = None
             self._active_state = None
             self._active_transcript = None
             self._active_task = None
+            # Adopt the engine-created tome so the session lifecycle commands
+            # (rename/fork/export/compact) unlock for this conversation. Only
+            # adopts when no tome is active; never steals an existing one.
+            agent_tome_id = getattr(self._agent, "tome_id", None)
+            if state.active_tome_id is None and isinstance(agent_tome_id, str):
+                state.active_tome_id = agent_tome_id
+                state.tome_title = state.tome_service.get_tome_title(agent_tome_id)
+                state.load_tomes()
             state.notify()
 
     def cancel(self) -> None:
@@ -737,6 +751,34 @@ class AgentService:
         self._is_running = False
         self._active_message = None
         self._active_state = None
+
+    async def compact_active_tome(self, state: AppState) -> str:
+        """Compact the active session's mana pool via the engine.
+
+        Refuses rather than compacting the wrong Tome: the cached agent's
+        tome must match the active tome id. Engine runtime errors become
+        user-facing messages. Returns the outcome message.
+        """
+        tome_id = state.active_tome_id
+        if tome_id is None:
+            return "No active session to compact"
+        if state.is_channeling:
+            return "Cannot compact while channeling"
+        try:
+            agent = self.get_or_create_agent(state)
+        except RuntimeError:
+            return "Cannot compact: agent is not attached to the active session"
+        if hasattr(agent, "initialize"):
+            init_res = agent.initialize()
+            if inspect.isawaitable(init_res):
+                await init_res
+        agent_tome = getattr(agent, "_agent_tome", None)
+        if agent_tome is None or agent_tome.tome_id != tome_id:
+            return "Cannot compact: agent is not attached to the active session"
+        try:
+            return await agent.compact()
+        except RuntimeError as exc:
+            return f"Compaction failed: {exc}"
 
     # --- Skill tracking helpers ---
 

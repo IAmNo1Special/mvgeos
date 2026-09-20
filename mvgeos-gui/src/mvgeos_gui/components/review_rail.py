@@ -1,4 +1,4 @@
-"""Right-side review rail showing permissions, changed files, and session status."""
+"""Right-side review rail showing changed files and session status."""
 
 from nicegui import ui
 
@@ -29,17 +29,6 @@ def render_review_rail(state: AppState) -> ui.column:
                 icon="close",
                 on_click=state.toggle_review,
             ).props("flat dense round text-color=grey-5").mark("toggle_review_btn")
-
-        # Permission mode
-        with ui.row().classes("px-3 py-2 border-b border-[#292335]/60"):
-            ui.label("Permission mode").classes(
-                "text-[10px] font-medium text-[#6e6584] uppercase tracking-wider"
-            )
-        with ui.row().classes("px-3 py-1"):
-            ui.select(
-                options=["plan", "ask", "trusted"],
-                value="ask",
-            ).props("dense dark outlined rounded text-xs").classes("w-full text-xs")
 
         # Changed files
         with ui.row().classes(

@@ -63,6 +63,7 @@ class MvgeSpell:
     description: str
     parameters: dict[str, Any]
     execution_mode: SpellExecutionMode = SpellExecutionMode.PARALLEL
+    read_only: bool = False
     _schema_model: type[BaseModel] | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:

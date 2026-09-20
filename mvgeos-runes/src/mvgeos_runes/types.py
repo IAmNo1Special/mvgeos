@@ -468,6 +468,7 @@ class SpellDefinition:
         prompt_guidelines: list[str] | None = None,
         source_rune: str | None = None,
         handler: Any | None = None,
+        read_only: bool = False,
     ) -> None:
         self.name = name
         self.description = description
@@ -477,6 +478,7 @@ class SpellDefinition:
         self.prompt_guidelines = prompt_guidelines or []
         self.source_rune = source_rune
         self._handler = handler
+        self.read_only = read_only
 
     async def execute(
         self,

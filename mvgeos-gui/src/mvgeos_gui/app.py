@@ -2,6 +2,7 @@
 
 from nicegui import app, ui
 
+from mvgeos_gui.components.keyboard import register_global_keyboard
 from mvgeos_gui.components.shell import render_shell
 from mvgeos_gui.core.database import init_db
 from mvgeos_gui.state import AppState
@@ -18,7 +19,8 @@ def build_page(state: AppState | None = None) -> None:
     ui.add_head_html("""
         <script>
             document.addEventListener('keydown', function(e) {
-                if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+                var isP = (e.key === 'p' || e.key === 'P');
+                if ((e.metaKey || e.ctrlKey) && e.shiftKey && isP) {
                     e.preventDefault();
                 }
             });
@@ -26,6 +28,12 @@ def build_page(state: AppState | None = None) -> None:
     """)
 
     render_shell(current_state)
+    # Global chords (Ctrl/Cmd+Shift+P palette, Esc priority chain). The head
+    # script above only preventDefaults the browser's own handling of the
+    # chord; this bridge is what actually responds to it. Registered with
+    # ignore=[] so the chords work while typing in the composer or any
+    # other input.
+    register_global_keyboard(current_state)
 
 
 def init_app(state: AppState | None = None) -> AppState:

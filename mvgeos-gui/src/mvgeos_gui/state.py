@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import time
+import uuid
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -38,7 +39,7 @@ from mvgeos_runes import (
     uninstall_rune,
 )
 from mvgeos_runes.types import SkillManifest
-from mvgeos_tome.types import TomeEntryType, TomeVersionError
+from mvgeos_tome.types import TomeEntry, TomeEntryType, TomeVersionError
 
 from mvgeos_gui.autocomplete import (
     AutocompleteService,
@@ -64,6 +65,14 @@ from mvgeos_gui.transcript import InvocationTranscript
 logger = logging.getLogger(__name__)
 
 
+def format_channeling_elapsed(seconds: float) -> str:
+    """Format an elapsed channeling duration compactly ("45s", "2m 05s")."""
+    total = max(0, int(seconds))
+    if total < 60:
+        return f"{total}s"
+    return f"{total // 60}m {total % 60:02d}s"
+
+
 @dataclass
 class AppState:
     """Reactive state container for MvgeOS desktop GUI session."""
@@ -78,13 +87,26 @@ class AppState:
     contemplation_level: str = "medium"
     recent_projects: list[Path] = field(default_factory=list)
     is_channeling: bool = False
+    channeling_started_at: float | None = None
     tome_service: TomeService = field(
         default_factory=TomeService, repr=False, compare=False
     )
     loaded_tomes: list[TomeListEntry] = field(default_factory=list)
     messages: list[ChatMessage] = field(default_factory=list)
     total_mana_used: int = 0
+    # Latest provider-reported token usage for the context gauge. Distinct
+    # from cumulative Mana: these are raw token counts off the last provider
+    # response (input + output). None until a response reports real usage.
+    context_input_tokens: int | None = None
+    context_output_tokens: int | None = None
     active_prompt: str = ""
+    # Draft text typed into the composer. The composer re-renders when it moves
+    # between the centered empty-state slot and the bottom dock; the draft
+    # restores the textarea so unsent text survives the move.
+    composer_draft: str = ""
+    # Plan mode: the engine only offers spells marked read_only. Toggled from
+    # the chat toolbar or the command palette.
+    plan_mode: bool = False
     api_key: str | None = None
     pending_attachments: list[str] = field(default_factory=list)
     selected_mentions: list[MentionChip] = field(default_factory=list)
@@ -117,6 +139,7 @@ class AppState:
         default_factory=ConfigService, repr=False, compare=False
     )
     _show_app_settings: bool = False
+    _show_rename_dialog: bool = False
     _show_workspace_settings: bool = False
     _show_login: bool = False
     _auth_service: AuthService = field(
@@ -459,6 +482,16 @@ class AppState:
         self._show_app_settings = False
         self.notify()
 
+    def open_rename_dialog(self) -> None:
+        """Open the Rename session dialog."""
+        self._show_rename_dialog = True
+        self.notify()
+
+    def close_rename_dialog(self) -> None:
+        """Close the Rename session dialog."""
+        self._show_rename_dialog = False
+        self.notify()
+
     def open_workspace_settings(self) -> None:
         """Open the Project Workspace Settings modal."""
         self._show_workspace_settings = True
@@ -510,13 +543,48 @@ class AppState:
         self.active_tome_id = None
         self.tome_title = "New Conversation"
         self.is_channeling = False
+        self.channeling_started_at = None
         self.messages = []
         self.total_mana_used = 0
+        self.reset_context_usage()
         self.pending_attachments.clear()
         self.selected_mentions.clear()
         self.background_tasks.clear()
         self.clear_skills()
+        # Drop the cached agent: it is bound to the old tome and would
+        # otherwise resume it on the next send instead of starting fresh.
+        self.reset_agent()
         self.load_tomes()
+
+    def record_context_usage(self, input_tokens: int, output_tokens: int) -> None:
+        """Record the latest provider-reported token usage for the gauge."""
+        self.context_input_tokens = input_tokens
+        self.context_output_tokens = output_tokens
+        self.notify()
+
+    def reset_context_usage(self) -> None:
+        """Clear recorded token usage; the gauge hides until new usage arrives."""
+        self.context_input_tokens = None
+        self.context_output_tokens = None
+
+    def get_verified_context_window(self) -> int | None:
+        """Return the selected model's context window, or None if unverified.
+
+        Only a registry entry with a real context window counts. The registry
+        silently substitutes 4096 when an entry has no ``context_length``
+        (see model_registry.py), so exactly 4096 is treated as "unknown"
+        rather than displayed as fact.
+        """
+        try:
+            reg = get_default_realm_registry()
+            model = reg.model_registry.get(self.selected_model)
+        except Exception:
+            return None
+        if model is None:
+            return None
+        if model.context_window <= 0 or model.context_window == 4096:
+            return None
+        return model.context_window
 
     def load_tomes(self) -> None:
         """Load and index all Tomes for the active project workspace."""
@@ -559,6 +627,11 @@ class AppState:
         self.active_tome_id = meta.id
         self.tome_title = self.tome_service.get_tome_title(meta.id)
         self.is_channeling = False
+        self.channeling_started_at = None
+        self.reset_context_usage()
+        # Drop the cached agent: it is bound to the previous tome and would
+        # otherwise keep running against the wrong session.
+        self.reset_agent()
         self.load_messages_for_tome(meta.id)
         self.load_tomes()
 
@@ -768,6 +841,7 @@ class AppState:
         )
         self.messages.append(assistant_msg)
         self.is_channeling = True
+        self.channeling_started_at = time.monotonic()
         self.mvge_status = "channeling"
         self.notify()
 
@@ -781,6 +855,7 @@ class AppState:
             )
             self.messages.pop()
             self.is_channeling = False
+            self.channeling_started_at = None
             self.notify()
             return
         if loop is not None:
@@ -794,6 +869,7 @@ class AppState:
                         assistant_msg.error_message = str(exc)
                         assistant_msg.is_streaming = False
                         self.is_channeling = False
+                        self.channeling_started_at = None
                         self.notify()
 
             task.add_done_callback(_on_done)
@@ -812,7 +888,14 @@ class AppState:
                 msg.is_streaming = False
 
         self.is_channeling = False
+        self.channeling_started_at = None
         self.notify()
+
+    def elapsed_channeling_seconds(self) -> float | None:
+        """Seconds since channeling started, or None when not channeling."""
+        if not self.is_channeling or self.channeling_started_at is None:
+            return None
+        return max(0.0, time.monotonic() - self.channeling_started_at)
 
     def open_in_editor(self) -> None:
         """Spawn the default editor in the active project directory."""
@@ -827,6 +910,7 @@ class AppState:
         """Fork the active Tome and switch to the new branch."""
         if self.active_tome_id is None:
             return None
+        parent_title = self.tome_service.get_tome_title(self.active_tome_id)
         factory = self.tome_service.factory
         leaf_id = factory.get_leaf_id(self.active_tome_id)
         if leaf_id is None:
@@ -837,6 +921,11 @@ class AppState:
             fork_from_leaf_id=leaf_id,
         )
         self.switch_to_tome(forked.tome_id)
+        # The engine fork copies the message chain up to the leaf, which
+        # drops the parent_id-less TOME_INFO title entry. Re-apply the
+        # parent's title so the branch keeps its name.
+        if self.tome_title != parent_title:
+            self.rename_tome(parent_title)
         return forked.tome_id
 
     def export_tome(self) -> Path | None:
@@ -849,6 +938,31 @@ class AppState:
         dest = self.project_path / f"{self.active_tome_id[:8]}.jsonl"
         shutil.copy2(src, dest)
         return dest
+
+    def rename_tome(self, new_title: str) -> bool:
+        """Rename the active Tome by appending a TOME_INFO title entry.
+
+        get_tome_title() reads entries newest-first, so the latest rename
+        always wins. Returns False when there is no active Tome, the title
+        is blank, or the Tome file cannot be written.
+        """
+        title = new_title.strip()
+        if self.active_tome_id is None or not title:
+            return False
+        entry = TomeEntry(
+            id=uuid.uuid4().hex[:12],
+            parent_id=None,
+            type=TomeEntryType.TOME_INFO,
+            timestamp=time.time(),
+            payload={"title": title},
+        )
+        try:
+            self.tome_service.factory.open_write(self.active_tome_id).append(entry)
+        except (FileNotFoundError, ValueError, RuntimeError):
+            return False
+        self.tome_title = title
+        self.load_tomes()
+        return True
 
     def clear_history(self) -> None:
         """Clear the current conversation history."""
@@ -926,6 +1040,24 @@ class AppState:
         """Toggle right review rail visibility."""
         self.review_open = not self.review_open
         self.notify()
+
+    def set_plan_mode(self, enabled: bool) -> list[str]:
+        """Enable or disable plan mode (read-only spells only).
+
+        Drives the engine agent's plan-mode filter, then mirrors the flag
+        locally. Returns the spell names still active after the toggle so
+        callers can warn when plan mode leaves the agent without tools.
+        """
+        service = self.get_agent_service()
+        agent = service.get_or_create_agent(self)
+        agent.set_plan_mode(enabled)
+        self.plan_mode = enabled
+        self.notify()
+        return list(agent.enabled_spells)
+
+    def toggle_plan_mode(self) -> list[str]:
+        """Flip plan mode. Returns the spell names active after the toggle."""
+        return self.set_plan_mode(not self.plan_mode)
 
     def show_login(self) -> None:
         """Open the login dialog."""

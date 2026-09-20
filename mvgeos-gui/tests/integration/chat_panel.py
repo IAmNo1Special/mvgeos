@@ -24,7 +24,7 @@ from mvgeos_gui.autocomplete import (
     MentionIndex,
     SlashCommandRegistry,
 )
-from mvgeos_gui.components.chat_panel import (
+from mvgeos_gui.components.composer import (
     _select_autocomplete_item,
     handle_tab,
 )

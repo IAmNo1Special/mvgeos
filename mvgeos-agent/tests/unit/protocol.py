@@ -62,6 +62,9 @@ class DummyAgent:
     def set_enabled_spells(self, spell_names: list[str]) -> None:
         pass
 
+    def set_plan_mode(self, enabled: bool) -> None:
+        pass
+
     @property
     def registered_providers(self) -> list[str]:
         return ["openrouter"]

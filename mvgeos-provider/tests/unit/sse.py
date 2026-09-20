@@ -275,6 +275,82 @@ async def test_stream_mana_usage_breakdown() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stream_usage_chunk_after_finish_reason() -> None:
+    """OpenRouter sends the usage chunk AFTER the finish_reason chunk.
+
+    The final response must still carry the mana breakdown instead of
+    dropping the usage that arrives after finish_reason.
+    """
+    lines = [
+        b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n',
+        b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+        (
+            b'data: {"usage":{"prompt_tokens":10,"completion_tokens":4,'
+            b'"total_tokens":14}}\n\n'
+        ),
+        b"data: [DONE]\n\n",
+    ]
+    realm = DummySSERealm(client=_make_client(lines))
+    model = _test_model()
+    config = ChannelConfig(model=model)
+
+    responses = await _collect(realm.stream(model, [], config))
+
+    final = responses[-1]
+    assert final.invocation is not None
+    assert final.invocation.mana_usage == {
+        "input": 10.0,
+        "output": 4.0,
+        "total": 14.0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_stream_requests_usage_in_stream_options() -> None:
+    lines = [
+        b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n',
+        b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+        b"data: [DONE]\n\n",
+    ]
+    sink: dict[str, Any] = {}
+    realm = DummySSERealm(client=_make_client(lines, sink=sink))
+    model = _test_model()
+    config = ChannelConfig(model=model)
+
+    await _collect(realm.stream(model, [], config))
+
+    payload = sink["json"]
+    assert payload["stream"] is True
+    assert payload["stream_options"] == {"include_usage": True}
+
+
+@pytest.mark.asyncio
+async def test_stream_preserves_realm_stream_options() -> None:
+    lines = [
+        b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+        b"data: [DONE]\n\n",
+    ]
+
+    class OptionsRealm(DummySSERealm):
+        def _prepare_request(
+            self,
+            model: Model,
+            invocations: list[Any],
+            config: ChannelConfig,
+        ) -> tuple[str, dict[str, str], dict[str, Any]]:
+            url, headers, payload = super()._prepare_request(model, invocations, config)
+            payload["stream_options"] = {"include_usage": False}
+            return url, headers, payload
+
+    sink: dict[str, Any] = {}
+    realm = OptionsRealm(client=_make_client(lines, sink=sink))
+
+    await _collect(realm.stream(_test_model(), [], ChannelConfig(model=_test_model())))
+
+    assert sink["json"]["stream_options"] == {"include_usage": False}
+
+
+@pytest.mark.asyncio
 async def test_stream_handles_empty_choices_and_done() -> None:
     lines = [
         b'data: {"choices":[]}\n\n',

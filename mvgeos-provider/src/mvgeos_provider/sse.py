@@ -299,6 +299,15 @@ class SSEStreamingRealm(Realm, ABC):
         signal: AbortSignal | None = None,
     ) -> AsyncIterator[RealmResponse]:
         url, headers, payload = self._prepare_request(model, invocations, config)
+        if payload.get("stream"):
+            # Streaming providers only attach token usage when asked.
+            # Unknown fields are ignored by JSON APIs, and setdefault lets a
+            # realm override the default when it manages usage itself.
+            stream_options = payload.get("stream_options")
+            if not isinstance(stream_options, dict):
+                stream_options = {}
+                payload["stream_options"] = stream_options
+            stream_options.setdefault("include_usage", True)
         max_attempts = max(1, config.max_retries)
 
         for attempt in range(max_attempts):
@@ -380,7 +389,8 @@ class SSEStreamingRealm(Realm, ABC):
         contemplation_parts: list[str] = []
         tool_calls_acc: dict[int, dict[str, Any]] = {}
         usage_acc: dict[str, Any] = {}
-        finished: bool = False
+        finish_reason: str | None = None
+        final_yielded: bool = False
         streamed_any = False
 
         async for line in response.aiter_lines():
@@ -483,24 +493,35 @@ class SSEStreamingRealm(Realm, ABC):
                     acc["arguments"] += func["arguments"]
 
             if parsed.finish_reason:
-                finished = True
-                yield self._build_final_response(
-                    model=model,
-                    text_parts=text_parts,
-                    contemplation_parts=contemplation_parts,
-                    tool_calls_acc=tool_calls_acc,
-                    finish_reason=parsed.finish_reason,
-                    usage=parsed.usage or usage_acc,
-                )
-                return
+                finish_reason = parsed.finish_reason
+                if parsed.usage or usage_acc:
+                    yield self._build_final_response(
+                        model=model,
+                        text_parts=text_parts,
+                        contemplation_parts=contemplation_parts,
+                        tool_calls_acc=tool_calls_acc,
+                        finish_reason=finish_reason,
+                        usage=parsed.usage or usage_acc,
+                    )
+                    final_yielded = True
+                    return
+                # Usage not seen yet: providers like OpenRouter send the
+                # usage chunk AFTER the finish_reason chunk, so keep
+                # consuming instead of dropping it.
+                continue
 
-        if not finished and (text_parts or contemplation_parts or tool_calls_acc):
+        if not final_yielded and (
+            finish_reason is not None
+            or text_parts
+            or contemplation_parts
+            or tool_calls_acc
+        ):
             yield self._build_final_response(
                 model=model,
                 text_parts=text_parts,
                 contemplation_parts=contemplation_parts,
                 tool_calls_acc=tool_calls_acc,
-                finish_reason="stop",
+                finish_reason=finish_reason or "stop",
                 usage=usage_acc,
             )
 

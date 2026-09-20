@@ -129,7 +129,7 @@ async def test_review_rail_toggle_interaction(user: User) -> None:
 
     await user.open("/test_review_toggle")
     await user.should_see("Review")
-    await user.should_see("Permission mode")
+    await user.should_not_see("Permission mode")
     await user.should_see("Changed files")
 
     state.toggle_review()

@@ -307,3 +307,85 @@ async def test_chat_panel_toolbar_settings_opens_modal(user: User) -> None:
     assert settings_btn is not None
     settings_btn.click()
     state.open_app_settings.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_empty_chat_renders_single_centered_composer(user: User) -> None:
+    """Empty state hosts the real composer exactly once, inside the hero."""
+    state = AppState()
+    state.messages = []
+
+    @ui.page("/test_empty_centered_composer")
+    def page() -> None:
+        render_chat_panel(state)
+
+    await user.open("/test_empty_centered_composer")
+    await user.should_see("What should Mvge work on?")
+    # Entering the scope asserts exactly one composer exists; nesting it in
+    # the empty-state scope asserts it is centered there, not duplicated.
+    with user.scope(marker="empty-state"), user.scope(marker="composer-curvy"):
+        user.find(marker="prompt_input")
+
+
+@pytest.mark.asyncio
+async def test_chat_with_messages_renders_single_bottom_composer(
+    user: User,
+) -> None:
+    """With messages, exactly one composer exists and the hero is gone."""
+    state = AppState()
+    state.messages.append(InvocationTranscript.for_summoner("Hello Mvge!"))
+
+    @ui.page("/test_messaged_single_composer")
+    def page() -> None:
+        render_chat_panel(state)
+
+    await user.open("/test_messaged_single_composer")
+    await user.should_not_see("What should Mvge work on?")
+    with user.scope(marker="composer-curvy"):
+        user.find(marker="prompt_input")
+
+
+@pytest.mark.asyncio
+async def test_composer_moves_on_first_message_without_duplicating(
+    user: User,
+) -> None:
+    """Empty -> message transition keeps exactly one functional composer."""
+    state = AppState()
+    state.messages = []
+
+    @ui.page("/test_composer_transition")
+    def page() -> None:
+        render_chat_panel(state)
+
+    await user.open("/test_composer_transition")
+    with user.scope(marker="empty-state"), user.scope(marker="composer-curvy"):
+        user.find(marker="prompt_input")
+    state.messages.append(InvocationTranscript.for_summoner("Hello Mvge!"))
+    state.notify()
+    await user.should_not_see("What should Mvge work on?")
+    with user.scope(marker="composer-curvy"):
+        user.find(marker="prompt_input")
+
+
+@pytest.mark.asyncio
+async def test_composer_draft_survives_new_conversation(user: User) -> None:
+    """Unsent text is restored when the composer moves to the empty state."""
+    state = AppState()
+    state.messages.append(InvocationTranscript.for_summoner("Hello Mvge!"))
+
+    @ui.page("/test_composer_draft")
+    def page() -> None:
+        render_chat_panel(state)
+
+    await user.open("/test_composer_draft")
+    with user.scope(marker="composer-curvy"):
+        user.find(marker="prompt_input")
+    # Simulate what handle_input_change does on every keystroke.
+    state.composer_draft = "unsent draft"
+    state.new_conversation()
+    state.notify()
+    await user.should_see("What should Mvge work on?")
+    with user.scope(marker="empty-state"), user.scope(marker="composer-curvy"):
+        restored = user.find(marker="prompt_input")
+        assert restored.elements
+        assert (next(iter(restored.elements)).value or "") == "unsent draft"
