@@ -13,7 +13,6 @@ import asyncio
 import io
 from typing import Any
 
-import pytest
 from mvgeos_core.approval import (
     ApprovalOutcome,
     ApprovalReasonCode,

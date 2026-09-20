@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,6 +13,14 @@ from mvgeos_cli.agent_factory import create_agent
 from mvgeos_cli.main import _run_agent, app
 
 runner = CliRunner()
+
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences (typer styles option names with embedded
+    color codes, which breaks plain substring checks on colored output)."""
+    return _ANSI_ESCAPE_RE.sub("", text)
 
 
 def test_main_is_callable() -> None:
@@ -288,7 +297,7 @@ async def test_bug4_single_registry_and_rune_providers(tmp_path: Path) -> None:
 def test_app_help_lists_approval_mode() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "--approval-mode" in result.output
+    assert "--approval-mode" in _strip_ansi(result.output)
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
