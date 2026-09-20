@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5] - 2026-09-20
+
+
+### Bug Fixes
+
+- **gui:** bind main module at test collection, not inside tests (71c2f5a)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (a3c7af0)
+
+- **release:** v0.5.5 (202234f)
+
+
 ## [0.5.4] - 2026-09-19
 
 
