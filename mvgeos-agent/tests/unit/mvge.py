@@ -456,6 +456,13 @@ class TestMvgePropertiesAndMethods:
         assert agent.model_id is not None
         assert agent.contemplation_level is not None
 
+    def test_runner_property_exposes_engine_owned_runner(self) -> None:
+        agent = Mvge(api_key="test-key", spells=[])
+        assert agent.runner is None
+        runner = RuneRunner()
+        agent.set_runner(runner)
+        assert agent.runner is runner
+
     def test_set_enabled_spells(self) -> None:
         agent = Mvge(api_key="test-key", spells=[dummy_built_in])
         assert "dummy_built_in" in agent.available_spells

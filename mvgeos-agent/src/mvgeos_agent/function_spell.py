@@ -255,7 +255,9 @@ class PEP723ScriptSpell(MvgeSpell):
 class RuneSpellWrapper(MvgeSpell):
     """Adapter converting a Rune SpellDefinition into an executable MvgeSpell."""
 
-    def __init__(self, spell_def: SpellDefinition) -> None:
+    def __init__(
+        self, spell_def: SpellDefinition, *, runner_origin: bool = True
+    ) -> None:
         super().__init__(
             name=spell_def.name,
             description=spell_def.description,
@@ -266,6 +268,16 @@ class RuneSpellWrapper(MvgeSpell):
             read_only=getattr(spell_def, "read_only", False),
         )
         self._spell_def = spell_def
+        # Engine-owned provenance mark: this wrapper was built by the engine
+        # around a rune-registered spell. The approval policy trusts only
+        # this mark (never the rune-chosen source_rune) when deciding
+        # read-only auto-allow. Defaults to True (fail closed).
+        self._runner_origin = runner_origin
+
+    @property
+    def runner_origin(self) -> bool:
+        """Whether the engine wrapped this spell from a rune registration."""
+        return self._runner_origin
 
     @property
     def source_rune(self) -> str | None:
@@ -370,7 +382,7 @@ def coerce_spell(
     if isinstance(spell, MvgeSpell):
         return spell
     if isinstance(spell, SpellDefinition):
-        return RuneSpellWrapper(spell)
+        return RuneSpellWrapper(spell, runner_origin=True)
     if callable(spell):
         return FunctionSpell(func=spell, read_only=getattr(spell, "read_only", False))
     raise TypeError(

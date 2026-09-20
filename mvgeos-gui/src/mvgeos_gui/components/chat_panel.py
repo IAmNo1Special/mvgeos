@@ -7,6 +7,7 @@ from typing import Any
 
 from nicegui import ui
 
+from mvgeos_gui.components.approval_dialog import render_approval_badge
 from mvgeos_gui.components.composer import (
     _scroll_to_bottom,
     fill_composer,
@@ -131,6 +132,9 @@ def render_chat_panel(state: AppState) -> ui.column:
                 toolbar_view.refresh()
 
         state.subscribe_view("chat_panel_toolbar", _on_toolbar_check)
+
+        # Persistent session approve-all indicator (Approval Rune).
+        render_approval_badge(state)
 
         # Body: messages + side panel
         with ui.row().classes("flex-1 w-full overflow-hidden"):

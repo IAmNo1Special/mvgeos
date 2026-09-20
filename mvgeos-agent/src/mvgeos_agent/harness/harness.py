@@ -5,6 +5,7 @@ from collections.abc import Callable
 from typing import Any
 
 from mvgeos_core.abort import AbortSignal
+from mvgeos_core.approval import ApprovalDecision, ApprovalRequest
 from mvgeos_core.channel import Model, MvgeResponse
 from mvgeos_core.events import (
     ContemplationLevel,
@@ -191,7 +192,7 @@ class MvgeHarness:
         active = set(runner.get_active_spells())
         for rune_spell in runner.get_all_registered_spells():
             if rune_spell.name not in known and rune_spell.name in active:
-                spells.append(RuneSpellWrapper(rune_spell))
+                spells.append(RuneSpellWrapper(rune_spell, runner_origin=True))
         return spells
 
     async def _drain_steer_queue(self) -> list[MvgeInvocation]:
@@ -211,6 +212,18 @@ class MvgeHarness:
         queued: list[MvgeInvocation] = list(self._state.followup_queue)
         self._state.followup_queue.clear()
         return queued
+
+    def _rune_context_value(self, field_name: str) -> str:
+        """Read a string field from the bound runner's RuneContext.
+
+        Returns "" when no runner is bound, keeping the loop core runnable
+        without the rune system.
+        """
+        runner = self._state.rune_runner
+        if runner is None:
+            return ""
+        value = getattr(runner.context, field_name, "")
+        return value if isinstance(value, str) else ""
 
     def _build_callbacks(self, signal: AbortSignal | None = None) -> LoopCallbacks:
         runner = self._state.rune_runner
@@ -337,11 +350,15 @@ class MvgeHarness:
                 current = await self._callbacks.prepare_next_turn(current)
             return current
 
+        async def approval_gate(request: ApprovalRequest) -> ApprovalDecision:
+            return await runner.evaluate_spell_gates(request)
+
         return LoopCallbacks(
             transform_context=transform_context,
             before_realm_headers=before_realm_headers,
             before_spell_cast=before_spell_cast,
             after_spell_result=after_spell_result,
+            approval_gate=approval_gate,
             get_steering_messages=(
                 self._callbacks.get_steering_messages
                 if self._callbacks and self._callbacks.get_steering_messages
@@ -476,6 +493,9 @@ class MvgeHarness:
             exclude_contemplation=self._state.exclude_contemplation,
             max_turns=self._state.max_turns,
             queue_mode=self._state.queue_mode,
+            project_root=self._rune_context_value("project_root"),
+            tome_id=self._rune_context_value("session_id"),
+            agent_name=self._rune_context_value("agent_name"),
         )
 
         try:

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from mvgeos_core.abort import AbortError, AbortSignal
+from mvgeos_core.approval import ApprovalDecision, ApprovalRequest
 from mvgeos_core.channel import MvgeResponse, RealmResponse, StopReason
 from mvgeos_core.dispatcher import SpellDispatcher
 from mvgeos_core.errors import (
@@ -51,6 +52,9 @@ class LoopContext:
     exclude_contemplation: bool = False
     max_turns: int = 50
     queue_mode: QueueMode = QueueMode.ONE_AT_A_TIME
+    project_root: str = ""
+    tome_id: str = ""
+    agent_name: str = ""
     _spell_index: dict[str, MvgeSpell] = field(
         default_factory=dict, init=False, repr=False, compare=False
     )
@@ -85,6 +89,9 @@ class LoopCallbacks:
     before_spell_cast: (
         Callable[[dict[str, Any]], Awaitable[dict[str, Any] | None]] | None
     ) = None
+    approval_gate: Callable[[ApprovalRequest], Awaitable[ApprovalDecision]] | None = (
+        None
+    )
     after_spell_result: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]] | None = (
         None
     )

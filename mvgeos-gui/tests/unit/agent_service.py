@@ -114,6 +114,27 @@ def test_get_or_create_agent_with_factory(app_state: AppState) -> None:
     assert factory.call_count == 1
 
 
+def test_get_or_create_agent_binds_approval_presenter(
+    app_state: AppState,
+) -> None:
+    """Agent creation binds the Approval Rune GUI presenter to the runner."""
+    mock_agent = MagicMock()
+    service = AgentService(
+        project_path=app_state.project_path,
+        api_key="test-api-key",
+        agent_factory=MagicMock(return_value=mock_agent),
+    )
+
+    service.get_or_create_agent(app_state)
+
+    presenter = app_state._approval_presenter
+    assert presenter is not None
+    mock_agent._runner.set_approval_presenter.assert_called_once_with(presenter)
+    # A cached agent is not rebound: rebinding would fail pending casts.
+    service.get_or_create_agent(app_state)
+    assert mock_agent._runner.set_approval_presenter.call_count == 1
+
+
 @patch("mvgeos_gui.services.agent_service.MvgeEnvironment")
 @patch("mvgeos_gui.services.agent_service.Mvge")
 def test_get_or_create_agent_default(

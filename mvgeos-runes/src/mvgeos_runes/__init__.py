@@ -5,6 +5,7 @@ from mvgeos_runes.installer import (
     fetch_marketplace_runes,
     install_rune,
     list_installed_runes,
+    read_or_create_install_id,
     set_rune_enabled,
     uninstall_rune,
 )
@@ -69,6 +70,7 @@ __all__ = [
     "list_installed_runes",
     "load_factory_from_manifest",
     "load_manifest",
+    "read_or_create_install_id",
     "load_manifests",
     "load_runes_from_paths",
     "set_rune_enabled",

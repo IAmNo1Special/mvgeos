@@ -12,6 +12,7 @@ from typing import cast
 
 from packaging.requirements import InvalidRequirement, Requirement
 
+from mvgeos_runes.installer import read_or_create_install_id
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_api import RuneFactory
 from mvgeos_runes.types import (
@@ -162,6 +163,11 @@ def load_factory_from_manifest(
 ) -> RuneFactory | None:
     if not manifest.entry_point:
         return None
+
+    # The install id is installer-owned: if the rune was not installed
+    # through the installer (or the file was lost), the host generates one
+    # at load so policy binding always has an id to stamp.
+    read_or_create_install_id(rune_dir)
 
     # Check for non-Python runtime (e.g., TypeScript/JavaScript extensions for Pi)
     if getattr(manifest, "runtime", "").lower() in (

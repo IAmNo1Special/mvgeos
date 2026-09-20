@@ -980,3 +980,59 @@ class TestRealmFactoryRegistration:
         factories = runner.get_registered_realm_factories()
         assert "p1" not in factories
         assert "p2" in factories
+
+
+class TestRuneRunnerInstances:
+    @pytest.mark.asyncio
+    async def test_get_rune_returns_none_when_absent(self) -> None:
+        runner = RuneRunner()
+        assert runner.get_rune("no-such-rune") is None
+
+    @pytest.mark.asyncio
+    async def test_get_rune_returns_factory_instance(self) -> None:
+        runner = RuneRunner()
+        instance = object()
+
+        def factory(api: Any) -> Any:
+            return instance
+
+        manifest = RuneManifest(name="my-rune", version="1.0.0", description="Test")
+        await runner.load_rune_loads([RuneLoad(manifest=manifest, factory=factory)])
+        assert runner.get_rune("my-rune") is instance
+
+    @pytest.mark.asyncio
+    async def test_get_rune_returns_none_when_factory_returns_none(self) -> None:
+        runner = RuneRunner()
+
+        def factory(api: Any) -> None:
+            return None
+
+        manifest = RuneManifest(name="quiet-rune", version="1.0.0", description="Test")
+        await runner.load_rune_loads([RuneLoad(manifest=manifest, factory=factory)])
+        assert runner.get_rune("quiet-rune") is None
+
+    @pytest.mark.asyncio
+    async def test_get_rune_returns_async_factory_instance(self) -> None:
+        runner = RuneRunner()
+        instance = object()
+
+        async def factory(api: Any) -> Any:
+            return instance
+
+        manifest = RuneManifest(name="async-rune", version="1.0.0", description="Test")
+        await runner.load_rune_loads([RuneLoad(manifest=manifest, factory=factory)])
+        assert runner.get_rune("async-rune") is instance
+
+    @pytest.mark.asyncio
+    async def test_clear_rune_drops_instance(self) -> None:
+        runner = RuneRunner()
+        instance = object()
+
+        def factory(api: Any) -> Any:
+            return instance
+
+        manifest = RuneManifest(name="hot-rune", version="1.0.0", description="Test")
+        await runner.load_rune_loads([RuneLoad(manifest=manifest, factory=factory)])
+        assert runner.get_rune("hot-rune") is instance
+        runner.clear_rune("hot-rune")
+        assert runner.get_rune("hot-rune") is None

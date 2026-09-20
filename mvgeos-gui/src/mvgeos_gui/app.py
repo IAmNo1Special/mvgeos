@@ -35,6 +35,24 @@ def build_page(state: AppState | None = None) -> None:
     # other input.
     register_global_keyboard(current_state)
 
+    # Web mode: a disconnect/refresh must fail closed — pending approval
+    # casts are denied because their decision surface is gone. The
+    # presenter is resolved lazily: binding happens when the agent is
+    # created, which may be after this page is constructed. NiceGUI may
+    # also fire this on reconnect, where denial is still the safe answer.
+    def _on_client_disconnect() -> None:
+        presenter = current_state._approval_presenter
+        if presenter is not None:
+            presenter.on_client_disconnect()
+
+    ui.context.client.on_disconnect(_on_client_disconnect)
+    # Global chords (Ctrl/Cmd+Shift+P palette, Esc priority chain). The head
+    # script above only preventDefaults the browser's own handling of the
+    # chord; this bridge is what actually responds to it. Registered with
+    # ignore=[] so the chords work while typing in the composer or any
+    # other input.
+    register_global_keyboard(current_state)
+
 
 def init_app(state: AppState | None = None) -> AppState:
     """Initialize application routes and return the AppState instance."""

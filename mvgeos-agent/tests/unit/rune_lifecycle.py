@@ -120,6 +120,7 @@ class TestLoad:
         assert lifecycle.runner is runner
         assert runner.context == RuneContext(
             cwd="/proj",
+            project_root=str(Path("/proj").resolve()),
             mode="cli",
             agent_name="tester",
             api_key="secret",

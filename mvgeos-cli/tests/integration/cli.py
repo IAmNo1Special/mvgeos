@@ -283,3 +283,30 @@ async def test_bug4_single_registry_and_rune_providers(tmp_path: Path) -> None:
             assert agent.harness.state.rune_runner is not None
         finally:
             await agent.close()
+
+
+def test_app_help_lists_approval_mode() -> None:
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "--approval-mode" in result.output
+
+
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
+@patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
+def test_repl_callback_passes_approval_mode(mock_run_agent: AsyncMock) -> None:
+    mock_run_agent.return_value = 0
+    result = runner.invoke(app, ["--approval-mode", "allow-all"])
+    assert result.exit_code == 0
+    mock_run_agent.assert_called_once()
+    call_kwargs = mock_run_agent.call_args[1]
+    assert call_kwargs["approval_mode"] == "allow-all"
+
+
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
+@patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
+def test_repl_callback_rejects_bad_approval_mode(
+    mock_run_agent: AsyncMock,
+) -> None:
+    result = runner.invoke(app, ["--approval-mode", "sometimes"])
+    assert result.exit_code != 0
+    mock_run_agent.assert_not_called()

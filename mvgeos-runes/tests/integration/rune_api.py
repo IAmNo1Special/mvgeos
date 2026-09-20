@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from mvgeos_runes.installer import read_or_create_install_id
 from mvgeos_runes.rune_api import RuneAPI
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
@@ -338,3 +339,61 @@ class TestRuneAPIWidenGlobalAllowlist:
         the model's view to just its own spells."""
         api.widen_global_allowlist(["weather_lookup"])
         assert runner.get_global_spell_allowlist() is None
+
+
+class TestRuneAPIInstallId:
+    @pytest.mark.asyncio
+    async def test_factory_api_carries_rune_install_id(
+        self, runner: RuneRunner, tmp_path: Path
+    ) -> None:
+        rune_dir = tmp_path / "my-rune"
+        rune_dir.mkdir()
+        expected = read_or_create_install_id(rune_dir)
+        seen: list[str | None] = []
+
+        def factory(api: RuneAPI) -> None:
+            seen.append(api.install_id)
+
+        manifest = RuneManifest(
+            name="my-rune",
+            version="0.1.0",
+            description="test rune",
+            path=str(rune_dir),
+        )
+        await runner.load_rune_loads([RuneLoad(manifest=manifest, factory=factory)])
+        assert seen == [expected]
+
+    def test_api_without_loaded_rune_has_no_install_id(
+        self, runner: RuneRunner
+    ) -> None:
+        assert runner.create_api(rune_name="unknown").install_id is None
+
+    @pytest.mark.asyncio
+    async def test_factory_api_mints_install_id_when_missing(
+        self, runner: RuneRunner, tmp_path: Path
+    ) -> None:
+        """Test factory api mints install id when missing.
+
+        The host mints the installer-owned id at load when the installer
+        never did (or the file was lost), so policy binding always has an
+        id to stamp; a fresh mint invalidates prior grants via mismatch,
+        which is the fail-closed direction.
+        """
+        rune_dir = tmp_path / "my-rune"
+        rune_dir.mkdir()
+        seen: list[str | None] = []
+
+        def factory(api: RuneAPI) -> None:
+            seen.append(api.install_id)
+
+        manifest = RuneManifest(
+            name="my-rune",
+            version="0.1.0",
+            description="test rune",
+            path=str(rune_dir),
+        )
+        await runner.load_rune_loads([RuneLoad(manifest=manifest, factory=factory)])
+        assert len(seen) == 1
+        minted = seen[0]
+        assert minted
+        assert (rune_dir / ".install-id").read_text(encoding="utf-8").strip() == minted

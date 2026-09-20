@@ -2,12 +2,25 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import logging
 import traceback
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
+from mvgeos_core.approval import (
+    ApprovalDecision,
+    ApprovalOutcome,
+    ApprovalPresenter,
+    ApprovalReasonCode,
+    ApprovalRequest,
+    SpellGateHandler,
+    allow,
+    deny,
+)
+
+from mvgeos_runes.installer import read_or_create_install_id
 from mvgeos_runes.rune_api import RuneAPI
 from mvgeos_runes.types import (
     Diagnostic,
@@ -132,6 +145,26 @@ class RuneRunner:
         self._gateway_rune_name: str | None = None
         self._registered_skill_paths: list[Path] = []
         self._active_skills: set[str] = set()
+        # Host-privileged accessor registry: a rune factory may return its
+        # public rune instance object; the runner records non-None results
+        # here, keyed by manifest name, so the host can reach a loaded rune
+        # (e.g. the Approval Rune's permissions surface) through
+        # ``get_rune``. This registry lives on the engine-owned runner and
+        # is never exposed through RuneAPI.
+        self._rune_instances: dict[str, Any] = {}
+        # Security-critical spell gates, registered separately from ordinary
+        # sigils via RuneAPI.register_spell_gate. Each entry is
+        # (handler, rune_name); all must allow for a cast to proceed.
+        self._spell_gates: list[tuple[SpellGateHandler, str | None]] = []
+        # Host-bound approval presenter slot. Owned by the engine and set only
+        # by the host (never through RuneAPI); None means headless.
+        self._approval_presenter: ApprovalPresenter | None = None
+        # Presenter generation: bumped every time the slot changes. A pending
+        # request is honored only by the exact binding it started under; any
+        # rebind or unbind fails it as denied so hot reload and host
+        # shutdown can never orphan a pending approval future.
+        self._presenter_generation: int = 0
+        self._pending_approvals: set[asyncio.Future[None]] = set()
 
     @property
     def context(self) -> RuneContext:
@@ -151,6 +184,18 @@ class RuneRunner:
     def loaded_manifests(self) -> list[RuneManifest]:
         return list(self._loaded_manifests)
 
+    def get_rune(self, name: str) -> Any | None:
+        """Return a loaded rune's public instance object, if any.
+
+        Host-privileged: the engine-owned runner records the object a
+        rune's factory returned (keyed by manifest name) so the host can
+        reach live rune state — e.g. the Approval Rune's permissions
+        surface — without runes exposing each other. Never exposed
+        through RuneAPI. Returns None when no loaded rune by that name
+        returned an instance.
+        """
+        return self._rune_instances.get(name)
+
     @property
     def diagnostics(self) -> list[Diagnostic]:
         return list(self._diagnostics)
@@ -164,7 +209,12 @@ class RuneRunner:
         self._skill_diagnostics.extend(diagnostics)
 
     def bind_context(self, context: RuneContext) -> None:
-        self._context = context
+        # has_ui is derived from the host-bound presenter slot, never from
+        # the incoming context: a rebind must neither drop a live binding
+        # nor fabricate UI capability when no presenter is bound.
+        self._context = dataclasses.replace(
+            context, has_ui=self._approval_presenter is not None
+        )
 
     def register_handler(
         self, hook: SigilHook, handler: Any, rune_name: str | None = None
@@ -211,7 +261,150 @@ class RuneRunner:
                         if h in self._sigil_handlers[hook]:
                             self._sigil_handlers[hook].remove(h)
             del self._rune_handlers[rune_name]
+        self._spell_gates = [
+            (handler, owner)
+            for handler, owner in self._spell_gates
+            if owner != rune_name
+        ]
+        self._rune_instances.pop(rune_name, None)
         self._spell_version += 1
+
+    def register_spell_gate(
+        self, handler: SpellGateHandler, rune_name: str | None = None
+    ) -> None:
+        """Register a security-critical spell gate.
+
+        Gates are evaluated separately from ordinary sigils with AND
+        semantics: any denial, exception, cancellation, or malformed response
+        denies the cast. Unlike ``BEFORE_SPELL_CAST`` (fail-open), this path
+        is fail-closed.
+        """
+        if rune_name is None:
+            rune_name = self._current_loading_rune
+        self._spell_gates.append((handler, rune_name))
+
+    async def evaluate_spell_gates(self, request: ApprovalRequest) -> ApprovalDecision:
+        """Evaluate every registered gate for one cast (AND semantics).
+
+        Returns allow only when every gate allows with a fresh, well-formed
+        decision bound to this request. With no gates registered the cast is
+        allowed: the engine alone does not fail closed.
+        """
+        if not self._spell_gates:
+            return allow(request)
+        for handler, _rune_name in self._spell_gates:
+            try:
+                result = handler(request)
+                if isinstance(result, Awaitable):
+                    result = await result
+            except asyncio.CancelledError:
+                return deny(request, ApprovalReasonCode.FAILURE)
+            except Exception:
+                logger.exception("Spell gate handler raised; denying cast")
+                return deny(request, ApprovalReasonCode.FAILURE)
+            if (
+                not isinstance(result, ApprovalDecision)
+                or result.request_digest != request.argument_digest
+            ):
+                return deny(request, ApprovalReasonCode.FAILURE)
+            if result.outcome is ApprovalOutcome.DENY:
+                return result
+        return allow(request)
+
+    def set_approval_presenter(self, presenter: ApprovalPresenter) -> None:
+        """Bind the host-owned approval presenter (host-privileged).
+
+        Never exposed through RuneAPI: if any rune could write this slot it
+        could install an auto-approver. Binding marks the rune context as
+        UI-capable (``RuneContext.has_ui``). Rebinding fails every request
+        that is still waiting on the previous presenter as denied.
+        """
+        self._approval_presenter = presenter
+        self._context = dataclasses.replace(self._context, has_ui=True)
+        self._invalidate_pending_approvals()
+
+    def clear_approval_presenter(self) -> None:
+        """Unbind the presenter; pending requests resolve as denied."""
+        self._approval_presenter = None
+        self._context = dataclasses.replace(self._context, has_ui=False)
+        self._invalidate_pending_approvals()
+
+    def _invalidate_pending_approvals(self) -> None:
+        """Fail every in-flight approval request as denied.
+
+        The presenter slot changed (bind, rebind, or unbind): a request may
+        only be authorized by the exact binding it started under.
+        """
+        self._presenter_generation += 1
+        pending = list(self._pending_approvals)
+        self._pending_approvals.clear()
+        for future in pending:
+            if not future.done():
+                future.set_result(None)
+
+    async def request_approval(self, request: ApprovalRequest) -> ApprovalDecision:
+        """Await the host-bound presenter for one approval request.
+
+        The rune never imports UI code; it goes through this engine-owned
+        slot. With no presenter bound (headless/CI) the request is denied.
+        If the host rebinds or unbinds the presenter while a request is
+        pending, the request resolves as denied immediately instead of
+        waiting on the orphaned presenter.
+        """
+        presenter = self._approval_presenter
+        if presenter is None:
+            return deny(request, ApprovalReasonCode.FAILURE)
+        generation = self._presenter_generation
+        invalidated = asyncio.get_running_loop().create_future()
+        self._pending_approvals.add(invalidated)
+        task = asyncio.ensure_future(presenter(request))
+        try:
+            try:
+                done, _ = await asyncio.wait(
+                    {task, invalidated}, return_when=asyncio.FIRST_COMPLETED
+                )
+            except asyncio.CancelledError:
+                task.cancel()
+                return deny(request, ApprovalReasonCode.FAILURE)
+            if invalidated in done:
+                # The slot changed mid-flight: the orphaned presenter task
+                # cannot authorize this request.
+                if not task.done():
+                    task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
+                        await task
+                return deny(request, ApprovalReasonCode.FAILURE)
+            if (
+                self._presenter_generation != generation
+                or self._approval_presenter is not presenter
+            ):
+                return deny(request, ApprovalReasonCode.FAILURE)
+            try:
+                decision = task.result()
+            except asyncio.CancelledError:
+                return deny(request, ApprovalReasonCode.FAILURE)
+            except Exception:
+                logger.exception("Approval presenter raised; denying request")
+                return deny(request, ApprovalReasonCode.FAILURE)
+            if (
+                not isinstance(decision, ApprovalDecision)
+                or decision.request_digest != request.argument_digest
+            ):
+                return deny(request, ApprovalReasonCode.FAILURE)
+            if decision.outcome is ApprovalOutcome.ALLOW and (
+                self._context.session_id != request.tome_id
+                or self._context.project_root != request.project_root
+            ):
+                # The active Tome or project changed while the prompt was
+                # open: a late decision bound to the old context must not
+                # authorize the new one.
+                logger.warning(
+                    "Approval context changed mid-prompt; denying stale decision"
+                )
+                return deny(request, ApprovalReasonCode.FAILURE)
+            return decision
+        finally:
+            self._pending_approvals.discard(invalidated)
 
     def get_sigil_handlers(self, hook: SigilHook) -> list[Handler]:
         return list(self._sigil_handlers.get(hook, []))
@@ -430,7 +623,29 @@ class RuneRunner:
     ) -> RuneAPI:
         if rune_name is None:
             rune_name = self._current_loading_rune
-        return RuneAPI(self, rune_name, override=override)
+        return RuneAPI(
+            self,
+            rune_name,
+            override=override,
+            install_id=self._install_id_for_rune(rune_name),
+        )
+
+    def _install_id_for_rune(self, rune_name: str | None) -> str | None:
+        """Installer-owned id for a loaded rune's directory.
+
+        Resolved from the loaded manifest's directory via the installer's
+        read-or-create: the host mints the id at load when the installer
+        never did (or the file was lost), so policy binding always has an
+        id to stamp — a fresh mint simply invalidates prior grants via
+        mismatch, which is the fail-closed direction. ``None`` only when
+        the rune was not loaded through the manifest path at all.
+        """
+        if rune_name is None:
+            return None
+        for manifest in self._loaded_manifests:
+            if manifest.name == rune_name and manifest.path:
+                return read_or_create_install_id(Path(manifest.path))
+        return None
 
     async def load_rune_loads(
         self,
@@ -451,7 +666,9 @@ class RuneRunner:
                 api = self.create_api()
                 result = load.factory(api)
                 if isinstance(result, Awaitable):
-                    await result
+                    result = await result
+                if result is not None:
+                    self._rune_instances[load.manifest.name] = result
                 self._current_loading_rune = None
         self._designate_spell_gateway()
 

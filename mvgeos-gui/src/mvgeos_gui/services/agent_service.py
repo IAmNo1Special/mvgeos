@@ -36,6 +36,7 @@ from mvgeos_core.events import (
 from mvgeos_provider import NoRealmRegisteredError
 from mvgeos_provider.model_registry import ModelRegistry
 
+from mvgeos_gui.approval.presenter import bind_approval_presenter
 from mvgeos_gui.context_usage import extract_token_usage
 from mvgeos_gui.models import (
     Artifact,
@@ -184,6 +185,11 @@ class AgentService:
         # When the agent is created, seed active_skills from the runner's
         # loaded skill manifests so the inspector reflects available skills.
         self.populate_skills(self._agent, state)
+        # Bind the Approval Rune GUI presenter to the engine runner's
+        # presenter slot so spell casts can prompt the summoner. The
+        # state's presenter is reused, so recreation after reset_agent()
+        # rebinds cleanly; a missing engine slot fails closed (deny).
+        bind_approval_presenter(state, self._agent)
         return self._agent
 
     def reset_agent(self) -> None:

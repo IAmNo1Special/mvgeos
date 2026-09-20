@@ -11,6 +11,7 @@ from mvgeos_core.events import (
 )
 from mvgeos_core.invocations import MvgeInvocation
 from mvgeos_provider.model_registry import ModelRegistry
+from mvgeos_runes.rune_runner import RuneRunner
 
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.snapshot import RuntimeSnapshot
@@ -75,6 +76,15 @@ class MvgeAgent(Protocol):
     @property
     def available_spells(self) -> list[str]:
         """List of all available spell names (builtin + rune-registered)."""
+        ...
+
+    @property
+    def runner(self) -> RuneRunner | None:
+        """The engine-owned rune runner, once runes have loaded.
+
+        Read-only host access so the host can bind host-privileged slots
+        (e.g. the approval presenter) on the engine-owned runner object.
+        """
         ...
 
     def set_enabled_spells(self, spell_names: Sequence[str]) -> None:

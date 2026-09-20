@@ -2,6 +2,7 @@
 
 from nicegui import ui
 
+from mvgeos_gui.components.approval_dialog import mount_approval_overlay
 from mvgeos_gui.components.artifact_drawer import render_artifact_drawer
 from mvgeos_gui.components.chat_panel import render_chat_panel
 from mvgeos_gui.components.command_palette import (
@@ -231,3 +232,6 @@ def render_shell(state: AppState) -> None:
             overlay_dialogs.refresh()
 
     state.subscribe(_on_overlay_check)
+
+    # Approval Rune overlay: one modal per cast, mounted once per page.
+    mount_approval_overlay(state)

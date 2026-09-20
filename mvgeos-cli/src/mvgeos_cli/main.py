@@ -23,6 +23,14 @@ from typer._click.parser import _split_opt
 from typer.core import TyperGroup
 
 from mvgeos_cli.agent_factory import create_agent, validate_api_key
+from mvgeos_cli.approval_binding import (
+    NO_SLOT_WARNING,
+    approval_mode_notice,
+    approval_presenter_bound,
+    resolve_approval_mode,
+)
+from mvgeos_cli.approval_presenter import CliApprovalPresenter
+from mvgeos_cli.approval_types import ApprovalMode
 from mvgeos_cli.commands.build import build_app
 from mvgeos_cli.commands.config import config_app
 from mvgeos_cli.commands.info import info_app
@@ -85,8 +93,10 @@ async def _run_agent(
     agent_name: str = DEFAULT_AGENT_NAME,
     prompts: list[str] | None = None,
     agent_factory: AgentFactory | None = None,
+    approval_mode: str | None = None,
 ) -> int:
     prompts_out = ([incantation] if incantation else []) + (prompts or [])
+    mode: ApprovalMode = resolve_approval_mode(approval_mode)
 
     overrides: dict[str, Any] = {}
     if model_id is not None:
@@ -165,6 +175,17 @@ async def _run_agent(
             if not provider_name:
                 provider_name = getattr(active_realm, "realm_name", None)
 
+        if approval_mode is not None:
+            notice = approval_mode_notice(mode)
+            if notice is not None:
+                style = "yellow" if mode == "allow-all" else "dim"
+                console.print(f"[{style}]{notice}[/{style}]")
+        if tui and not prompts_out:
+            console.print(
+                "[dim]Note: approval prompts are unavailable in TUI mode; "
+                "gated spell casts will be denied. Use the REPL for "
+                "interactive approval.[/dim]"
+            )
         if not prompts_out:
             if tui:
                 await run_tui(
@@ -196,6 +217,7 @@ async def _run_agent(
                 tome_dir=tome_dir,
                 agent_name=agent_name,
                 agent_factory=agent_factory,
+                approval_mode=approval_mode,
             )
             return 0
 
@@ -214,7 +236,15 @@ async def _run_agent(
             agent_name=agent_name,
             agent_factory=agent_factory,
         )
-        return await _run_print_mode(agent, prompts_out)
+        presenter = CliApprovalPresenter(mode=mode)
+        # getattr: a custom agent_factory may return an agent without the
+        # engine runner accessor; that is a missing slot (warn, fail
+        # closed), not a crash.
+        runner = getattr(agent, "runner", None)
+        with approval_presenter_bound(runner, presenter) as bound:
+            if not bound:
+                console.print(f"[yellow]{NO_SLOT_WARNING}[/yellow]")
+            return await _run_print_mode(agent, prompts_out)
     except NoRealmRegisteredError as exc:
         is_interactive = not prompts_out and not tui
         if is_interactive:
@@ -253,6 +283,7 @@ async def _run_agent(
                         agent_name=agent_name,
                         prompts=prompts,
                         agent_factory=agent_factory,
+                        approval_mode=approval_mode,
                     )
                 except Exception as install_exc:
                     console.print(format_error(install_exc))
@@ -379,10 +410,25 @@ def _repl_callback(
         "--agent-name",
         help="Agent name for agent-specific rune directory",
     ),
+    approval_mode: str | None = typer.Option(
+        None,
+        "--approval-mode",
+        help=(
+            "One-run approval behavior for gated spell casts: "
+            "deny, prompt, or allow-all. Never persisted; "
+            "environment variables never grant approval."
+        ),
+    ),
 ) -> None:
     """Launch the MvgeOS interactive REPL, or run a single prompt."""
     if ctx.invoked_subcommand is not None:
         return
+
+    if approval_mode is not None:
+        try:
+            resolve_approval_mode(approval_mode)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
 
     if api_key is None and model and model.startswith("google/"):
         api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
@@ -432,6 +478,7 @@ def _repl_callback(
             tui=tui,
             agent_name=agent_name,
             prompts=prompts,
+            approval_mode=approval_mode,
         )
     )
     if code:

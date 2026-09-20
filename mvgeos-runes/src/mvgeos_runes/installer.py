@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
 import shutil
 import subprocess
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +23,87 @@ DEFAULT_MARKETPLACE_URL = (
 # (path separators, "..", URL-encoded tricks) is rejected before it can reach
 # the filesystem.
 _INSTALL_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+# Name of the installer-owned install-id file written into every rune dir.
+INSTALL_ID_FILENAME = ".install-id"
+
+# Manifest name of the approval rune: uninstalling it purges its policy file.
+APPROVAL_RUNE_NAME = "approval-rune"
+
+
+def _approval_dir() -> Path:
+    """User-owned approval data directory (``~/.agents/approval``).
+
+    Separate from the rune's installed code directory on purpose: updates
+    replace the code dir but never touch grants or history here.
+    """
+    return Path("~/.agents/approval").expanduser()
+
+
+def read_or_create_install_id(rune_dir: Path) -> str:
+    """Return the installer-owned install id for a rune directory.
+
+    Generates a random UUIDv4 and writes it to ``<rune-dir>/.install-id``
+    when absent. The file is installer-owned: preserved across updates,
+    destroyed on uninstall. The policy layer stamps this id into the policy
+    file so a policy from a different installation is never applied.
+    """
+    id_file = Path(rune_dir) / INSTALL_ID_FILENAME
+    try:
+        existing = id_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        existing = ""
+    if existing:
+        return existing
+    new_id = uuid.uuid4().hex
+    with contextlib.suppress(OSError):
+        id_file.write_text(new_id + "\n", encoding="utf-8")
+    return new_id
+
+
+def _install_tree(source: Path, dest: Path) -> None:
+    """Copy a staged rune tree into place, preserving the install id.
+
+    An existing ``.install-id`` survives the update; a fresh install gets a
+    new UUIDv4.
+    """
+    id_file = dest / INSTALL_ID_FILENAME
+    existing = ""
+    if id_file.is_file():
+        with contextlib.suppress(OSError):
+            existing = id_file.read_text(encoding="utf-8").strip()
+    _clear_dest(dest)
+    shutil.copytree(source, dest)
+    if existing:
+        with contextlib.suppress(OSError):
+            (dest / INSTALL_ID_FILENAME).write_text(existing + "\n", encoding="utf-8")
+    else:
+        read_or_create_install_id(dest)
+
+
+def _manifest_name_or_none(rune_dir: Path) -> str | None:
+    manifest_path = rune_dir / "manifest.json"
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if isinstance(data, dict):
+        name = data.get("name")
+        return str(name) if name else None
+    return None
+
+
+def _purge_approval_policy() -> None:
+    """Delete the approval rune's policy file on uninstall.
+
+    Only ``policy.toml`` is removed (allow/deny rules, project approvals).
+    The audit log (``audit.jsonl``) survives uninstall with its normal
+    rotation; reinstalling starts with empty policy.
+    """
+    policy = _approval_dir() / "policy.toml"
+    with contextlib.suppress(OSError):
+        policy.unlink()
 
 
 def _validate_install_name(name: str, *, kind: str) -> str:
@@ -173,18 +256,27 @@ def list_installed_runes(
 
 
 def uninstall_rune(name: str, target_dir: Path | None = None) -> bool:
-    """Uninstall an installed rune by name."""
+    """Uninstall an installed rune by name.
+
+    Uninstalling the approval rune additionally purges its policy file
+    (``~/.agents/approval/policy.toml``); the audit log is never touched.
+    """
     target = (
         target_dir.expanduser()
         if target_dir is not None
         else Path("~/.agents/extensions").expanduser()
     )
     path = _dest_within_target(target, _validate_install_name(name, kind="rune"))
+    is_approval = (
+        name == APPROVAL_RUNE_NAME or _manifest_name_or_none(path) == APPROVAL_RUNE_NAME
+    )
     if path.exists():
         if path.is_dir():
             shutil.rmtree(path)
         else:
             path.unlink()
+        if is_approval:
+            _purge_approval_policy()
         return True
     return False
 
@@ -248,8 +340,10 @@ def install_rune(
         name = _manifest_install_name(source_path, kind="rune")
         dest = _dest_within_target(target, name)
         if source_path.resolve() != dest.resolve():
-            _clear_dest(dest)
-            shutil.copytree(source_path, dest)
+            _install_tree(source_path, dest)
+        else:
+            # Installing in place: just ensure the install id exists.
+            read_or_create_install_id(dest)
     elif stripped_source.startswith(
         ("git@", "git://", "http://", "https://", "ssh://")
     ) or stripped_source.endswith(".git"):
@@ -270,8 +364,7 @@ def install_rune(
             )
             name = _manifest_install_name(staged, kind="rune")
             dest = _dest_within_target(target, name)
-            _clear_dest(dest)
-            shutil.copytree(staged, dest)
+            _install_tree(staged, dest)
     else:
         try:
             response = httpx.get(marketplace_url, timeout=15.0)
@@ -315,8 +408,7 @@ def install_rune(
                 staged = Path(tmp_dir)
             name = _manifest_install_name(staged, kind="rune")
             dest = _dest_within_target(target, name)
-            _clear_dest(dest)
-            shutil.copytree(staged, dest)
+            _install_tree(staged, dest)
 
     # The manifest was already validated from the staged source; dest carries
     # an identical copy.

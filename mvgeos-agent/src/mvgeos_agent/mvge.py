@@ -522,6 +522,17 @@ class Mvge:
         return self._event_bus
 
     @property
+    def runner(self) -> RuneRunner | None:
+        """The engine-owned rune runner, once runes have loaded.
+
+        Read-only host access so the host can bind host-privileged slots
+        (e.g. the approval presenter) on the engine-owned runner object.
+        The runner itself stays engine-owned; ``set_runner`` remains the
+        injection point.
+        """
+        return self._runner
+
+    @property
     def harness(self) -> MvgeHarness | None:
         """Access to the deepened Harness seam for observability (snapshot, events)."""
         return self._harness
@@ -727,7 +738,7 @@ class Mvge:
                     )
                     continue
 
-                spell_to_add: MvgeSpell = RuneSpellWrapper(rs)
+                spell_to_add: MvgeSpell = RuneSpellWrapper(rs, runner_origin=True)
                 spell_name = rs.name
                 if spell_name in seen_names:
                     source_rune = getattr(rs, "source_rune", None) or "rune"
@@ -924,8 +935,14 @@ class Mvge:
     def _rebind_runner_context(self) -> None:
         """Synchronize active session/tome context into the bound RuneRunner."""
         if self._runner is not None and self._agent_tome is not None:
+            project_root = self._runner.context.project_root
+            config_manager = getattr(self, "_config_manager", None)
+            configured = getattr(config_manager, "project_dir", None)
+            if configured is not None:
+                project_root = str(Path(configured).resolve())
             new_ctx = dataclasses.replace(
                 self._runner.context,
+                project_root=project_root,
                 session_id=self._agent_tome.tome_id,
                 tome_dir=str(self._tome_dir),
                 model_id=self._model_id,

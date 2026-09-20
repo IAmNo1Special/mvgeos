@@ -10,9 +10,16 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mvgeos_core.approval import (
+    ApprovalOutcome,
+    ApprovalReasonCode,
+    ApprovalRequest,
+    ApprovalScope,
+)
 from mvgeos_tome.handle import TomeHandleFactory
 from mvgeos_tome.types import TomeEntry, TomeEntryType
 
+from mvgeos_gui.approval.types import PermissionsView
 from mvgeos_gui.autocomplete import MentionChip
 from mvgeos_gui.models import ChangedFile, ChatMessage, DiffView
 from mvgeos_gui.services.tome_service import TomeService
@@ -1641,3 +1648,154 @@ def test_fork_tome_preserves_custom_title() -> None:
     assert forked_id is not None
     assert state.tome_title == "My Session"
     assert state.tome_service.get_tome_title(forked_id) == "My Session"
+
+
+def _approval_request(cast_id: str = "call_1") -> ApprovalRequest:
+    """Build a minimal approval request for queue tests."""
+    return ApprovalRequest(
+        cast_id=cast_id,
+        spell_name="write",
+        spell_identity={
+            "name": "write",
+            "source_kind": "builtin",
+            "source_id": "",
+            "runner_origin": "false",
+            "read_only": "false",
+        },
+        arguments={"path": "/proj/a.txt"},
+        argument_digest="sha256:args",
+        project_root="/proj/a",
+        tome_id="t1",
+        agent_name="coding_mvge",
+    )
+
+
+@pytest.mark.asyncio
+async def test_enqueue_approval_activates_and_resolves() -> None:
+    """AppState owns the queue: enqueue activates the head, resolve advances."""
+    state = AppState()
+    state.project_path = Path("/proj/a")
+    future = state.enqueue_approval(_approval_request("call_1"))
+    assert state.approval_active_request is not None
+    assert state.approval_active_request.cast_id == "call_1"
+    assert state.approval_pending_count == 0
+
+    state.enqueue_approval(_approval_request("call_2"))
+    assert state.approval_pending_count == 1
+
+    state.active_tome_id = "t1"
+    effective = state.resolve_active_approval(
+        ApprovalOutcome.ALLOW, ApprovalScope.ONCE, ApprovalReasonCode.USER
+    )
+    assert effective is not None
+    assert effective.outcome is ApprovalOutcome.ALLOW
+    assert future.result().outcome is ApprovalOutcome.ALLOW
+    # Queue advanced to the next cast.
+    assert state.approval_active_request is not None
+    assert state.approval_active_request.cast_id == "call_2"
+
+
+@pytest.mark.asyncio
+async def test_deny_active_approval_on_dialog_close() -> None:
+    """Closing the dialog denies the active request and advances the queue."""
+    state = AppState()
+    future = state.enqueue_approval(_approval_request("call_1"))
+    state.deny_active_approval()
+    assert future.done()
+    assert future.result().outcome is ApprovalOutcome.DENY
+    assert state.approval_active_request is None
+
+
+@pytest.mark.asyncio
+async def test_stale_dialog_close_does_not_deny_next_cast() -> None:
+    """A close from a destroyed dialog must not deny the newly active cast."""
+    state = AppState()
+    state.project_path = Path("/proj/a")
+    state.active_tome_id = "t1"
+    f1 = state.enqueue_approval(_approval_request("call_1"))
+    f2 = state.enqueue_approval(_approval_request("call_2"))
+
+    state.resolve_active_approval(
+        ApprovalOutcome.ALLOW, ApprovalScope.ONCE, ApprovalReasonCode.USER
+    )
+    assert f1.done()
+    assert state.approval_active_request is not None
+    assert state.approval_active_request.cast_id == "call_2"
+
+    # Stale close from the destroyed dialog for cast 1: no-op.
+    state.deny_approval_if_active("call_1")
+    assert not f2.done()
+    assert state.approval_active_request is not None
+    assert state.approval_active_request.cast_id == "call_2"
+
+    # A genuine close for the live cast still denies it.
+    state.deny_approval_if_active("call_2")
+    assert f2.done()
+    assert f2.result().outcome is ApprovalOutcome.DENY
+    assert state.approval_active_request is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_pending_approvals_denies_all() -> None:
+    """cancel_pending_approvals fails closed across the whole queue."""
+    state = AppState()
+    f1 = state.enqueue_approval(_approval_request("call_1"))
+    f2 = state.enqueue_approval(_approval_request("call_2"))
+    state.cancel_pending_approvals()
+    assert f1.result().outcome is ApprovalOutcome.DENY
+    assert f2.result().outcome is ApprovalOutcome.DENY
+    assert state.approval_active_request is None
+    assert state.approval_pending_count == 0
+
+
+@pytest.mark.asyncio
+async def test_set_project_cancels_pending_approvals() -> None:
+    """Project changes deny pending approvals before the change completes."""
+    state = AppState(project_path=Path("/proj/a"))
+    future = state.enqueue_approval(_approval_request("call_1"))
+    state.set_project(Path("/proj/b"))
+    assert future.done()
+    assert future.result().outcome is ApprovalOutcome.DENY
+    assert state.approval_active_request is None
+
+
+@pytest.mark.asyncio
+async def test_new_conversation_cancels_pending_and_clears_badge() -> None:
+    """A new session ends pending approvals and session approve-all."""
+    state = AppState()
+    future = state.enqueue_approval(_approval_request("call_1"))
+    state.set_approval_session_badge(True)
+    state.new_conversation()
+    assert future.result().outcome is ApprovalOutcome.DENY
+    assert state.approval_session_approve_all is False
+
+
+@pytest.mark.asyncio
+async def test_stop_channeling_denies_pending_approvals() -> None:
+    """Aborting the agent denies approvals waiting on its decisions."""
+    state = AppState()
+    future = state.enqueue_approval(_approval_request("call_1"))
+    state.stop_channeling()
+    assert future.result().outcome is ApprovalOutcome.DENY
+
+
+def test_session_badge_toggle_and_sync() -> None:
+    """The badge flag toggles and re-syncs from the rune's session state."""
+    state = AppState()
+    assert state.approval_session_approve_all is False
+    state.set_approval_session_badge(True)
+    assert state.approval_session_approve_all is True
+    view = PermissionsView.from_dict({"session": {"approve_all_active": False}})
+    state.sync_approval_session_badge(view)
+    assert state.approval_session_approve_all is False
+    state.sync_approval_session_badge(None)
+    assert state.approval_session_approve_all is False
+
+
+def test_permissions_deep_link_flag_round_trip() -> None:
+    """The deep-link flag is consumed exactly once."""
+    state = AppState()
+    assert state.take_approval_permissions_open_request() is False
+    state.request_approval_permissions_open()
+    assert state.take_approval_permissions_open_request() is True
+    assert state.take_approval_permissions_open_request() is False

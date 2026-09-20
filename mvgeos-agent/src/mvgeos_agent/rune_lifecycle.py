@@ -188,6 +188,7 @@ class RuneLifecycle:
             self._runner.bind_context(
                 RuneContext(
                     cwd=self._cwd,
+                    project_root=str(Path(self._cwd).resolve()),
                     mode=self._mode,
                     agent_name=self._agent_name,
                     api_key=self._api_key,

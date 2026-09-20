@@ -407,6 +407,7 @@ class RuneManifest:
 @dataclass(frozen=True)
 class RuneContext:
     cwd: str = ""
+    project_root: str = ""
     mode: str = "cli"
     has_ui: bool = False
     agent_name: str = ""

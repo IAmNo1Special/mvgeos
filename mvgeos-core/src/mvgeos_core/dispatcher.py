@@ -1,10 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+import hashlib
+import inspect
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from mvgeos_core.abort import AbortError, AbortSignal
+from mvgeos_core.approval import (
+    ApprovalDecision,
+    ApprovalOutcome,
+    ApprovalReasonCode,
+    ApprovalRequest,
+    deny,
+    normalize_arguments,
+)
 from mvgeos_core.channel import MvgeResponse, StopReason
 from mvgeos_core.errors import (
     MvgeError,
@@ -81,6 +93,99 @@ class BatchResult:
 
     messages: list[SpellResultMessage] = field(default_factory=list)
     terminate: bool = False
+
+
+@dataclass
+class _GateOutcome:
+    """What the critical approval gate decided for one cast.
+
+    Exactly one of the two fields is set: ``approved_arguments`` carries the
+    frozen copy the dispatcher must execute, ``denial`` carries the synthetic
+    result returned to the model when the cast is denied.
+    """
+
+    approved_arguments: dict[str, Any] | None = None
+    denial: SpellResultMessage | None = None
+
+
+_DENIAL_REASON_TEXT: dict[ApprovalReasonCode, str] = {
+    ApprovalReasonCode.USER: "the approver denied this cast",
+    ApprovalReasonCode.RULE: "a policy rule denied this cast",
+    ApprovalReasonCode.READ_ONLY: "policy denied this cast",
+    ApprovalReasonCode.FAILURE: "approval could not be completed",
+}
+
+
+def _denial_message(
+    spell_cast_id: str,
+    spell_name: str,
+    reason_code: ApprovalReasonCode,
+    request_digest: str,
+    safe_detail: str,
+) -> SpellResultMessage:
+    """Build the synthetic approval_denied result for a denied cast."""
+    text = f"approval_denied: {_DENIAL_REASON_TEXT[reason_code]} ({safe_detail})"
+    return SpellResultMessage(
+        spell_cast_id=spell_cast_id,
+        spell_name=spell_name,
+        content=[{"type": "text", "text": text}],
+        details={
+            "approval_denied": True,
+            "outcome": ApprovalOutcome.DENY.value,
+            "reason_code": reason_code.value,
+            "request_digest": request_digest,
+        },
+        is_error=True,
+        terminate=False,
+    )
+
+
+def _spell_code_digest(spell: Any) -> str:
+    """Engine-owned sha256 digest of the spell's implementation source.
+
+    Never rune-chosen: computed here from the spell class the engine is
+    about to execute, so a code change invalidates persisted allow rules
+    on the next cast. Falls back to the fully-qualified class name when
+    source is unavailable (still stable, still engine-derived).
+    """
+    cls = spell.__class__
+    try:
+        source = inspect.getsource(cls)
+    except (OSError, TypeError):
+        source = f"{cls.__module__}.{cls.__qualname__}"
+    return "sha256:" + hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+
+def _spell_identity(spell: Any) -> dict[str, str]:
+    """Engine-derived spell identity for approval policy matching.
+
+    Never rune-chosen: the name plus the engine's own attribution of where
+    the spell came from. ``runner_origin`` is the trust-relevant bit — set by
+    the engine when it wraps a rune-registered spell. ``source_rune`` is
+    display/attribution-only: a rune can squat on any name with
+    ``source_rune=None``. ``source_scope`` says whose code the spell runs
+    as (``"agent"`` for engine builtins, ``"rune"`` for rune-registered
+    spells); ``code_digest`` is the engine-computed source digest so a
+    code change invalidates persisted allow rules.
+    """
+    runner_origin = bool(getattr(spell, "runner_origin", False))
+    source_rune = getattr(spell, "source_rune", None)
+    cls = spell.__class__
+    if runner_origin:
+        source_id = str(source_rune) if source_rune else cls.__name__
+        source_scope = "rune"
+    else:
+        source_id = f"{cls.__module__}.{cls.__qualname__}"
+        source_scope = "agent"
+    return {
+        "name": spell.name,
+        "source_kind": "rune" if runner_origin else "builtin",
+        "source_id": source_id,
+        "source_scope": source_scope,
+        "code_digest": _spell_code_digest(spell),
+        "runner_origin": "true" if runner_origin else "false",
+        "read_only": "true" if bool(getattr(spell, "read_only", False)) else "false",
+    }
 
 
 class SpellDispatcher:
@@ -210,6 +315,116 @@ class SpellDispatcher:
         terminate = bool(messages) and all(m.terminate for m in messages)
         return BatchResult(messages=messages, terminate=terminate)
 
+    async def _apply_approval_gate(
+        self,
+        spell_cast: dict[str, Any],
+        spell: Any,
+        context: LoopContext,
+        gate: Callable[[ApprovalRequest], Awaitable[ApprovalDecision]],
+        emit: EmitSink,
+    ) -> _GateOutcome:
+        """Run lookup-after validation through the critical approval gate.
+
+        Validates and normalizes the arguments, freezes a deep copy, and asks
+        the gate for a decision on exactly that copy. Any validation failure,
+        gate exception, malformed response, or stale digest denies the cast
+        with a synthetic ``approval_denied`` result: the model is never left
+        with a silently discarded cast.
+        """
+        spell_name = spell_cast["name"]
+        spell_cast_id = spell_cast["id"]
+
+        async def deny_cast(
+            reason_code: ApprovalReasonCode,
+            safe_detail: str,
+            request_digest: str = "",
+        ) -> _GateOutcome:
+            await emit(
+                MvgeEvent(
+                    type=MvgeEventType.SPELL_CASTING_END,
+                    data={
+                        "spellCastId": spell_cast_id,
+                        "denied": True,
+                        "reason": safe_detail,
+                    },
+                )
+            )
+            return _GateOutcome(
+                denial=_denial_message(
+                    spell_cast_id, spell_name, reason_code, request_digest, safe_detail
+                )
+            )
+
+        arguments = spell_cast.get("arguments", {})
+        if not isinstance(arguments, dict):
+            return await deny_cast(
+                ApprovalReasonCode.FAILURE, "arguments must be a JSON object"
+            )
+
+        # Gate-side schema validation for every spell kind that carries one.
+        # A spell with no parameter schema is a schemaless cast:
+        # prepare_arguments is then a pass-through and the arguments reach
+        # the gate unvalidated. The request carries the flag so policy can
+        # never match an allow rule and presenters must show an
+        # "unvalidated arguments" warning.
+        prepare = getattr(spell, "prepare_arguments", None)
+        schema_validated = callable(prepare) and (
+            getattr(spell, "_schema_model", None) is not None
+        )
+        if callable(prepare):
+            try:
+                arguments = prepare(arguments)
+            except Exception:
+                return await deny_cast(
+                    ApprovalReasonCode.FAILURE, "arguments failed schema validation"
+                )
+
+        approved = copy.deepcopy(arguments)
+        try:
+            frozen_view, digest = normalize_arguments(approved)
+        except ValueError:
+            return await deny_cast(
+                ApprovalReasonCode.FAILURE, "arguments are not JSON-serializable"
+            )
+
+        request = ApprovalRequest(
+            cast_id=spell_cast_id,
+            spell_name=spell_name,
+            spell_identity=_spell_identity(spell),
+            arguments=frozen_view,
+            argument_digest=digest,
+            project_root=context.project_root,
+            tome_id=context.tome_id,
+            agent_name=context.agent_name,
+            schema_validated=schema_validated,
+        )
+
+        try:
+            decision = await gate(request)
+        except asyncio.CancelledError:
+            # Explicit fail-closed: the gate callback is a generic awaitable
+            # and may not convert cancellation into a denial itself. A
+            # cancelled gate must never let the cast through.
+            decision = deny(request, ApprovalReasonCode.FAILURE)
+        except Exception:
+            decision = deny(request, ApprovalReasonCode.FAILURE)
+
+        if (
+            not isinstance(decision, ApprovalDecision)
+            or decision.request_digest != request.argument_digest
+        ):
+            # Malformed response or a decision bound to a different request:
+            # stale, discard, deny.
+            decision = deny(request, ApprovalReasonCode.FAILURE)
+
+        if decision.outcome is ApprovalOutcome.DENY:
+            return await deny_cast(
+                decision.reason_code,
+                "denied by the approval gate",
+                decision.request_digest,
+            )
+        return _GateOutcome(approved_arguments=approved)
+
     async def _execute_single_spell(
         self,
         spell_cast: dict[str, Any],
@@ -233,6 +448,8 @@ class SpellDispatcher:
 
         spell = context.get_spell(spell_name)
         if spell is None:
+            # Unknown spells never reach the approval gate: there is nothing
+            # to approve. Lookup-before-gate ordering keeps them out.
             err: MvgeError = SpellNotFoundError(spell_name)
             await emit(
                 MvgeEvent(
@@ -246,13 +463,28 @@ class SpellDispatcher:
             )
             return None
 
+        # Lookup and validation happen before the critical gate: unknown or
+        # invalid casts fail here and never prompt. The gate approves a frozen
+        # copy of the validated arguments, and the dispatcher executes exactly
+        # that copy.
+        execution_arguments: dict[str, Any] = spell_cast.get("arguments", {})
+        if callbacks.approval_gate is not None:
+            outcome = await self._apply_approval_gate(
+                spell_cast, spell, context, callbacks.approval_gate, emit
+            )
+            if outcome.denial is not None:
+                return outcome.denial
+            if outcome.approved_arguments is None:
+                raise RuntimeError("Approval gate returned neither approval nor denial")
+            execution_arguments = outcome.approved_arguments
+
         await emit(
             MvgeEvent(
                 type=MvgeEventType.SPELL_CASTING_START,
                 data={
                     "spellCastId": spell_cast_id,
                     "spellName": spell_name,
-                    "arguments": spell_cast.get("arguments", {}),
+                    "arguments": execution_arguments,
                 },
             )
         )
@@ -264,7 +496,7 @@ class SpellDispatcher:
                 raw_result = await asyncio.wait_for(
                     spell.execute(
                         spell_cast_id,
-                        spell_cast.get("arguments", {}),
+                        execution_arguments,
                         signal=signal,
                     ),
                     timeout=context.spell_timeout_ms / 1000,

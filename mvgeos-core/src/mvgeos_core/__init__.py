@@ -5,6 +5,18 @@ agent depend on core, never the reverse.
 """
 
 from mvgeos_core.abort import AbortController, AbortError, AbortSignal
+from mvgeos_core.approval import (
+    ApprovalDecision,
+    ApprovalOutcome,
+    ApprovalPresenter,
+    ApprovalReasonCode,
+    ApprovalRequest,
+    ApprovalScope,
+    SpellGateHandler,
+    allow,
+    deny,
+    normalize_arguments,
+)
 from mvgeos_core.channel import (
     ChannelConfig,
     Model,
@@ -94,6 +106,16 @@ __all__ = [
     "AbortController",
     "AbortError",
     "AbortSignal",
+    "ApprovalDecision",
+    "ApprovalOutcome",
+    "ApprovalPresenter",
+    "ApprovalReasonCode",
+    "ApprovalRequest",
+    "ApprovalScope",
+    "SpellGateHandler",
+    "allow",
+    "deny",
+    "normalize_arguments",
     "AuthenticationError",
     "BatchResult",
     "ChannelConfig",

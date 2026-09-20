@@ -59,6 +59,10 @@ class DummyAgent:
     def available_spells(self) -> list[str]:
         return ["read", "write", "bash"]
 
+    @property
+    def runner(self) -> Any:
+        return None
+
     def set_enabled_spells(self, spell_names: list[str]) -> None:
         pass
 
@@ -159,6 +163,7 @@ class TestMvgeAgentProtocol:
         assert dummy.mana_used == 42
         assert dummy.model_id == "test/model"
         assert dummy.get_registered_commands() == []
+        assert dummy.runner is None
 
     def test_incomplete_agent_fails_conformance(self) -> None:
         class IncompleteAgent:

@@ -7,6 +7,12 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from mvgeos_runes.rune_runner import RuneRunner
 
+from mvgeos_core.approval import (
+    ApprovalDecision,
+    ApprovalRequest,
+    SpellGateHandler,
+)
+
 from mvgeos_runes.types import (
     RegisteredCommand,
     RuneContext,
@@ -17,7 +23,12 @@ from mvgeos_runes.types import (
     SpellDefinition,
 )
 
-RuneFactory = Callable[["RuneAPI"], None | Awaitable[None]]
+# A rune factory is called with its own RuneAPI. Most factories return
+# None (registration side effects are enough), but a factory may return its
+# public rune instance object; the runner records non-None results under the
+# manifest name so the host can reach live rune state through the
+# host-privileged ``RuneRunner.get_rune`` accessor (never via RuneAPI).
+RuneFactory = Callable[["RuneAPI"], None | Awaitable[None] | Any]
 
 
 class RuneAPI:
@@ -26,10 +37,24 @@ class RuneAPI:
         runner: RuneRunner,
         rune_name: str | None = None,
         override: bool = False,
+        install_id: str | None = None,
     ) -> None:
         self._runner = runner
         self._rune_name = rune_name
         self._override = override
+        self._install_id = install_id
+
+    @property
+    def install_id(self) -> str | None:
+        """Installer-owned id of the loaded rune directory.
+
+        The host stamps this from ``<rune-dir>/.install-id`` when the rune
+        is loaded through the installer/manifest path. ``None`` when the
+        API was created outside a rune load (tests, ad-hoc use). Runes
+        must treat it as opaque: it binds user-owned policy to one
+        installation and must never be chosen by the rune itself.
+        """
+        return self._install_id
 
     @property
     def sandbox(self) -> Sandbox:
@@ -41,6 +66,25 @@ class RuneAPI:
 
     def on(self, hook: SigilHook, handler: Any) -> None:
         self._runner.register_handler(hook, handler, rune_name=self._rune_name)
+
+    def register_spell_gate(self, handler: SpellGateHandler) -> None:
+        """Register a security-critical spell gate.
+
+        Gates are evaluated separately from ordinary sigils with AND
+        semantics and fail closed: any denial, exception, cancellation, or
+        malformed response denies the cast. This is the approval path; the
+        fail-open ``BEFORE_SPELL_CAST`` hook cannot substitute for it.
+        """
+        self._runner.register_spell_gate(handler, rune_name=self._rune_name)
+
+    async def request_approval(self, request: ApprovalRequest) -> ApprovalDecision:
+        """Await the host-bound presenter for one approval request.
+
+        The rune never imports UI code. With no presenter bound
+        (headless/CI) the request is denied; the presenter slot itself is
+        host-privileged and is never exposed through this API.
+        """
+        return await self._runner.request_approval(request)
 
     def register_spell(self, spell: SpellDefinition, override: bool = False) -> bool:
         return self._runner.register_spell(

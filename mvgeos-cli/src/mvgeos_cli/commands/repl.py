@@ -34,6 +34,13 @@ from rich.text import Text
 
 from mvgeos_cli import DEFAULT_MODEL
 from mvgeos_cli.agent_factory import create_agent, validate_api_key
+from mvgeos_cli.approval_binding import (
+    NO_SLOT_WARNING,
+    bind_approval_presenter,
+    resolve_approval_mode,
+    unbind_approval_presenter,
+)
+from mvgeos_cli.approval_presenter import CliApprovalPresenter
 from mvgeos_cli.commands.dispatcher import SLASH_COMMANDS, CliCommandDispatcher
 from mvgeos_cli.commands.setup import install_missing_deps
 from mvgeos_cli.console import format_error
@@ -595,6 +602,7 @@ async def run_repl(
     tome_dir: str | None = None,
     agent_name: str = DEFAULT_AGENT_NAME,
     agent_factory: AgentFactory | None = None,
+    approval_mode: str | None = None,
 ) -> None:
     if api_key is None:
         api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -623,131 +631,143 @@ async def run_repl(
         console.print(format_error(e))
         return
 
-    registry = ModelRegistry()
-    registry.load_cache()
-    if registry.needs_refresh():
-        with contextlib.suppress(Exception):
-            await registry.auto_refresh()
+    mode = resolve_approval_mode(approval_mode)
+    presenter = CliApprovalPresenter(mode=mode)
+    # getattr: a custom agent_factory may return an agent without the engine
+    # runner accessor; that is a missing slot (warn, fail closed), not a crash.
+    runner = getattr(agent, "runner", None)
+    if not bind_approval_presenter(runner, presenter):
+        console.print(f"[yellow]{NO_SLOT_WARNING}[/yellow]")
 
-    dispatcher = CliCommandDispatcher(agent, registry, out=console.print)
-
-    console.print("[green]MvgeOS REPL[/green]")
-    console.print(f"[dim]Model: {model}[/dim]")
-    levels = registry.get_supported_contemplation_levels(model)
-    if levels:
-        levels_str = ", ".join(levels)
-        console.print(
-            f"[dim]Contemplation: {contemplation} (supported: {levels_str})[/dim]"
-        )
-    if agent.tome_id:
-        console.print(f"[dim]Tome: {agent.tome_id}[/dim]")
-    console.print(
-        "[dim]Type /help for commands, Ctrl+C to interrupt, Ctrl+D to quit[/dim]"
-    )
-    console.print()
-
-    check_and_warn_load_failures(agent.environment.diagnostics)
-    check_and_warn_missing_deps(
-        agent.environment.diagnostics,
-        out=console.print,
-        prompt=input if sys.stdin.isatty() else None,
-        install=lambda: install_missing_deps(
-            agent_name=agent_name,
-            extension_dir=extension_dir,
-            yes=True,
-        ),
-    )
-
-    history = FileHistory(str(_get_history_path()))
-    session: PromptSession[Any] | None = None
-    use_fallback = False
+    unsubs: list[object] = []
     try:
-        session = PromptSession(
-            history=history,
-            completer=SlashCompleter(),
-            key_bindings=_make_bindings(),
-            style=REPL_STYLE,
-        )
-    except NoConsoleScreenBufferError:
-        use_fallback = True
+        registry = ModelRegistry()
+        registry.load_cache()
+        if registry.needs_refresh():
+            with contextlib.suppress(Exception):
+                await registry.auto_refresh()
+
+        dispatcher = CliCommandDispatcher(agent, registry, out=console.print)
+
+        console.print("[green]MvgeOS REPL[/green]")
+        console.print(f"[dim]Model: {model}[/dim]")
+        levels = registry.get_supported_contemplation_levels(model)
+        if levels:
+            levels_str = ", ".join(levels)
+            console.print(
+                f"[dim]Contemplation: {contemplation} (supported: {levels_str})[/dim]"
+            )
+        if agent.tome_id:
+            console.print(f"[dim]Tome: {agent.tome_id}[/dim]")
         console.print(
-            "[dim]Console screen buffer unavailable. "
-            "Falling back to standard line reader.[/dim]\n"
+            "[dim]Type /help for commands, Ctrl+C to interrupt, Ctrl+D to quit[/dim]"
+        )
+        console.print()
+
+        check_and_warn_load_failures(agent.environment.diagnostics)
+        check_and_warn_missing_deps(
+            agent.environment.diagnostics,
+            out=console.print,
+            prompt=input if sys.stdin.isatty() else None,
+            install=lambda: install_missing_deps(
+                agent_name=agent_name,
+                extension_dir=extension_dir,
+                yes=True,
+            ),
         )
 
-    branch = get_git_branch()
-
-    def get_toolbar() -> list[tuple[str, str]]:
-        return format_tome_info(agent, branch)
-
-    renderer = StreamRenderer()
-    unsubs: list[object] = [
-        agent.on("message_update", renderer.on_message_update),
-        agent.on("spell_casting_start", renderer.on_spell_start),
-        agent.on("spell_casting_end", renderer.on_spell_end),
-        agent.on("turn_start", renderer.on_turn_start),
-        agent.on("turn_end", renderer.on_turn_end),
-    ]
-
-    agent_task: asyncio.Task[Any] | None = None
-
-    def _on_sigint(sig: int, frame: Any) -> None:
-        if agent_task is not None and not agent_task.done():
-            agent_task.cancel()
-
-    if threading.current_thread() is threading.main_thread():
-        signal.signal(signal.SIGINT, _on_sigint)
-
-    while True:
-        if use_fallback or session is None:
-            text = await _read_fallback_prompt()
-        else:
-            try:
-                text = await _read_initial_prompt(session, get_toolbar)
-            except NoConsoleScreenBufferError:
-                use_fallback = True
-                console.print(
-                    "[dim]Console screen buffer unavailable. "
-                    "Falling back to standard line reader.[/dim]\n"
-                )
-                text = await _read_fallback_prompt()
-
-        if text is None:
-            console.print("\n[dim]Goodbye.[/dim]")
-            break
-
-        text = text.strip()
-        if not text:
-            continue
-
-        if text.startswith("/"):
-            should_exit = await dispatcher.dispatch(text)
-            if should_exit:
-                console.print("[dim]Goodbye.[/dim]")
-                break
-            continue
-
-        renderer.reset()
-        agent_task = asyncio.create_task(agent.run(text))
+        history = FileHistory(str(_get_history_path()))
+        session: PromptSession[Any] | None = None
+        use_fallback = False
         try:
-            await agent_task
-        except asyncio.CancelledError:
-            renderer.finish(error=True)
-            console.print("\n[yellow]Interrupted.[/yellow]")
-        except Exception as exc:
-            renderer.finish(error=True)
-            if isinstance(exc, RateLimitError):
-                await render_live_rate_limit(exc, out=console.print)
-            else:
-                markup = format_error(exc)
-                console.print(f"\n{markup}")
-        else:
-            renderer.finish()
-        finally:
-            agent_task = None
+            session = PromptSession(
+                history=history,
+                completer=SlashCompleter(),
+                key_bindings=_make_bindings(),
+                style=REPL_STYLE,
+            )
+        except NoConsoleScreenBufferError:
+            use_fallback = True
+            console.print(
+                "[dim]Console screen buffer unavailable. "
+                "Falling back to standard line reader.[/dim]\n"
+            )
 
-    for unsub in unsubs:
-        if callable(unsub):
-            unsub()
-    await agent.close()
+        branch = get_git_branch()
+
+        def get_toolbar() -> list[tuple[str, str]]:
+            return format_tome_info(agent, branch)
+
+        renderer = StreamRenderer()
+        unsubs = [
+            agent.on("message_update", renderer.on_message_update),
+            agent.on("spell_casting_start", renderer.on_spell_start),
+            agent.on("spell_casting_end", renderer.on_spell_end),
+            agent.on("turn_start", renderer.on_turn_start),
+            agent.on("turn_end", renderer.on_turn_end),
+        ]
+
+        agent_task: asyncio.Task[Any] | None = None
+
+        def _on_sigint(sig: int, frame: Any) -> None:
+            if agent_task is not None and not agent_task.done():
+                agent_task.cancel()
+
+        if threading.current_thread() is threading.main_thread():
+            signal.signal(signal.SIGINT, _on_sigint)
+
+        while True:
+            if use_fallback or session is None:
+                text = await _read_fallback_prompt()
+            else:
+                try:
+                    text = await _read_initial_prompt(session, get_toolbar)
+                except NoConsoleScreenBufferError:
+                    use_fallback = True
+                    console.print(
+                        "[dim]Console screen buffer unavailable. "
+                        "Falling back to standard line reader.[/dim]\n"
+                    )
+                    text = await _read_fallback_prompt()
+
+            if text is None:
+                console.print("\n[dim]Goodbye.[/dim]")
+                break
+
+            text = text.strip()
+            if not text:
+                continue
+
+            if text.startswith("/"):
+                should_exit = await dispatcher.dispatch(text)
+                if should_exit:
+                    console.print("[dim]Goodbye.[/dim]")
+                    break
+                continue
+
+            renderer.reset()
+            agent_task = asyncio.create_task(agent.run(text))
+            try:
+                await agent_task
+            except asyncio.CancelledError:
+                renderer.finish(error=True)
+                console.print("\n[yellow]Interrupted.[/yellow]")
+            except Exception as exc:
+                renderer.finish(error=True)
+                if isinstance(exc, RateLimitError):
+                    await render_live_rate_limit(exc, out=console.print)
+                else:
+                    markup = format_error(exc)
+                    console.print(f"\n{markup}")
+            else:
+                renderer.finish()
+            finally:
+                agent_task = None
+
+    finally:
+        for unsub in unsubs:
+            if callable(unsub):
+                unsub()
+        unbind_approval_presenter(runner, presenter)
+        await agent.close()
     _trim_history_file(_get_history_path())

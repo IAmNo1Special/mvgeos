@@ -22,6 +22,13 @@ from mvgeos_agent import (
     list_installed_mvges,
     uninstall_mvge,
 )
+from mvgeos_core.approval import (
+    ApprovalDecision,
+    ApprovalOutcome,
+    ApprovalReasonCode,
+    ApprovalRequest,
+    ApprovalScope,
+)
 from mvgeos_provider import (
     get_default_realm_registry,
     get_model_options,
@@ -41,6 +48,8 @@ from mvgeos_runes import (
 from mvgeos_runes.types import SkillManifest
 from mvgeos_tome.types import TomeEntry, TomeEntryType, TomeVersionError
 
+from mvgeos_gui.approval.queue import ApprovalQueue
+from mvgeos_gui.approval.types import PermissionsView
 from mvgeos_gui.autocomplete import (
     AutocompleteService,
     MentionChip,
@@ -156,6 +165,26 @@ class AppState:
     _command_palette_open: bool = False
     _expanded_cards: set[str] = field(default_factory=set, repr=False, compare=False)
     _collapsed_cards: set[str] = field(default_factory=set, repr=False, compare=False)
+    # Approval queue (Approval Rune presenter). AppState owns the queue: the
+    # active modal resolves one future at a time, and parallel batches are
+    # presented strictly one after another.
+    _approval_queue: ApprovalQueue = field(
+        default_factory=ApprovalQueue, repr=False, compare=False
+    )
+    # The GUI presenter bound to the engine's presenter slot (set by the
+    # host at startup via bind_approval_presenter). None until bound.
+    _approval_presenter: Any = field(default=None, repr=False, compare=False)
+    # Persistent chat badge: True while session approve-all is active.
+    approval_session_approve_all: bool = False
+    # Deep-link flag: the approval popup's "manage permissions" link sets
+    # this; the overlay opens the rune's settings dialog directly.
+    _approval_settings_requested: bool = False
+    # Approval popup dialog step: "main" or "confirm" (persistent-grant
+    # confirmation screen). Reset whenever the active request changes.
+    _approval_dialog_step: str = "main"
+    # Which persistent grant the confirmation screen is confirming:
+    # "spell-allow" | "spell-deny" | "session" | "project".
+    _approval_confirm_kind: str = ""
 
     def __post_init__(self) -> None:
         """Initialize state invariants."""
@@ -520,6 +549,9 @@ class AppState:
 
     def set_project(self, path: Path) -> None:
         """Change the active workspace project path."""
+        # Pending approvals belong to the old project: deny them before the
+        # state change completes.
+        self._on_approval_context_change()
         self.project_path = path
         self.agent_service = None
         self._autocomplete_service = None
@@ -540,6 +572,8 @@ class AppState:
 
     def new_conversation(self) -> None:
         """Reset conversation session to empty new state."""
+        # A new session ends the old one: pending approvals die with it.
+        self._on_approval_context_change()
         self.active_tome_id = None
         self.tome_title = "New Conversation"
         self.is_channeling = False
@@ -624,6 +658,9 @@ class AppState:
             return
         if meta is None:
             return
+        # The tome is changing: deny pending approvals before the state
+        # change completes.
+        self._on_approval_context_change()
         self.active_tome_id = meta.id
         self.tome_title = self.tome_service.get_tome_title(meta.id)
         self.is_channeling = False
@@ -882,6 +919,8 @@ class AppState:
                 self.active_task.cancel()
         if self.agent_service is not None:
             self.agent_service.cancel()
+        # An aborted agent cannot receive decisions: deny pending approvals.
+        self.cancel_pending_approvals()
 
         for msg in self.messages:
             if msg.is_streaming:
@@ -1078,6 +1117,147 @@ class AppState:
         """Set the active side panel in chat (files, diff, or None)."""
         self.chat_side_panel = panel
         self.notify()
+
+    # ------------------------------------------------------------------
+    # Approval queue (Approval Rune presenter)
+    # ------------------------------------------------------------------
+
+    def enqueue_approval(
+        self, request: ApprovalRequest
+    ) -> asyncio.Future[ApprovalDecision]:
+        """Queue an approval request and activate the head of the queue.
+
+        Returns the future the presenter awaits; it resolves with the
+        Summoner's decision once the modal for this cast is answered.
+        """
+        future = self._approval_queue.enqueue(request)
+        self._approval_queue.activate_next()
+        self.notify()
+        return future
+
+    @property
+    def approval_active_request(self) -> ApprovalRequest | None:
+        """The request currently shown in the approval modal, if any."""
+        return self._approval_queue.active_request
+
+    @property
+    def approval_pending_count(self) -> int:
+        """Number of approval requests waiting behind the active one."""
+        return self._approval_queue.pending_count
+
+    def resolve_active_approval(
+        self,
+        outcome: ApprovalOutcome,
+        scope: ApprovalScope = ApprovalScope.ONCE,
+        reason_code: ApprovalReasonCode = ApprovalReasonCode.USER,
+    ) -> ApprovalDecision | None:
+        """Resolve the active approval request with the Summoner's verdict.
+
+        Builds the canonical decision bound to the active request's
+        argument digest. Applies the stale-response rule against the live
+        tome/project context: a decision that arrived after the context
+        moved is forced to deny. Advances the queue and returns the
+        effective decision.
+        """
+        effective = self._approval_queue.resolve_active(
+            outcome,
+            scope,
+            reason_code,
+            project_root=str(self.project_path),
+            tome_id=self.active_tome_id,
+        )
+        self._reset_approval_dialog()
+        if effective is not None:
+            self._approval_queue.activate_next()
+        self.notify()
+        return effective
+
+    def deny_active_approval(
+        self, reason_code: ApprovalReasonCode = ApprovalReasonCode.FAILURE
+    ) -> None:
+        """Deny the active approval request (dialog closed / Escape)."""
+        if self._approval_queue.deny_active(reason_code) is not None:
+            self._approval_queue.activate_next()
+        self._reset_approval_dialog()
+        self.notify()
+
+    def deny_approval_if_active(
+        self, cast_id: str, reason_code: ApprovalReasonCode = ApprovalReasonCode.FAILURE
+    ) -> None:
+        """Deny the active request only when it is still the given cast.
+
+        Dialog ``close`` events are bound to the cast id shown when the
+        dialog was rendered: a stale close from a dialog destroyed by
+        queue advancement must not deny the newly activated cast.
+        """
+        active = self._approval_queue.active_request
+        if active is None or active.cast_id != cast_id:
+            return
+        self.deny_active_approval(reason_code)
+
+    def cancel_pending_approvals(self) -> None:
+        """Deny every outstanding approval request (fail closed).
+
+        Used for disconnect, agent abort, and shutdown: no pending cast
+        may survive the loss of its decision surface.
+        """
+        denied = self._approval_queue.cancel_all()
+        self._reset_approval_dialog()
+        if denied:
+            self.notify()
+
+    def _on_approval_context_change(self) -> None:
+        """Deny pending approvals and clear session state on context change.
+
+        Project or tome changes cancel all pending requests before the
+        state change completes, and session approve-all never survives a
+        transition.
+        """
+        denied = self._approval_queue.cancel_all()
+        self._reset_approval_dialog()
+        badge_was_on = self.approval_session_approve_all
+        self.approval_session_approve_all = False
+        if denied or badge_was_on:
+            self.notify()
+
+    def set_approval_session_badge(self, active: bool) -> None:
+        """Toggle the persistent session approve-all chat badge."""
+        if self.approval_session_approve_all != active:
+            self.approval_session_approve_all = active
+            self.notify()
+
+    def sync_approval_session_badge(self, view: PermissionsView | None) -> None:
+        """Reconcile the badge with the rune's session state.
+
+        The presenter sets the badge when it issues a session-scope
+        decision; the permissions screen re-syncs it in case the grant
+        changed through another path.
+        """
+        self.set_approval_session_badge(
+            bool(view is not None and view.session_approve_all)
+        )
+
+    def request_approval_permissions_open(self) -> None:
+        """Deep-link: open the Approval Rune's settings dialog directly."""
+        self._approval_settings_requested = True
+        self.notify()
+
+    def take_approval_permissions_open_request(self) -> bool:
+        """Consume the deep-link flag (True when a dialog open was requested)."""
+        requested = self._approval_settings_requested
+        self._approval_settings_requested = False
+        return requested
+
+    def set_approval_dialog_step(self, step: str, kind: str = "") -> None:
+        """Move the approval popup between its main and confirmation steps."""
+        self._approval_dialog_step = step
+        self._approval_confirm_kind = kind
+        self.notify()
+
+    def _reset_approval_dialog(self) -> None:
+        """Reset the popup to its main step for the next request."""
+        self._approval_dialog_step = "main"
+        self._approval_confirm_kind = ""
 
     def is_card_expanded(self, card_id: str, default: bool = False) -> bool:
         """Check whether a card/expansion is currently expanded."""

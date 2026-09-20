@@ -16,6 +16,7 @@ from types import ModuleType
 from nicegui import app, ui
 
 from mvgeos_gui.app import init_app
+from mvgeos_gui.approval.presenter import unbind_approval_presenter
 from mvgeos_gui.state import AppState
 
 DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
@@ -256,6 +257,9 @@ def main() -> None:
     def _cleanup() -> None:
         state.stop_channeling()
         state.clear_listeners()
+        # Unbind the Approval Rune presenter: pending casts deny, the
+        # engine slot is cleared, and the session badge is dropped.
+        unbind_approval_presenter(state)
 
     app.on_shutdown(_cleanup)
 

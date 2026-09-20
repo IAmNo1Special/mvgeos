@@ -76,6 +76,7 @@ async def _reference_inline_load(
     runner.bind_context(
         RuneContext(
             cwd=str(Path.cwd()),
+            project_root=str(Path.cwd().resolve()),
             mode="cli",
             agent_name=agent_name,
             api_key=api_key,
