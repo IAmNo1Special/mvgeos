@@ -29,6 +29,7 @@ from mvgeos_core.approval import (
     ApprovalRequest,
     ApprovalScope,
 )
+from mvgeos_core.invocations import Attachment, build_content_parts
 from mvgeos_provider import (
     get_default_realm_registry,
     get_model_options,
@@ -118,6 +119,9 @@ class AppState:
     plan_mode: bool = False
     api_key: str | None = None
     pending_attachments: list[str] = field(default_factory=list)
+    pending_attachment_contents: dict[str, bytes] = field(
+        default_factory=dict, repr=False
+    )
     selected_mentions: list[MentionChip] = field(default_factory=list)
     active_skills: list[SkillInfo] = field(default_factory=list)
     agent_service: AgentService | None = field(default=None, repr=False, compare=False)
@@ -395,16 +399,19 @@ class AppState:
             self.active_skills.clear()
             self.notify()
 
-    def add_attachment(self, name: str) -> None:
-        """Add a file name to the pending attachments bound to next submission."""
+    def add_attachment(self, name: str, content: bytes | None = None) -> None:
+        """Add a file to the pending attachments bound to next submission."""
         if name and name not in self.pending_attachments:
             self.pending_attachments.append(name)
+            if content is not None:
+                self.pending_attachment_contents[name] = content
             self.notify()
 
     def remove_attachment(self, index: int) -> None:
         """Remove a pending attachment by index (safe no-op if out of range)."""
         if 0 <= index < len(self.pending_attachments):
-            del self.pending_attachments[index]
+            name = self.pending_attachments.pop(index)
+            self.pending_attachment_contents.pop(name, None)
             self.notify()
 
     def add_mention(self, chip: MentionChip) -> None:
@@ -438,6 +445,7 @@ class AppState:
         """Remove all pending attachments."""
         if self.pending_attachments:
             self.pending_attachments.clear()
+            self.pending_attachment_contents.clear()
             self.notify()
 
     def add_background_task(
@@ -582,6 +590,7 @@ class AppState:
         self.total_mana_used = 0
         self.reset_context_usage()
         self.pending_attachments.clear()
+        self.pending_attachment_contents.clear()
         self.selected_mentions.clear()
         self.background_tasks.clear()
         self.clear_skills()
@@ -858,7 +867,7 @@ class AppState:
 
         mention_text = " ".join(chip.text for chip in self.selected_mentions)
         text = prompt.strip()
-        if not mention_text and not text:
+        if not mention_text and not text and not self.pending_attachments:
             return
 
         if mention_text:
@@ -866,7 +875,15 @@ class AppState:
         self.selected_mentions.clear()
 
         attachments = list(self.pending_attachments)
+        contents = {
+            name: self.pending_attachment_contents.pop(name, b"")
+            for name in attachments
+        }
         self.pending_attachments.clear()
+        content = build_content_parts(
+            text,
+            [Attachment(filename=name, data=contents[name]) for name in attachments],
+        )
         user_msg = InvocationTranscript.for_summoner(text, attachments)
         self.messages.append(user_msg)
 
@@ -896,7 +913,9 @@ class AppState:
             self.notify()
             return
         if loop is not None:
-            task = asyncio.ensure_future(service.run_prompt(text, self, assistant_msg))
+            task = asyncio.ensure_future(
+                service.run_prompt(content, self, assistant_msg)
+            )
 
             def _on_done(future: asyncio.Task[Any]) -> None:
                 with contextlib.suppress(asyncio.CancelledError):

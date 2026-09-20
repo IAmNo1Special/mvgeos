@@ -148,7 +148,11 @@ def render_composer(state: AppState) -> None:
 
                     def handle_submit() -> None:
                         text = prompt_input.value or ""
-                        if not text.strip() and not state.selected_mentions:
+                        if (
+                            not text.strip()
+                            and not state.selected_mentions
+                            and not state.pending_attachments
+                        ):
                             return
                         # Prepend mentions to text if any
                         if state.selected_mentions:
@@ -328,22 +332,21 @@ def render_composer(state: AppState) -> None:
                     "w-full items-center gap-2 pt-1 mvge-composer-toolbar pl-2"
                 ):
 
-                    def _handle_upload(e: Any) -> None:
-                        """Add uploaded file names as pending attachments."""
-                        # e.files is a list of uploaded file objects with .name
-                        for f in getattr(e, "files", []):
-                            name = getattr(f, "name", "")
-                            if name:
-                                state.add_attachment(name)
-                        if getattr(e, "files", []):
-                            ui.notify(
-                                f"Added {len(e.files)} attachment(s).",
-                                type="positive",
-                            )
+                    async def _handle_upload(e: Any) -> None:
+                        """Attach the uploaded file for the next prompt."""
+                        # NiceGUI's UploadEventArguments carries a single .file
+                        uploaded = getattr(e, "file", None)
+                        name = getattr(uploaded, "name", "")
+                        if not uploaded or not name:
+                            return
+                        content = await uploaded.read()
+                        state.add_attachment(name, content)
+                        ui.notify(f"Attached {name}.", type="positive")
 
                     ui.upload(
                         on_upload=_handle_upload,
                         label="",
+                        auto_upload=True,
                     ).props("flat dense round color=grey-5").classes(
                         "mvge-upload-btn"
                     ).mark("composer_upload_btn")

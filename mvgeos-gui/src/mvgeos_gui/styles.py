@@ -1024,6 +1024,24 @@ CURVY_COMPOSER_CSS = """
 .mvge-installed-btn .q-focus-helper {
     display: none !important;
 }
+/* Composer attach control: collapse Quasar's uploader chrome (gray header
+   with "0.0B / 0.00%" subtitle + file list) into a single "+" picker
+   button. Picked files auto-upload and surface as chips above the input. */
+.mvge-upload-btn.q-uploader {
+    background: transparent !important;
+    box-shadow: none !important;
+    width: auto !important;
+}
+.mvge-upload-btn .q-uploader__header {
+    background: transparent !important;
+    padding: 0 !important;
+}
+.mvge-upload-btn .q-uploader__header-content {
+    display: none !important;
+}
+.mvge-upload-btn .q-uploader__list {
+    display: none !important;
+}
 """
 
 

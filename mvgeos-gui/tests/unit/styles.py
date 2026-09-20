@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from nicegui import ui
 from nicegui.testing import User
@@ -69,3 +71,27 @@ async def test_inject_theme(user: User) -> None:
 
     await user.open("/test_styles")
     await user.should_see("Theme Injected")
+
+
+def _rule_block(css: str, selector: str) -> str:
+    """Return the declaration block for a CSS selector, asserting presence."""
+    match = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
+    assert match is not None, f"missing CSS rule for {selector}"
+    return match.group(1)
+
+
+def test_composer_upload_chrome_collapsed() -> None:
+    """Attach control collapses to an icon button, not the uploader chrome.
+
+    Regression: the composer showed Quasar's gray uploader header
+    ("0.0B / 0.00%") and file list in the toolbar. The theme hides both
+    so only the "+" picker button remains.
+    """
+    list_rules = _rule_block(CURVY_COMPOSER_CSS, ".mvge-upload-btn .q-uploader__list")
+    assert "display" in list_rules
+    assert "none" in list_rules
+    header_rules = _rule_block(
+        CURVY_COMPOSER_CSS, ".mvge-upload-btn .q-uploader__header-content"
+    )
+    assert "display" in header_rules
+    assert "none" in header_rules

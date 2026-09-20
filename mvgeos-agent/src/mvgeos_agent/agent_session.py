@@ -316,7 +316,11 @@ class MvgeTome:
                 role = payload.get("role")
                 content = payload.get("content")
                 if role == "user":
-                    user_content = content if isinstance(content, str) else str(content)
+                    user_content = (
+                        content
+                        if isinstance(content, (str, list))
+                        else str(content)
+                    )
                     invocations.append(
                         SummonerRequest(role="user", content=user_content)
                     )
@@ -379,7 +383,7 @@ class MvgeTome:
                                         role="user",
                                         content=(
                                             item_content
-                                            if isinstance(item_content, str)
+                                            if isinstance(item_content, (str, list))
                                             else str(item_content)
                                         ),
                                     )

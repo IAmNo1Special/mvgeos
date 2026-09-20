@@ -1171,6 +1171,61 @@ class TestAgentSessionCoverageExtensions:
             ]
             assert invocations[2].content == [{"type": ContentType.TEXT, "text": "777"}]
 
+    def test_reconstruct_invocations_user_content_parts_preserved(self) -> None:
+        """User content parts survive a tome round-trip as a list."""
+        parts = [
+            {"type": "text", "text": "look at this"},
+            {
+                "type": "image_url",
+                "image_url": {"url": "data:image/png;base64,aGk="},
+            },
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            tome, _factory = _temp_tome(tmp)
+            tome.record_message(role="user", content=parts)
+            tome.record_message(role="user", content="plain string")
+
+            invocations = tome.reconstruct_invocations()
+            assert len(invocations) == 2
+            assert invocations[0].content == parts
+            assert invocations[1].content == "plain string"
+
+    def test_reconstruct_invocations_retained_tail_user_parts_preserved(self) -> None:
+        """Retained tail user content parts are not stringified."""
+        parts = [
+            {
+                "type": "file",
+                "file": {
+                    "filename": "doc.pdf",
+                    "file_data": "data:application/pdf;base64,aGk=",
+                },
+            }
+        ]
+        entries = [
+            TomeEntry(
+                id="c1",
+                parent_id=None,
+                type=TomeEntryType.COMPACTION,
+                timestamp=1000.0,
+                payload={
+                    "summary": "Compacted conversation",
+                    "manaBefore": 5000,
+                    "retainedTail": [{"role": "user", "content": parts}],
+                },
+            ),
+        ]
+        factory = MagicMock()
+        factory.get_entries_for_context.return_value = entries
+        factory.get_leaf_id.return_value = "c1"
+        write, read = _mock_handles()
+
+        tome = MvgeTome(factory, write, read)
+        invocations = tome.reconstruct_invocations()
+
+        assert len(invocations) == 2
+        assert isinstance(invocations[1], SummonerRequest)
+        assert invocations[1].content == parts
+
     def test_reconstruct_invocations_invalid_stop_reason_falls_back(
         self,
     ) -> None:

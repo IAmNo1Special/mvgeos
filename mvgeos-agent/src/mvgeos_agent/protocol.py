@@ -124,7 +124,7 @@ class MvgeAgent(Protocol):
         """Wire collaborators, runes, and tome session."""
         ...
 
-    async def run(self, prompt: str) -> MvgeInvocation:
+    async def run(self, prompt: str | list[dict[str, Any]]) -> MvgeInvocation:
         """Run an invocation turn."""
         ...
 

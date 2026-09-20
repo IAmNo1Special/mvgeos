@@ -547,14 +547,15 @@ class AgentService:
         state.notify()
 
     async def run_prompt(
-        self, prompt: str, state: AppState, message: ChatMessage
+        self, prompt: str | list[dict[str, Any]], state: AppState, message: ChatMessage
     ) -> None:
         """Run agent with prompt asynchronously while capturing all events."""
-        stripped = prompt.strip()
-        cmd_name = stripped.split(maxsplit=1)[0] if stripped else ""
-        if cmd_name in SLASH_COMMANDS:
-            await self.dispatch_slash_command(prompt, state, message)
-            return
+        if isinstance(prompt, str):
+            stripped = prompt.strip()
+            cmd_name = stripped.split(maxsplit=1)[0] if stripped else ""
+            if cmd_name in SLASH_COMMANDS:
+                await self.dispatch_slash_command(prompt, state, message)
+                return
 
         self._is_running = True
         self._active_message = message

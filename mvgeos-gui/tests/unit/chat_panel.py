@@ -2,10 +2,11 @@
 
 import asyncio
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from nicegui import ui
+from nicegui.elements.upload_files import SmallFileUpload
 from nicegui.testing import User
 
 from mvgeos_gui.components.chat_panel import (
@@ -389,3 +390,102 @@ async def test_composer_draft_survives_new_conversation(user: User) -> None:
         restored = user.find(marker="prompt_input")
         assert restored.elements
         assert (next(iter(restored.elements)).value or "") == "unsent draft"
+
+
+@pytest.mark.asyncio
+async def test_composer_upload_attaches_on_select(user: User) -> None:
+    """Verify the attach control uploads immediately on file selection.
+
+    Regression: the composer attach control rendered Quasar's full
+    uploader chrome (gray "0.0B / 0.00%" header + file list) and needed a
+    second click on the cloud button before on_upload fired. With
+    auto-upload, picking a file fires on_upload at once.
+    """
+    state = AppState()
+
+    @ui.page("/test_composer_upload_auto")
+    def page() -> None:
+        render_chat_panel(state)
+
+    await user.open("/test_composer_upload_auto")
+    (upload,) = user.find(marker="composer_upload_btn").elements
+    assert upload.props.get("auto-upload") is True
+
+
+@pytest.mark.asyncio
+async def test_composer_upload_attaches_file_content(user: User) -> None:
+    """Verify picking a file stores its content for the next prompt.
+
+    Regression: the upload handler read e.files, which does not exist on
+    NiceGUI's UploadEventArguments, so picking a file was a silent no-op.
+    """
+    state = AppState()
+
+    @ui.page("/test_composer_upload_content")
+    def page() -> None:
+        render_chat_panel(state)
+
+    await user.open("/test_composer_upload_content")
+    (upload,) = user.find(marker="composer_upload_btn").elements
+    await upload.handle_uploads(
+        [
+            SmallFileUpload(
+                name="hello.py",
+                content_type="text/x-python",
+                _data=b"print('hi')",
+            )
+        ]
+    )
+    for _ in range(100):
+        if state.pending_attachments:
+            break
+        await asyncio.sleep(0.01)
+    assert state.pending_attachments == ["hello.py"]
+    assert state.pending_attachment_contents["hello.py"] == b"print('hi')"
+    await user.should_see("hello.py")
+
+
+@pytest.mark.asyncio
+async def test_composer_send_attachment_only_goes_through(user: User) -> None:
+    """Verify an attachment-only send submits via the real send button.
+
+    With empty text but a pending attachment, clicking send must still
+    submit the prompt with the file carried as a native content part.
+    """
+    state = AppState()
+    mock_service = MagicMock()
+    mock_service.run_prompt = AsyncMock()
+    state.agent_service = mock_service
+
+    @ui.page("/test_composer_attach_only_send")
+    def page() -> None:
+        render_chat_panel(state)
+
+    await user.open("/test_composer_attach_only_send")
+    (upload,) = user.find(marker="composer_upload_btn").elements
+    await upload.handle_uploads(
+        [
+            SmallFileUpload(
+                name="hello.py",
+                content_type="text/x-python",
+                _data=b"print('hi')",
+            )
+        ]
+    )
+    for _ in range(100):
+        if state.pending_attachments:
+            break
+        await asyncio.sleep(0.01)
+    user.find("send_prompt_btn").click()
+    for _ in range(100):
+        if state.messages:
+            break
+        await asyncio.sleep(0.01)
+    assert len(state.messages) == 2
+    assert state.messages[0].attachments == ["hello.py"]
+    assert "[Attached file:" not in state.messages[0].content
+    mock_service.run_prompt.assert_called_once()
+    sent = mock_service.run_prompt.call_args[0][0]
+    assert isinstance(sent, list)
+    assert sent[0]["type"] == "file"
+    assert sent[0]["file"]["filename"] == "hello.py"

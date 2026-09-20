@@ -997,7 +997,7 @@ class Mvge:
         self._compaction = harness.compaction
         return harness
 
-    async def run(self, prompt: str) -> MvgeInvocation:
+    async def run(self, prompt: str | list[dict[str, Any]]) -> MvgeInvocation:
         """Template method for processing a turn."""
         await self.initialize()
         assert self._state is not None

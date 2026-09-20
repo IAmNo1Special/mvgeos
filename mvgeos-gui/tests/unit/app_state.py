@@ -655,14 +655,60 @@ class TestSubmitPromptAttachments:
 
         assert state.pending_attachments == []
 
-    def test_submit_prompt_empty_no_attachments_bound(self) -> None:
+    @pytest.mark.asyncio
+    async def test_submit_prompt_empty_with_attachments_sends(self) -> None:
         state = AppState()
         state.pending_attachments = ["file1.py"]
+        state.pending_attachment_contents = {"file1.py": b"print('hi')"}
+        mock_service = MagicMock()
+        mock_service.run_prompt = AsyncMock()
+        state.agent_service = mock_service
 
         state.submit_prompt("")
 
-        assert state.pending_attachments == ["file1.py"]
-        assert state.messages == []
+        assert state.pending_attachments == []
+        assert state.pending_attachment_contents == {}
+        user_msg = state.messages[0]
+        assert user_msg.attachments == ["file1.py"]
+        assert "[Attached file:" not in user_msg.content
+        mock_service.run_prompt.assert_called_once()
+        sent = mock_service.run_prompt.call_args[0][0]
+        assert isinstance(sent, list)
+        assert sent[0]["type"] == "file"
+        assert sent[0]["file"]["filename"] == "file1.py"
+
+    @pytest.mark.asyncio
+    async def test_submit_prompt_text_with_attachments_sends_parts(self) -> None:
+        state = AppState()
+        state.pending_attachments = ["pic.png"]
+        state.pending_attachment_contents = {"pic.png": b"\x89PNG"}
+        mock_service = MagicMock()
+        mock_service.run_prompt = AsyncMock()
+        state.agent_service = mock_service
+
+        state.submit_prompt("look at this")
+
+        user_msg = state.messages[0]
+        assert user_msg.attachments == ["pic.png"]
+        assert user_msg.content == "look at this"
+        mock_service.run_prompt.assert_called_once()
+        sent = mock_service.run_prompt.call_args[0][0]
+        assert isinstance(sent, list)
+        assert sent[0] == {"type": "text", "text": "look at this"}
+        assert sent[1]["type"] == "image_url"
+
+    @pytest.mark.asyncio
+    async def test_submit_prompt_without_attachments_sends_plain_string(self) -> None:
+        state = AppState()
+        mock_service = MagicMock()
+        mock_service.run_prompt = AsyncMock()
+        state.agent_service = mock_service
+
+        state.submit_prompt("Hello")
+
+        mock_service.run_prompt.assert_called_once()
+        sent = mock_service.run_prompt.call_args[0][0]
+        assert sent == "Hello"
 
     def test_submit_prompt_no_attachments_field_empty(self) -> None:
         state = AppState()
@@ -1799,3 +1845,77 @@ def test_permissions_deep_link_flag_round_trip() -> None:
     state.request_approval_permissions_open()
     assert state.take_approval_permissions_open_request() is True
     assert state.take_approval_permissions_open_request() is False
+
+
+def _prompt_state() -> AppState:
+    """AppState with a mocked agent service for submit_prompt tests."""
+    state = AppState()
+    mock_service = MagicMock()
+    mock_service.run_prompt = AsyncMock()
+    state.agent_service = mock_service
+    return state
+
+
+@pytest.mark.asyncio
+async def test_submit_prompt_sends_attachment_as_native_part() -> None:
+    """Verify attached file content reaches the agent as a file part."""
+    state = _prompt_state()
+    state.add_attachment("hello.py", b"print('hi')")
+
+    state.submit_prompt("What does this do?")
+
+    assert state.messages[0].content == "What does this do?"
+    assert state.messages[0].attachments == ["hello.py"]
+    assert state.pending_attachments == []
+    assert state.pending_attachment_contents == {}
+    sent = state.agent_service.run_prompt.call_args[0][0]
+    assert isinstance(sent, list)
+    assert sent[0] == {"type": "text", "text": "What does this do?"}
+    file_part = sent[1]
+    assert file_part["type"] == "file"
+    assert file_part["file"]["filename"] == "hello.py"
+    assert file_part["file"]["file_data"].startswith("data:text/x-python;base64,")
+
+
+@pytest.mark.asyncio
+async def test_submit_prompt_binary_attachment_sent_as_native_part() -> None:
+    """Verify binary attachments travel as native file parts, not text."""
+    state = _prompt_state()
+    state.add_attachment("img.png", b"\x89PNG\r\n\x1a\n\x00\xff\x00\x01")
+
+    state.submit_prompt("Look at this")
+
+    assert "binary" not in state.messages[0].content
+    sent = state.agent_service.run_prompt.call_args[0][0]
+    assert isinstance(sent, list)
+    assert sent[0] == {"type": "text", "text": "Look at this"}
+    assert sent[1]["type"] == "image_url"
+    assert sent[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+@pytest.mark.asyncio
+async def test_submit_prompt_large_attachment_not_truncated() -> None:
+    """Verify large attachments ride whole in a native file part."""
+    state = _prompt_state()
+    state.add_attachment("big.log", b"x" * 200_000)
+
+    state.submit_prompt("Summarize")
+
+    sent = state.agent_service.run_prompt.call_args[0][0]
+    assert isinstance(sent, list)
+    file_part = sent[1]
+    assert file_part["type"] == "file"
+    assert file_part["file"]["filename"] == "big.log"
+    assert "truncat" not in state.messages[0].content
+
+
+def test_remove_attachment_drops_content() -> None:
+    """Verify removing a chip also drops its stored content."""
+    state = AppState()
+    state.add_attachment("a.py", b"x = 1")
+    state.add_attachment("b.py", b"y = 2")
+
+    state.remove_attachment(0)
+
+    assert state.pending_attachments == ["b.py"]
+    assert state.pending_attachment_contents == {"b.py": b"y = 2"}

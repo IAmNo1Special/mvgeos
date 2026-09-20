@@ -3,17 +3,19 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from mvgeos_core.abort import AbortSignal
 from mvgeos_core.events import QueueMode
+from mvgeos_core.invocations import SummonerRequest
 from mvgeos_core.spells import ExecutionMode
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import RuneLoad, RuneManifest, SpellDefinition
 
 from mvgeos_agent import Mvge
 from mvgeos_agent.mvge import _apply_gateway_allowlist, _validate_spell_name
+from mvgeos_agent.types import MvgeState
 
 
 def dummy_built_in(command: str) -> str:
@@ -600,3 +602,38 @@ class TestApplyGatewayAllowlist:
         other_api = runner.create_api(rune_name="other")
         other_api.widen_global_allowlist(["weather_lookup"])
         assert runner.get_global_spell_allowlist() is None
+
+
+class TestMvgeRunContentParts:
+    @pytest.mark.asyncio
+    async def test_run_with_content_parts_appends_them_verbatim(self) -> None:
+        agent = Mvge(api_key="k", spells=[])
+        state = MvgeState()
+        state.system_prompt = "sys"
+        agent._state = state
+        agent.initialize = AsyncMock()  # type: ignore[method-assign]
+        agent._run_impl = AsyncMock(  # type: ignore[method-assign]
+            return_value=SummonerRequest(role="user", content="done")
+        )
+        parts = [
+            {"type": "text", "text": "look at this"},
+            {
+                "type": "image_url",
+                "image_url": {"url": "data:image/png;base64,aGk="},
+            },
+        ]
+        await agent.run(parts)  # type: ignore[arg-type]
+        assert state.invocations[0].content == parts
+
+    @pytest.mark.asyncio
+    async def test_run_with_plain_string_still_works(self) -> None:
+        agent = Mvge(api_key="k", spells=[])
+        state = MvgeState()
+        state.system_prompt = "sys"
+        agent._state = state
+        agent.initialize = AsyncMock()  # type: ignore[method-assign]
+        agent._run_impl = AsyncMock(  # type: ignore[method-assign]
+            return_value=SummonerRequest(role="user", content="done")
+        )
+        await agent.run("hello")
+        assert state.invocations[0].content == "hello"
