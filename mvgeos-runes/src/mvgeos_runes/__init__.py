@@ -16,6 +16,11 @@ from mvgeos_runes.loader import (
 )
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_api import RuneAPI, RuneFactory
+from mvgeos_runes.rune_audit import (
+    AuditError,
+    RuneAuditLog,
+    default_rune_ops_dir,
+)
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.skill_installer import install_skill
 from mvgeos_runes.types import (
