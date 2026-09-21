@@ -44,6 +44,7 @@ def render_shell(state: AppState) -> None:
                     state.tome_title,
                     len(state.loaded_tomes),
                     str(state.project_path),
+                    state.current_user,
                 )
             ]
 
@@ -57,6 +58,7 @@ def render_shell(state: AppState) -> None:
                     state.tome_title,
                     len(state.loaded_tomes),
                     str(state.project_path),
+                    state.current_user,
                 )
 
             sidebar_container()
@@ -69,6 +71,7 @@ def render_shell(state: AppState) -> None:
                     state.tome_title,
                     len(state.loaded_tomes),
                     str(state.project_path),
+                    state.current_user,
                 )
                 if cur != last_sidebar_state[0]:
                     sidebar_container.refresh()
