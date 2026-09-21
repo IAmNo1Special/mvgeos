@@ -428,8 +428,9 @@ def test_no_fixed_dark_badge_colors_in_components() -> None:
     theme tokens (``bg-[var(--bg-card)]``) instead.
     """
     components = (
-        Path(__file__).resolve().parents[3] / "src" / "mvgeos_gui" / "components"
+        Path(__file__).resolve().parents[2] / "src" / "mvgeos_gui" / "components"
     )
+    assert components.is_dir(), f"components dir not found: {components}"
     offenders = [
         path.name
         for path in sorted(components.glob("*.py"))

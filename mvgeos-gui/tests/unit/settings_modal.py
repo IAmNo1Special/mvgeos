@@ -9,6 +9,7 @@ import pytest
 from nicegui import ui
 from nicegui.testing import User
 
+from mvgeos_gui.components import settings_modal as settings_modal_module
 from mvgeos_gui.components.settings_modal import render_app_settings_modal
 from mvgeos_gui.services.config_service import AppSettings, ConfigService
 from mvgeos_gui.state import AppState
@@ -294,7 +295,8 @@ async def test_saving_new_theme_applies_it_live(
 
     applied: list[tuple[str, object]] = []
     monkeypatch.setattr(
-        "mvgeos_gui.components.settings_modal.apply_theme",
+        settings_modal_module,
+        "apply_theme",
         lambda theme, dark_mode: applied.append((theme, dark_mode)),
     )
 
@@ -329,7 +331,8 @@ async def test_saving_unchanged_theme_does_not_reapply(
 
     applied: list[tuple[str, object]] = []
     monkeypatch.setattr(
-        "mvgeos_gui.components.settings_modal.apply_theme",
+        settings_modal_module,
+        "apply_theme",
         lambda theme, dark_mode: applied.append((theme, dark_mode)),
     )
 

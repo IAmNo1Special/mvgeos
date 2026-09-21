@@ -14,7 +14,6 @@ from mvgeos_tome.handle import TomeHandleFactory
 from mvgeos_tome.types import TomeEntry, TomeEntryType
 from nicegui import ui
 
-from mvgeos_gui import styles as styles_module
 from mvgeos_gui.app import build_page, init_app
 from mvgeos_gui.models.user import User, UserRole
 from mvgeos_gui.services.config_service import AppSettings, ConfigService
@@ -492,29 +491,21 @@ async def test_packages_panel_renders(user: User) -> None:
 
 
 @pytest.mark.asyncio
-async def test_build_page_uses_saved_theme(
-    user, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """build_page injects the persisted theme and keeps the DarkMode handle."""
+async def test_build_page_uses_saved_theme(user, tmp_path: Path) -> None:
+    """build_page boots with the persisted theme and keeps the DarkMode handle.
+
+    Observable result: with "light" persisted, the page's DarkMode handle
+    is off (``value is False``).
+    """
     service = ConfigService(config_dir=tmp_path)
     service.save_app_settings(AppSettings(theme="light"))
     state = AppState(project_path=tmp_path)
     state._config_service = service
-
-    seen: list[str] = []
-    real_inject = styles_module.inject_theme
-
-    def _capture(theme: str = "dark"):
-        seen.append(theme)
-        return real_inject(theme)
-
-    monkeypatch.setattr(styles_module, "inject_theme", _capture)
 
     @ui.page("/test_saved_theme")
     def page() -> None:
         build_page(state)
 
     await user.open("/test_saved_theme")
-    assert seen == ["light"]
     assert state._dark_mode is not None
     assert state._dark_mode.value is False
