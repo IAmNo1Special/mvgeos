@@ -1322,22 +1322,34 @@ class AppState:
         self.review_open = not self.review_open
         self.notify()
 
-    def set_plan_mode(self, enabled: bool) -> list[str]:
+    def set_plan_mode(self, enabled: bool) -> list[str] | None:
         """Enable or disable plan mode (read-only spells only).
 
         Drives the engine agent's plan-mode filter, then mirrors the flag
         locally. Returns the spell names still active after the toggle so
-        callers can warn when plan mode leaves the agent without tools.
+        callers can warn when plan mode leaves the agent without tools, or
+        None when the toggle was refused: enabling plan mode needs an
+        engine agent, which cannot be created without an API key. A
+        refusal never raises and leaves plan mode unchanged. Disabling
+        with no agent is a silent no-op.
         """
         service = self.get_agent_service()
+        if not service.can_create_agent():
+            if enabled:
+                logger.warning("Plan mode toggle refused: no API key configured")
+                return None
+            self.plan_mode = False
+            self.notify()
+            return []
         agent = service.get_or_create_agent(self)
         agent.set_plan_mode(enabled)
         self.plan_mode = enabled
         self.notify()
         return list(agent.enabled_spells)
 
-    def toggle_plan_mode(self) -> list[str]:
-        """Flip plan mode. Returns the spell names active after the toggle."""
+    def toggle_plan_mode(self) -> list[str] | None:
+        """Flip plan mode. Returns the spell names active after the toggle,
+        or None when the toggle was refused for a missing API key."""
         return self.set_plan_mode(not self.plan_mode)
 
     def show_login(self) -> None:

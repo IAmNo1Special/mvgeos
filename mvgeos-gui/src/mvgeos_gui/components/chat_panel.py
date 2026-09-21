@@ -68,7 +68,13 @@ def render_chat_panel(state: AppState) -> ui.column:
 
                     def _on_plan_mode_click() -> None:
                         active_spells = state.toggle_plan_mode()
-                        if state.plan_mode and not active_spells:
+                        if active_spells is None:
+                            ui.notify(
+                                "Plan mode needs an API key. "
+                                "Set one in Settings first.",
+                                type="warning",
+                            )
+                        elif state.plan_mode and not active_spells:
                             ui.notify(
                                 "Plan mode is on, but no spells are marked read-only.",
                                 type="warning",
