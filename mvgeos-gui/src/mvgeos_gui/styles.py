@@ -676,6 +676,75 @@ html, body {
 .collapse-btn-icon.collapsed {
     transform: rotate(180deg) !important;
 }
+
+/* ── Mobile navigation drawer (Major #4) ────────────────────────
+   Breakpoint 768px: at that width the 260px sidebar still leaves
+   >500px of content; below it the crush begins (at 390px the sidebar
+   eats two thirds of the viewport). A drawer was chosen over forcing
+   the 56px icon rail: the app already speaks overlay drawers
+   (artifact drawer, command palette), and the drawer gives content
+   the full viewport instead of a 334px remainder. Below the
+   breakpoint the sidebar leaves the flex flow (position: fixed) and
+   slides off-canvas until .mobile-open; the hamburger opens it and
+   the scrim, Escape, or any tap inside the drawer closes it. */
+.mobile-menu-btn {
+    display: none;
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 1298;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    align-items: center;
+    justify-content: center;
+    background-color: #0e0e12;
+    border: 1px solid var(--border-subtle);
+    color: var(--accent-primary);
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+.mobile-menu-btn .material-icons {
+    font-size: 22px;
+}
+.sidebar-scrim {
+    display: none;
+}
+@media (max-width: 768px) {
+    .mobile-menu-btn {
+        display: inline-flex;
+    }
+    .sidebar-container {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        bottom: 0 !important;
+        height: 100vh !important;
+        max-height: 100vh !important;
+        z-index: 1300 !important;
+        max-width: 85vw;
+        transform: translateX(-105%);
+        transition: transform 0.25s ease-in-out !important;
+        box-shadow: 8px 0 32px rgba(0, 0, 0, 0.5);
+    }
+    .sidebar-container.mobile-open {
+        transform: translateX(0) !important;
+    }
+    .sidebar-scrim.mobile-open {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 1299;
+        background: rgba(0, 0, 0, 0.55);
+        cursor: pointer;
+    }
+    /* The desktop collapse chevron has no meaning inside the drawer;
+       the drawer is dismissed via scrim / Escape / nav tap. */
+    .sidebar-container .collapse-btn-icon {
+        display: none !important;
+    }
+}
+
 """
 
 GOOGLE_FONTS_HTML = (

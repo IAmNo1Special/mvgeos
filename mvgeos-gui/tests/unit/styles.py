@@ -174,3 +174,22 @@ def test_composer_upload_button_centered_with_model_picker() -> None:
     """
     btn_rules = _rule_block(CURVY_COMPOSER_CSS, ".mvge-upload-btn")
     assert "align-self: center" in btn_rules
+
+
+def test_mobile_drawer_off_canvas() -> None:
+    """Below 768px the sidebar becomes an off-canvas drawer (Major #4).
+
+    The sidebar leaves the flex flow (fixed), slides out of view with
+    translateX(-105%), and returns with .mobile-open. The hamburger and
+    scrim exist but stay hidden on desktop.
+    """
+    assert "@media (max-width: 768px)" in VOID_THEME_CSS
+    assert "translateX(-105%)" in VOID_THEME_CSS
+    opened = _rule_block(VOID_THEME_CSS, ".sidebar-container.mobile-open")
+    assert "translateX(0) !important" in opened
+    scrim = _rule_block(VOID_THEME_CSS, ".sidebar-scrim.mobile-open")
+    assert "display: block" in scrim
+    assert "position: fixed" in scrim
+    btn = _rule_block(VOID_THEME_CSS, ".mobile-menu-btn")
+    assert "display: none" in btn
+    assert "position: fixed" in btn

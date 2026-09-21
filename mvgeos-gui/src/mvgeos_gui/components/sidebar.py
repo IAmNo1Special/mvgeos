@@ -8,6 +8,54 @@ from mvgeos_gui import __version__
 from mvgeos_gui.components.sidebar_hint import sidebar_hint
 from mvgeos_gui.state import AppState
 
+# Mobile drawer bootstrap (Major #4). Injected once per page via
+# ui.add_body_html; the window.__mvgeDrawerWired guard makes repeat
+# injections from sidebar re-renders no-ops. The hamburger and scrim
+# are created in <body> (not inside the sidebar container) because the
+# container gets a translateX transform below the breakpoint, and a
+# transformed ancestor would hijack position: fixed.
+MOBILE_DRAWER_BOOTSTRAP = """
+<script>
+(function () {
+    if (window.__mvgeDrawerWired) return;
+    window.__mvgeDrawerWired = true;
+    var btn = document.createElement('button');
+    btn.className = 'mobile-menu-btn';
+    btn.setAttribute('aria-label', 'Open navigation');
+    btn.innerHTML = '<span class="material-icons">menu</span>';
+    var scrim = document.createElement('div');
+    scrim.className = 'sidebar-scrim';
+    scrim.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(btn);
+    document.body.appendChild(scrim);
+    function isOpen() {
+        var s = document.querySelector('.sidebar-container');
+        return !!s && s.classList.contains('mobile-open');
+    }
+    function setOpen(open) {
+        var s = document.querySelector('.sidebar-container');
+        if (s) s.classList.toggle('mobile-open', open);
+        scrim.classList.toggle('mobile-open', open);
+    }
+    document.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (t.closest && t.closest('.mobile-menu-btn')) {
+            setOpen(!isOpen());
+            return;
+        }
+        if (!isOpen()) return;
+        if (t.closest && (t.closest('.sidebar-scrim') ||
+                t.closest('.sidebar-container'))) {
+            setOpen(false);
+        }
+    });
+    document.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape') setOpen(false);
+    });
+})();
+</script>
+"""
+
 
 def render_sidebar(state: AppState) -> ui.column:
     """Render the collapsible left sidebar."""
@@ -249,6 +297,9 @@ def render_sidebar(state: AppState) -> ui.column:
                 "justify-end shrink-0 no-wrap"
             ):
                 ui.label(f"v{__version__}").classes("text-[10px] text-[#6e6584]")
+
+    # Mobile drawer wiring (Major #4): idempotent, see module constant.
+    ui.add_body_html(MOBILE_DRAWER_BOOTSTRAP)
 
     return container
 

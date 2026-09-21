@@ -35,12 +35,15 @@ def render_diagnostics_panel(state: AppState) -> None:
             ui.button(
                 "Back to Chat",
                 on_click=lambda: state.set_current_view("chat"),
-            ).props("unelevated").classes("mvge-glow-btn text-white")
+            ).props("flat no-caps text-color=grey-5")
 
 
 def _diag_row(label: str, value: str) -> None:
     with ui.row().classes(
-        "w-full items-center justify-between py-1 border-b border-[#292335]/60"
+        "w-full items-center justify-between gap-3 py-1 "
+        "border-b border-[#292335]/60 no-wrap"
     ):
-        ui.label(label).classes("text-xs text-[#9c94b3]")
-        ui.label(value).classes("text-xs text-[#eceaf4] font-mono")
+        ui.label(label).classes("text-xs text-[#9c94b3] shrink-0")
+        ui.label(value).classes(
+            "text-xs text-[#eceaf4] font-mono text-right break-all min-w-0"
+        )
