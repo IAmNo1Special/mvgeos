@@ -323,3 +323,70 @@ def test_geometry_falls_back_when_webview_unavailable(
     assert h == 900
     assert x is None
     assert y is None
+
+
+def _clear_root_handlers() -> list:
+    """Temporarily strip root handlers so setup_logging() configures fresh.
+
+    Returns the previous handlers for restoration by the caller.
+    """
+    import logging
+
+    root = logging.getLogger()
+    old_handlers = list(root.handlers)
+    root.handlers.clear()
+    return old_handlers
+
+
+def _restore_root_handlers(old_handlers: list) -> None:
+    import logging
+
+    root = logging.getLogger()
+    for h in root.handlers:
+        h.close()
+    root.handlers = old_handlers
+
+
+def test_main_writes_startup_banner_with_pid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """main() must wire logging at entry: the startup banner carries the PID."""
+    import os
+
+    monkeypatch.setenv("MVGEOS_LOG_DIR", str(tmp_path))
+    old_handlers = _clear_root_handlers()
+    try:
+        with (
+            patch("mvgeos_gui.main.ui.run"),
+            patch("sys.argv", ["mvgeos-gui", "--web"]),
+        ):
+            main()
+    finally:
+        _restore_root_handlers(old_handlers)
+    content = (tmp_path / "mvgeos-gui.log").read_text(encoding="utf-8")
+    assert f"pid={os.getpid()}" in content
+    assert "starting" in content
+
+
+def test_main_logs_uncaught_server_exception_with_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An exception escaping ui.run must land in the log with a traceback,
+    then propagate (exit code preserved)."""
+    monkeypatch.setenv("MVGEOS_LOG_DIR", str(tmp_path))
+    old_handlers = _clear_root_handlers()
+    try:
+        with (
+            patch(
+                "mvgeos_gui.main.ui.run",
+                side_effect=RuntimeError("server-boom-xyz"),
+            ),
+            patch("sys.argv", ["mvgeos-gui", "--web"]),
+            pytest.raises(RuntimeError, match="server-boom-xyz"),
+        ):
+            main()
+    finally:
+        _restore_root_handlers(old_handlers)
+    content = (tmp_path / "mvgeos-gui.log").read_text(encoding="utf-8")
+    assert "server-boom-xyz" in content
+    assert "Traceback" in content

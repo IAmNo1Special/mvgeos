@@ -4,7 +4,9 @@ import argparse
 import asyncio
 import contextlib
 import ctypes
+import importlib.metadata
 import importlib.util
+import logging
 import os
 import platform
 import secrets
@@ -17,6 +19,7 @@ from nicegui import app, ui
 
 from mvgeos_gui.app import init_app
 from mvgeos_gui.approval.presenter import unbind_approval_presenter
+from mvgeos_gui.core.logging import install_crash_handlers, setup_logging
 from mvgeos_gui.state import AppState
 
 DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
@@ -52,12 +55,30 @@ def _load_webview() -> ModuleType | None:
 
 
 def _shutdown_thread_excepthook(args: threading.ExceptHookArgs) -> None:
-    """Suppress benign shutdown exceptions in background daemon threads."""
+    """Suppress benign shutdown exceptions in background daemon threads.
+
+    Non-benign thread exceptions are logged with a traceback so a dying
+    background thread leaves a trace in the GUI log, then delegated to
+    the default hook as before.
+    """
     if issubclass(args.exc_type, (KeyboardInterrupt, SystemExit)):
         return
     thread_name = getattr(args.thread, "name", "") or ""
     if "check_shutdown" in thread_name:
         return
+    crash_log = logging.getLogger("mvgeos_gui.crash")
+    if args.exc_value is None:
+        crash_log.error(
+            "Uncaught %s in thread %r (no exception value)",
+            args.exc_type.__name__,
+            thread_name,
+        )
+    else:
+        crash_log.error(
+            "Uncaught exception in thread %r",
+            thread_name,
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+        )
     threading.__excepthook__(args)
 
 
@@ -220,9 +241,32 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
+def _gui_version() -> str:
+    """Return the installed mvgeos-gui version, or "unknown"."""
+    try:
+        return importlib.metadata.version("mvgeos-gui")
+    except importlib.metadata.PackageNotFoundError:
+        return "unknown"
+
+
 def main() -> None:
     """Main entry point function for mvgeos-gui console script."""
     args = parse_args()
+    # Logging was previously never wired at entry: setup_logging() existed
+    # but nothing called it, so the rotating mvgeos-gui.log file was never
+    # written and uncaught deaths left no trace. Wire it first, then the
+    # crash/shutdown diagnostics, before any app code can fail.
+    logger = setup_logging()
+    install_crash_handlers(logger)
+    logger.info(
+        "mvgeos-gui starting pid=%d version=%s mode=%s host=%s port=%d project=%s",
+        os.getpid(),
+        _gui_version(),
+        "web" if args.web else "native",
+        args.host,
+        args.port,
+        args.project,
+    )
     state = AppState(
         project_path=args.project,
         selected_model=args.model,
@@ -255,6 +299,7 @@ def main() -> None:
             app.on_startup(_apply_dark_titlebar)
 
     def _cleanup() -> None:
+        logger.info("mvgeos-gui shutdown initiated")
         state.stop_channeling()
         state.clear_listeners()
         # Unbind the Approval Rune presenter: pending casts deny, the
@@ -279,7 +324,14 @@ def main() -> None:
         }
         if not args.web:
             run_kwargs["window_size"] = (width, height)
-        ui.run(**run_kwargs)
+        try:
+            ui.run(**run_kwargs)
+        except Exception:
+            # The server entry is wrapped so an uncaught exception lands in
+            # the GUI log with a full traceback before propagating (the
+            # sys.excepthook + atexit handlers then record the shutdown).
+            logger.exception("mvgeos-gui server crashed with an uncaught exception")
+            raise
     _cleanup()
 
 
