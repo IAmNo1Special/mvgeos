@@ -593,8 +593,9 @@ class MvgeEnvironment:
     ) -> BeforeMvgeStartData:
         """Build the BEFORE_MVGE_START payload from engine state.
 
-        Populates the rune rehydration fields (``active_spells_dir``,
-        ``system_prompt_path``, ``runes_paths``) from this environment. The
+        Populates the rune rehydration fields (``spells_dir``,
+        ``system_path``, ``runes_paths``) from this environment, as flat
+        strings matching the existing ``str``-typed payload fields. The
         returned payload is a fresh object per call; the engine caches its
         own copy and fans out defensive copies so rune mutations can never
         corrupt the cache or double-append prompt sections.
@@ -605,6 +606,11 @@ class MvgeEnvironment:
             if config_dir is not None
             else str(resolve_config_dir(self.agent_name))
         )
+        effective_spells_dir = (
+            active_spells_dir
+            if active_spells_dir is not None
+            else self.active_spells_dir
+        )
         return BeforeMvgeStartData(
             base_prompt=base_prompt,
             spell_names=list(spell_names),
@@ -612,13 +618,15 @@ class MvgeEnvironment:
             custom_prompt=custom_prompt,
             agent_name=self.agent_name,
             cwd=effective_cwd,
-            active_spells_dir=(
-                active_spells_dir
-                if active_spells_dir is not None
-                else self.active_spells_dir
+            runes_paths=[p.as_posix() for p in self.runes_paths],
+            system_path=(
+                self.resolved_prompt.path.as_posix()
+                if self.resolved_prompt.path
+                else None
             ),
-            system_prompt_path=self.resolved_prompt.path,
-            runes_paths=tuple(self.runes_paths),
+            spells_dir=(
+                effective_spells_dir.as_posix() if effective_spells_dir else None
+            ),
         )
 
     async def assemble_system_prompt(

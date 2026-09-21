@@ -201,9 +201,9 @@ class BeforeMvgeStartData:
     custom_prompt: str
     agent_name: str
     cwd: str
-    active_spells_dir: Path | None = None
-    system_prompt_path: Path | None = None
-    runes_paths: tuple[Path, ...] = ()
+    runes_paths: list[str] = field(default_factory=list)
+    system_path: str | None = None
+    spells_dir: str | None = None
 
 
 @dataclass

@@ -1,5 +1,4 @@
 from dataclasses import FrozenInstanceError, replace
-from pathlib import Path
 
 import pytest
 
@@ -76,9 +75,9 @@ class TestBeforeMvgeStartData:
 
     def test_new_fields_default_to_unset(self) -> None:
         data = self._minimal()
-        assert data.active_spells_dir is None
-        assert data.system_prompt_path is None
-        assert data.runes_paths == ()
+        assert data.spells_dir is None
+        assert data.system_path is None
+        assert data.runes_paths == []
 
     def test_new_fields_accept_values(self) -> None:
         data = BeforeMvgeStartData(
@@ -88,13 +87,13 @@ class TestBeforeMvgeStartData:
             custom_prompt="",
             agent_name="tester",
             cwd="/work",
-            active_spells_dir=Path("/cfg/spells"),
-            system_prompt_path=Path("/cfg/SYSTEM.md"),
-            runes_paths=(Path("/ext"),),
+            spells_dir="/cfg/spells",
+            system_path="/cfg/SYSTEM.md",
+            runes_paths=["/ext"],
         )
-        assert data.active_spells_dir == Path("/cfg/spells")
-        assert data.system_prompt_path == Path("/cfg/SYSTEM.md")
-        assert data.runes_paths == (Path("/ext"),)
+        assert data.spells_dir == "/cfg/spells"
+        assert data.system_path == "/cfg/SYSTEM.md"
+        assert data.runes_paths == ["/ext"]
 
     def test_existing_fields_unchanged(self) -> None:
         data = self._minimal()

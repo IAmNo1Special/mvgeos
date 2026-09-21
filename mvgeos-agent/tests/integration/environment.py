@@ -191,7 +191,12 @@ async def test_before_mvge_start_payload_carries_rehydration_fields() -> None:
         assert isinstance(payload, BeforeMvgeStartData)
         assert payload.agent_name == "default-mvge"
         assert payload.base_prompt == agent._environment.resolved_prompt.text
-        assert payload.system_prompt_path == agent._environment.resolved_prompt.path
-        assert tuple(payload.runes_paths) == tuple(agent._environment.runes_paths)
+        resolved_path = agent._environment.resolved_prompt.path
+        assert payload.system_path == (
+            resolved_path.as_posix() if resolved_path else None
+        )
+        assert payload.runes_paths == [
+            p.as_posix() for p in agent._environment.runes_paths
+        ]
         # No spells dir exists in this tmp setup, so nothing is recorded.
-        assert payload.active_spells_dir is None
+        assert payload.spells_dir is None

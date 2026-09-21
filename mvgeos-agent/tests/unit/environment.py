@@ -843,9 +843,29 @@ class TestSigilPayload:
         assert payload.custom_prompt == "Custom."
         assert payload.agent_name == "test-agent"
         assert payload.cwd == str(tmp_path)
-        assert payload.active_spells_dir == spells_dir
-        assert payload.system_prompt_path == env.resolved_prompt.path
-        assert tuple(payload.runes_paths) == tuple(env.runes_paths)
+        assert payload.spells_dir == spells_dir.as_posix()
+        expected_system_path = (
+            env.resolved_prompt.path.as_posix()
+            if env.resolved_prompt.path
+            else None
+        )
+        assert payload.system_path == expected_system_path
+        assert payload.runes_paths == [p.as_posix() for p in env.runes_paths]
+
+    def test_build_sigil_payload_spells_dir_defaults_to_none(
+        self, tmp_path: Path
+    ) -> None:
+        """§4.4: payload coverage includes the spells_dir=None case."""
+        env = MvgeEnvironment.resolve("test-agent")
+        assert env.active_spells_dir is None
+
+        payload = env.build_sigil_payload(
+            base_prompt="Be helpful.",
+            spell_names=[],
+            config_dir=tmp_path,
+        )
+
+        assert payload.spells_dir is None
 
     def test_build_sigil_payload_explicit_dir_beats_environment(
         self, tmp_path: Path
@@ -862,4 +882,4 @@ class TestSigilPayload:
             active_spells_dir=override,
         )
 
-        assert payload.active_spells_dir == override
+        assert payload.spells_dir == override.as_posix()
