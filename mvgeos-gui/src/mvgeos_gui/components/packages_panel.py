@@ -934,6 +934,12 @@ def render_packages_panel(state: AppState) -> None:
                 ):
                     ui.icon("search_off", size="32px").classes("text-[#6e6584]")
                     ui.label("No packages found").classes("text-xs text-[#6e6584]")
+                    ui.label(
+                        "Get packages with the Install buttons above -- from "
+                        "a marketplace name, git URL, or local path. If the "
+                        "catalog failed to load, check your connection and "
+                        "reopen this view to retry."
+                    ).classes("text-[11px] text-[#6e6584]/70 text-center max-w-[420px]")
                     has_active_filters = (
                         bool(query)
                         or selected_type != "All Types"

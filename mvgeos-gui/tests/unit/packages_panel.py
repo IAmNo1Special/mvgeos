@@ -835,3 +835,24 @@ async def test_packages_panel_rune_settings_dialog(user: User) -> None:
 
     # Toggle enabled off and save
     state.set_rune_enabled_async.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_packages_panel_empty_state_explains_how_to_get_packages(
+    user: User,
+) -> None:
+    """An empty catalog must explain how to get packages, not just say none."""
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+
+    @ui.page("/test_packages_empty_guidance")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_packages_empty_guidance")
+    await user.should_see("No packages found")
+    await user.should_see("Install Rune from URL/Git")
+    await user.should_see("marketplace name, git URL, or local path")
