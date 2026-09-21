@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
 import logging
+import tempfile
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from mvgeos_runes.loader import load_runes_from_paths
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     Diagnostic,
@@ -1036,3 +1040,197 @@ class TestRuneRunnerInstances:
         assert runner.get_rune("hot-rune") is instance
         runner.clear_rune("hot-rune")
         assert runner.get_rune("hot-rune") is None
+
+
+def _write_rune(ext_dir: Path, name: str, body: str) -> Path:
+    rune_dir = ext_dir / name
+    rune_dir.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "name": name,
+        "version": "0.1.0",
+        "description": "test rune",
+        "entry_point": "rune.py",
+    }
+    (rune_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (rune_dir / "rune.py").write_text(body, encoding="utf-8")
+    return rune_dir
+
+
+def _spell_body(spell_name: str) -> str:
+    return (
+        "def rune_factory(api):\n"
+        "    from mvgeos_runes.types import SpellDefinition\n"
+        "    class S(SpellDefinition):\n"
+        "        async def execute(self, spell_cast_id, params, signal=None):\n"
+        "            return {'result': 'ok'}\n"
+        f"    api.register_spell(S(name='{spell_name}', description='x'))\n"
+    )
+
+
+class TestRefreshRunes:
+    """refresh_runes: full re-execution of every rune across extensions dirs."""
+
+    @pytest.mark.asyncio
+    async def test_refresh_picks_up_code_change(self) -> None:
+        runner = RuneRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            _write_rune(ext_dir, "hot", _spell_body("v1_spell"))
+            loads, _ = load_runes_from_paths([(ext_dir, RuneScope.USER)])
+            await runner.load_rune_loads(loads)
+            assert any(s.name == "v1_spell" for s in runner.get_all_registered_spells())
+
+            _write_rune(ext_dir, "hot", _spell_body("v2_spell"))
+            diagnostics = await runner.refresh_runes([ext_dir])
+
+            names = {s.name for s in runner.get_all_registered_spells()}
+            assert "v2_spell" in names
+            assert "v1_spell" not in names
+            assert diagnostics == []
+
+    @pytest.mark.asyncio
+    async def test_refresh_loads_new_rune_dir(self) -> None:
+        runner = RuneRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            _write_rune(ext_dir, "rune-a", _spell_body("a_spell"))
+            diagnostics = await runner.refresh_runes([ext_dir])
+            assert diagnostics == []
+
+            _write_rune(ext_dir, "rune-b", _spell_body("b_spell"))
+            diagnostics = await runner.refresh_runes([ext_dir])
+
+            names = {s.name for s in runner.get_all_registered_spells()}
+            assert {"a_spell", "b_spell"} <= names
+            assert diagnostics == []
+
+    @pytest.mark.asyncio
+    async def test_refresh_reports_broken_manifest_as_diagnostic(self) -> None:
+        runner = RuneRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            _write_rune(ext_dir, "good", _spell_body("good_spell"))
+            bad_dir = ext_dir / "bad"
+            bad_dir.mkdir()
+            (bad_dir / "manifest.json").write_text("{invalid json", encoding="utf-8")
+
+            diagnostics = await runner.refresh_runes([ext_dir])
+
+            assert any(
+                d.kind == DiagnosticKind.LOAD_FAILURE and d.rune_name == "bad"
+                for d in diagnostics
+            )
+            names = {s.name for s in runner.get_all_registered_spells()}
+            assert "good_spell" in names
+
+    @pytest.mark.asyncio
+    async def test_refresh_reports_factory_exception_as_diagnostic(self) -> None:
+        runner = RuneRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            _write_rune(ext_dir, "good", _spell_body("good_spell"))
+            _write_rune(
+                ext_dir,
+                "broken",
+                "def rune_factory(api):\n    raise RuntimeError('boom')\n",
+            )
+
+            diagnostics = await runner.refresh_runes([ext_dir])
+
+            assert any(
+                d.kind == DiagnosticKind.LOAD_FAILURE and d.rune_name == "broken"
+                for d in diagnostics
+            )
+            names = {s.name for s in runner.get_all_registered_spells()}
+            assert "good_spell" in names
+
+    @pytest.mark.asyncio
+    async def test_refresh_skips_missing_dirs(self) -> None:
+        runner = RuneRunner()
+        diagnostics = await runner.refresh_runes([Path("/nonexistent-dir-xyz")])
+        assert diagnostics == []
+
+
+class TestRehydrateRunes:
+    """rehydrate_runes: refresh hook-derived instance state without refiring hooks."""
+
+    @pytest.mark.asyncio
+    async def test_rehydrate_calls_rehydrate_with_payload(self) -> None:
+        runner = RuneRunner()
+        seen: list[Any] = []
+
+        class Instance:
+            def rehydrate(self, payload: Any) -> None:
+                seen.append(payload)
+
+        manifest = RuneManifest(name="stateful", version="0.1.0", description="t")
+        await runner.load_rune_loads(
+            [RuneLoad(manifest=manifest, factory=lambda api: Instance())]
+        )
+
+        payload = object()
+        errors = await runner.rehydrate_runes(payload)
+        assert errors == []
+        assert seen == [payload]
+
+    @pytest.mark.asyncio
+    async def test_rehydrate_awaits_async_rehydrate(self) -> None:
+        runner = RuneRunner()
+        seen: list[Any] = []
+
+        class Instance:
+            async def rehydrate(self, payload: Any) -> None:
+                seen.append(payload)
+
+        manifest = RuneManifest(name="async-state", version="0.1.0", description="t")
+        await runner.load_rune_loads(
+            [RuneLoad(manifest=manifest, factory=lambda api: Instance())]
+        )
+
+        errors = await runner.rehydrate_runes({"k": "v"})
+        assert errors == []
+        assert seen == [{"k": "v"}]
+
+    @pytest.mark.asyncio
+    async def test_rehydrate_isolates_per_rune_failure(self) -> None:
+        runner = RuneRunner()
+        recovered: list[bool] = []
+
+        class Broken:
+            def rehydrate(self, payload: Any) -> None:
+                raise RuntimeError("stale state")
+
+        class Fine:
+            def rehydrate(self, payload: Any) -> None:
+                recovered.append(True)
+
+        await runner.load_rune_loads(
+            [
+                RuneLoad(
+                    manifest=RuneManifest(
+                        name="broken", version="0.1.0", description="t"
+                    ),
+                    factory=lambda api: Broken(),
+                ),
+                RuneLoad(
+                    manifest=RuneManifest(
+                        name="fine", version="0.1.0", description="t"
+                    ),
+                    factory=lambda api: Fine(),
+                ),
+            ]
+        )
+
+        errors = await runner.rehydrate_runes(object())
+        assert len(errors) == 1
+        assert "broken" in errors[0]
+        assert recovered == [True]
+
+    @pytest.mark.asyncio
+    async def test_rehydrate_skips_instances_without_rehydrate(self) -> None:
+        runner = RuneRunner()
+        manifest = RuneManifest(name="plain", version="0.1.0", description="t")
+        await runner.load_rune_loads(
+            [RuneLoad(manifest=manifest, factory=lambda api: object())]
+        )
+        assert await runner.rehydrate_runes(object()) == []

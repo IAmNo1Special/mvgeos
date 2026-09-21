@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from watchdog.events import FileModifiedEvent, FileMovedEvent
 
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.watcher import RuneWatcher, _RuneReloadHandler
@@ -402,3 +403,155 @@ class TestRuneWatcherStartStop:
                 Path(tmpdir), AsyncMock(), debounce_seconds=0.01, loop=loop
             )
             handler._schedule_reload("test_rune")
+
+
+class TestWatcherReloadCallbackMode:
+    """The watcher as a dumb trigger: fire-once coalescing into Mvge.reload()."""
+
+    @pytest.mark.asyncio
+    async def test_fire_once_coalesces_burst_into_single_call(self) -> None:
+        calls: list[bool] = []
+
+        async def cb() -> None:
+            calls.append(True)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            handler = _RuneReloadHandler(
+                Path(tmpdir),
+                cb,
+                debounce_seconds=0.02,
+                loop=asyncio.get_running_loop(),
+                fire_once=True,
+            )
+            event = FileModifiedEvent(str(Path(tmpdir) / "rune-a" / "rune.py"))
+            handler.on_modified(event)
+            handler.on_created(event)
+            handler.on_modified(event)
+            await asyncio.sleep(0.2)
+        assert len(calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_fire_once_ignores_dotfiles(self) -> None:
+        calls: list[bool] = []
+
+        async def cb() -> None:
+            calls.append(True)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            handler = _RuneReloadHandler(
+                Path(tmpdir),
+                cb,
+                debounce_seconds=0.02,
+                loop=asyncio.get_running_loop(),
+                fire_once=True,
+            )
+            event = FileModifiedEvent(str(Path(tmpdir) / "rune-a" / ".#rune.py"))
+            handler.on_modified(event)
+            await asyncio.sleep(0.2)
+        assert calls == []
+
+    @pytest.mark.asyncio
+    async def test_fire_once_handles_callback_exception(self) -> None:
+        async def failing() -> None:
+            raise RuntimeError("reload blew up")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            handler = _RuneReloadHandler(
+                Path(tmpdir),
+                failing,
+                debounce_seconds=0.01,
+                loop=asyncio.get_running_loop(),
+                fire_once=True,
+            )
+            handler._schedule_reload("")
+            await asyncio.sleep(0.05)
+
+
+class TestWatcherOnMoved:
+    """Atomic renames arrive as moved events; map on the destination path."""
+
+    @pytest.mark.asyncio
+    async def test_on_moved_uses_destination_path(self) -> None:
+        seen: list[str] = []
+
+        async def cb(name: str) -> None:
+            seen.append(name)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext = Path(tmpdir)
+            handler = _RuneReloadHandler(
+                ext, cb, debounce_seconds=0.02, loop=asyncio.get_running_loop()
+            )
+            handler.on_moved(
+                FileMovedEvent(
+                    str(ext / "rune-a" / "rune.py"), str(ext / "rune-b" / "rune.py")
+                )
+            )
+            await asyncio.sleep(0.2)
+        assert seen == ["rune-b"]
+
+    @pytest.mark.asyncio
+    async def test_on_moved_ignores_dotfile_destination(self) -> None:
+        seen: list[str] = []
+
+        async def cb(name: str) -> None:
+            seen.append(name)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext = Path(tmpdir)
+            handler = _RuneReloadHandler(
+                ext, cb, debounce_seconds=0.02, loop=asyncio.get_running_loop()
+            )
+            handler.on_moved(
+                FileMovedEvent(
+                    str(ext / "rune-a" / "rune.py"), str(ext / "rune-a" / ".#rune.py")
+                )
+            )
+            await asyncio.sleep(0.2)
+        assert seen == []
+
+    @pytest.mark.asyncio
+    async def test_on_moved_in_fire_once_mode_triggers_callback(self) -> None:
+        calls: list[bool] = []
+
+        async def cb() -> None:
+            calls.append(True)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext = Path(tmpdir)
+            handler = _RuneReloadHandler(
+                ext,
+                cb,
+                debounce_seconds=0.02,
+                loop=asyncio.get_running_loop(),
+                fire_once=True,
+            )
+            handler.on_moved(
+                FileMovedEvent(
+                    str(ext / "rune-a" / "rune.py"), str(ext / "rune-a" / "rune2.py")
+                )
+            )
+            await asyncio.sleep(0.2)
+        assert len(calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_watcher_forwards_real_file_event_to_reload_callback(self) -> None:
+        calls: list[bool] = []
+
+        async def cb() -> None:
+            calls.append(True)
+
+        runner = RuneRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext_dir = Path(tmpdir)
+            watcher = RuneWatcher(ext_dir, runner, reload_callback=cb)
+            await watcher.start()
+            try:
+                (ext_dir / "probe.txt").write_text("x", encoding="utf-8")
+                for _ in range(100):
+                    if calls:
+                        break
+                    await asyncio.sleep(0.05)
+            finally:
+                await watcher.stop()
+        assert len(calls) == 1
