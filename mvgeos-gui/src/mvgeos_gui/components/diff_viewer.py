@@ -9,7 +9,12 @@ def render_diff_viewer(state: AppState) -> None:
     """Render the diff viewer for the selected file."""
     view = state.get_selected_diff_view()
     if view is None:
-        ui.label("No diff selected").classes("text-xs text-[#6e6584] p-4")
+        with ui.column().classes("gap-1 p-4"):
+            ui.label("No diff selected").classes("text-xs text-[#6e6584]")
+            ui.label(
+                "Select a changed file from the review rail. Diffs track "
+                "changes made by the agent in this session."
+            ).classes("text-[11px] text-[#6e6584]/70")
         return
 
     with ui.column().classes("w-full h-full overflow-y-auto"):

@@ -46,7 +46,13 @@ def render_review_rail(state: AppState) -> ui.column:
 
         with ui.column().classes("flex-1 overflow-y-auto px-3 py-2"):
             if not state.changed_files:
-                ui.label("No changes detected").classes("text-[11px] text-[#6e6584]")
+                with ui.column().classes("gap-1"):
+                    ui.label("No agent changes yet").classes(
+                        "text-[11px] text-[#6e6584]"
+                    )
+                    ui.label(
+                        "This panel tracks changes made by the agent in this session."
+                    ).classes("text-[10px] text-[#6e6584]/70")
             else:
                 for cf in state.changed_files:
                     with (
