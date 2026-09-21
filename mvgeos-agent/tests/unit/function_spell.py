@@ -292,17 +292,13 @@ class TestSpellDirectoryDiscovery:
         ):
             discover_spells_from_dir(spells_dir)
 
-    def test_discovery_on_file_error_skips_broken_file(
-        self, tmp_path: Path
-    ) -> None:
+    def test_discovery_on_file_error_skips_broken_file(self, tmp_path: Path) -> None:
         from mvgeos_agent import discover_spells_from_dir
 
         spells_dir = tmp_path / "spells"
         spells_dir.mkdir()
         (spells_dir / "good.py").write_text(
-            "def good(param: str) -> str:\n"
-            "    '''Good.'''\n"
-            "    return param\n",
+            "def good(param: str) -> str:\n    '''Good.'''\n    return param\n",
             encoding="utf-8",
         )
         (spells_dir / "broken.py").write_text(
@@ -319,6 +315,46 @@ class TestSpellDirectoryDiscovery:
         assert len(errors) == 1
         assert errors[0][0] == spells_dir / "broken.py"
         assert isinstance(errors[0][1], Exception)
+
+    def test_discovery_on_file_error_skips_broken_init(self, tmp_path: Path) -> None:
+        from mvgeos_agent import discover_spells_from_dir
+
+        spells_dir = tmp_path / "spells"
+        spells_dir.mkdir()
+        # __init__.py names a spell that does not exist in the module.
+        (spells_dir / "__init__.py").write_text(
+            "__all__ = ['missing']\n",
+            encoding="utf-8",
+        )
+        (spells_dir / "good.py").write_text(
+            "def good(param: str) -> str:\n    '''Good.'''\n    return param\n",
+            encoding="utf-8",
+        )
+
+        errors: list[tuple[Path, Exception]] = []
+        discovered = discover_spells_from_dir(
+            spells_dir, on_file_error=lambda p, e: errors.append((p, e))
+        )
+
+        assert discovered == []
+        assert len(errors) == 1
+        assert errors[0][0] == spells_dir / "__init__.py"
+        assert isinstance(errors[0][1], Exception)
+
+    def test_discovery_broken_init_raises_without_handler(self, tmp_path: Path) -> None:
+        from mvgeos_core import SpellDiscoveryError
+
+        from mvgeos_agent import discover_spells_from_dir
+
+        spells_dir = tmp_path / "spells"
+        spells_dir.mkdir()
+        (spells_dir / "__init__.py").write_text(
+            "__all__ = ['missing']\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(SpellDiscoveryError, match="was not found in the module"):
+            discover_spells_from_dir(spells_dir)
 
     @pytest.mark.asyncio
     async def test_execute_injects_signal_when_supported(self) -> None:
