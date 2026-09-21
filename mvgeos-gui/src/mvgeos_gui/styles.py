@@ -912,7 +912,7 @@ html[data-theme="light"] {
     --text-dim: #7e7594;
     --text-dim-deep: #8a829e;
     --text-faint: #948da8;
-    --text-placeholder: #8d86a3;
+    --text-placeholder: #7a7391;
     --text-icon-bright: #1d1a2b;
     --text-danger: #c62828;
     --text-danger-soft: #e05252;
@@ -1029,8 +1029,9 @@ CURVY_COMPOSER_CSS = """
     min-height: 48px !important;
     resize: none !important;
 }
-.mvge-main textarea.q-field__native::placeholder,
-.mvge-main textarea::placeholder {
+.q-field__native::placeholder,
+input::placeholder,
+textarea::placeholder {
     color: var(--text-placeholder) !important;
     opacity: 1 !important;
 }

@@ -366,3 +366,53 @@ async def test_apply_theme_switches_to_dark(
     await user.should_see("dark-mode-value=True")
     assert len(scripts) == 1
     assert 'setAttribute("data-theme", "dark")' in scripts[0]
+
+
+def _relative_luminance(hex_color: str) -> float:
+    """WCAG relative luminance for a ``#rrggbb`` color."""
+
+    def channel(value: int) -> float:
+        linear = value / 255
+        if linear <= 0.04045:
+            return linear / 12.92
+        return ((linear + 0.055) / 1.055) ** 2.4
+
+    red = int(hex_color[1:3], 16)
+    green = int(hex_color[3:5], 16)
+    blue = int(hex_color[5:7], 16)
+    return 0.2126 * channel(red) + 0.7152 * channel(green) + 0.0722 * channel(blue)
+
+
+def _contrast_ratio(foreground: str, background: str) -> float:
+    """WCAG contrast ratio between two ``#rrggbb`` colors."""
+    lighter = max(_relative_luminance(foreground), _relative_luminance(background))
+    darker = min(_relative_luminance(foreground), _relative_luminance(background))
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def test_placeholder_rule_covers_text_inputs() -> None:
+    """Placeholder token applies to inputs as well as textareas.
+
+    Regression: the rule only targeted ``textarea``, so single-line inputs
+    (e.g. the Sessions search box) fell back to the browser default and
+    rendered nearly invisible in the light theme.
+    """
+    assert "input::placeholder" in CURVY_COMPOSER_CSS
+    assert ".q-field__native::placeholder" in CURVY_COMPOSER_CSS
+    rule = re.search(r"input::placeholder[^{]*\{([^}]*)\}", CURVY_COMPOSER_CSS)
+    assert rule is not None, "missing CSS rule covering input::placeholder"
+    assert "var(--text-placeholder)" in rule.group(1)
+
+
+def test_light_placeholder_token_contrast() -> None:
+    """Light placeholder token stays readable on light input surfaces."""
+    match = re.search(r"--text-placeholder:\s*(#[0-9a-fA-F]{6})", LIGHT_THEME_CSS)
+    assert match is not None
+    assert _contrast_ratio(match.group(1), "#efeaf7") >= 3.0
+
+
+def test_dark_placeholder_token_contrast() -> None:
+    """Dark placeholder token stays readable on dark input surfaces."""
+    match = re.search(r"--text-placeholder:\s*(#[0-9a-fA-F]{6})", VOID_THEME_CSS)
+    assert match is not None
+    assert _contrast_ratio(match.group(1), "#16161d") >= 3.0
