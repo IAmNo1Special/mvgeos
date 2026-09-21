@@ -68,8 +68,6 @@ async def test_render_prompt_matches_environment_render() -> None:
             "You are Mvge",
             ["bash"],
             cwd=cwd,
-            runes_paths=agent._environment.runes_paths,
-            system_path=agent._environment.resolved_prompt.path,
         )
 
         assert (
@@ -77,8 +75,6 @@ async def test_render_prompt_matches_environment_render() -> None:
                 "You are Mvge",
                 ["bash"],
                 cwd=cwd,
-                runes_paths=agent._environment.runes_paths,
-                system_path=agent._environment.resolved_prompt.path,
             )
             == expected
         )

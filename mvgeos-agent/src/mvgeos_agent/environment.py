@@ -139,21 +139,19 @@ def render_prompt(
     spells: Sequence[str] = (),
     cwd: str | Path | None = None,
     append_text: str = "",
-    *,
-    spells_dir: Path | None = None,
-    runes_paths: Sequence[Path] = (),
-    system_path: Path | None = None,
 ) -> str:
     """The single rendering every entry point goes through.
 
     Renders Layer 2 invariant scaffolding only: the persona body, active
-    spells, environment info (OS, shell, date/time UTC, PowerShell rules),
-    and engine capability pointers (spells, runes, system instructions).
+    spells, and environment info (OS, shell, date/time UTC, PowerShell
+    rules).
 
     Repository steering (AGENTS.md discovery, progressive disclosure, and
     ``<project_context>`` injection) is owned by the ``steering-bridge``
     marketplace rune, which contributes its section dynamically via the
-    ``BEFORE_MVGE_START`` sigil.
+    ``BEFORE_MVGE_START`` sigil. Self-modification pointers are owned by
+    the ``selfmod-bridge`` marketplace rune (``teach``/``scaffold_skill``/
+    ``scaffold_spell``/``snapshot``/``restore``).
     """
     parts: list[str] = []
     if body:
@@ -172,32 +170,6 @@ def render_prompt(
 
     parts.append("\nEnvironment:")
     parts.extend(get_environment_info(cwd))
-
-    # Self-Modification & Customization section (on-demand AGENTS.md reference pattern)
-    # Engine capability pointers only. Repository steering pointers (global,
-    # project, subpackage rules) are contributed by steering-bridge.
-    self_mod_lines = [
-        "\nSelf-Modification & Customization:",
-        "You can extend and self-modify your capabilities by editing files with "
-        "your spells (changes are watched and hot-reloaded automatically). "
-        "Before creating or modifying, read the AGENTS.md in that directory for "
-        "exact syntax, rules, and contracts:",
-    ]
-    has_self_mod = False
-    if spells_dir is not None and spells_dir.is_dir():
-        self_mod_lines.append(f"- Spells: {spells_dir.as_posix()}/AGENTS.md")
-        has_self_mod = True
-    if runes_paths:
-        for rp in runes_paths:
-            self_mod_lines.append(f"- Runes: {rp.as_posix()}/AGENTS.md")
-            has_self_mod = True
-
-    if system_path is not None and system_path.is_file():
-        self_mod_lines.append(f"- System Instructions: {system_path.as_posix()}")
-        has_self_mod = True
-
-    if has_self_mod:
-        parts.extend(self_mod_lines)
 
     if append_text:
         parts.append(f"\n{append_text}")
@@ -604,8 +576,6 @@ class MvgeEnvironment:
             spells=self.spell_names or [],
             cwd=cwd,
             append_text=append_text,
-            runes_paths=self.runes_paths,
-            system_path=self.resolved_prompt.path,
         )
 
     async def assemble_system_prompt(
@@ -669,8 +639,6 @@ class MvgeEnvironment:
             spells=effective_spells,
             cwd=effective_cwd,
             append_text="",
-            runes_paths=self.runes_paths,
-            system_path=self.resolved_prompt.path,
         )
 
     @staticmethod
@@ -679,10 +647,6 @@ class MvgeEnvironment:
         spells: Sequence[str] = (),
         cwd: str | Path | None = None,
         append_text: str = "",
-        *,
-        spells_dir: Path | None = None,
-        runes_paths: Sequence[Path] = (),
-        system_path: Path | None = None,
     ) -> str:
         """Render a prompt with body, spells, and environment."""
         return render_prompt(
@@ -690,9 +654,6 @@ class MvgeEnvironment:
             spells=spells,
             cwd=cwd,
             append_text=append_text,
-            spells_dir=spells_dir,
-            runes_paths=runes_paths,
-            system_path=system_path,
         )
 
     def build_snapshot(self) -> RuntimeSnapshot:

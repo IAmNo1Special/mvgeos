@@ -758,24 +758,39 @@ class TestSteeringDecoupled:
         assert "- Project Rules:" not in rendered
         assert "Subpackage Rules" not in rendered
 
-    def test_render_prompt_keeps_engine_capability_pointers(
-        self, tmp_path: Path
-    ) -> None:
-        runes_dir = tmp_path / "runes"
-        runes_dir.mkdir()
-        system_file = tmp_path / "SYSTEM.md"
-        system_file.write_text("Persona", encoding="utf-8")
-
+    def test_render_prompt_omits_self_mod_section(self, tmp_path: Path) -> None:
         rendered = render_prompt(
             body="You are a Mvge.",
             cwd=tmp_path,
-            runes_paths=[runes_dir],
-            system_path=system_file,
         )
 
-        assert "Self-Modification & Customization:" in rendered
-        assert f"- Runes: {runes_dir.as_posix()}/AGENTS.md" in rendered
-        assert f"- System Instructions: {system_file.as_posix()}" in rendered
+        # The self-modification section moved to the rune; the engine no
+        # longer emits it.
+        assert "Self-Modification & Customization:" not in rendered
+        assert "System Instructions:" not in rendered
+
+    def test_render_prompt_rejects_removed_self_mod_kwargs(
+        self, tmp_path: Path
+    ) -> None:
+        # §4.1 breaking change: spells_dir, runes_paths, system_path are gone.
+        with pytest.raises(TypeError):
+            render_prompt(  # type: ignore[call-arg]
+                body="You are a Mvge.",
+                cwd=tmp_path,
+                runes_paths=[tmp_path / "runes"],
+            )
+        with pytest.raises(TypeError):
+            render_prompt(  # type: ignore[call-arg]
+                body="You are a Mvge.",
+                cwd=tmp_path,
+                system_path=tmp_path / "SYSTEM.md",
+            )
+        with pytest.raises(TypeError):
+            render_prompt(  # type: ignore[call-arg]
+                body="You are a Mvge.",
+                cwd=tmp_path,
+                spells_dir=tmp_path / "spells",
+            )
 
     def test_environment_resolve_with_global_dir(self, tmp_path: Path) -> None:
         global_dir = tmp_path / "global"
