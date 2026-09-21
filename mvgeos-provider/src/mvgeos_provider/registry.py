@@ -112,6 +112,10 @@ class RealmRegistry:
             self._extension_providers[name] = {}
         self._extension_providers[name].update(config)
 
+    def unregister_provider(self, name: str) -> None:
+        """Unregister a rune-registered provider."""
+        self._extension_providers.pop(name, None)
+
     def get_provider_config(self, name: str) -> dict[str, Any] | None:
         return self._extension_providers.get(name)
 
