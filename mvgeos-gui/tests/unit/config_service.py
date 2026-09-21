@@ -98,6 +98,22 @@ class TestConfigService:
         assert loaded.mana_limit == 2048
         mock_save.assert_called_once_with("sk-123")
 
+    def test_resetting_theme_to_default_evicts_stored_override(
+        self, tmp_path: Path
+    ) -> None:
+        """Saving the default theme over a stored override must persist.
+
+        Regression: ``_settings_to_dict`` omits default-valued fields, so
+        the merge kept the stale file value and switching back to the
+        default theme (light -> dark) never persisted.
+        """
+        service = ConfigService(config_dir=tmp_path)
+        service.save_app_settings(AppSettings(theme="light"))
+        assert service.load_app_settings().theme == "light"
+
+        service.save_app_settings(AppSettings(theme="dark"))
+        assert service.load_app_settings().theme == "dark"
+
     def test_save_and_load_workspace_settings(self, tmp_path: Path) -> None:
         service = ConfigService(config_dir=tmp_path)
         project_dir = tmp_path / "project"
@@ -163,7 +179,15 @@ class TestConfigService:
         expected = project_dir / ".agents" / "config.json"
         assert service.workspace_settings_path(project_dir) == expected
 
-    def test_partial_update_preserves_other_keys(self, tmp_path: Path) -> None:
+    def test_save_replaces_full_state(self, tmp_path: Path) -> None:
+        """A save expresses the complete settings state.
+
+        The settings modal always builds the saved object from the
+        currently loaded settings, so the passed values win wholesale:
+        fields left at their default reset any stored override instead of
+        silently keeping the old value (previously, resetting the theme
+        back to dark never persisted).
+        """
         service = ConfigService(config_dir=tmp_path)
         with patch(
             "mvgeos_gui.services.config_service._save_api_key_to_keyring",
@@ -179,7 +203,7 @@ class TestConfigService:
             loaded = service.load_app_settings()
 
         assert loaded.api_key == "sk-123"
-        assert loaded.mana_limit == 2048
+        assert loaded.mana_limit == 4096
         assert loaded.temperature == 0.9
 
     def test_api_key_not_written_to_file(self, tmp_path: Path) -> None:
