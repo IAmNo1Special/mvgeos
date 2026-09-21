@@ -2,9 +2,9 @@
 
 Two chords, both handled here as the single owner of global key dispatch:
 
-- Ctrl/Cmd+Shift+P toggles the command palette from anywhere, including
-  while typing in the composer (registered with ``ignore=[]`` so inputs do
-  not swallow it).
+- Ctrl/Cmd+K and Ctrl/Cmd+Shift+P toggle the command palette from
+  anywhere, including while typing in the composer (registered with
+  ``ignore=[]`` so inputs do not swallow them).
 - Escape follows a strict priority chain and performs exactly one action
   per keypress: close the autocomplete popup if open, else close the
   command palette if open, else interrupt channeling if active.
@@ -31,6 +31,15 @@ def handle_global_key(state: AppState, event: KeyEventArguments) -> None:
 
     modifiers = event.modifiers
     key_name = (event.key.name or "").lower()
+
+    if (
+        key_name == "k"
+        and (modifiers.ctrl or modifiers.meta)
+        and not modifiers.shift
+        and not modifiers.alt
+    ):
+        state.toggle_command_palette()
+        return
 
     if (
         key_name == "p"
