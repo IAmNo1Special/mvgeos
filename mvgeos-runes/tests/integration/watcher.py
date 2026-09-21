@@ -451,6 +451,57 @@ class TestWatcherReloadCallbackMode:
         assert calls == []
 
     @pytest.mark.asyncio
+    async def test_fire_once_fires_under_dotted_watch_root(self) -> None:
+        """A dot directory *above* the watched root must not mute events.
+
+        The agent config dir lives under ``~/.agents``; ignoring dot path
+        parts of the watched root's own ancestors would silently disable
+        config-dir reload triggers.
+        """
+        calls: list[bool] = []
+
+        async def cb() -> None:
+            calls.append(True)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dotted_root = Path(tmpdir) / ".agents" / "agents" / "demo"
+            dotted_root.mkdir(parents=True)
+            handler = _RuneReloadHandler(
+                dotted_root,
+                cb,
+                debounce_seconds=0.02,
+                loop=asyncio.get_running_loop(),
+                fire_once=True,
+            )
+            event = FileModifiedEvent(str(dotted_root / "SYSTEM.md"))
+            handler.on_modified(event)
+            await asyncio.sleep(0.2)
+        assert len(calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_fire_once_still_ignores_dotfiles_inside_tree(self) -> None:
+        """Dotfiles *inside* the watched tree stay ignored (no regression)."""
+        calls: list[bool] = []
+
+        async def cb() -> None:
+            calls.append(True)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dotted_root = Path(tmpdir) / ".agents" / "agents" / "demo"
+            dotted_root.mkdir(parents=True)
+            handler = _RuneReloadHandler(
+                dotted_root,
+                cb,
+                debounce_seconds=0.02,
+                loop=asyncio.get_running_loop(),
+                fire_once=True,
+            )
+            event = FileModifiedEvent(str(dotted_root / ".#SYSTEM.md"))
+            handler.on_modified(event)
+            await asyncio.sleep(0.2)
+        assert calls == []
+
+    @pytest.mark.asyncio
     async def test_fire_once_handles_callback_exception(self) -> None:
         async def failing() -> None:
             raise RuntimeError("reload blew up")

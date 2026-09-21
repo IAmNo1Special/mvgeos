@@ -103,7 +103,14 @@ class _RuneReloadHandler(FileSystemEventHandler):
 
     def _is_ignored(self, path: str) -> bool:
         src = Path(path)
-        for part in src.parts:
+        # Judge only the path *inside* the watched tree: the watched root
+        # itself may legitimately live under a dot directory (e.g. the
+        # agent config dir under ``~/.agents``).
+        try:
+            parts = src.relative_to(self._extensions_dir).parts
+        except ValueError:
+            parts = src.parts
+        for part in parts:
             if part == "__pycache__" or (part.startswith(".") and part != "."):
                 return True
         return src.suffix in (".pyc", ".pyo", ".pyd", ".swp", ".tmp")
