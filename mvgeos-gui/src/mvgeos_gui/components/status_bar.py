@@ -46,19 +46,22 @@ def render_status_bar(state: AppState) -> ui.row:
         # Spacer
         ui.element("div").classes("flex-1")
 
-        # Context / compact toggles
+        # Context / compact toggles. The two buttons must stay visually
+        # distinct in every state (a previous revision showed two
+        # near-identical view_sidebar icons) and each carries a tooltip
+        # naming its action.
         with ui.row().classes("items-center gap-3"):
             ui.button(
-                icon="dock" if state.review_open else "view_sidebar",
+                icon="dock" if state.review_open else "rate_review",
                 on_click=state.toggle_review,
             ).props("flat dense round text-color=grey-5 size=xs").mark(
                 "toggle_review_btn"
-            )
+            ).tooltip("Toggle review panel")
             ui.button(
                 icon="view_sidebar" if state.sidebar_open else "menu",
                 on_click=state.toggle_sidebar,
             ).props("flat dense round text-color=grey-5 size=xs").mark(
                 "toggle_sidebar_btn"
-            )
+            ).tooltip("Toggle sidebar")
 
     return bar

@@ -86,3 +86,31 @@ async def test_render_status_bar_review_open_and_sidebar_closed(user: User) -> N
 
     await user.open("/test_status_bar_alt_state")
     await user.should_see("MvgeOS")
+
+
+@pytest.mark.asyncio
+async def test_status_bar_toggle_buttons_have_tooltips_naming_each_action(
+    user: User,
+) -> None:
+    """Each status bar toggle must carry a tooltip naming its action.
+
+    Regression test for the sweep finding: two tiny near-identical
+    view_sidebar icons with no tooltips.
+    """
+
+    def _register(path: str, bound_state: AppState) -> None:
+        @ui.page(path)
+        def page() -> None:
+            render_status_bar(bound_state)
+
+    for i, (review_open, sidebar_open) in enumerate(
+        [(True, True), (True, False), (False, True), (False, False)]
+    ):
+        state = AppState()
+        state.review_open = review_open
+        state.sidebar_open = sidebar_open
+        path = f"/test_sb_tips_{i}"
+        _register(path, state)
+        await user.open(path)
+        await user.should_see("Toggle review panel")
+        await user.should_see("Toggle sidebar")
