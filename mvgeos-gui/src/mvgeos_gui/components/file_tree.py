@@ -28,7 +28,10 @@ def _render_tree(state: AppState, root: Path, path: Path, depth: int) -> None:
         return
 
     for entry in entries:
-        if entry.name.startswith(".") and entry.name not in (".git", ".agents"):
+        # All dotfiles stay hidden, including version-control internals
+        # (.git) and tooling dirs (.agents): the tree is for browsing the
+        # workspace, not repository plumbing.
+        if entry.name.startswith("."):
             continue
         if entry.is_dir():
             with ui.expansion(

@@ -55,3 +55,30 @@ async def test_file_tree_permission_error(tmp_path: Path, user: User) -> None:
             render_file_tree(state)
 
         await user.open("/test_file_tree_perm_error")
+
+
+@pytest.mark.asyncio
+async def test_file_tree_hides_dotfiles_including_git(
+    tmp_path: Path, user: User
+) -> None:
+    """Version-control internals (.git) and every other dotfile are hidden."""
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    (git_dir / "HEAD").write_text("ref: refs/heads/main")
+    (tmp_path / ".agents").mkdir()
+    (tmp_path / ".env").write_text("SECRET=1")
+    (tmp_path / "visible.txt").write_text("hello")
+
+    state = AppState(project_path=tmp_path)
+    state.open_in_editor = MagicMock()  # type: ignore[method-assign]
+
+    @ui.page("/test_file_tree_dotfiles")
+    def page() -> None:
+        render_file_tree(state)
+
+    await user.open("/test_file_tree_dotfiles")
+    await user.should_see("visible.txt")
+    await user.should_not_see(".git")
+    await user.should_not_see("HEAD")
+    await user.should_not_see(".agents")
+    await user.should_not_see(".env")
