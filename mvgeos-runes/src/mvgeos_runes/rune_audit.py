@@ -12,10 +12,17 @@ write, ``fsync`` before release, restrictive permissions, and
 size/age rotation that archives (never deletes) old records.
 
 Location is the user-scope ``.agents`` directory — the global per-user
-layer (``$MVGEOS_GLOBAL_DIR`` when set, else ``~/.agents``), following
-the skills-bridge scope convention. Rune-op audit records are
-agent-level mutations that outlive any single session, so session-scoped
-tome storage is the wrong home.
+layer — plus ``extensions``: ``$MVGEOS_GLOBAL_DIR`` is the ``.agents`` dir
+itself when set, else ``~/.agents`` (the skills-bridge scope convention).
+Resolved log path: ``$MVGEOS_GLOBAL_DIR/extensions/audit.jsonl`` when
+``$MVGEOS_GLOBAL_DIR`` is set, else ``~/.agents/extensions/audit.jsonl``.
+Rune-op audit records are agent-level mutations that outlive any single
+session, so session-scoped tome storage is the wrong home.
+
+The ``rune`` field of each record names the emitter: a rune's manifest
+name for rune-op events (stamped by ``RuneAPI.audit``), or ``"engine"``
+for harness-initiated events such as mid-session reloads (``Mvge.reload``),
+which no rune performs.
 """
 
 from __future__ import annotations
