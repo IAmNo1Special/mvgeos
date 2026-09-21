@@ -77,3 +77,25 @@ async def test_sessions_search_filters_list(user: User, tmp_path) -> None:
     search.type("Alpha")
     await user.should_see("Alpha Session")
     await user.should_not_see("Beta Session")
+
+
+@pytest.mark.asyncio
+async def test_new_session_button_navigates_to_chat_with_toast(
+    user: User, tmp_path
+) -> None:
+    """Minor C25: NEW SESSION must give visible feedback -- navigate to Chat
+    and show a toast -- instead of a silent server-side reset."""
+    from unittest.mock import MagicMock
+
+    state = AppState(project_path=tmp_path)
+    state.set_current_view = MagicMock()  # type: ignore[method-assign]
+
+    @ui.page("/test_sessions_new_feedback")
+    def page() -> None:
+        render_sessions_panel(state)
+
+    await user.open("/test_sessions_new_feedback")
+    user.find("New Session").click()
+
+    state.set_current_view.assert_called_once_with("chat")
+    assert user.notify.contains("New session")

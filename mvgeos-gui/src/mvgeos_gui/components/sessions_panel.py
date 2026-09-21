@@ -10,9 +10,15 @@ def render_sessions_panel(state: AppState) -> None:
     with ui.column().classes("w-full h-full overflow-y-auto p-6 gap-4"):
         with ui.row().classes("w-full items-center justify-between"):
             ui.label("Sessions").classes("text-2xl font-semibold text-[#eceaf4]")
+
+            def _on_new_session() -> None:
+                state.new_conversation()
+                state.set_current_view("chat")
+                ui.notify("New session started", type="positive")
+
             ui.button(
                 "New Session",
-                on_click=state.new_conversation,
+                on_click=_on_new_session,
             ).props("unelevated").classes("mvge-glow-btn text-white")
 
         @ui.refreshable
