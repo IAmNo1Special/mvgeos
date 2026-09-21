@@ -1,8 +1,9 @@
 from dataclasses import FrozenInstanceError, replace
+from pathlib import Path
 
 import pytest
 
-from mvgeos_runes.types import RuneContext
+from mvgeos_runes.types import BeforeMvgeStartData, RuneContext
 
 
 class TestRuneContext:
@@ -61,3 +62,45 @@ class TestRuneContext:
         assert ctx1 == ctx2
         assert ctx1 != ctx3
         assert hash(ctx1) == hash(ctx2)
+
+class TestBeforeMvgeStartData:
+    def _minimal(self) -> "BeforeMvgeStartData":
+        return BeforeMvgeStartData(
+            base_prompt="Be helpful.",
+            spell_names=["bash", "read"],
+            config_dir="/cfg",
+            custom_prompt="Custom.",
+            agent_name="tester",
+            cwd="/work",
+        )
+
+    def test_new_fields_default_to_unset(self) -> None:
+        data = self._minimal()
+        assert data.active_spells_dir is None
+        assert data.system_prompt_path is None
+        assert data.runes_paths == ()
+
+    def test_new_fields_accept_values(self) -> None:
+        data = BeforeMvgeStartData(
+            base_prompt="Be helpful.",
+            spell_names=["bash"],
+            config_dir="/cfg",
+            custom_prompt="",
+            agent_name="tester",
+            cwd="/work",
+            active_spells_dir=Path("/cfg/spells"),
+            system_prompt_path=Path("/cfg/SYSTEM.md"),
+            runes_paths=(Path("/ext"),),
+        )
+        assert data.active_spells_dir == Path("/cfg/spells")
+        assert data.system_prompt_path == Path("/cfg/SYSTEM.md")
+        assert data.runes_paths == (Path("/ext"),)
+
+    def test_existing_fields_unchanged(self) -> None:
+        data = self._minimal()
+        assert data.base_prompt == "Be helpful."
+        assert data.spell_names == ["bash", "read"]
+        assert data.config_dir == "/cfg"
+        assert data.custom_prompt == "Custom."
+        assert data.agent_name == "tester"
+        assert data.cwd == "/work"
