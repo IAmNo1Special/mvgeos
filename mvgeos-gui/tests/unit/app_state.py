@@ -2039,3 +2039,65 @@ class TestServerStateSplit:
 
         assert state_b.selected_model == "anthropic/claude-opus-4-6"
         assert seen == ["a", "b"]
+
+
+class TestMentionIndexServerShared:
+    """Major #3: one @-mention index per server, refreshed on tree changes."""
+
+    @staticmethod
+    def _labels(service: Any) -> list[str]:
+        return [service.get_item_label(i) for i in service.get_visible_items()]
+
+    def test_files_added_after_empty_startup_appear_without_restart(
+        self, tmp_path: Path
+    ) -> None:
+        """Empty project at startup: @ lists files added later, no restart."""
+        from mvgeos_gui.state import ServerState
+
+        server = ServerState(project_path=tmp_path)
+        client = server.new_client_state()
+        service = client.get_autocomplete_service()
+        service.process_input("@")
+        assert service.get_visible_items() == []
+
+        (tmp_path / "readme.md").write_text("# hi", encoding="utf-8")
+        service.process_input("@r")
+        assert "readme.md" in self._labels(service)
+
+    def test_index_is_shared_across_clients(self, tmp_path: Path) -> None:
+        """Two clients share one server index: both see later-added files."""
+        from mvgeos_gui.state import ServerState
+
+        (tmp_path / "a.py").write_text("x", encoding="utf-8")
+        server = ServerState(project_path=tmp_path)
+        client_a = server.new_client_state()
+        client_b = server.new_client_state()
+        svc_a = client_a.get_autocomplete_service()
+        svc_b = client_b.get_autocomplete_service()
+
+        (tmp_path / "b.py").write_text("y", encoding="utf-8")
+        svc_a.process_input("@b")
+        svc_b.process_input("@b")
+        assert "b.py" in self._labels(svc_a)
+        assert "b.py" in self._labels(svc_b)
+
+    def test_set_project_rebuilds_index_for_new_project(self, tmp_path: Path) -> None:
+        """Switching projects drops the old index and indexes the new path."""
+        proj_a = tmp_path / "a"
+        proj_b = tmp_path / "b"
+        proj_a.mkdir()
+        proj_b.mkdir()
+        (proj_a / "alpha.py").write_text("x", encoding="utf-8")
+        (proj_b / "beta.py").write_text("y", encoding="utf-8")
+
+        state = AppState(project_path=proj_a)
+        service = state.get_autocomplete_service()
+        service.process_input("@a")
+        assert "alpha.py" in self._labels(service)
+
+        state.set_project(proj_b)
+        new_service = state.get_autocomplete_service()
+        new_service.process_input("@")
+        labels = self._labels(new_service)
+        assert "beta.py" in labels
+        assert "alpha.py" not in labels

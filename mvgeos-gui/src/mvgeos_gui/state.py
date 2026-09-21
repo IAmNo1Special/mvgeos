@@ -85,6 +85,32 @@ def format_channeling_elapsed(seconds: float) -> str:
     return f"{total // 60}m {total % 60:02d}s"
 
 
+def _scan_skill_manifests(project_path: Path) -> list[SkillManifest]:
+    """Scan project and user skill directories for skill manifests.
+
+    Shared by AppState.load_skills and the server-level @-mention index
+    so both see the same skill set.
+    """
+    skills: list[SkillManifest] = []
+    search_dirs = [
+        project_path / ".agents" / "skills",
+        Path("~/.agents/skills").expanduser(),
+    ]
+    for sdir in search_dirs:
+        if not sdir.is_dir():
+            continue
+        for item in sorted(sdir.iterdir()):
+            if item.is_dir() and (item / "SKILL.md").is_file():
+                skills.append(
+                    SkillManifest(
+                        name=item.name,
+                        description=f"Skill {item.name}",
+                        path=str(item),
+                    )
+                )
+    return skills
+
+
 # AppState fields that are server-global rather than per-client. Reads of
 # these names fall through to the owning ServerState via __getattr__ and
 # writes pass through via __setattr__, so all sessions share one live
@@ -129,6 +155,14 @@ class ServerState:
         default_factory=ConfigService, repr=False, compare=False
     )
     _clients: list[AppState] = field(default_factory=list, repr=False, compare=False)
+    # Server-shared @-mention index (one per server, not per client).
+    # Built lazily on first use; dropped by refresh_mention_index() when
+    # the project changes. The index itself notices tree changes via a
+    # directory-mtime signature checked on every query (see MentionIndex),
+    # so no file watcher or background thread is needed.
+    _mention_index: MentionIndex | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         """Initialize server invariants now that constructor kwargs landed."""
@@ -165,6 +199,30 @@ class ServerState:
         for client in list(self._clients):
             with contextlib.suppress(Exception):
                 client.notify()
+
+    @property
+    def mention_index(self) -> MentionIndex:
+        """The server-shared @-mention index.
+
+        One index per server, shared by every client's
+        AutocompleteService. Built lazily for the current project;
+        per-client services must always go through this property rather
+        than constructing their own MentionIndex.
+        """
+        if self._mention_index is None:
+            self._mention_index = MentionIndex(
+                self.project_path,
+                skills=_scan_skill_manifests(self.project_path),
+            )
+        return self._mention_index
+
+    def refresh_mention_index(self) -> None:
+        """Drop the shared @-mention index so it rebuilds on next query.
+
+        Called when the active project changes: the next query builds a
+        fresh index bound to the new project path. Idempotent.
+        """
+        self._mention_index = None
 
     def drop_client_state(self, state: AppState) -> None:
         """Detach a client session: fail closed and release its resources.
@@ -486,36 +544,22 @@ class AppState:
             self.agent_service.reset_agent()
 
     def get_autocomplete_service(self) -> AutocompleteService:
-        """Retrieve or initialize the AutocompleteService for this session."""
+        """Retrieve or initialize the AutocompleteService for this session.
+
+        The service (popup mode, selection) is per-client, but the
+        MentionIndex it queries is server-shared: one index per server,
+        refreshed when the project tree changes.
+        """
         if self._autocomplete_service is None:
-            skills = self.load_skills()
-            mention_index = MentionIndex(self.project_path, skills=skills)
             command_registry = SlashCommandRegistry()
             self._autocomplete_service = AutocompleteService(
-                mention_index, command_registry
+                self._ensure_server().mention_index, command_registry
             )
         return self._autocomplete_service
 
     def load_skills(self) -> list[SkillManifest]:
         """Load skill manifests from project and user skill directories."""
-        skills: list[SkillManifest] = []
-        search_dirs = [
-            self.project_path / ".agents" / "skills",
-            Path("~/.agents/skills").expanduser(),
-        ]
-        for sdir in search_dirs:
-            if not sdir.is_dir():
-                continue
-            for item in sorted(sdir.iterdir()):
-                if item.is_dir() and (item / "SKILL.md").is_file():
-                    skills.append(
-                        SkillManifest(
-                            name=item.name,
-                            description=f"Skill {item.name}",
-                            path=str(item),
-                        )
-                    )
-        return skills
+        return _scan_skill_manifests(self.project_path)
 
     @staticmethod
     def skill_info_from_manifest(manifest: SkillManifest) -> SkillInfo:
@@ -724,6 +768,11 @@ class AppState:
         """
         self._on_approval_context_change()
         self.project_path = path
+        # The project changed: drop the server-shared @-mention index so it
+        # rebuilds bound to the new path on next query. Per-client
+        # autocomplete services are dropped in _invalidate_project_caches
+        # and pick up the fresh index when recreated.
+        self._ensure_server().refresh_mention_index()
         self._invalidate_project_caches()
         self.add_recent_project(path)
         server = self.__dict__.get("_server")
