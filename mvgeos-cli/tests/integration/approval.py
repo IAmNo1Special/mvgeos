@@ -10,12 +10,28 @@ back. Covers the spec's CLI acceptance paths: prompt, EOF, and Ctrl-C
 from __future__ import annotations
 
 import os
-import pty
 import select
 import subprocess
 import sys
 import textwrap
 import time
+
+import pytest
+
+try:
+    import pty
+except ImportError:
+    # Windows has no pty module (pty -> tty -> termios is POSIX-only), and
+    # every test in this module drives real terminal semantics through
+    # pty.openpty() -- termios line discipline, ISIG, VEOF -- which cannot
+    # be satisfied without it. Skip the whole module instead of breaking
+    # collection. This skip goes away if a Windows pty ever ships in the
+    # standard library.
+    pytest.skip(
+        "PTY integration tests require a POSIX pty (pty/tty/termios); "
+        "unavailable on Windows",
+        allow_module_level=True,
+    )
 
 _CTTY_PREAMBLE = textwrap.dedent(
     """\
