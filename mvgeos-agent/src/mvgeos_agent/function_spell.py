@@ -390,7 +390,11 @@ def coerce_spell(
     )
 
 
-def discover_spells_from_dir(spells_dir: Path) -> list[MvgeSpell]:
+def discover_spells_from_dir(
+    spells_dir: Path,
+    *,
+    on_file_error: Callable[[Path, Exception], None] | None = None,
+) -> list[MvgeSpell]:
     """Auto-discover spells from a spells/ directory.
 
     Discovery precedence:
@@ -399,30 +403,43 @@ def discover_spells_from_dir(spells_dir: Path) -> list[MvgeSpell]:
        - Match a callable named after the file stem (e.g. `def bash(...)` in `bash.py`).
        - Fallback: Look for a single public function defined in that file.
        - If ambiguous or no candidate is found, raise `SpellDiscoveryError`.
+
+    When `on_file_error` is given, per-file failures (import errors,
+    ambiguous discovery) are reported through it and the file is skipped
+    instead of raising — one broken spell file cannot take down the whole
+    directory. Used by `Mvge.reload()` for tolerant re-discovery. The
+    default (`None`) keeps strict construction-time behavior: the first
+    failure raises.
     """
     if not spells_dir.is_dir():
         return []
 
     init_file = spells_dir / "__init__.py"
     if init_file.is_file():
-        spec = importlib.util.spec_from_file_location(
-            f"mvgeos_spells_{spells_dir.name}", init_file
-        )
-        if spec and spec.loader:
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            if hasattr(module, "__all__") and module.__all__:
-                spells: list[MvgeSpell] = []
-                for name in module.__all__:
-                    if hasattr(module, name):
-                        obj = getattr(module, name)
-                        spells.append(coerce_spell(obj))
-                    else:
-                        raise SpellDiscoveryError(
-                            f"Spell '{name}' listed in __all__ of '{init_file}' "
-                            f"was not found in the module."
-                        )
-                return spells
+        try:
+            spec = importlib.util.spec_from_file_location(
+                f"mvgeos_spells_{spells_dir.name}", init_file
+            )
+            if spec and spec.loader:
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                if hasattr(module, "__all__") and module.__all__:
+                    init_spells: list[MvgeSpell] = []
+                    for name in module.__all__:
+                        if hasattr(module, name):
+                            obj = getattr(module, name)
+                            init_spells.append(coerce_spell(obj))
+                        else:
+                            raise SpellDiscoveryError(
+                                f"Spell '{name}' listed in __all__ of '{init_file}' "
+                                f"was not found in the module."
+                            )
+                    return init_spells
+        except Exception as exc:
+            if on_file_error is None:
+                raise
+            on_file_error(init_file, exc)
+            return []
 
     py_files = sorted(
         f
@@ -432,56 +449,65 @@ def discover_spells_from_dir(spells_dir: Path) -> list[MvgeSpell]:
     if not py_files:
         return []
 
-    spells = []
+    spells: list[MvgeSpell] = []
     for py_file in py_files:
         try:
-            source = py_file.read_text(encoding="utf-8")
-        except Exception:
-            source = ""
-
-        pep_meta = parse_pep723_metadata(source)
-        if pep_meta is not None:
-            spells.append(PEP723ScriptSpell(py_file, metadata=pep_meta))
+            spells.extend(_discover_spells_from_file(py_file, spells_dir))
+        except Exception as exc:
+            if on_file_error is None:
+                raise
+            on_file_error(py_file, exc)
             continue
-
-        module_name = f"mvgeos_spells_{spells_dir.name}_{py_file.stem}"
-        spec = importlib.util.spec_from_file_location(module_name, py_file)
-        if not spec or not spec.loader:
-            continue
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-
-        # 1. Match function name == py_file.stem
-        if hasattr(module, py_file.stem):
-            candidate = getattr(module, py_file.stem)
-            if callable(candidate) or isinstance(candidate, MvgeSpell):
-                spells.append(coerce_spell(candidate))
-                continue
-
-        # 2. Look for single public function defined in this file
-        public_candidates: list[tuple[str, Any]] = []
-        for attr_name, attr_val in inspect.getmembers(module):
-            if attr_name.startswith("_"):
-                continue
-            is_valid_spell = isinstance(attr_val, MvgeSpell) or (
-                callable(attr_val)
-                and getattr(attr_val, "__module__", "") == module.__name__
-            )
-            if is_valid_spell:
-                public_candidates.append((attr_name, attr_val))
-
-        if len(public_candidates) == 1:
-            spells.append(coerce_spell(public_candidates[0][1]))
-        else:
-            init_path = spells_dir / "__init__.py"
-            raise SpellDiscoveryError(
-                f"Could not discover spell in '{py_file.name}': No function "
-                f"named '{py_file.stem}' found, and no '__all__' was defined "
-                f"in '{init_path}'. Either define 'def {py_file.stem}(...)' "
-                f"or export it in '__all__'."
-            )
 
     return spells
+
+
+def _discover_spells_from_file(py_file: Path, spells_dir: Path) -> list[MvgeSpell]:
+    """Discover spells from a single file; raises on any failure."""
+    try:
+        source = py_file.read_text(encoding="utf-8")
+    except Exception:
+        source = ""
+
+    pep_meta = parse_pep723_metadata(source)
+    if pep_meta is not None:
+        return [PEP723ScriptSpell(py_file, metadata=pep_meta)]
+
+    module_name = f"mvgeos_spells_{spells_dir.name}_{py_file.stem}"
+    spec = importlib.util.spec_from_file_location(module_name, py_file)
+    if not spec or not spec.loader:
+        return []
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    # 1. Match function name == py_file.stem
+    if hasattr(module, py_file.stem):
+        candidate = getattr(module, py_file.stem)
+        if callable(candidate) or isinstance(candidate, MvgeSpell):
+            return [coerce_spell(candidate)]
+
+    # 2. Look for single public function defined in this file
+    public_candidates: list[tuple[str, Any]] = []
+    for attr_name, attr_val in inspect.getmembers(module):
+        if attr_name.startswith("_"):
+            continue
+        is_valid_spell = isinstance(attr_val, MvgeSpell) or (
+            callable(attr_val)
+            and getattr(attr_val, "__module__", "") == module.__name__
+        )
+        if is_valid_spell:
+            public_candidates.append((attr_name, attr_val))
+
+    if len(public_candidates) == 1:
+        return [coerce_spell(public_candidates[0][1])]
+
+    init_path = spells_dir / "__init__.py"
+    raise SpellDiscoveryError(
+        f"Could not discover spell in '{py_file.name}': No function "
+        f"named '{py_file.stem}' found, and no '__all__' was defined "
+        f"in '{init_path}'. Either define 'def {py_file.stem}(...)' "
+        f"or export it in '__all__'."
+    )
 
 
 __all__ = [

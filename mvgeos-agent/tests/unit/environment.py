@@ -807,3 +807,59 @@ class TestSteeringDecoupled:
         rendered = env.render_system_prompt()
         assert "<global_instructions" not in rendered
         assert "Global system rule" not in rendered
+
+
+class TestSigilPayload:
+    """BEFORE_MVGE_START payload carries the rune rehydration fields (§4.3)."""
+
+    def test_resolve_accepts_active_spells_dir(self, tmp_path: Path) -> None:
+        spells_dir = tmp_path / "spells"
+        spells_dir.mkdir()
+        env = MvgeEnvironment.resolve("test-agent", active_spells_dir=spells_dir)
+        assert env.active_spells_dir == spells_dir
+
+    def test_resolve_defaults_active_spells_dir_to_none(self) -> None:
+        env = MvgeEnvironment.resolve("test-agent")
+        assert env.active_spells_dir is None
+
+    def test_build_sigil_payload_populates_rehydration_fields(
+        self, tmp_path: Path
+    ) -> None:
+        spells_dir = tmp_path / "spells"
+        spells_dir.mkdir()
+        env = MvgeEnvironment.resolve("test-agent", active_spells_dir=spells_dir)
+
+        payload = env.build_sigil_payload(
+            base_prompt="Be helpful.",
+            spell_names=["bash"],
+            config_dir=tmp_path / "config",
+            custom_prompt="Custom.",
+            cwd=tmp_path,
+        )
+
+        assert payload.base_prompt == "Be helpful."
+        assert payload.spell_names == ["bash"]
+        assert payload.config_dir == str(tmp_path / "config")
+        assert payload.custom_prompt == "Custom."
+        assert payload.agent_name == "test-agent"
+        assert payload.cwd == str(tmp_path)
+        assert payload.active_spells_dir == spells_dir
+        assert payload.system_prompt_path == env.resolved_prompt.path
+        assert tuple(payload.runes_paths) == tuple(env.runes_paths)
+
+    def test_build_sigil_payload_explicit_dir_beats_environment(
+        self, tmp_path: Path
+    ) -> None:
+        env = MvgeEnvironment.resolve("test-agent")
+        assert env.active_spells_dir is None
+        override = tmp_path / "other-spells"
+        override.mkdir()
+
+        payload = env.build_sigil_payload(
+            base_prompt="Be helpful.",
+            spell_names=[],
+            config_dir=tmp_path,
+            active_spells_dir=override,
+        )
+
+        assert payload.active_spells_dir == override

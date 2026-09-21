@@ -637,3 +637,32 @@ class TestMvgeRunContentParts:
         )
         await agent.run("hello")
         assert state.invocations[0].content == "hello"
+
+
+class TestActiveSpellsDirRecording:
+    """Mvge records the winning spell-discovery directory (§4.3)."""
+
+    def test_explicit_spell_list_records_no_dir(self) -> None:
+        agent = Mvge(api_key="k", spells=[dummy_built_in])
+        assert agent._active_spells_dir is None
+
+    def test_caller_local_spells_dir_recorded(self, tmp_path: Path) -> None:
+        spells_dir = tmp_path / "spells"
+        spells_dir.mkdir()
+        (spells_dir / "greet.py").write_text(
+            "def greet(name: str) -> str:\n"
+            "    '''Greet someone.'''\n"
+            "    return name\n",
+            encoding="utf-8",
+        )
+
+        agent = Mvge(api_key="k", caller_dir=tmp_path)
+
+        assert agent._active_spells_dir == spells_dir
+        assert [s.name for s in agent._spells] == ["greet"]
+        assert agent._environment.active_spells_dir == spells_dir
+
+    def test_missing_spells_dir_records_none(self, tmp_path: Path) -> None:
+        agent = Mvge(api_key="k", caller_dir=tmp_path)
+        assert agent._active_spells_dir is None
+        assert agent._environment.active_spells_dir is None

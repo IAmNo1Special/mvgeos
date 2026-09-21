@@ -485,6 +485,7 @@ class MvgeEnvironment:
     config_manager: ConfigManager | None = None
     agent_config: AgentConfig | None = None
     global_dir: Path | None = None
+    active_spells_dir: Path | None = None
 
     @classmethod
     def resolve(
@@ -504,6 +505,7 @@ class MvgeEnvironment:
         caller_dir: Path | None = None,
         extension_dir: str | None = None,
         runes_paths: Sequence[str] | None = None,
+        active_spells_dir: Path | None = None,
     ) -> MvgeEnvironment:
         """Resolve all environment resources and configuration layers."""
         validate_agent_name(
@@ -562,6 +564,7 @@ class MvgeEnvironment:
             config_manager=cm if has_config_manager else None,
             agent_config=coerced,
             global_dir=global_dir,
+            active_spells_dir=active_spells_dir,
         )
 
     def render_system_prompt(
@@ -578,6 +581,46 @@ class MvgeEnvironment:
             append_text=append_text,
         )
 
+    def build_sigil_payload(
+        self,
+        *,
+        base_prompt: str,
+        spell_names: Sequence[str],
+        config_dir: str | Path | None,
+        custom_prompt: str = "",
+        cwd: str | Path | None = None,
+        active_spells_dir: Path | None = None,
+    ) -> BeforeMvgeStartData:
+        """Build the BEFORE_MVGE_START payload from engine state.
+
+        Populates the rune rehydration fields (``active_spells_dir``,
+        ``system_prompt_path``, ``runes_paths``) from this environment. The
+        returned payload is a fresh object per call; the engine caches its
+        own copy and fans out defensive copies so rune mutations can never
+        corrupt the cache or double-append prompt sections.
+        """
+        effective_cwd = str(cwd) if cwd else str(Path.cwd())
+        effective_config_dir = (
+            str(config_dir)
+            if config_dir is not None
+            else str(resolve_config_dir(self.agent_name))
+        )
+        return BeforeMvgeStartData(
+            base_prompt=base_prompt,
+            spell_names=list(spell_names),
+            config_dir=effective_config_dir,
+            custom_prompt=custom_prompt,
+            agent_name=self.agent_name,
+            cwd=effective_cwd,
+            active_spells_dir=(
+                active_spells_dir
+                if active_spells_dir is not None
+                else self.active_spells_dir
+            ),
+            system_prompt_path=self.resolved_prompt.path,
+            runes_paths=tuple(self.runes_paths),
+        )
+
     async def assemble_system_prompt(
         self,
         runner: RuneRunner | None = None,
@@ -588,6 +631,7 @@ class MvgeEnvironment:
         spell_names: Sequence[str] | None = None,
         config_dir: str | Path | None = None,
         render_scaffolding: bool = True,
+        active_spells_dir: Path | None = None,
     ) -> str:
         """Asynchronously assemble the final system prompt string.
 
@@ -613,13 +657,13 @@ class MvgeEnvironment:
         )
 
         if effective_runner is not None:
-            prompt_data = BeforeMvgeStartData(
+            prompt_data = self.build_sigil_payload(
                 base_prompt=effective_base,
                 spell_names=effective_spells,
                 config_dir=effective_config_dir,
                 custom_prompt=custom_prompt,
-                agent_name=self.agent_name,
                 cwd=effective_cwd,
+                active_spells_dir=active_spells_dir,
             )
             result_data = await effective_runner.emit_chain(
                 SigilHook.BEFORE_MVGE_START, prompt_data

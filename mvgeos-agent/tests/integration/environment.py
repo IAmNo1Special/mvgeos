@@ -167,3 +167,31 @@ async def test_rune_can_contribute_steering_via_before_mvge_start() -> None:
         assert agent._state is not None
         assert "Rune-contributed steering." in agent._state.system_prompt
         assert "Active spells:" in agent._state.system_prompt
+
+
+@pytest.mark.asyncio
+async def test_before_mvge_start_payload_carries_rehydration_fields() -> None:
+    """The BEFORE_MVGE_START payload includes the rehydration fields (§4.3)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = _agent(Path(tmp))
+        agent._load_runes = AsyncMock()  # type: ignore[method-assign]
+        agent._runner = RuneRunner()
+
+        seen: list[Any] = []
+
+        def recorder(data: Any) -> None:
+            seen.append(data)
+
+        agent._runner.register_handler(SigilHook.BEFORE_MVGE_START, recorder)
+
+        await agent.initialize()
+
+        assert len(seen) == 1
+        payload = seen[0]
+        assert isinstance(payload, BeforeMvgeStartData)
+        assert payload.agent_name == "default-mvge"
+        assert payload.base_prompt == agent._environment.resolved_prompt.text
+        assert payload.system_prompt_path == agent._environment.resolved_prompt.path
+        assert tuple(payload.runes_paths) == tuple(agent._environment.runes_paths)
+        # No spells dir exists in this tmp setup, so nothing is recorded.
+        assert payload.active_spells_dir is None

@@ -244,36 +244,8 @@ class Mvge:
         if agents_root not in sys.path:
             sys.path.insert(0, agents_root)
 
-        if spells is not None:
-            if spells and all(isinstance(s, str) for s in spells):
-                agent_config_dir = resolve_config_dir(name)
-                discovered: list[SpellUnion] = []
-                if (agent_config_dir / "spells").is_dir():
-                    discovered = list(
-                        discover_spells_from_dir(agent_config_dir / "spells")
-                    )
-                elif name == DEFAULT_AGENT_NAME:
-                    fallback_dir = Path(
-                        "~/.agents/agents/coding_mvge/spells"
-                    ).expanduser()
-                    if fallback_dir.is_dir():
-                        discovered = list(discover_spells_from_dir(fallback_dir))
-                filter_set = set(spells)
-                self._spells = [
-                    s for s in discovered if getattr(s, "name", "") in filter_set
-                ]
-            else:
-                self._spells = list(spells)
-        elif caller_dir is not None and (caller_dir / "spells").is_dir():
-            self._spells = list(discover_spells_from_dir(caller_dir / "spells"))
-        else:
-            agent_config_dir = resolve_config_dir(name)
-            if (agent_config_dir / "spells").is_dir():
-                self._spells = list(
-                    discover_spells_from_dir(agent_config_dir / "spells")
-                )
-            else:
-                self._spells = []
+        self._spells_arg = spells
+        self._spells, self._active_spells_dir = self._discover_spells()
 
         self._plan_mode = False
 
@@ -336,6 +308,7 @@ class Mvge:
                 caller_dir=caller_dir,
                 extension_dir=extension_dir,
                 runes_paths=resolved_runes_paths if resolved_runes_paths else None,
+                active_spells_dir=self._active_spells_dir,
             )
 
         self._environment = environment
@@ -374,6 +347,63 @@ class Mvge:
         self._abort_controller: AbortController | None = None
         self._enabled_spells_filter: set[str] | None = None
         self._initialized = False
+
+    def _discover_spells(self) -> tuple[list[SpellUnion], Path | None]:
+        """Run the construction-time spell discovery branches (strict)."""
+        return self._discover_spells_impl(on_file_error=None)
+
+    def _discover_spells_impl(
+        self,
+        on_file_error: Callable[[Path, Exception], None] | None,
+    ) -> tuple[list[SpellUnion], Path | None]:
+        """Spell discovery branching shared by construction and reload.
+
+        Returns the discovered spells and the winning spells directory
+        (``None`` when spells were injected directly or no spells directory
+        exists). ``on_file_error`` selects tolerant mode: per-file import
+        or discovery failures are reported through it and skipped instead
+        of raising (used by reload); ``None`` keeps strict construction
+        behavior.
+        """
+        name = self._name
+        caller_dir = self._caller_dir
+        spells_arg = self._spells_arg
+
+        def _from_dir(spells_dir: Path) -> list[SpellUnion]:
+            return list(
+                discover_spells_from_dir(spells_dir, on_file_error=on_file_error)
+            )
+
+        if spells_arg is not None:
+            if spells_arg and all(isinstance(s, str) for s in spells_arg):
+                agent_config_dir = resolve_config_dir(name)
+                discovered: list[SpellUnion] = []
+                active_dir: Path | None = None
+                config_spells = agent_config_dir / "spells"
+                if config_spells.is_dir():
+                    discovered = _from_dir(config_spells)
+                    active_dir = config_spells
+                elif name == DEFAULT_AGENT_NAME:
+                    fallback_dir = Path(
+                        "~/.agents/agents/coding_mvge/spells"
+                    ).expanduser()
+                    if fallback_dir.is_dir():
+                        discovered = _from_dir(fallback_dir)
+                        active_dir = fallback_dir
+                filter_set = set(spells_arg)
+                return (
+                    [s for s in discovered if getattr(s, "name", "") in filter_set],
+                    active_dir,
+                )
+            return list(spells_arg), None
+        if caller_dir is not None and (caller_dir / "spells").is_dir():
+            caller_spells = caller_dir / "spells"
+            return _from_dir(caller_spells), caller_spells
+        agent_config_dir = resolve_config_dir(name)
+        config_spells = agent_config_dir / "spells"
+        if config_spells.is_dir():
+            return _from_dir(config_spells), config_spells
+        return [], None
 
     @property
     def tome_id(self) -> str | None:
@@ -804,6 +834,7 @@ class Mvge:
             cwd=effective_cwd,
             spell_names=active_names,
             config_dir=self.config_dir,
+            active_spells_dir=self._active_spells_dir,
         )
 
     async def _run_impl(self) -> MvgeInvocation:
