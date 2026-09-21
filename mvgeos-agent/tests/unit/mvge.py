@@ -10,10 +10,14 @@ from mvgeos_core.abort import AbortSignal
 from mvgeos_core.events import QueueMode
 from mvgeos_core.invocations import SummonerRequest
 from mvgeos_core.spells import ExecutionMode
+from mvgeos_provider.base import Realm
+from mvgeos_provider.registry import RealmRegistry
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import RuneLoad, RuneManifest, SpellDefinition
+from mvgeos_tome.handle import TomeHandleFactory
 
 from mvgeos_agent import Mvge
+from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.mvge import _apply_gateway_allowlist, _validate_spell_name
 from mvgeos_agent.types import MvgeState
 
@@ -637,3 +641,75 @@ class TestMvgeRunContentParts:
         )
         await agent.run("hello")
         assert state.invocations[0].content == "hello"
+
+
+class TestActiveSpellsDirRecording:
+    """Mvge records the winning spell-discovery directory (§4.3)."""
+
+    def test_explicit_spell_list_records_no_dir(self) -> None:
+        agent = Mvge(api_key="k", spells=[dummy_built_in])
+        assert agent._active_spells_dir is None
+
+    def test_caller_local_spells_dir_recorded(self, tmp_path: Path) -> None:
+        spells_dir = tmp_path / "spells"
+        spells_dir.mkdir()
+        (spells_dir / "greet.py").write_text(
+            "def greet(name: str) -> str:\n    '''Greet someone.'''\n    return name\n",
+            encoding="utf-8",
+        )
+
+        agent = Mvge(api_key="k", caller_dir=tmp_path)
+
+        assert agent._active_spells_dir == spells_dir
+        assert [s.name for s in agent._spells] == ["greet"]
+        assert agent._environment.active_spells_dir == spells_dir
+
+    def test_missing_spells_dir_records_none(self, tmp_path: Path) -> None:
+        agent = Mvge(api_key="k", caller_dir=tmp_path)
+        assert agent._active_spells_dir is None
+        assert agent._environment.active_spells_dir is None
+
+
+@pytest.mark.asyncio
+async def test_initialize_records_project_dir_as_tome_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression (Major #9): the tome created during initialize() must record
+    the agent's project directory as its cwd, not the host process cwd.
+
+    The GUI embeds the engine in-process with --project differing from the
+    process cwd. Recording Path.cwd() made
+    TomeService.list_tomes_for_project() filter the tome out, so successful
+    turns never appeared as session rows in Sessions / Recent Sessions.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    agent_name = "cwd-probe"
+    config_dir = tmp_path / ".agents" / "agents" / agent_name
+    config_dir.mkdir(parents=True)
+    (config_dir / "SYSTEM.md").write_text("# Probe\n", encoding="utf-8")
+    (tmp_path / "runes").mkdir()
+
+    env = MvgeEnvironment.resolve(
+        agent_name=agent_name,
+        project_dir=project_dir,
+        config_dir=config_dir,
+        caller_dir=tmp_path,
+    )
+    registry = RealmRegistry()
+    registry.register_realm_factory("nvidia", lambda **kwargs: MagicMock(spec=Realm))
+    agent = Mvge(
+        api_key="k",
+        environment=env,
+        tome_dir=tmp_path / "tomes",
+        runes_paths=[str(tmp_path / "runes")],
+        provider_registry=registry,
+    )
+    await agent.initialize()
+    try:
+        meta = TomeHandleFactory(tmp_path / "tomes").open_tome(agent.tome_id)
+        assert meta is not None
+        assert meta.cwd == str(project_dir)
+    finally:
+        await agent.close()

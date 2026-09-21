@@ -139,21 +139,19 @@ def render_prompt(
     spells: Sequence[str] = (),
     cwd: str | Path | None = None,
     append_text: str = "",
-    *,
-    spells_dir: Path | None = None,
-    runes_paths: Sequence[Path] = (),
-    system_path: Path | None = None,
 ) -> str:
     """The single rendering every entry point goes through.
 
     Renders Layer 2 invariant scaffolding only: the persona body, active
-    spells, environment info (OS, shell, date/time UTC, PowerShell rules),
-    and engine capability pointers (spells, runes, system instructions).
+    spells, and environment info (OS, shell, date/time UTC, PowerShell
+    rules).
 
     Repository steering (AGENTS.md discovery, progressive disclosure, and
     ``<project_context>`` injection) is owned by the ``steering-bridge``
     marketplace rune, which contributes its section dynamically via the
-    ``BEFORE_MVGE_START`` sigil.
+    ``BEFORE_MVGE_START`` sigil. Self-modification pointers are owned by
+    the ``selfmod-bridge`` marketplace rune (``teach``/``scaffold_skill``/
+    ``scaffold_spell``/``snapshot``/``restore``).
     """
     parts: list[str] = []
     if body:
@@ -172,32 +170,6 @@ def render_prompt(
 
     parts.append("\nEnvironment:")
     parts.extend(get_environment_info(cwd))
-
-    # Self-Modification & Customization section (on-demand AGENTS.md reference pattern)
-    # Engine capability pointers only. Repository steering pointers (global,
-    # project, subpackage rules) are contributed by steering-bridge.
-    self_mod_lines = [
-        "\nSelf-Modification & Customization:",
-        "You can extend and self-modify your capabilities by editing files with "
-        "your spells (changes are watched and hot-reloaded automatically). "
-        "Before creating or modifying, read the AGENTS.md in that directory for "
-        "exact syntax, rules, and contracts:",
-    ]
-    has_self_mod = False
-    if spells_dir is not None and spells_dir.is_dir():
-        self_mod_lines.append(f"- Spells: {spells_dir.as_posix()}/AGENTS.md")
-        has_self_mod = True
-    if runes_paths:
-        for rp in runes_paths:
-            self_mod_lines.append(f"- Runes: {rp.as_posix()}/AGENTS.md")
-            has_self_mod = True
-
-    if system_path is not None and system_path.is_file():
-        self_mod_lines.append(f"- System Instructions: {system_path.as_posix()}")
-        has_self_mod = True
-
-    if has_self_mod:
-        parts.extend(self_mod_lines)
 
     if append_text:
         parts.append(f"\n{append_text}")
@@ -513,6 +485,15 @@ class MvgeEnvironment:
     config_manager: ConfigManager | None = None
     agent_config: AgentConfig | None = None
     global_dir: Path | None = None
+    active_spells_dir: Path | None = None
+    prompt_resolve_kwargs: dict[str, Any] = field(default_factory=dict)
+    """Inputs used to resolve the base SYSTEM.md chain.
+
+    Recorded by :meth:`resolve` so engine reload can re-run the identical
+    discovery (custom -> caller -> project -> agent-scope -> default) even
+    when the environment was built by an external caller (CLI/GUI) with
+    different inputs.
+    """
 
     @classmethod
     def resolve(
@@ -532,6 +513,7 @@ class MvgeEnvironment:
         caller_dir: Path | None = None,
         extension_dir: str | None = None,
         runes_paths: Sequence[str] | None = None,
+        active_spells_dir: Path | None = None,
     ) -> MvgeEnvironment:
         """Resolve all environment resources and configuration layers."""
         validate_agent_name(
@@ -556,15 +538,16 @@ class MvgeEnvironment:
             runes_paths=runes_paths,
         )
 
-        resolved_prompt = resolve_system_prompt(
-            agent_name=agent_name,
-            custom=custom_prompt,
-            config_dir=config_dir,
-            project_dir=project_dir,
-            caller_dir=caller_dir,
-            global_dir=global_dir,
-            default=DEFAULT_SYSTEM_PROMPT,
-        )
+        resolved_prompt_inputs: dict[str, Any] = {
+            "agent_name": agent_name,
+            "custom": custom_prompt,
+            "config_dir": config_dir,
+            "project_dir": project_dir,
+            "caller_dir": caller_dir,
+            "global_dir": global_dir,
+            "default": DEFAULT_SYSTEM_PROMPT,
+        }
+        resolved_prompt = resolve_system_prompt(**resolved_prompt_inputs)
 
         diags: list[Diagnostic | SkillDiagnostic] = []
         if runner is not None:
@@ -590,6 +573,8 @@ class MvgeEnvironment:
             config_manager=cm if has_config_manager else None,
             agent_config=coerced,
             global_dir=global_dir,
+            active_spells_dir=active_spells_dir,
+            prompt_resolve_kwargs=resolved_prompt_inputs,
         )
 
     def render_system_prompt(
@@ -604,8 +589,54 @@ class MvgeEnvironment:
             spells=self.spell_names or [],
             cwd=cwd,
             append_text=append_text,
-            runes_paths=self.runes_paths,
-            system_path=self.resolved_prompt.path,
+        )
+
+    def build_sigil_payload(
+        self,
+        *,
+        base_prompt: str,
+        spell_names: Sequence[str],
+        config_dir: str | Path | None,
+        custom_prompt: str = "",
+        cwd: str | Path | None = None,
+        active_spells_dir: Path | None = None,
+    ) -> BeforeMvgeStartData:
+        """Build the BEFORE_MVGE_START payload from engine state.
+
+        Populates the rune rehydration fields (``spells_dir``,
+        ``system_path``, ``runes_paths``) from this environment, as flat
+        strings matching the existing ``str``-typed payload fields. The
+        returned payload is a fresh object per call; the engine caches its
+        own copy and fans out defensive copies so rune mutations can never
+        corrupt the cache or double-append prompt sections.
+        """
+        effective_cwd = str(cwd) if cwd else str(Path.cwd())
+        effective_config_dir = (
+            str(config_dir)
+            if config_dir is not None
+            else str(resolve_config_dir(self.agent_name))
+        )
+        effective_spells_dir = (
+            active_spells_dir
+            if active_spells_dir is not None
+            else self.active_spells_dir
+        )
+        return BeforeMvgeStartData(
+            base_prompt=base_prompt,
+            spell_names=list(spell_names),
+            config_dir=effective_config_dir,
+            custom_prompt=custom_prompt,
+            agent_name=self.agent_name,
+            cwd=effective_cwd,
+            runes_paths=[p.as_posix() for p in self.runes_paths],
+            system_path=(
+                self.resolved_prompt.path.as_posix()
+                if self.resolved_prompt.path
+                else None
+            ),
+            spells_dir=(
+                effective_spells_dir.as_posix() if effective_spells_dir else None
+            ),
         )
 
     async def assemble_system_prompt(
@@ -618,6 +649,7 @@ class MvgeEnvironment:
         spell_names: Sequence[str] | None = None,
         config_dir: str | Path | None = None,
         render_scaffolding: bool = True,
+        active_spells_dir: Path | None = None,
     ) -> str:
         """Asynchronously assemble the final system prompt string.
 
@@ -643,13 +675,13 @@ class MvgeEnvironment:
         )
 
         if effective_runner is not None:
-            prompt_data = BeforeMvgeStartData(
+            prompt_data = self.build_sigil_payload(
                 base_prompt=effective_base,
                 spell_names=effective_spells,
                 config_dir=effective_config_dir,
                 custom_prompt=custom_prompt,
-                agent_name=self.agent_name,
                 cwd=effective_cwd,
+                active_spells_dir=active_spells_dir,
             )
             result_data = await effective_runner.emit_chain(
                 SigilHook.BEFORE_MVGE_START, prompt_data
@@ -669,8 +701,6 @@ class MvgeEnvironment:
             spells=effective_spells,
             cwd=effective_cwd,
             append_text="",
-            runes_paths=self.runes_paths,
-            system_path=self.resolved_prompt.path,
         )
 
     @staticmethod
@@ -679,10 +709,6 @@ class MvgeEnvironment:
         spells: Sequence[str] = (),
         cwd: str | Path | None = None,
         append_text: str = "",
-        *,
-        spells_dir: Path | None = None,
-        runes_paths: Sequence[Path] = (),
-        system_path: Path | None = None,
     ) -> str:
         """Render a prompt with body, spells, and environment."""
         return render_prompt(
@@ -690,9 +716,6 @@ class MvgeEnvironment:
             spells=spells,
             cwd=cwd,
             append_text=append_text,
-            spells_dir=spells_dir,
-            runes_paths=runes_paths,
-            system_path=system_path,
         )
 
     def build_snapshot(self) -> RuntimeSnapshot:

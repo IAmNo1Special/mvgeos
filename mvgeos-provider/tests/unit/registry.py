@@ -46,6 +46,19 @@ def test_get_provider_config_nonexistent() -> None:
     assert reg.get_provider_config("nonexistent") is None
 
 
+def test_unregister_provider() -> None:
+    reg = RealmRegistry()
+    reg.register_provider("custom", {"apiKey": "sekret"})
+    reg.unregister_provider("custom")
+    assert reg.get_provider_config("custom") is None
+    assert "custom" not in reg.get_registered_providers()
+
+
+def test_unregister_provider_nonexistent_is_noop() -> None:
+    reg = RealmRegistry()
+    reg.unregister_provider("never-registered")
+
+
 def test_get_registered_providers() -> None:
     reg = RealmRegistry()
     assert reg.get_registered_providers() == []

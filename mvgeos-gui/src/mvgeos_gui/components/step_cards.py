@@ -56,13 +56,15 @@ def render_contemplation_card(
             icon="psychology",
             value=initial_val,
         )
-        .props("dense dense-toggle header-class=bg-[#101014] dark")
+        .props("dense dense-toggle header-class=bg-[var(--bg-raised)]")
         .classes(
-            "w-full rounded-xl bg-[#0a0a0e] border border-[#16161d] "
-            "text-xs text-[#9c94b3] my-1"
+            "w-full rounded-xl bg-[var(--bg-sunken-alt)] border "
+            "border-[var(--bg-card-hover)] "
+            "text-xs text-[var(--text-secondary)] my-1"
         ) as expansion,
         ui.column().classes(
-            "w-full p-3 bg-[#08080c] rounded-b-xl border-t border-[#241f38]"
+            "w-full p-3 bg-[var(--bg-well-deep)] rounded-b-xl border-t "
+            "border-[var(--bg-tint)]"
         ),
     ):
         ui.markdown(contemplation).classes(
@@ -90,21 +92,26 @@ def render_worked_card(
             icon="schedule" if step.is_complete else "hourglass_top",
             value=initial_val,
         )
-        .props("dense dense-toggle header-class=bg-[#0e0e12] dark")
+        .props("dense dense-toggle header-class=bg-[var(--bg-card)]")
         .classes(
-            "w-full rounded-xl bg-[#0e0e12] border border-[#292335] "
-            "text-xs text-[#9c94b3] my-1"
+            "w-full rounded-xl bg-[var(--bg-card)] border "
+            "border-[var(--border-subtle)] "
+            "text-xs text-[var(--text-secondary)] my-1"
         ) as expansion,
-        ui.column().classes("w-full p-3 gap-2 bg-[#0c0c10] rounded-b-xl"),
+        ui.column().classes("w-full p-3 gap-2 bg-[var(--bg-well)] rounded-b-xl"),
     ):
         if step.details:
             for detail in step.details:
-                with ui.row().classes("items-center gap-2 text-[11px] text-[#9c94b3]"):
-                    ui.icon("check_circle", size="12px").classes("text-[#22c55e]")
+                with ui.row().classes(
+                    "items-center gap-2 text-[11px] text-[var(--text-secondary)]"
+                ):
+                    ui.icon("check_circle", size="12px").classes(
+                        "text-[var(--addition-green)]"
+                    )
                     ui.label(detail).classes("font-mono")
         else:
             ui.label("Execution completed.").classes(
-                "text-[11px] text-[#6e6584] italic"
+                "text-[11px] text-[var(--text-muted)] italic"
             )
         if step.params:
             params_id = f"{card_id}_params" if card_id else None
@@ -115,11 +122,12 @@ def render_worked_card(
             )
             with (
                 ui.expansion("Parameters", icon="unfold_more", value=params_val)
-                .props("dense dense-toggle dark")
-                .classes("text-[10px] text-[#6e6584]")
+                .props("dense dense-toggle")
+                .classes("text-[10px] text-[var(--text-muted)]")
             ) as p_exp:
                 ui.code(str(step.params)).classes(
-                    "w-full text-[10px] bg-[#050507] p-2 rounded max-h-32 overflow-auto"
+                    "w-full text-[10px] bg-[var(--bg-sunken)] p-2 rounded max-h-32 "
+                    "overflow-auto"
                 )
             _bind_expansion(p_exp, params_id, state)
         if step.result:
@@ -133,18 +141,18 @@ def render_worked_card(
                 )
                 with (
                     ui.expansion("Result", icon="unfold_more", value=result_val)
-                    .props("dense dense-toggle dark")
-                    .classes("text-[10px] text-[#6e6584]")
+                    .props("dense dense-toggle")
+                    .classes("text-[10px] text-[var(--text-muted)]")
                 ) as r_exp:
                     ui.code(preview).classes(
-                        "w-full text-[10px] bg-[#050507] p-2 rounded "
+                        "w-full text-[10px] bg-[var(--bg-sunken)] p-2 rounded "
                         "max-h-32 overflow-auto"
                     )
                 _bind_expansion(r_exp, result_id, state)
                 if hidden > 0:
                     ui.label(
                         f"... ({hidden} more lines, expand Result to view)"
-                    ).classes("text-[10px] text-[#6e6584] italic")
+                    ).classes("text-[10px] text-[var(--text-muted)] italic")
     _bind_expansion(expansion, card_id, state)
     return expansion
 
@@ -169,29 +177,32 @@ def render_files_card(
             icon="find_in_page",
             value=initial_val,
         )
-        .props("dense dense-toggle header-class=bg-[#0e0e12] dark")
+        .props("dense dense-toggle header-class=bg-[var(--bg-card)]")
         .classes(
-            "w-full rounded-xl bg-[#0e0e12] border border-[#292335] "
-            "text-xs text-[#9c94b3] my-1"
+            "w-full rounded-xl bg-[var(--bg-card)] border "
+            "border-[var(--border-subtle)] "
+            "text-xs text-[var(--text-secondary)] my-1"
         ) as expansion,
-        ui.column().classes("w-full p-3 gap-2 bg-[#0c0c10] rounded-b-xl"),
+        ui.column().classes("w-full p-3 gap-2 bg-[var(--bg-well)] rounded-b-xl"),
     ):
         for idx, f in enumerate(step.files):
             with ui.row().classes(
                 "w-full items-center justify-between p-1.5 rounded "
-                "bg-[#08080a] border border-[#241f38]"
+                "bg-[var(--bg-surface)] border border-[var(--bg-tint)]"
             ):
                 with ui.row().classes("items-center gap-2 overflow-hidden"):
                     ui.icon("description", size="14px").classes(
-                        "text-[#7b6cf6] shrink-0"
+                        "text-[var(--accent-primary)] shrink-0"
                     )
                     ui.label(f.path).classes(
-                        "text-xs text-[#eceaf4] font-mono truncate max-w-[320px]"
+                        "text-xs text-[var(--text-primary)] font-mono truncate "
+                        "max-w-[320px]"
                     )
                     if f.lines:
-                        ui.badge(f.lines, color="grey-9").props(
-                            "rounded dense"
-                        ).classes("text-[10px] text-[#9c94b3] font-mono px-1.5")
+                        ui.badge(f.lines).props("rounded dense").classes(
+                            "text-[10px] text-[var(--text-secondary)] font-mono px-1.5 "
+                            "bg-[var(--bg-card)] border border-[var(--border-subtle)]"
+                        )
                 ui.badge(f.operation.upper(), color="deep-purple-9").props(
                     "rounded dense"
                 ).classes("text-[9px] text-white font-mono px-1.5")
@@ -209,17 +220,17 @@ def render_files_card(
                         ui.expansion(
                             "File details", icon="unfold_more", value=details_val
                         )
-                        .props("dense dense-toggle dark")
-                        .classes("text-[10px] text-[#6e6584]")
+                        .props("dense dense-toggle")
+                        .classes("text-[10px] text-[var(--text-muted)]")
                     ) as d_exp:
                         ui.code(preview).classes(
-                            "w-full text-[10px] bg-[#050507] p-2 rounded "
+                            "w-full text-[10px] bg-[var(--bg-sunken)] p-2 rounded "
                             "max-h-32 overflow-auto"
                         )
                     _bind_expansion(d_exp, details_id, state)
                     if hidden > 0:
                         ui.label(f"... ({hidden} more lines, expand to view)").classes(
-                            "text-[10px] text-[#6e6584] italic"
+                            "text-[10px] text-[var(--text-muted)] italic"
                         )
     _bind_expansion(expansion, card_id, state)
     return expansion
@@ -245,43 +256,47 @@ def render_commands_card(
             icon="terminal",
             value=initial_val,
         )
-        .props("dense dense-toggle header-class=bg-[#0e0e12] dark")
+        .props("dense dense-toggle header-class=bg-[var(--bg-card)]")
         .classes(
-            "w-full rounded-xl bg-[#0e0e12] border border-[#292335] "
-            "text-xs text-[#9c94b3] my-1"
+            "w-full rounded-xl bg-[var(--bg-card)] border "
+            "border-[var(--border-subtle)] "
+            "text-xs text-[var(--text-secondary)] my-1"
         ) as expansion,
-        ui.column().classes("w-full p-3 gap-3 bg-[#0c0c10] rounded-b-xl"),
+        ui.column().classes("w-full p-3 gap-3 bg-[var(--bg-well)] rounded-b-xl"),
     ):
         for cmd in step.commands:
             with ui.column().classes(
-                "w-full rounded-lg bg-[#050507] border border-[#241f38] "
+                "w-full rounded-lg bg-[var(--bg-sunken)] border "
+                "border-[var(--bg-tint)] "
                 "p-3 gap-2 shadow-inner"
             ):
                 # Terminal title row
                 with ui.row().classes("w-full items-center justify-between"):
                     with ui.row().classes("items-center gap-1.5"):
                         ui.element("div").classes(
-                            "w-2.5 h-2.5 rounded-full bg-[#ef4444]"
+                            "w-2.5 h-2.5 rounded-full bg-[var(--deletion-red)]"
                         )
                         ui.element("div").classes(
-                            "w-2.5 h-2.5 rounded-full bg-[#f59e0b]"
+                            "w-2.5 h-2.5 rounded-full bg-[var(--text-warn)]"
                         )
                         ui.element("div").classes(
-                            "w-2.5 h-2.5 rounded-full bg-[#22c55e]"
+                            "w-2.5 h-2.5 rounded-full bg-[var(--addition-green)]"
                         )
                         ui.label("Terminal").classes(
-                            "text-[10px] text-[#6e6584] font-mono ml-2"
+                            "text-[10px] text-[var(--text-muted)] font-mono ml-2"
                         )
                     if cmd.duration_seconds > 0:
                         ui.label(f"{cmd.duration_seconds:.2f}s").classes(
-                            "text-[10px] text-[#6e6584] font-mono"
+                            "text-[10px] text-[var(--text-muted)] font-mono"
                         )
 
                 # Command Prompt
                 with ui.row().classes("items-center gap-2"):
-                    ui.label("$").classes("text-xs text-[#22c55e] font-mono font-bold")
+                    ui.label("$").classes(
+                        "text-xs text-[var(--addition-green)] font-mono font-bold"
+                    )
                     ui.label(cmd.command).classes(
-                        "text-xs text-[#eceaf4] font-mono font-semibold"
+                        "text-xs text-[var(--text-primary)] font-mono font-semibold"
                     )
 
                 # Command Output
@@ -289,8 +304,8 @@ def render_commands_card(
                     preview, hidden = _truncate_text(cmd.output)
                     with ui.column().classes("w-full gap-1"):
                         with ui.scroll_area().classes(
-                            "w-full max-h-48 bg-[#000000] rounded p-2 "
-                            "border border-[#0e0e14]"
+                            "w-full max-h-48 bg-[var(--bg-canvas)] rounded p-2 "
+                            "border border-[var(--bg-well-alt)]"
                         ):
                             ui.markdown(f"```text\n{preview}\n```").classes(
                                 "markdown-content markdown-terminal m-0 "
@@ -299,7 +314,7 @@ def render_commands_card(
                         if hidden > 0:
                             ui.label(
                                 f"... ({hidden} more lines, scroll to view)"
-                            ).classes("text-[10px] text-[#6e6584] italic")
+                            ).classes("text-[10px] text-[var(--text-muted)] italic")
     _bind_expansion(expansion, card_id, state)
     return expansion
 

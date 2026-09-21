@@ -51,3 +51,19 @@ async def test_render_diff_viewer_with_hunk(user: User, tmp_path) -> None:
 
     await user.open("/test_diff_hunk")
     await user.should_see("src/foo.py")
+
+
+@pytest.mark.asyncio
+async def test_render_diff_viewer_empty_state_names_what_it_tracks(
+    user: User, tmp_path
+) -> None:
+    """The empty state must say it is waiting on agent-made changes."""
+    state = AppState(project_path=tmp_path)
+
+    @ui.page("/test_diff_empty_guidance")
+    def page() -> None:
+        render_diff_viewer(state)
+
+    await user.open("/test_diff_empty_guidance")
+    await user.should_see("No diff selected")
+    await user.should_see("changes made by the agent in this session")

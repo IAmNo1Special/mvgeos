@@ -13,6 +13,7 @@ dependencies = [
     "rich>=13.0",
     "typer>=0.27.1",
     "prompt-toolkit>=3.0",
+    "click>=8.0",
 ]
 
 [project.scripts]

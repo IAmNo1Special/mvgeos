@@ -9,6 +9,8 @@ from nicegui import ui
 
 from mvgeos_gui.services.config_service import AppSettings, ConfigService
 from mvgeos_gui.state import AppState
+from mvgeos_gui.styles import apply_theme
+from mvgeos_gui.utils import install_focus_trap
 
 AVAILABLE_THEMES = ["dark", "light"]
 
@@ -30,26 +32,26 @@ def render_app_settings_modal(state: AppState) -> None:
     }
 
     def _on_close() -> None:
-        state._show_app_settings = False
-        state.notify()
+        state.close_app_settings()
 
     def _save() -> None:
+        errors: list[str] = []
+        mana_limit = 0
         try:
             mana_limit = int(edited["mana_limit"])
             if mana_limit <= 0:
-                raise ValueError("Mana limit must be positive")
+                raise ValueError("Mana limit must be a positive integer")
         except (ValueError, TypeError):
-            ui.notify("Invalid mana limit: must be a positive integer", type="negative")
-            return
+            errors.append("Invalid mana limit: must be a positive integer")
+        temperature = 0.0
         try:
             temperature = float(edited["temperature"])
             if temperature < 0.0 or temperature > 2.0:
                 raise ValueError("Temperature must be between 0.0 and 2.0")
         except (ValueError, TypeError):
-            ui.notify(
-                "Invalid temperature: must be between 0.0 and 2.0",
-                type="negative",
-            )
+            errors.append("Invalid temperature: must be between 0.0 and 2.0")
+        if errors:
+            ui.notify("\n".join(errors), type="negative", multi_line=True)
             return
         config_service.save_app_settings(
             AppSettings(
@@ -60,26 +62,30 @@ def render_app_settings_modal(state: AppState) -> None:
                 theme=str(edited["theme"]),
             )
         )
+        new_theme = str(edited["theme"])
+        if new_theme != current.theme and state._dark_mode is not None:
+            apply_theme(new_theme, state._dark_mode)
         if str(edited["default_model"]) != state.selected_model:
             state.switch_model(str(edited["default_model"]))
-        state._show_app_settings = False
-        state.notify()
+        state.close_app_settings()
         ui.notify("Settings saved", type="positive")
 
     with (
         ui.dialog().classes("w-full max-w-2xl").on("close", _on_close) as dialog,
         ui.card().classes(
-            "w-full bg-[#08080a] border border-[#292335] rounded-xl p-0 overflow-hidden"
+            "w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] "
+            "rounded-xl p-0 "
+            "overflow-hidden settings-dialog-card"
         ),
     ):
         with ui.row().classes(
             "w-full h-11 px-4 items-center justify-between "
-            "border-b border-[#292335] bg-[#101014]"
+            "border-b border-[var(--border-subtle)] bg-[var(--bg-raised)]"
         ):
             with ui.row().classes("items-center gap-2"):
-                ui.icon("settings", size="16px").classes("text-[#7b6cf6]")
+                ui.icon("settings", size="16px").classes("text-[var(--accent-primary)]")
                 ui.label("Application Settings").classes(
-                    "text-sm font-medium text-[#eceaf4]"
+                    "text-sm font-medium text-[var(--text-primary)]"
                 )
             ui.button(
                 icon="close",
@@ -87,18 +93,25 @@ def render_app_settings_modal(state: AppState) -> None:
             ).props("flat dense round text-color=grey-5 size=sm")
 
         with ui.column().classes("w-full p-4 gap-4 max-h-[70vh] overflow-auto"):
-            with ui.row().classes("w-full gap-4"):  # noqa: SIM117
-                with ui.column().classes("flex-1 gap-1"):
-                    ui.label("API Key").classes("text-xs text-[#9c94b3]")
-                    ui.input(
-                        value=str(edited["api_key"]),
-                        on_change=lambda e: edited.__setitem__("api_key", e.value),
-                    ).props("dense outlined dark").classes("w-full").mark(
-                        "api_key_input"
+            with ui.row().classes("w-full gap-4 settings-form-row"):  # noqa: SIM117
+                with ui.column().classes("flex-1 gap-1 min-w-0"):
+                    ui.label("API Key").classes("text-xs text-[var(--text-secondary)]")
+                    api_key_input = (
+                        ui.input(
+                            value=str(edited["api_key"]),
+                            on_change=lambda e: edited.__setitem__("api_key", e.value),
+                            password=True,
+                            password_toggle_button=True,
+                        )
+                        .props("dense outlined")
+                        .classes("w-full")
+                        .mark("api_key_input")
                     )
 
-                with ui.column().classes("flex-1 gap-1"):
-                    ui.label("Default Model").classes("text-xs text-[#9c94b3]")
+                with ui.column().classes("flex-1 gap-1 min-w-0"):
+                    ui.label("Default Model").classes(
+                        "text-xs text-[var(--text-secondary)]"
+                    )
                     ui.select(
                         options=get_model_options(),
                         value=str(edited["default_model"]),
@@ -106,45 +119,45 @@ def render_app_settings_modal(state: AppState) -> None:
                             "default_model", e.value
                         ),
                         with_input=True,
-                    ).props("dense outlined dark").classes("w-full").mark(
+                    ).props("dense outlined").classes("w-full model-select").mark(
                         "model_select"
                     )
 
-            with ui.row().classes("w-full gap-4"):  # noqa: SIM117
-                with ui.column().classes("flex-1 gap-1"):
+            with ui.row().classes("w-full gap-4 settings-form-row"):  # noqa: SIM117
+                with ui.column().classes("flex-1 gap-1 min-w-0"):
                     ui.label("Mana Limit (max_tokens)").classes(
-                        "text-xs text-[#9c94b3]"
+                        "text-xs text-[var(--text-secondary)]"
                     )
                     ui.input(
                         value=str(edited["mana_limit"]),
                         on_change=lambda e: edited.__setitem__("mana_limit", e.value),
-                    ).props("dense outlined dark type=number").classes("w-full").mark(
+                    ).props("dense outlined type=number").classes("w-full").mark(
                         "mana_limit_input"
                     )
 
-                with ui.column().classes("flex-1 gap-1"):
-                    ui.label("Temperature").classes("text-xs text-[#9c94b3]")
+                with ui.column().classes("flex-1 gap-1 min-w-0"):
+                    ui.label("Temperature").classes(
+                        "text-xs text-[var(--text-secondary)]"
+                    )
                     ui.input(
                         value=str(edited["temperature"]),
                         on_change=lambda e: edited.__setitem__("temperature", e.value),
-                    ).props("dense outlined dark type=number step=0.1").classes(
+                    ).props("dense outlined type=number step=0.1").classes(
                         "w-full"
                     ).mark("temperature_input")
 
-            with ui.row().classes("w-full gap-4"):  # noqa: SIM117
-                with ui.column().classes("flex-1 gap-1"):
-                    ui.label("Theme").classes("text-xs text-[#9c94b3]")
+            with ui.row().classes("w-full gap-4 settings-form-row"):  # noqa: SIM117
+                with ui.column().classes("flex-1 gap-1 min-w-0"):
+                    ui.label("Theme").classes("text-xs text-[var(--text-secondary)]")
                     ui.select(
                         AVAILABLE_THEMES,
                         value=str(edited["theme"]),
                         on_change=lambda e: edited.__setitem__("theme", e.value),
-                    ).props("dense outlined dark").classes("w-full").mark(
-                        "theme_select"
-                    )
+                    ).props("dense outlined").classes("w-full").mark("theme_select")
 
         with ui.row().classes(
             "w-full px-4 py-3 items-center justify-end gap-2 "
-            "border-t border-[#292335] bg-[#101014]"
+            "border-t border-[var(--border-subtle)] bg-[var(--bg-raised)]"
         ):
             ui.button("Cancel", on_click=lambda: dialog.close()).props(
                 "flat dense no-caps text-color=grey-5"
@@ -153,4 +166,6 @@ def render_app_settings_modal(state: AppState) -> None:
                 "unelevated dense no-caps mvge-glow-btn text-white"
             )
 
+    install_focus_trap(dialog)
     dialog.open()
+    api_key_input.run_method("focus")

@@ -20,6 +20,27 @@ from mvgeos_gui.state import AppState
 logger = logging.getLogger(__name__)
 
 
+class _MarketplaceFetchProbe(logging.Handler):
+    """Observes marketplace fetch failures via the libraries' warnings.
+
+    The library fetch helpers (mvgeos_runes / mvgeos_agent installers)
+    swallow network errors: on failure they log
+    "Failed to fetch marketplace ..." and return {}. The only failure
+    signal that survives is that warning, so this handler watches for it
+    while a fetch is in flight. Fetches are awaited sequentially, so a
+    warning seen during one fetch belongs to that fetch: reset ``failed``
+    before each fetch and read it right after.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.WARNING)
+        self.failed = False
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.getMessage().startswith("Failed to fetch marketplace"):
+            self.failed = True
+
+
 def open_folder_in_explorer(target_path: str | Path) -> bool:
     """Open a directory or file's parent in the OS default file explorer."""
     try:
@@ -236,6 +257,10 @@ def render_packages_panel(state: AppState) -> None:
     installed_data: list[dict[str, Any]] = []
     marketplace_mvges_data: dict[str, Any] = {}
     installed_mvges_data: list[dict[str, Any]] = []
+    # Tracks catalog fetch failures separately from empty data: a failed
+    # fetch must show a distinct error state, not the "No packages found"
+    # empty-catalog message.
+    catalog_error: dict[str, bool] = {"runes": False, "mvges": False}
     search_state: dict[str, str] = {
         "query": "",
         "type": "All Types",
@@ -249,21 +274,28 @@ def render_packages_panel(state: AppState) -> None:
     with (
         ui.dialog() as install_dialog,
         ui.card().classes(
-            "w-[480px] p-6 bg-[#0e0e12] border border-[#292335] rounded-xl gap-4"
+            "w-[480px] p-6 bg-[var(--bg-card)] border border-[var(--border-subtle)] "
+            "rounded-xl gap-4"
         ),
     ):
         ui.label("Install Extension Rune").classes(
-            "text-lg font-semibold text-[#eceaf4]"
+            "text-lg font-semibold text-[var(--text-primary)]"
         )
         ui.label(
             "Enter a marketplace rune name, Git repository URL, or local path."
-        ).classes("text-xs text-[#9c94b3]")
+        ).classes("text-xs text-[var(--text-secondary)]")
         source_input = (
             ui.input(placeholder="git URL, local path, or marketplace rune name")
-            .props("dense dark outlined rounded")
+            .props("dense outlined rounded")
             .classes("w-full text-xs")
             .mark("package_dialog_source_input")
         )
+        source_error = (
+            ui.label("Enter a git URL, local path, or marketplace rune name.")
+            .classes("text-[11px] text-[var(--deletion-red)] -mt-2")
+            .mark("package_dialog_source_error")
+        )
+        source_error.visible = False
 
         with ui.row().classes("w-full justify-end gap-2 mt-2"):
             ui.button("Cancel", on_click=install_dialog.close).props(
@@ -273,8 +305,10 @@ def render_packages_panel(state: AppState) -> None:
             async def _do_install() -> None:
                 source = (source_input.value or "").strip()
                 if not source:
+                    source_error.visible = True
                     ui.notify("Please enter a rune source", type="warning")
                     return
+                source_error.visible = False
                 ui.notify(f"Installing {source}...", type="info")
                 success = await state.install_rune_async(source)
                 if success:
@@ -293,19 +327,28 @@ def render_packages_panel(state: AppState) -> None:
     with (
         ui.dialog() as mvge_install_dialog,
         ui.card().classes(
-            "w-[480px] p-6 bg-[#0e0e12] border border-[#292335] rounded-xl gap-4"
+            "w-[480px] p-6 bg-[var(--bg-card)] border border-[var(--border-subtle)] "
+            "rounded-xl gap-4"
         ),
     ):
-        ui.label("Install Mvge Agent").classes("text-lg font-semibold text-[#eceaf4]")
+        ui.label("Install Mvge Agent").classes(
+            "text-lg font-semibold text-[var(--text-primary)]"
+        )
         ui.label(
             "Enter a marketplace mvge name, Git repository URL, or local path."
-        ).classes("text-xs text-[#9c94b3]")
+        ).classes("text-xs text-[var(--text-secondary)]")
         mvge_source_input = (
             ui.input(placeholder="git URL, local path, or marketplace mvge name")
-            .props("dense dark outlined rounded")
+            .props("dense outlined rounded")
             .classes("w-full text-xs")
             .mark("mvge_dialog_source_input")
         )
+        mvge_source_error = (
+            ui.label("Enter a git URL, local path, or marketplace mvge name.")
+            .classes("text-[11px] text-[var(--deletion-red)] -mt-2")
+            .mark("mvge_dialog_source_error")
+        )
+        mvge_source_error.visible = False
 
         with ui.row().classes("w-full justify-end gap-2 mt-2"):
             ui.button("Cancel", on_click=mvge_install_dialog.close).props(
@@ -315,8 +358,10 @@ def render_packages_panel(state: AppState) -> None:
             async def _do_mvge_install() -> None:
                 source = (mvge_source_input.value or "").strip()
                 if not source:
+                    mvge_source_error.visible = True
                     ui.notify("Please enter an agent source", type="warning")
                     return
+                mvge_source_error.visible = False
                 ui.notify(f"Installing {source}...", type="info")
                 success = await state.install_mvge_async(source)
                 if success:
@@ -345,19 +390,25 @@ def render_packages_panel(state: AppState) -> None:
         m_deps = m["python_deps"]
 
         with ui.card().classes(
-            "w-full p-4 bg-[#0e0e12] border border-[#292335] rounded-xl gap-2"
+            "w-full p-4 bg-[var(--bg-card)] border border-[var(--border-subtle)] "
+            "rounded-xl gap-2"
         ):
             with ui.row().classes("w-full items-center justify-between"):
                 with ui.row().classes("items-center gap-2"):
                     if m_is_installed:
                         ui.icon("check_circle", size="18px").classes("text-green-400")
                     else:
-                        ui.icon("smart_toy", size="18px").classes("text-[#7b6cf6]")
+                        ui.icon("smart_toy", size="18px").classes(
+                            "text-[var(--accent-primary)]"
+                        )
 
-                    ui.label(m_name).classes("text-sm font-semibold text-[#eceaf4]")
-                    ui.badge(f"v{m_version}", color="grey-9").props(
-                        "rounded dense"
-                    ).classes("text-[10px] text-[#9c94b3] font-mono")
+                    ui.label(m_name).classes(
+                        "text-sm font-semibold text-[var(--text-primary)]"
+                    )
+                    ui.badge(f"v{m_version}").props("rounded dense").classes(
+                        "text-[10px] text-[var(--text-secondary)] font-mono "
+                        "bg-[var(--bg-card)] border border-[var(--border-subtle)]"
+                    )
                     ui.badge(m_runtime, color="purple-9").props(
                         "rounded dense"
                     ).classes("text-[10px]")
@@ -424,23 +475,23 @@ def render_packages_panel(state: AppState) -> None:
                         ).mark(f"mvge_install_item_{m_name}")
 
             if m_desc:
-                ui.label(m_desc).classes("text-xs text-[#9c94b3]")
+                ui.label(m_desc).classes("text-xs text-[var(--text-secondary)]")
 
             if m_git_url:
                 with ui.row().classes("items-center gap-1"):
-                    ui.icon("code", size="12px").classes("text-[#6e6584]")
+                    ui.icon("code", size="12px").classes("text-[var(--text-muted)]")
                     ui.link(
                         m_git_url,
                         m_git_url,
                         new_tab=True,
-                    ).classes("text-[11px] text-[#7b6cf6] underline")
+                    ).classes("text-[11px] text-[var(--accent-primary)] underline")
 
             has_mvge_details = bool(
                 (m_is_installed and m_path) or m_types or m_spells or m_deps
             )
             if has_mvge_details:
                 with ui.column().classes(
-                    "w-full gap-1 pt-1 mt-1 border-t border-[#292335]/50"
+                    "w-full gap-1 pt-1 mt-1 border-t border-[var(--border-subtle-a50)]"
                 ):
                     if m_is_installed and m_path:
 
@@ -466,10 +517,10 @@ def render_packages_panel(state: AppState) -> None:
                             .tooltip("Open folder in file explorer")
                         ):
                             ui.icon("folder_open", size="12px").classes(
-                                "text-[#7b6cf6]"
+                                "text-[var(--accent-primary)]"
                             ).on("click", _open_agent_folder)
                             ui.label(m_path).classes(
-                                "text-[11px] text-[#7b6cf6] "
+                                "text-[11px] text-[var(--accent-primary)] "
                                 "underline font-mono truncate "
                                 "cursor-pointer"
                             ).on("click", _open_agent_folder)
@@ -477,43 +528,45 @@ def render_packages_panel(state: AppState) -> None:
                     if m_types:
                         with ui.row().classes("items-center gap-1 flex-wrap"):
                             ui.label("Type:").classes(
-                                "text-[10px] uppercase font-semibold text-[#6e6584]"
+                                "text-[10px] uppercase font-semibold "
+                                "text-[var(--text-muted)]"
                             )
                             for t in m_types:
                                 ui.badge(str(t), color="purple-9").props(
                                     "rounded dense"
                                 ).classes(
-                                    "text-[9px] text-[#e0daf7] "
+                                    "text-[9px] text-[var(--text-violet-pale)] "
                                     "font-mono "
-                                    "border border-[#7b6cf6]/30"
+                                    "border "
+                                    "border-[var(--accent-primary-a30)]"
                                 )
 
                     if m_spells:
                         with ui.row().classes("items-center gap-1 flex-wrap"):
                             ui.label("Spells:").classes(
-                                "text-[10px] uppercase font-semibold text-[#6e6584]"
+                                "text-[10px] uppercase font-semibold "
+                                "text-[var(--text-muted)]"
                             )
                             for spell in m_spells:
                                 ui.badge(str(spell), color="purple-9").props(
                                     "rounded dense"
                                 ).classes(
-                                    "text-[9px] text-[#e0daf7] "
+                                    "text-[9px] text-[var(--text-violet-pale)] "
                                     "font-mono "
-                                    "border border-[#7b6cf6]/30"
+                                    "border border-[var(--accent-primary-a30)]"
                                 )
 
                     if m_deps:
                         with ui.row().classes("items-center gap-1 flex-wrap"):
                             ui.label("Deps:").classes(
-                                "text-[10px] uppercase font-semibold text-[#6e6584]"
+                                "text-[10px] uppercase font-semibold "
+                                "text-[var(--text-muted)]"
                             )
                             for dep in m_deps:
-                                ui.badge(str(dep), color="dark").props(
-                                    "rounded dense"
-                                ).classes(
-                                    "text-[9px] text-[#9c94b3] "
-                                    "font-mono "
-                                    "border border-[#292335]"
+                                ui.badge(str(dep)).props("rounded dense").classes(
+                                    "text-[9px] text-[var(--text-secondary)] "
+                                    "font-mono bg-[var(--bg-card)] "
+                                    "border border-[var(--border-subtle)]"
                                 )
 
     def _render_rune_card(r: dict[str, Any]) -> None:
@@ -530,19 +583,25 @@ def render_packages_panel(state: AppState) -> None:
         types = r["types"]
 
         with ui.card().classes(
-            "w-full p-4 bg-[#0e0e12] border border-[#292335] rounded-xl gap-2"
+            "w-full p-4 bg-[var(--bg-card)] border border-[var(--border-subtle)] "
+            "rounded-xl gap-2"
         ):
             with ui.row().classes("w-full items-center justify-between"):
                 with ui.row().classes("items-center gap-2"):
                     if is_installed:
                         ui.icon("check_circle", size="18px").classes("text-green-400")
                     else:
-                        ui.icon("extension", size="18px").classes("text-[#7b6cf6]")
+                        ui.icon("extension", size="18px").classes(
+                            "text-[var(--accent-primary)]"
+                        )
 
-                    ui.label(name).classes("text-sm font-semibold text-[#eceaf4]")
-                    ui.badge(f"v{version}", color="grey-9").props(
-                        "rounded dense"
-                    ).classes("text-[10px] text-[#9c94b3] font-mono")
+                    ui.label(name).classes(
+                        "text-sm font-semibold text-[var(--text-primary)]"
+                    )
+                    ui.badge(f"v{version}").props("rounded dense").classes(
+                        "text-[10px] text-[var(--text-secondary)] font-mono "
+                        "bg-[var(--bg-card)] border border-[var(--border-subtle)]"
+                    )
                     ui.badge(runtime, color="purple-9").props("rounded dense").classes(
                         "text-[10px]"
                     )
@@ -635,22 +694,22 @@ def render_packages_panel(state: AppState) -> None:
                         ).mark(f"package_install_item_{name}")
 
             if desc:
-                ui.label(desc).classes("text-xs text-[#9c94b3]")
+                ui.label(desc).classes("text-xs text-[var(--text-secondary)]")
 
             if git_url:
                 with ui.row().classes("items-center gap-1"):
-                    ui.icon("code", size="12px").classes("text-[#6e6584]")
+                    ui.icon("code", size="12px").classes("text-[var(--text-muted)]")
                     ui.link(
                         git_url,
                         git_url,
                         new_tab=True,
-                    ).classes("text-[11px] text-[#7b6cf6] underline")
+                    ).classes("text-[11px] text-[var(--accent-primary)] underline")
 
             # Extension details (path, types, hooks, deps)
             has_details = bool((is_installed and path) or types or hooks or python_deps)
             if has_details:
                 with ui.column().classes(
-                    "w-full gap-1 pt-1 mt-1 border-t border-[#292335]/50"
+                    "w-full gap-1 pt-1 mt-1 border-t border-[var(--border-subtle-a50)]"
                 ):
                     if is_installed and path:
 
@@ -674,10 +733,10 @@ def render_packages_panel(state: AppState) -> None:
                             .tooltip("Open folder in file explorer")
                         ):
                             ui.icon("folder_open", size="12px").classes(
-                                "text-[#7b6cf6]"
+                                "text-[var(--accent-primary)]"
                             ).on("click", _open_folder)
                             ui.label(path).classes(
-                                "text-[11px] text-[#7b6cf6] "
+                                "text-[11px] text-[var(--accent-primary)] "
                                 "underline font-mono truncate "
                                 "cursor-pointer"
                             ).on("click", _open_folder)
@@ -685,21 +744,23 @@ def render_packages_panel(state: AppState) -> None:
                     if types:
                         with ui.row().classes("items-center gap-1 flex-wrap"):
                             ui.label("Type:").classes(
-                                "text-[10px] uppercase font-semibold text-[#6e6584]"
+                                "text-[10px] uppercase font-semibold "
+                                "text-[var(--text-muted)]"
                             )
                             for t in types:
                                 ui.badge(str(t), color="purple-9").props(
                                     "rounded dense"
                                 ).classes(
-                                    "text-[9px] text-[#e0daf7] "
+                                    "text-[9px] text-[var(--text-violet-pale)] "
                                     "font-mono "
-                                    "border border-[#7b6cf6]/30"
+                                    "border border-[var(--accent-primary-a30)]"
                                 )
 
                     if hooks:
                         with ui.row().classes("items-center gap-1 flex-wrap"):
                             ui.label("Hooks:").classes(
-                                "text-[10px] uppercase font-semibold text-[#6e6584]"
+                                "text-[10px] uppercase font-semibold "
+                                "text-[var(--text-muted)]"
                             )
                             for h in hooks:
                                 h_name = (
@@ -707,35 +768,34 @@ def render_packages_panel(state: AppState) -> None:
                                     if isinstance(h, str)
                                     else getattr(h, "value", str(h))
                                 )
-                                ui.badge(h_name, color="dark").props(
-                                    "rounded dense"
-                                ).classes(
-                                    "text-[9px] text-[#9c94b3] "
-                                    "font-mono "
-                                    "border border-[#292335]"
+                                ui.badge(h_name).props("rounded dense").classes(
+                                    "text-[9px] text-[var(--text-secondary)] "
+                                    "font-mono bg-[var(--bg-card)] "
+                                    "border border-[var(--border-subtle)]"
                                 )
 
                     if python_deps:
                         with ui.row().classes("items-center gap-1 flex-wrap"):
                             ui.label("Deps:").classes(
-                                "text-[10px] uppercase font-semibold text-[#6e6584]"
+                                "text-[10px] uppercase font-semibold "
+                                "text-[var(--text-muted)]"
                             )
                             for dep in python_deps:
-                                ui.badge(str(dep), color="dark").props(
-                                    "rounded dense"
-                                ).classes(
-                                    "text-[9px] text-[#9c94b3] "
-                                    "font-mono "
-                                    "border border-[#292335]"
+                                ui.badge(str(dep)).props("rounded dense").classes(
+                                    "text-[9px] text-[var(--text-secondary)] "
+                                    "font-mono bg-[var(--bg-card)] "
+                                    "border border-[var(--border-subtle)]"
                                 )
 
     with ui.column().classes("w-full h-full overflow-y-auto p-6 gap-4"):
         with ui.column().classes("gap-1"):
-            ui.label("Marketplace").classes("text-2xl font-semibold text-[#eceaf4]")
+            ui.label("Marketplace").classes(
+                "text-2xl font-semibold text-[var(--text-primary)]"
+            )
             ui.label(
                 "Explore and manage MvgeOS agents and extensions from the "
                 "official marketplace."
-            ).classes("text-xs text-[#9c94b3]")
+            ).classes("text-xs text-[var(--text-secondary)]")
 
         with ui.row().classes("w-full items-center justify-between gap-4 mt-2"):
 
@@ -751,7 +811,7 @@ def render_packages_panel(state: AppState) -> None:
                     ),
                     on_change=lambda e: _on_search(str(e.value or "")),
                 )
-                .props("dense dark outlined rounded")
+                .props("dense outlined rounded")
                 .classes("flex-1 text-xs")
                 .mark("package_search_input", "mvge_search_input")
             )
@@ -791,14 +851,14 @@ def render_packages_panel(state: AppState) -> None:
             type_options = ["All Types"] + sorted(available_types)
 
             with ui.row().classes("w-full items-center gap-2 flex-wrap"):
-                ui.icon("filter_list", size="16px").classes("text-[#6e6584]")
+                ui.icon("filter_list", size="16px").classes("text-[var(--text-muted)]")
                 ui.select(
                     options=type_options,
                     value=search_state["type"],
                     on_change=lambda e: _set_filter(
                         "type", str(e.value or "All Types")
                     ),
-                ).props("dense dark outlined rounded options-dense").classes(
+                ).props("dense outlined rounded options-dense").classes(
                     "min-w-[130px] text-xs"
                 ).mark("package_filter_type_select")
 
@@ -808,7 +868,7 @@ def render_packages_panel(state: AppState) -> None:
                     on_change=lambda e: _set_filter(
                         "hook", str(e.value or "All Hooks")
                     ),
-                ).props("dense dark outlined rounded options-dense").classes(
+                ).props("dense outlined rounded options-dense").classes(
                     "min-w-[140px] text-xs"
                 ).mark("package_filter_hook_select")
 
@@ -816,7 +876,7 @@ def render_packages_panel(state: AppState) -> None:
                     options=["All Deps"],
                     value=search_state["dep"],
                     on_change=lambda e: _set_filter("dep", str(e.value or "All Deps")),
-                ).props("dense dark outlined rounded options-dense").classes(
+                ).props("dense outlined rounded options-dense").classes(
                     "min-w-[130px] text-xs"
                 ).mark("package_filter_dep_select")
 
@@ -826,12 +886,12 @@ def render_packages_panel(state: AppState) -> None:
                     on_change=lambda e: _set_filter(
                         "spell", str(e.value or "All Spells")
                     ),
-                ).props("dense dark outlined rounded options-dense").classes(
+                ).props("dense outlined rounded options-dense").classes(
                     "min-w-[140px] text-xs"
                 ).mark("mvge_filter_spell_select")
 
                 with ui.row().classes("items-center gap-1.5 ml-auto"):
-                    ui.icon("sort", size="16px").classes("text-[#6e6584]")
+                    ui.icon("sort", size="16px").classes("text-[var(--text-muted)]")
                     ui.select(
                         options=[
                             "Alphabetical (A-Z)",
@@ -843,7 +903,7 @@ def render_packages_panel(state: AppState) -> None:
                         on_change=lambda e: _set_filter(
                             "sort", str(e.value or "Alphabetical (A-Z)")
                         ),
-                    ).props("dense dark outlined rounded options-dense").classes(
+                    ).props("dense outlined rounded options-dense").classes(
                         "min-w-[160px] text-xs"
                     ).mark("package_sort_select", "mvge_sort_select")
 
@@ -929,11 +989,51 @@ def render_packages_panel(state: AppState) -> None:
                 filtered.append(info)
 
             if not filtered:
+                # Distinct state for a failed catalog fetch: the catalog
+                # didn't load at all, so this is not "no packages match" --
+                # show the error and a retry instead.
+                catalog_failed = catalog_error["runes"] or catalog_error["mvges"]
+                has_installed = bool(installed_data) or bool(installed_mvges_data)
+                if catalog_failed and not has_installed:
+                    with ui.column().classes(
+                        "items-center justify-center p-8 gap-2 w-full"
+                    ):
+                        ui.icon("cloud_off", size="32px").classes(
+                            "text-[var(--danger-strong)]"
+                        )
+                        ui.label("Couldn't load the marketplace catalog").classes(
+                            "text-sm text-[var(--text-primary)]"
+                        )
+                        ui.label(
+                            "The catalog couldn't be reached. Check your "
+                            "connection and try again. Installed packages "
+                            "still show once their listing loads."
+                        ).classes(
+                            "text-[11px] text-[var(--text-muted-a70)] text-center "
+                            "max-w-[420px]"
+                        )
+                        ui.button(
+                            "Retry",
+                            on_click=lambda: ui.timer(0.01, _refresh_data, once=True),
+                        ).props("unelevated").classes("mvge-glow-btn text-white")
+                    return
                 with ui.column().classes(
                     "items-center justify-center p-8 gap-2 w-full"
                 ):
-                    ui.icon("search_off", size="32px").classes("text-[#6e6584]")
-                    ui.label("No packages found").classes("text-xs text-[#6e6584]")
+                    ui.icon("search_off", size="32px").classes(
+                        "text-[var(--text-muted)]"
+                    )
+                    ui.label("No packages found").classes(
+                        "text-xs text-[var(--text-muted)]"
+                    )
+                    ui.label(
+                        "Get packages with the Install buttons above -- from "
+                        "a marketplace name, git URL, or local path."
+                    ).classes(
+                        "text-[11px] "
+                        "text-[var(--text-muted-a70)] "
+                        "text-center max-w-[420px]"
+                    )
                     has_active_filters = (
                         bool(query)
                         or selected_type != "All Types"
@@ -985,37 +1085,63 @@ def render_packages_panel(state: AppState) -> None:
         render_packages()
 
     async def _refresh_data() -> None:
+        # The library fetch helpers swallow network errors and return {}
+        # on failure, so an empty result is ambiguous. Observe the
+        # installers' loggers during each fetch: a "Failed to fetch
+        # marketplace ..." warning marks a failed fetch, while a quiet
+        # empty result means a genuinely empty catalog.
+        fetch_probe = _MarketplaceFetchProbe()
+        installer_loggers = [
+            logging.getLogger("mvgeos_runes.installer"),
+            logging.getLogger("mvgeos_agent.installer"),
+        ]
+        for installer_logger in installer_loggers:
+            installer_logger.addHandler(fetch_probe)
         try:
-            mp = await state.fetch_marketplace_runes_async()
-            if mp:
-                marketplace_data.clear()
-                marketplace_data.update(mp)
-        except Exception as exc:
-            logger.warning("Failed to fetch marketplace runes: %s", exc)
+            try:
+                fetch_probe.failed = False
+                mp = await state.fetch_marketplace_runes_async()
+                if mp:
+                    marketplace_data.clear()
+                    marketplace_data.update(mp)
+                    catalog_error["runes"] = False
+                else:
+                    catalog_error["runes"] = fetch_probe.failed
+            except Exception as exc:
+                catalog_error["runes"] = True
+                logger.warning("Failed to fetch marketplace runes: %s", exc)
 
-        try:
-            inst = await state.list_installed_runes_async()
-            installed_data.clear()
-            installed_data.extend(inst)
-        except Exception as exc:
-            logger.warning("Failed to list installed runes: %s", exc)
+            try:
+                inst = await state.list_installed_runes_async()
+                installed_data.clear()
+                installed_data.extend(inst)
+            except Exception as exc:
+                logger.warning("Failed to list installed runes: %s", exc)
 
-        try:
-            mp_m = await state.fetch_marketplace_mvges_async()
-            if mp_m:
-                marketplace_mvges_data.clear()
-                marketplace_mvges_data.update(mp_m)
-        except Exception as exc:
-            logger.warning("Failed to fetch marketplace mvges: %s", exc)
+            try:
+                fetch_probe.failed = False
+                mp_m = await state.fetch_marketplace_mvges_async()
+                if mp_m:
+                    marketplace_mvges_data.clear()
+                    marketplace_mvges_data.update(mp_m)
+                    catalog_error["mvges"] = False
+                else:
+                    catalog_error["mvges"] = fetch_probe.failed
+            except Exception as exc:
+                catalog_error["mvges"] = True
+                logger.warning("Failed to fetch marketplace mvges: %s", exc)
 
-        try:
-            inst_m = await state.list_installed_mvges_async()
-            installed_mvges_data.clear()
-            installed_mvges_data.extend(inst_m)
-        except Exception as exc:
-            logger.warning("Failed to list installed mvges: %s", exc)
+            try:
+                inst_m = await state.list_installed_mvges_async()
+                installed_mvges_data.clear()
+                installed_mvges_data.extend(inst_m)
+            except Exception as exc:
+                logger.warning("Failed to list installed mvges: %s", exc)
 
-        render_filters.refresh()
-        render_packages.refresh()
+            render_filters.refresh()
+            render_packages.refresh()
+        finally:
+            for installer_logger in installer_loggers:
+                installer_logger.removeHandler(fetch_probe)
 
     ui.timer(0.01, _refresh_data, once=True)

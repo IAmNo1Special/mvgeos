@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
@@ -18,12 +18,25 @@ logger = logging.getLogger(__name__)
 
 
 class _RuneReloadHandler(FileSystemEventHandler):
+    """Debounces file-system events into reload callbacks.
+
+    Two modes:
+
+    - Per-rune mode (default): the callback receives each changed rune's
+      name after debouncing, and the caller reloads that rune.
+    - Trigger mode (``fire_once=True``): the callback takes no arguments
+      and is invoked exactly once per debounced burst. The watcher is a
+      dumb trigger here; the callback (``Mvge.reload()``) owns all reload
+      semantics, including rune refresh.
+    """
+
     def __init__(
         self,
         extensions_dir: Path,
         reload_callback: Any,
         debounce_seconds: float = 0.5,
         loop: asyncio.AbstractEventLoop | None = None,
+        fire_once: bool = False,
     ) -> None:
         super().__init__()
         self._extensions_dir = extensions_dir
@@ -35,6 +48,7 @@ class _RuneReloadHandler(FileSystemEventHandler):
         # through run_coroutine_threadsafe onto the loop the watcher was
         # started from. Without a loop there is nothing to schedule on.
         self._loop = loop
+        self._fire_once = fire_once
 
     def _schedule_reload(self, rune_name: str) -> None:
         self._pending.add(rune_name)
@@ -43,6 +57,15 @@ class _RuneReloadHandler(FileSystemEventHandler):
             await asyncio.sleep(self._debounce_seconds)
             pending = self._pending.copy()
             self._pending.clear()
+            if self._fire_once:
+                # Trigger mode: one call per burst, no rune-name dispatch.
+                try:
+                    result = self._callback()
+                    if isinstance(result, Awaitable):
+                        await result
+                except Exception:
+                    logger.exception("Reload callback failed")
+                return
             for name in pending:
                 try:
                     await self._callback(name)
@@ -80,7 +103,14 @@ class _RuneReloadHandler(FileSystemEventHandler):
 
     def _is_ignored(self, path: str) -> bool:
         src = Path(path)
-        for part in src.parts:
+        # Judge only the path *inside* the watched tree: the watched root
+        # itself may legitimately live under a dot directory (e.g. the
+        # agent config dir under ``~/.agents``).
+        try:
+            parts = src.relative_to(self._extensions_dir).parts
+        except ValueError:
+            parts = src.parts
+        for part in parts:
             if part == "__pycache__" or (part.startswith(".") and part != "."):
                 return True
         return src.suffix in (".pyc", ".pyo", ".pyd", ".swp", ".tmp")
@@ -88,7 +118,23 @@ class _RuneReloadHandler(FileSystemEventHandler):
     def _handle_file_event(self, event: FileSystemEvent) -> None:
         if event.is_directory or self._is_ignored(str(event.src_path)):
             return
+        if self._fire_once:
+            self._schedule_reload("")
+            return
         rune_name = self._find_rune_dir(str(event.src_path))
+        if rune_name:
+            self._schedule_reload(rune_name)
+
+    def on_moved(self, event: FileSystemEvent) -> None:
+        # Atomic renames (os.replace) arrive as moved events: map on the
+        # destination path, which is where the new content lives.
+        dest = getattr(event, "dest_path", "") or ""
+        if event.is_directory or not dest or self._is_ignored(str(dest)):
+            return
+        if self._fire_once:
+            self._schedule_reload("")
+            return
+        rune_name = self._find_rune_dir(str(dest))
         if rune_name:
             self._schedule_reload(rune_name)
 
@@ -103,9 +149,24 @@ class _RuneReloadHandler(FileSystemEventHandler):
 
 
 class RuneWatcher:
-    def __init__(self, extensions_dir: Path, runner: RuneRunner) -> None:
+    """Watches a directory tree for changes.
+
+    Per-rune mode (default) reloads each changed rune through the runner.
+    Pass ``reload_callback`` for trigger mode: the watcher fires the
+    callback once per debounced burst of modified/created/deleted/moved
+    events, and the callback — ``Mvge.reload()`` — owns all reload
+    semantics. The watcher never reloads anything itself in trigger mode.
+    """
+
+    def __init__(
+        self,
+        extensions_dir: Path,
+        runner: RuneRunner,
+        reload_callback: Callable[[], Any] | None = None,
+    ) -> None:
         self._extensions_dir = extensions_dir
         self._runner = runner
+        self._reload_callback = reload_callback
         self._observer: Any = None
         self._handler: _RuneReloadHandler | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -136,13 +197,27 @@ class RuneWatcher:
         if isinstance(result, Awaitable):
             await result
 
+    async def _fire_reload_callback(self) -> None:
+        """Invoke the engine reload callback (trigger mode)."""
+        if self._reload_callback is None:
+            return
+        result = self._reload_callback()
+        if isinstance(result, Awaitable):
+            await result
+
     async def start(self) -> None:
         if self._observer is not None:
             return
 
         self._loop = asyncio.get_running_loop()
+        if self._reload_callback is not None:
+            callback: Any = self._fire_reload_callback
+            fire_once = True
+        else:
+            callback = self._reload_rune
+            fire_once = False
         self._handler = _RuneReloadHandler(
-            self._extensions_dir, self._reload_rune, loop=self._loop
+            self._extensions_dir, callback, loop=self._loop, fire_once=fire_once
         )
         self._observer = Observer()
         self._observer.schedule(

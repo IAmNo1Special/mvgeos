@@ -1,4 +1,4 @@
-"""Command palette quick switcher (Ctrl/Cmd+Shift+P)."""
+"""Command palette quick switcher (Ctrl/Cmd+K or Ctrl/Cmd+Shift+P)."""
 
 from __future__ import annotations
 
@@ -78,10 +78,13 @@ def render_rename_dialog(state: AppState) -> None:
     with (
         ui.dialog().on("close", _on_close) as dialog,
         ui.card().classes(
-            "p-4 gap-3 min-w-[320px] bg-[#08080a] border border-[#292335] rounded-xl"
+            "p-4 gap-3 min-w-[320px] bg-[var(--bg-surface)] border "
+            "border-[var(--border-subtle)] rounded-xl"
         ),
     ):
-        ui.label("Rename session").classes("text-sm font-semibold text-[#eceaf4]")
+        ui.label("Rename session").classes(
+            "text-sm font-semibold text-[var(--text-primary)]"
+        )
         title_input = (
             ui.input(value=state.tome_title, placeholder="Session title")
             .props("dense dark outlined autofocus")
@@ -119,7 +122,12 @@ def _toggle_review(state: AppState) -> None:
 
 def _toggle_plan_mode(state: AppState) -> None:
     active_spells = state.toggle_plan_mode()
-    if state.plan_mode and not active_spells:
+    if active_spells is None:
+        ui.notify(
+            "Plan mode needs an API key. Set one in Settings first.",
+            type="warning",
+        )
+    elif state.plan_mode and not active_spells:
         ui.notify(
             "Plan mode is on, but no spells are marked read-only.",
             type="warning",
@@ -225,12 +233,12 @@ def render_command_palette(state: AppState) -> None:
     with (
         ui.dialog().props("maximized") as dialog,
         ui.card().classes(
-            "w-full max-w-2xl mx-auto mt-20 bg-[#08080a] border "
-            "border-[#292335] rounded-xl shadow-2xl"
+            "w-full max-w-2xl mx-auto mt-20 bg-[var(--bg-surface)] border "
+            "border-[var(--border-subtle)] rounded-xl shadow-2xl"
         ),
     ):
         ui.label("Quick Switcher").classes(
-            "text-sm font-semibold text-[#eceaf4] mb-3 px-4 pt-4"
+            "text-sm font-semibold text-[var(--text-primary)] mb-3 px-4 pt-4"
         )
 
         @ui.refreshable
@@ -239,7 +247,7 @@ def render_command_palette(state: AppState) -> None:
             with ui.column().classes("px-4 pb-4 gap-1 max-h-96 overflow-y-auto"):
                 if not commands:
                     ui.label(f'No commands matching "{query[0]}"').classes(
-                        "text-xs text-[#6b6580] px-3 py-2"
+                        "text-xs text-[var(--text-dim-deep)] px-3 py-2"
                     )
                     return
                 for cmd in commands:
@@ -256,7 +264,10 @@ def render_command_palette(state: AppState) -> None:
             ui.input(
                 placeholder="Type a command, session, or file...", on_change=_on_query
             )
-            .props("dense dark outlined rounded borderless bg-[#0e0e12] text-white")
+            .props(
+                "dense dark outlined rounded borderless bg-[var(--bg-card)] "
+                "text-white autofocus"
+            )
             .classes("w-full mb-3 mx-4")
             .mark("palette_search_input")
         )
@@ -269,9 +280,10 @@ def render_command_palette(state: AppState) -> None:
 def _render_command_row(cmd: PaletteCommand, state: AppState) -> None:
     available = cmd.enabled(state)
     row = ui.row().classes(
-        "w-full items-center gap-3 px-3 py-2 rounded-lg text-xs text-[#eceaf4] "
+        "w-full items-center gap-3 px-3 py-2 rounded-lg text-xs "
+        "text-[var(--text-primary)] "
         + (
-            "cursor-pointer hover:bg-[#0e0e12]"
+            "cursor-pointer hover:bg-[var(--bg-card)]"
             if available
             else "opacity-40 pointer-events-none"
         )
@@ -279,7 +291,7 @@ def _render_command_row(cmd: PaletteCommand, state: AppState) -> None:
     if available:
         row.on("click", lambda: cmd.run(state))
     with row:
-        ui.icon(cmd.icon, size="16px").classes("text-[#9c94b3]")
+        ui.icon(cmd.icon, size="16px").classes("text-[var(--text-secondary)]")
         ui.label(cmd.label).classes("flex-1")
         if cmd.hint:
-            ui.label(cmd.hint).classes("text-[#6b6580]")
+            ui.label(cmd.hint).classes("text-[var(--text-dim-deep)]")

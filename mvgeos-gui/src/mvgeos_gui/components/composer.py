@@ -12,6 +12,28 @@ from mvgeos_gui.autocomplete import AutocompleteService
 from mvgeos_gui.state import AppState, format_channeling_elapsed
 
 
+def _render_missing_rune_badge(state: AppState) -> None:
+    """Render the amber badge for a missing realm rune, if applicable.
+
+    Shown when the OpenRouter realm is selected but its rune is not
+    installed. The badge names the missing rune and points at the
+    Marketplace as the resolution path.
+    """
+    missing_rune = "openrouter-realm"
+    if state.selected_realm != "openrouter":
+        return
+    if state.is_rune_installed(missing_rune):
+        return
+    (
+        ui.badge(f"Missing rune: {missing_rune}", color="amber-8")
+        .props("rounded dense size=xs")
+        .classes("cursor-pointer")
+        .mark("missing_rune_badge")
+        .tooltip(f"Install {missing_rune} from the Marketplace")
+        .on("click", lambda: state.set_current_view("packages"))
+    )
+
+
 def render_composer(state: AppState) -> None:
     """Render the bottom composer input area.
 
@@ -41,16 +63,17 @@ def render_composer(state: AppState) -> None:
                             for idx, name in enumerate(state.pending_attachments):
                                 with ui.row().classes(
                                     "items-center gap-1 px-2 py-0.5 rounded-md "
-                                    "bg-[#292335]"
+                                    "bg-[var(--border-subtle)]"
                                 ):
                                     ui.icon("insert_drive_file", size="12px").classes(
-                                        "text-[#9c94b3]"
+                                        "text-[var(--text-secondary)]"
                                     )
                                     ui.label(name).classes(
-                                        "text-xs text-[#eceaf4] truncate max-w-[140px]"
+                                        "text-xs text-[var(--text-primary)] truncate "
+                                        "max-w-[140px]"
                                     )
                                     ui.icon("close", size="10px").classes(
-                                        "text-[#6e6584] cursor-pointer"
+                                        "text-[var(--text-muted)] cursor-pointer"
                                     ).on(
                                         "click",
                                         lambda _, i=idx: state.remove_attachment(i),
@@ -61,16 +84,18 @@ def render_composer(state: AppState) -> None:
                             for idx, chip in enumerate(state.selected_mentions):
                                 with ui.row().classes(
                                     "items-center gap-1 px-2 py-0.5 rounded-md "
-                                    "bg-[#292335] border border-[#7b6cf6]/30"
+                                    "bg-[var(--border-subtle)] border "
+                                    "border-[var(--accent-primary-a30)]"
                                 ):
                                     ui.icon("insert_drive_file", size="12px").classes(
-                                        "text-[#9c94b3]"
+                                        "text-[var(--text-secondary)]"
                                     )
                                     ui.label(chip.text).classes(
-                                        "text-xs text-[#eceaf4] truncate max-w-[160px]"
+                                        "text-xs text-[var(--text-primary)] truncate "
+                                        "max-w-[160px]"
                                     )
                                     ui.icon("close", size="10px").classes(
-                                        "text-[#6e6584] cursor-pointer"
+                                        "text-[var(--text-muted)] cursor-pointer"
                                     ).on(
                                         "click",
                                         lambda _, i=idx: state.remove_selected_mention(
@@ -108,7 +133,8 @@ def render_composer(state: AppState) -> None:
                         )
                         .props("autogrow borderless dense rows=2")
                         .classes(
-                            "w-full bg-transparent text-sm text-[#eceaf4] resize-none"
+                            "w-full bg-transparent text-sm "
+                            "text-[var(--text-primary)] resize-none"
                         )
                         .mark("prompt_input")
                     )
@@ -219,8 +245,9 @@ def render_composer(state: AppState) -> None:
                         with (
                             ui.element("div")
                             .classes(
-                                "absolute z-50 w-full bg-[#292335] "
-                                "border border-[#7b6cf6] rounded-lg shadow-xl "
+                                "absolute z-50 w-full bg-[var(--border-subtle)] "
+                                "border border-[var(--accent-primary)] rounded-lg "
+                                "shadow-xl "
                                 "max-h-48 overflow-y-auto bottom-full mb-1"
                             )
                             .props(f"id={popup_id}")
@@ -228,9 +255,9 @@ def render_composer(state: AppState) -> None:
                             for idx, item in enumerate(items):
                                 is_selected = idx == selected_idx
                                 item_cls = (
-                                    "bg-[#7b6cf6]/20"
+                                    "bg-[var(--accent-primary-a20)]"
                                     if is_selected
-                                    else "hover:bg-[#292335]/50"
+                                    else "hover:bg-[var(--border-subtle-a50)]"
                                 )
                                 with (
                                     ui.row()
@@ -247,11 +274,13 @@ def render_composer(state: AppState) -> None:
                                     .props(f'data-index="{idx}"')
                                 ):
                                     ui.icon("help_outline", size="14px").classes(
-                                        "text-[#9c94b3]"
+                                        "text-[var(--text-secondary)]"
                                     )
                                     ui.label(
                                         str(ac_service.get_item_label(item))
-                                    ).classes("text-xs text-[#eceaf4] truncate")
+                                    ).classes(
+                                        "text-xs text-[var(--text-primary)] truncate"
+                                    )
 
                         if items and 0 <= selected_idx < len(items):
                             ui.run_javascript(f"""
@@ -288,7 +317,7 @@ def render_composer(state: AppState) -> None:
                                         if elapsed is not None
                                         else "0s"
                                     )
-                                    .classes("text-xs text-[#9c94b3]")
+                                    .classes("text-xs text-[var(--text-secondary)]")
                                     .mark("channeling_elapsed")
                                 )
                         else:
@@ -374,22 +403,13 @@ def render_composer(state: AppState) -> None:
                                 value=state.selected_realm,
                                 on_change=lambda e: state.switch_realm(e.value),
                             )
-                            .props("dense borderless dark rounded text-xs")
-                            .classes("text-xs text-[#9c94b3] font-mono")
+                            .props("dense borderless rounded text-xs")
+                            .classes("text-xs text-[var(--text-secondary)] font-mono")
                             .mark("realm_select")
                         ):
                             ui.tooltip("Realm")
 
-                        if state.selected_realm == "openrouter" and not (
-                            state.is_rune_installed("openrouter-realm")
-                        ):
-                            (
-                                ui.badge("Rune missing", color="amber-8")
-                                .props("rounded dense size=xs")
-                                .classes("cursor-pointer")
-                                .tooltip("Click to open Marketplace")
-                                .on("click", lambda: state.set_current_view("packages"))
-                            )
+                        _render_missing_rune_badge(state)
 
                         # Tier 2: Provider Select (Visible only if router)
                         if is_router:
@@ -408,8 +428,10 @@ def render_composer(state: AppState) -> None:
                                     value=state.selected_provider,
                                     on_change=lambda e: state.switch_provider(e.value),
                                 )
-                                .props("dense borderless dark rounded text-xs")
-                                .classes("text-xs text-[#9c94b3] font-mono")
+                                .props("dense borderless rounded text-xs")
+                                .classes(
+                                    "text-xs text-[var(--text-secondary)] font-mono"
+                                )
                                 .mark("provider_select")
                             ):
                                 ui.tooltip("Provider")
@@ -422,8 +444,8 @@ def render_composer(state: AppState) -> None:
                                 value=state.selected_model,
                                 on_change=lambda e: state.switch_model(e.value),
                             )
-                            .props("dense borderless dark rounded text-xs")
-                            .classes("text-xs text-[#9c94b3] font-mono")
+                            .props("dense borderless rounded text-xs")
+                            .classes("text-xs text-[var(--text-secondary)] font-mono")
                             .mark("model_select")
                         ):
                             ui.tooltip("Model")
@@ -447,8 +469,10 @@ def render_composer(state: AppState) -> None:
                                         e.value
                                     ),
                                 )
-                                .props("dense borderless dark rounded text-xs")
-                                .classes("text-xs text-[#9c94b3] font-mono")
+                                .props("dense borderless rounded text-xs")
+                                .classes(
+                                    "text-xs text-[var(--text-secondary)] font-mono"
+                                )
                                 .mark("contemplation_select")
                             ):
                                 ui.tooltip("Contemplation Level")

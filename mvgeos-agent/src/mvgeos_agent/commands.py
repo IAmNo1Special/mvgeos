@@ -36,6 +36,7 @@ SLASH_COMMANDS: dict[str, str] = {
     "/skills": "List available skills and their locations",
     "/skill": "Activate a skill: /skill <name> [instructions]",
     "/contemplation": "Show or set contemplation level: /contemplation [level]",
+    "/reload": "Rebuild runes, prompt, spells, and harness mid-session",
 }
 
 
@@ -58,6 +59,7 @@ class CommandAction(StrEnum):
     FORK_CREATED = "fork_created"
     LEAVES_LISTED = "leaves_listed"
     LEAF_CHECKED_OUT = "leaf_checked_out"
+    RELOADED = "reloaded"
     INVOCATION_UNDONE = "invocation_undone"
     MANA_COMPACTED = "mana_compacted"
     SKILLS_LISTED = "skills_listed"
@@ -568,6 +570,32 @@ class CommandDispatcher:
             target_skill = skill_parts[0]
             extra_args = skill_parts[1] if len(skill_parts) > 1 else ""
             return await self._dispatch_skill_activation(cmd, target_skill, extra_args)
+
+        if cmd == "/reload":
+            # Engine-owned: this branch sits ahead of the dynamic skill and
+            # rune command fallbacks, so no Rune command named "reload" can
+            # masquerade as the engine reload.
+            reload_fn = getattr(self._agent, "reload", None)
+            if reload_fn is None or not callable(reload_fn):
+                return CommandOutcome(
+                    command=cmd,
+                    action=CommandAction.ERROR,
+                    data={"error": "Agent does not support reload"},
+                    message="This agent does not support /reload.",
+                )
+            result = await reload_fn()
+            ok = getattr(result, "ok", False)
+            return CommandOutcome(
+                command=cmd,
+                action=(CommandAction.RELOADED if ok else CommandAction.ERROR),
+                data={
+                    "ok": ok,
+                    "queued": getattr(result, "queued", False),
+                    "prompt_changed": getattr(result, "prompt_changed", False),
+                    "spells_changed": getattr(result, "spells_changed", False),
+                },
+                message=getattr(result, "message", "Reload complete."),
+            )
 
         # Dynamic /<skill_name>
         potential_skill_name = cmd.lstrip("/")

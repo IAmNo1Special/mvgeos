@@ -151,6 +151,21 @@ class AgentService:
     def is_running(self) -> bool:
         return self._is_running
 
+    def can_create_agent(self) -> bool:
+        """Whether get_or_create_agent can run without raising for a key.
+
+        Mirrors the raise condition in get_or_create_agent exactly: an
+        existing agent, a custom factory, or a resolvable API key. When no
+        key is cached yet, re-resolves from the environment and auth file
+        (same sources as __init__) so a key added after this service was
+        constructed is honored — matching prewarm's refresh pattern.
+        """
+        if self._agent is not None or self._agent_factory is not None:
+            return True
+        if not self._api_key:
+            self._api_key = resolve_api_key()
+        return bool(self._api_key)
+
     def get_or_create_agent(self, state: AppState) -> MvgeAgent:
         """Instantiate or retrieve the bound MvgeAgent instance."""
         if self._agent is not None:

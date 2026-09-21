@@ -758,24 +758,39 @@ class TestSteeringDecoupled:
         assert "- Project Rules:" not in rendered
         assert "Subpackage Rules" not in rendered
 
-    def test_render_prompt_keeps_engine_capability_pointers(
-        self, tmp_path: Path
-    ) -> None:
-        runes_dir = tmp_path / "runes"
-        runes_dir.mkdir()
-        system_file = tmp_path / "SYSTEM.md"
-        system_file.write_text("Persona", encoding="utf-8")
-
+    def test_render_prompt_omits_self_mod_section(self, tmp_path: Path) -> None:
         rendered = render_prompt(
             body="You are a Mvge.",
             cwd=tmp_path,
-            runes_paths=[runes_dir],
-            system_path=system_file,
         )
 
-        assert "Self-Modification & Customization:" in rendered
-        assert f"- Runes: {runes_dir.as_posix()}/AGENTS.md" in rendered
-        assert f"- System Instructions: {system_file.as_posix()}" in rendered
+        # The self-modification section moved to the rune; the engine no
+        # longer emits it.
+        assert "Self-Modification & Customization:" not in rendered
+        assert "System Instructions:" not in rendered
+
+    def test_render_prompt_rejects_removed_self_mod_kwargs(
+        self, tmp_path: Path
+    ) -> None:
+        # §4.1 breaking change: spells_dir, runes_paths, system_path are gone.
+        with pytest.raises(TypeError):
+            render_prompt(  # type: ignore[call-arg]
+                body="You are a Mvge.",
+                cwd=tmp_path,
+                runes_paths=[tmp_path / "runes"],
+            )
+        with pytest.raises(TypeError):
+            render_prompt(  # type: ignore[call-arg]
+                body="You are a Mvge.",
+                cwd=tmp_path,
+                system_path=tmp_path / "SYSTEM.md",
+            )
+        with pytest.raises(TypeError):
+            render_prompt(  # type: ignore[call-arg]
+                body="You are a Mvge.",
+                cwd=tmp_path,
+                spells_dir=tmp_path / "spells",
+            )
 
     def test_environment_resolve_with_global_dir(self, tmp_path: Path) -> None:
         global_dir = tmp_path / "global"
@@ -792,3 +807,77 @@ class TestSteeringDecoupled:
         rendered = env.render_system_prompt()
         assert "<global_instructions" not in rendered
         assert "Global system rule" not in rendered
+
+
+class TestSigilPayload:
+    """BEFORE_MVGE_START payload carries the rune rehydration fields (§4.3)."""
+
+    def test_resolve_accepts_active_spells_dir(self, tmp_path: Path) -> None:
+        spells_dir = tmp_path / "spells"
+        spells_dir.mkdir()
+        env = MvgeEnvironment.resolve("test-agent", active_spells_dir=spells_dir)
+        assert env.active_spells_dir == spells_dir
+
+    def test_resolve_defaults_active_spells_dir_to_none(self) -> None:
+        env = MvgeEnvironment.resolve("test-agent")
+        assert env.active_spells_dir is None
+
+    def test_build_sigil_payload_populates_rehydration_fields(
+        self, tmp_path: Path
+    ) -> None:
+        spells_dir = tmp_path / "spells"
+        spells_dir.mkdir()
+        env = MvgeEnvironment.resolve("test-agent", active_spells_dir=spells_dir)
+
+        payload = env.build_sigil_payload(
+            base_prompt="Be helpful.",
+            spell_names=["bash"],
+            config_dir=tmp_path / "config",
+            custom_prompt="Custom.",
+            cwd=tmp_path,
+        )
+
+        assert payload.base_prompt == "Be helpful."
+        assert payload.spell_names == ["bash"]
+        assert payload.config_dir == str(tmp_path / "config")
+        assert payload.custom_prompt == "Custom."
+        assert payload.agent_name == "test-agent"
+        assert payload.cwd == str(tmp_path)
+        assert payload.spells_dir == spells_dir.as_posix()
+        expected_system_path = (
+            env.resolved_prompt.path.as_posix() if env.resolved_prompt.path else None
+        )
+        assert payload.system_path == expected_system_path
+        assert payload.runes_paths == [p.as_posix() for p in env.runes_paths]
+
+    def test_build_sigil_payload_spells_dir_defaults_to_none(
+        self, tmp_path: Path
+    ) -> None:
+        """§4.4: payload coverage includes the spells_dir=None case."""
+        env = MvgeEnvironment.resolve("test-agent")
+        assert env.active_spells_dir is None
+
+        payload = env.build_sigil_payload(
+            base_prompt="Be helpful.",
+            spell_names=[],
+            config_dir=tmp_path,
+        )
+
+        assert payload.spells_dir is None
+
+    def test_build_sigil_payload_explicit_dir_beats_environment(
+        self, tmp_path: Path
+    ) -> None:
+        env = MvgeEnvironment.resolve("test-agent")
+        assert env.active_spells_dir is None
+        override = tmp_path / "other-spells"
+        override.mkdir()
+
+        payload = env.build_sigil_payload(
+            base_prompt="Be helpful.",
+            spell_names=[],
+            config_dir=tmp_path,
+            active_spells_dir=override,
+        )
+
+        assert payload.spells_dir == override.as_posix()

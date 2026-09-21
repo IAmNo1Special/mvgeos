@@ -4,7 +4,9 @@ import argparse
 import asyncio
 import contextlib
 import ctypes
+import importlib.metadata
 import importlib.util
+import logging
 import os
 import platform
 import secrets
@@ -16,8 +18,9 @@ from types import ModuleType
 from nicegui import app, ui
 
 from mvgeos_gui.app import init_app
-from mvgeos_gui.approval.presenter import unbind_approval_presenter
-from mvgeos_gui.state import AppState
+from mvgeos_gui.core.logging import install_crash_handlers, setup_logging
+from mvgeos_gui.services.config_service import ConfigService
+from mvgeos_gui.state import ServerState
 
 DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 APP_TITLE = "MvgeOS"
@@ -52,12 +55,30 @@ def _load_webview() -> ModuleType | None:
 
 
 def _shutdown_thread_excepthook(args: threading.ExceptHookArgs) -> None:
-    """Suppress benign shutdown exceptions in background daemon threads."""
+    """Suppress benign shutdown exceptions in background daemon threads.
+
+    Non-benign thread exceptions are logged with a traceback so a dying
+    background thread leaves a trace in the GUI log, then delegated to
+    the default hook as before.
+    """
     if issubclass(args.exc_type, (KeyboardInterrupt, SystemExit)):
         return
     thread_name = getattr(args.thread, "name", "") or ""
     if "check_shutdown" in thread_name:
         return
+    crash_log = logging.getLogger("mvgeos_gui.crash")
+    if args.exc_value is None:
+        crash_log.error(
+            "Uncaught %s in thread %r (no exception value)",
+            args.exc_type.__name__,
+            thread_name,
+        )
+    else:
+        crash_log.error(
+            "Uncaught exception in thread %r",
+            thread_name,
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+        )
     threading.__excepthook__(args)
 
 
@@ -144,9 +165,10 @@ def calculate_initial_window_geometry(
     return target_width, target_height, None, None
 
 
-def enable_windows_dark_titlebar(title: str = APP_TITLE) -> bool:
-    """Apply immersive dark mode to Windows native titlebar.
+def enable_windows_dark_titlebar(title: str = APP_TITLE, dark: bool = True) -> bool:
+    """Apply the immersive titlebar theme to the Windows native titlebar.
 
+    :param dark: True for the dark titlebar, False for the light one.
     Returns True if the titlebar was found and updated, False otherwise.
     """
     if platform.system() != "Windows":
@@ -158,7 +180,7 @@ def enable_windows_dark_titlebar(title: str = APP_TITLE) -> bool:
         hwnd = windll.user32.FindWindowW(None, title)
         if hwnd:
             dwmwa_use_immersive_dark_mode = 20
-            value = ctypes.c_int(1)
+            value = ctypes.c_int(1 if dark else 0)
             windll.dwmapi.DwmSetWindowAttribute(
                 hwnd,
                 dwmwa_use_immersive_dark_mode,
@@ -220,15 +242,38 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
+def _gui_version() -> str:
+    """Return the installed mvgeos-gui version, or "unknown"."""
+    try:
+        return importlib.metadata.version("mvgeos-gui")
+    except importlib.metadata.PackageNotFoundError:
+        return "unknown"
+
+
 def main() -> None:
     """Main entry point function for mvgeos-gui console script."""
     args = parse_args()
-    state = AppState(
+    # Logging was previously never wired at entry: setup_logging() existed
+    # but nothing called it, so the rotating mvgeos-gui.log file was never
+    # written and uncaught deaths left no trace. Wire it first, then the
+    # crash/shutdown diagnostics, before any app code can fail.
+    logger = setup_logging()
+    install_crash_handlers(logger)
+    logger.info(
+        "mvgeos-gui starting pid=%d version=%s mode=%s host=%s port=%d project=%s",
+        os.getpid(),
+        _gui_version(),
+        "web" if args.web else "native",
+        args.host,
+        args.port,
+        args.project,
+    )
+    server = ServerState(
         project_path=args.project,
         selected_model=args.model,
         api_key=args.api_key,
     )
-    init_app(state)
+    init_app(server)
 
     # Window placement is a native-mode concern only. Probing the display in
     # web mode would needlessly touch pywebview's GUI backends.
@@ -236,8 +281,16 @@ def main() -> None:
     if not args.web:
         width, height, x, y = calculate_initial_window_geometry()
 
+    # The native window chrome (pywebview background, Windows DWM
+    # titlebar) renders before any page exists, so it follows the persisted
+    # theme read here rather than waiting for inject_theme().
+    saved_theme = ConfigService().load_app_settings().theme
+    use_dark_chrome = saved_theme != "light"
+
     if not args.web:
-        app.native.window_args["background_color"] = "#000000"
+        app.native.window_args["background_color"] = (
+            "#000000" if use_dark_chrome else "#ffffff"
+        )
         app.native.window_args["min_size"] = (800, 500)
         if x is not None:
             app.native.window_args["x"] = x
@@ -248,18 +301,17 @@ def main() -> None:
 
             async def _apply_dark_titlebar() -> None:
                 for _ in range(20):  # up to ~2 seconds
-                    if enable_windows_dark_titlebar(APP_TITLE):
+                    if enable_windows_dark_titlebar(APP_TITLE, dark=use_dark_chrome):
                         return
                     await asyncio.sleep(0.1)
 
             app.on_startup(_apply_dark_titlebar)
 
     def _cleanup() -> None:
-        state.stop_channeling()
-        state.clear_listeners()
-        # Unbind the Approval Rune presenter: pending casts deny, the
-        # engine slot is cleared, and the session badge is dropped.
-        unbind_approval_presenter(state)
+        logger.info("mvgeos-gui shutdown initiated")
+        # Fail closed for every connected client: pending approval casts
+        # are denied, agent tasks cancelled, UI listeners dropped.
+        server.shutdown()
 
     app.on_shutdown(_cleanup)
 
@@ -273,13 +325,20 @@ def main() -> None:
             "port": args.port,
             "title": APP_TITLE,
             "reload": args.reload,
-            "dark": True,
+            "dark": use_dark_chrome,
             "reconnect_timeout": 60.0,
             "storage_secret": _get_storage_secret(),
         }
         if not args.web:
             run_kwargs["window_size"] = (width, height)
-        ui.run(**run_kwargs)
+        try:
+            ui.run(**run_kwargs)
+        except Exception:
+            # The server entry is wrapped so an uncaught exception lands in
+            # the GUI log with a full traceback before propagating (the
+            # sys.excepthook + atexit handlers then record the shutdown).
+            logger.exception("mvgeos-gui server crashed with an uncaught exception")
+            raise
     _cleanup()
 
 

@@ -9,10 +9,18 @@ def render_sessions_panel(state: AppState) -> None:
     """Render the sessions management view."""
     with ui.column().classes("w-full h-full overflow-y-auto p-6 gap-4"):
         with ui.row().classes("w-full items-center justify-between"):
-            ui.label("Sessions").classes("text-2xl font-semibold text-[#eceaf4]")
+            ui.label("Sessions").classes(
+                "text-2xl font-semibold text-[var(--text-primary)]"
+            )
+
+            def _on_new_session() -> None:
+                state.new_conversation()
+                state.set_current_view("chat")
+                ui.notify("New session started", type="positive")
+
             ui.button(
                 "New Session",
-                on_click=state.new_conversation,
+                on_click=_on_new_session,
             ).props("unelevated").classes("mvge-glow-btn text-white")
 
         @ui.refreshable
@@ -26,16 +34,20 @@ def render_sessions_panel(state: AppState) -> None:
                 if query:
                     ui.label(
                         f"No sessions match '{search_input.value.strip()}'"
-                    ).classes("text-xs text-[#6e6584] mt-4")
+                    ).classes("text-xs text-[var(--text-muted)] mt-4")
                 else:
-                    ui.label("No sessions yet").classes("text-xs text-[#6e6584] mt-4")
+                    ui.label("No sessions yet").classes(
+                        "text-xs text-[var(--text-muted)] mt-4"
+                    )
             else:
                 for entry in tomes:
                     with (
                         ui.card()
                         .classes(
-                            "w-full p-3 bg-[#0e0e12] border border-[#292335] "
-                            "rounded-lg cursor-pointer hover:border-[#7b6cf6] "
+                            "w-full p-3 bg-[var(--bg-card)] border "
+                            "border-[var(--border-subtle)] "
+                            "rounded-lg cursor-pointer "
+                            "hover:border-[var(--accent-primary)] "
                             "transition-colors"
                         )
                         .on("click", lambda e=entry: state.switch_to_tome(e.tome_id))
@@ -43,24 +55,71 @@ def render_sessions_panel(state: AppState) -> None:
                         with ui.row().classes("w-full items-center justify-between"):
                             with ui.row().classes("items-center gap-2 flex-1 min-w-0"):
                                 ui.icon("chat_bubble_outline", size="16px").classes(
-                                    "text-[#9c94b3] shrink-0"
+                                    "text-[var(--text-secondary)] shrink-0"
                                 )
                                 ui.label(entry.title).classes(
-                                    "text-sm text-[#eceaf4] truncate"
+                                    "text-sm text-[var(--text-primary)] truncate"
                                 )
                             with ui.row().classes("items-center gap-2 shrink-0"):
                                 ui.label(entry.relative_time).classes(
-                                    "text-[10px] text-[#6e6584]"
+                                    "text-[10px] text-[var(--text-muted)]"
                                 )
                                 if entry.git_branch:
                                     ui.label(entry.git_branch).classes(
                                         "text-[10px] px-1 py-0.5 rounded "
-                                        "mvge-glow-btn/10 text-[#7b6cf6] "
-                                        "border border-[#7b6cf6]/30 font-mono"
+                                        "mvge-glow-btn/10 text-[var(--accent-primary)] "
+                                        "border "
+                                        "border-[var(--accent-primary-a30)] "
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        ""
+                                        "font-mono"
                                     )
                         if entry.is_active:
                             ui.label("Active").classes(
-                                "text-[10px] text-[#7b6cf6] mt-1"
+                                "text-[10px] text-[var(--accent-primary)] mt-1"
                             )
 
         search_input = (
@@ -80,4 +139,4 @@ def render_sessions_panel(state: AppState) -> None:
             ui.button(
                 "Back to Chat",
                 on_click=lambda: state.set_current_view("chat"),
-            ).props("unelevated").classes("mvge-glow-btn text-white")
+            ).props("flat no-caps text-color=grey-5")

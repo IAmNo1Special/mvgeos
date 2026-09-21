@@ -772,3 +772,49 @@ def test_autocomplete_clear_items_changed_listeners() -> None:
     assert service.items_changed_listener_count == 2
     service.clear_items_changed_listeners()
     assert service.items_changed_listener_count == 0
+
+
+# ---------------------------------------------------------------------------
+# MentionIndex staleness (Major #3): the index must notice tree changes
+# without a restart or an explicit invalidate() call.
+# ---------------------------------------------------------------------------
+
+
+def _mention_labels(index: MentionIndex) -> list[str]:
+    return [item.label for item in index.search("")]
+
+
+def test_mention_index_rebuilds_when_files_added_after_first_query() -> None:
+    proj = _make_temp_project({"main.py": "code"})
+    index = MentionIndex(proj)
+    assert _mention_labels(index) == ["main.py"]
+    (proj / "newmod.py").write_text("new", encoding="utf-8")
+    assert "newmod.py" in _mention_labels(index)
+
+
+def test_mention_index_rebuilds_when_files_removed() -> None:
+    proj = _make_temp_project({"main.py": "code", "old.py": "old"})
+    index = MentionIndex(proj)
+    assert "old.py" in _mention_labels(index)
+    (proj / "old.py").unlink()
+    assert "old.py" not in _mention_labels(index)
+
+
+def test_mention_index_rebuilds_when_file_renamed() -> None:
+    proj = _make_temp_project({"main.py": "code"})
+    index = MentionIndex(proj)
+    assert "main.py" in _mention_labels(index)
+    (proj / "main.py").rename(proj / "renamed.py")
+    labels = _mention_labels(index)
+    assert "renamed.py" in labels
+    assert "main.py" not in labels
+
+
+def test_mention_index_rebuilds_when_gitignore_changes() -> None:
+    proj = _make_temp_project({"main.py": "code", "secret.py": "s"})
+    index = MentionIndex(proj)
+    assert "secret.py" in _mention_labels(index)
+    (proj / ".gitignore").write_text("secret.py\n", encoding="utf-8")
+    labels = _mention_labels(index)
+    assert "secret.py" not in labels
+    assert "main.py" in labels

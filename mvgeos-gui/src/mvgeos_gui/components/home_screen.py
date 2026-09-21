@@ -12,31 +12,34 @@ def render_home_screen(state: AppState) -> None:
     ):
         # App emblem
         with ui.row().classes(
-            "w-16 h-16 rounded-3xl bg-[#0e0e12] border border-[#292335] "
+            "w-16 h-16 rounded-3xl bg-[var(--bg-card)] border "
+            "border-[var(--border-subtle)] "
             "items-center justify-center shadow-lg mb-6"
         ):
-            ui.icon("auto_awesome", size="32px").classes("text-[#7b6cf6]")
+            ui.icon("auto_awesome", size="32px").classes("text-[var(--accent-primary)]")
 
         ui.label("Welcome to MvgeOS").classes(
-            "text-3xl font-semibold text-[#eceaf4] tracking-tight"
+            "text-3xl font-semibold text-[var(--text-primary)] tracking-tight"
         )
         ui.label("Your AI coding agent desktop.").classes(
-            "text-sm text-[#9c94b3] mt-1 mb-8"
+            "text-sm text-[var(--text-secondary)] mt-1 mb-8"
         )
 
         # Project card
         with (
             ui.card().classes(
-                "w-full max-w-xl p-4 bg-[#0e0e12] border "
-                "border-[#292335] rounded-xl mb-6"
+                "w-full max-w-xl p-4 bg-[var(--bg-card)] border "
+                "border-[var(--border-subtle)] rounded-xl mb-6"
             ),
             ui.row().classes("w-full items-center justify-between"),
         ):
             with ui.row().classes("items-center gap-2 flex-1 min-w-0"):
-                ui.icon("folder_open", size="18px").classes("text-[#7b6cf6] shrink-0")
+                ui.icon("folder_open", size="18px").classes(
+                    "text-[var(--accent-primary)] shrink-0"
+                )
                 project_name = state.project_path.name or str(state.project_path)
                 ui.label(project_name).classes(
-                    "text-sm text-[#eceaf4] truncate font-medium"
+                    "text-sm text-[var(--text-primary)] truncate font-medium"
                 )
             with ui.row().classes("items-center gap-1"):
                 ui.button(
@@ -51,12 +54,13 @@ def render_home_screen(state: AppState) -> None:
                 icon="add",
                 on_click=lambda: state.set_current_view("chat"),
             ).props("unelevated no-caps").classes(
-                "bg-[#0e0e12] hover:bg-[#16161d] text-[#eceaf4] border "
-                "border-[#292335] text-xs px-4 py-2 rounded-lg"
+                "mvge-glow-btn text-white text-xs font-medium px-5 py-2"
             )
 
         # Stats
-        with ui.row().classes("gap-4 flex-wrap justify-center w-full max-w-3xl"):
+        with ui.row().classes(
+            "gap-4 flex-wrap justify-center w-full max-w-3xl home-stats-row"
+        ):
             _stat_card("Sessions", str(len(state.loaded_tomes)))
             _stat_card("Mana Used", f"{state.total_mana_used:,}")
             _stat_card("Model", state.selected_model.split("/")[-1].split(":")[0])
@@ -65,33 +69,39 @@ def render_home_screen(state: AppState) -> None:
         # Recent sessions
         if state.loaded_tomes:
             with ui.card().classes(
-                "w-full max-w-xl mt-8 p-4 bg-[#0e0e12] border "
-                "border-[#292335] rounded-xl text-left"
+                "w-full max-w-xl mt-8 p-4 bg-[var(--bg-card)] border "
+                "border-[var(--border-subtle)] rounded-xl text-left"
             ):
                 ui.label("Recent Sessions").classes(
-                    "text-xs font-semibold text-[#9c94b3] uppercase tracking-wider mb-3"
+                    "text-xs font-semibold text-[var(--text-secondary)] uppercase "
+                    "tracking-wider mb-3"
                 )
                 for entry in state.loaded_tomes[:5]:
                     with (
                         ui.row()
                         .classes(
                             "w-full items-center gap-2 px-2 py-1.5 rounded-md "
-                            "hover:bg-[#16161d] cursor-pointer text-xs"
+                            "hover:bg-[var(--bg-card-hover)] cursor-pointer text-xs"
                         )
                         .on("click", lambda e=entry: state.switch_to_tome(e.tome_id))
                     ):
                         ui.icon("chat_bubble_outline", size="13px").classes(
-                            "text-[#9c94b3]"
+                            "text-[var(--text-secondary)]"
                         )
-                        ui.label(entry.title).classes("text-[#eceaf4] truncate flex-1")
-                        ui.label(entry.relative_time).classes("text-[#6e6584] shrink-0")
+                        ui.label(entry.title).classes(
+                            "text-[var(--text-primary)] truncate flex-1"
+                        )
+                        ui.label(entry.relative_time).classes(
+                            "text-[var(--text-muted)] shrink-0"
+                        )
 
 
 def _stat_card(label: str, value: str) -> None:
     with ui.card().classes(
-        "flex-1 min-w-[120px] p-4 bg-[#0e0e12] border border-[#292335] rounded-xl"
+        "flex-1 min-w-[120px] p-4 bg-[var(--bg-card)] border "
+        "border-[var(--border-subtle)] rounded-xl"
     ):
-        ui.label(value).classes("text-lg font-semibold text-[#eceaf4]")
+        ui.label(value).classes("text-lg font-semibold text-[var(--text-primary)]")
         ui.label(label).classes(
-            "text-[10px] text-[#6e6584] uppercase tracking-wider mt-1"
+            "text-[10px] text-[var(--text-muted)] uppercase tracking-wider mt-1"
         )

@@ -17,12 +17,13 @@ def render_login_screen(state: AppState) -> None:
     auth = getattr(state, "_auth_service", None) or AuthService()
 
     if state._show_app_settings:
-        state._show_app_settings = False
+        state.close_app_settings()
 
     with (
         ui.dialog().on("close", state.hide_login) as dialog,
         ui.card().classes(
-            "w-full max-w-sm bg-[#0e0e12] border border-[#292335] rounded-xl p-8 gap-6"
+            "w-full max-w-sm bg-[var(--bg-card)] border "
+            "border-[var(--border-subtle)] rounded-xl p-8 gap-6"
         ),
     ):
 
@@ -32,18 +33,22 @@ def render_login_screen(state: AppState) -> None:
 
         with ui.row().classes("items-center justify-between w-full"):
             with ui.row().classes("items-center gap-3"):
-                ui.icon("auto_awesome", size="28px").classes("text-[#7b6cf6]")
+                ui.icon("auto_awesome", size="28px").classes(
+                    "text-[var(--accent-primary)]"
+                )
                 ui.label("MvgeOS").classes(
-                    "text-xl font-bold text-[#eceaf4] tracking-tight"
+                    "text-xl font-bold text-[var(--text-primary)] tracking-tight"
                 )
             ui.button(
                 icon="close",
                 on_click=_close_dialog,
             ).props("flat round dense").classes(
-                "text-[#9c94b3] hover:text-white -mr-2"
+                "text-[var(--text-secondary)] hover:text-white -mr-2"
             ).mark("close_login_btn")
 
-        ui.label("Sign in to continue").classes("text-sm text-[#9c94b3] -mt-2")
+        ui.label("Sign in to continue").classes(
+            "text-sm text-[var(--text-secondary)] -mt-2"
+        )
 
         username_input = (
             ui.input("Username", placeholder="Enter username")
@@ -81,13 +86,13 @@ def render_login_screen(state: AppState) -> None:
             state.hide_login()
             state.notify()
 
+        password_input.on("keydown.enter", lambda _e: _do_login())
+
         ui.button(
             "Sign In",
             on_click=_do_login,
         ).props("unelevated no-caps").classes(
             "w-full mvge-glow-btn text-white font-medium py-2.5 rounded-lg"
         )
-
-        ui.label("Default: admin / admin").classes("text-xs text-center text-[#6e6584]")
 
     dialog.open()

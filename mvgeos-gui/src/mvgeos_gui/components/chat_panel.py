@@ -43,18 +43,24 @@ def render_chat_panel(state: AppState) -> ui.column:
             with (
                 ui.row().classes(
                     "w-full h-11 items-center justify-between px-3 "
-                    "border-b border-[#292335] shrink-0"
+                    "border-b border-[var(--border-subtle)] shrink-0"
                 ),
                 ui.row().classes("items-center gap-1"),
             ):
                 if state.project_path:
                     with ui.row().classes(
-                        "items-center gap-1.5 mr-2 px-2 py-0.5 rounded bg-[#0e0e12]/60"
+                        "items-center gap-1.5 mr-2 px-2 py-0.5 rounded "
+                        "bg-[var(--bg-card-a60)]"
                     ):
-                        ui.icon("folder_open", size="12px").classes("text-[#9c94b3]")
+                        ui.icon("folder_open", size="12px").classes(
+                            "text-[var(--text-secondary)]"
+                        )
                         ui.label(
                             state.project_path.name or str(state.project_path)
-                        ).classes("text-xs text-[#9c94b3] max-w-[300px] truncate")
+                        ).classes(
+                            "text-xs text-[var(--text-secondary)] max-w-[300px] "
+                            "truncate"
+                        )
 
                 _toolbar_button(
                     icon="shield",
@@ -68,7 +74,13 @@ def render_chat_panel(state: AppState) -> ui.column:
 
                     def _on_plan_mode_click() -> None:
                         active_spells = state.toggle_plan_mode()
-                        if state.plan_mode and not active_spells:
+                        if active_spells is None:
+                            ui.notify(
+                                "Plan mode needs an API key. "
+                                "Set one in Settings first.",
+                                type="warning",
+                            )
+                        elif state.plan_mode and not active_spells:
                             ui.notify(
                                 "Plan mode is on, but no spells are marked read-only.",
                                 type="warning",
@@ -205,9 +217,10 @@ def render_chat_panel(state: AppState) -> ui.column:
                     )
                     .props('round unelevated size=sm id="chat-scroll-bottom-btn"')
                     .classes(
-                        "absolute right-4 bottom-4 z-30 bg-[#0e0e12] "
-                        "hover:bg-[#292335] text-[#eceaf4] border border-[#292335] "
-                        "hover:border-[#7b6cf6] shadow-xl transition-all "
+                        "absolute right-4 bottom-4 z-30 bg-[var(--bg-card)] "
+                        "hover:bg-[var(--border-subtle)] text-[var(--text-primary)] "
+                        "border border-[var(--border-subtle)] "
+                        "hover:border-[var(--accent-primary)] shadow-xl transition-all "
                         "duration-200 opacity-0 pointer-events-none"
                     )
                     .mark("chat-scroll-bottom-btn")
@@ -264,16 +277,19 @@ def render_chat_panel(state: AppState) -> ui.column:
             def side_panel_view() -> None:
                 if state.chat_side_panel in ("files", "diff"):
                     with ui.column().classes(
-                        "w-80 border-l border-[#292335] bg-[#08080a] "
+                        "w-80 border-l border-[var(--border-subtle)] "
+                        "bg-[var(--bg-surface)] "
                         "shrink-0 overflow-hidden"
                     ):
                         with ui.row().classes(
                             "w-full h-11 items-center justify-between px-3 "
-                            "border-b border-[#292335]"
+                            "border-b border-[var(--border-subtle)]"
                         ):
                             ui.label(
                                 "Files" if state.chat_side_panel == "files" else "Diff"
-                            ).classes("text-xs font-semibold text-[#eceaf4]")
+                            ).classes(
+                                "text-xs font-semibold text-[var(--text-primary)]"
+                            )
                             ui.button(
                                 icon="close",
                                 on_click=lambda: state.set_chat_side_panel(None),
@@ -304,13 +320,14 @@ def _render_empty_hero(state: AppState) -> None:
     with the composer); this renders the hero content only.
     """
     with ui.row().classes(
-        "w-14 h-14 rounded-2xl bg-[#0e0e12] border border-[#292335] "
+        "w-14 h-14 rounded-2xl bg-[var(--bg-card)] border "
+        "border-[var(--border-subtle)] "
         "items-center justify-center shadow-lg mb-6"
     ):
-        ui.icon("auto_awesome", size="28px").classes("text-[#7b6cf6]")
+        ui.icon("auto_awesome", size="28px").classes("text-[var(--accent-primary)]")
 
     ui.label("What should Mvge work on?").classes(
-        "text-2xl font-semibold text-[#eceaf4] tracking-tight"
+        "text-2xl font-semibold text-[var(--text-primary)] tracking-tight"
     )
 
     @ui.refreshable
@@ -320,7 +337,7 @@ def _render_empty_hero(state: AppState) -> None:
             "working": "Mvge is working…",
             "idle": "Choose a project — Mvge starts when you send.",
         }.get(state.mvge_status, "Choose a project — Mvge starts when you send.")
-        ui.label(status_text).classes("text-sm text-[#9c94b3] mt-1 mb-8")
+        ui.label(status_text).classes("text-sm text-[var(--text-secondary)] mt-1 mb-8")
 
     empty_status_view()
 
@@ -339,8 +356,9 @@ def _render_empty_hero(state: AppState) -> None:
                 prompt,
                 on_click=lambda p=prompt: fill_composer(state, p),
             ).props("unelevated dense no-caps").classes(
-                "rounded-lg border border-[#292335] px-3 py-1.5 text-xs "
-                "text-[#9c94b3] hover:border-[#7b6cf6] hover:text-[#eceaf4] "
+                "rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 text-xs "
+                "text-[var(--text-secondary)] hover:border-[var(--accent-primary)] "
+                "hover:text-[var(--text-primary)] "
                 "transition-colors"
             )
 
@@ -361,20 +379,28 @@ def _render_user_message(msg: object) -> None:
     with (
         ui.column().classes("w-full max-w-3xl mx-auto px-6 py-3 items-end"),
         ui.card().classes(
-            "w-auto max-w-[85%] bg-[#0e0e12] border border-[#292335] "
+            "w-auto max-w-[85%] bg-[var(--bg-card)] border "
+            "border-[var(--border-subtle)] "
             "rounded-2xl p-4 shadow-md"
         ),
     ):
         with ui.row().classes(
-            "w-full items-center justify-between pb-1 border-b border-[#241f38] mb-2"
+            "w-full items-center justify-between pb-1 border-b "
+            "border-[var(--bg-tint)] mb-2"
         ):
             with ui.row().classes("items-center gap-1.5"):
-                ui.icon("account_circle", size="16px").classes("text-[#7b6cf6]")
-                ui.label("Summoner").classes("text-xs font-semibold text-[#eceaf4]")
+                ui.icon("account_circle", size="16px").classes(
+                    "text-[var(--accent-primary)]"
+                )
+                ui.label("Summoner").classes(
+                    "text-xs font-semibold text-[var(--text-primary)]"
+                )
             if timestamp:
-                ui.label(timestamp).classes("text-[10px] text-[#6e6584] font-mono")
+                ui.label(timestamp).classes(
+                    "text-[10px] text-[var(--text-muted)] font-mono"
+                )
         ui.label(content).classes(
-            "text-xs text-[#eceaf4] whitespace-pre-wrap leading-relaxed"
+            "text-xs text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed"
         )
 
 

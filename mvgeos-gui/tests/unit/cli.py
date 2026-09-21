@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from nicegui import app as nicegui_app
 
 import mvgeos_gui.main as main_module
 from mvgeos_gui.main import (
@@ -14,6 +15,7 @@ from mvgeos_gui.main import (
     main,
     parse_args,
 )
+from mvgeos_gui.services.config_service import AppSettings
 
 
 @pytest.fixture(autouse=True)
@@ -138,20 +140,85 @@ def test_main_runs_native_by_default(
         )
 
 
+def _config_service_with_theme(theme: str) -> MagicMock:
+    """A ConfigService double whose persisted settings carry ``theme``."""
+    service = MagicMock()
+    service.load_app_settings.return_value = AppSettings(theme=theme)
+    return service
+
+
 @pytest.mark.asyncio
 @patch("mvgeos_gui.main.platform.system", return_value="Windows")
 async def test_startup_hook_invokes_dark_titlebar(mock_system: MagicMock) -> None:
-    """Verify on_startup callback runs enable_windows_dark_titlebar."""
-    with (
-        patch("mvgeos_gui.main.ui.run"),
-        patch("mvgeos_gui.main.app.on_startup") as mock_on_startup,
-        patch("mvgeos_gui.main.enable_windows_dark_titlebar") as mock_dark,
-        patch("sys.argv", ["mvgeos-gui"]),
-    ):
-        main()
-        startup_callback = mock_on_startup.call_args_list[-1][0][0]
-        await startup_callback()
-        mock_dark.assert_called_with("MvgeOS")
+    """The on_startup hook applies the Windows titlebar theme for the persisted theme.
+
+    Persisted dark -> DWM dark titlebar; persisted light -> DWM light titlebar.
+    """
+    for theme, expected_dark in (("dark", True), ("light", False)):
+        with (
+            patch("mvgeos_gui.main.ui.run"),
+            patch("mvgeos_gui.main.app.on_startup") as mock_on_startup,
+            patch("mvgeos_gui.main.enable_windows_dark_titlebar") as mock_dark,
+            patch(
+                "mvgeos_gui.main.ConfigService",
+                return_value=_config_service_with_theme(theme),
+            ),
+            patch("sys.argv", ["mvgeos-gui"]),
+        ):
+            main()
+            startup_callback = mock_on_startup.call_args_list[-1][0][0]
+            await startup_callback()
+            mock_dark.assert_called_with("MvgeOS", dark=expected_dark)
+
+
+@patch("mvgeos_gui.main.ui.run")
+@patch("mvgeos_gui.main.app.on_startup")
+@patch("mvgeos_gui.main.platform.system", return_value="Windows")
+def test_main_native_dark_theme_uses_black_chrome(
+    mock_system: MagicMock, mock_on_startup: MagicMock, mock_ui_run: MagicMock
+) -> None:
+    """Persisted dark theme -> black pywebview background, dark ui.run."""
+    original_window_args = dict(nicegui_app.native.window_args)
+    try:
+        with (
+            patch("sys.argv", ["mvgeos-gui"]),
+            patch(
+                "mvgeos_gui.main.ConfigService",
+                return_value=_config_service_with_theme("dark"),
+            ),
+        ):
+            main()
+        kwargs = mock_ui_run.call_args.kwargs
+        assert kwargs["dark"] is True
+        assert nicegui_app.native.window_args["background_color"] == "#000000"
+    finally:
+        nicegui_app.native.window_args.clear()
+        nicegui_app.native.window_args.update(original_window_args)
+
+
+@patch("mvgeos_gui.main.ui.run")
+@patch("mvgeos_gui.main.app.on_startup")
+@patch("mvgeos_gui.main.platform.system", return_value="Windows")
+def test_main_native_light_theme_uses_white_chrome(
+    mock_system: MagicMock, mock_on_startup: MagicMock, mock_ui_run: MagicMock
+) -> None:
+    """Persisted light theme -> white pywebview background, light ui.run."""
+    original_window_args = dict(nicegui_app.native.window_args)
+    try:
+        with (
+            patch("sys.argv", ["mvgeos-gui"]),
+            patch(
+                "mvgeos_gui.main.ConfigService",
+                return_value=_config_service_with_theme("light"),
+            ),
+        ):
+            main()
+        kwargs = mock_ui_run.call_args.kwargs
+        assert kwargs["dark"] is False
+        assert nicegui_app.native.window_args["background_color"] == "#ffffff"
+    finally:
+        nicegui_app.native.window_args.clear()
+        nicegui_app.native.window_args.update(original_window_args)
 
 
 @patch("mvgeos_gui.main.ui.run")
@@ -323,3 +390,70 @@ def test_geometry_falls_back_when_webview_unavailable(
     assert h == 900
     assert x is None
     assert y is None
+
+
+def _clear_root_handlers() -> list:
+    """Temporarily strip root handlers so setup_logging() configures fresh.
+
+    Returns the previous handlers for restoration by the caller.
+    """
+    import logging
+
+    root = logging.getLogger()
+    old_handlers = list(root.handlers)
+    root.handlers.clear()
+    return old_handlers
+
+
+def _restore_root_handlers(old_handlers: list) -> None:
+    import logging
+
+    root = logging.getLogger()
+    for h in root.handlers:
+        h.close()
+    root.handlers = old_handlers
+
+
+def test_main_writes_startup_banner_with_pid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """main() must wire logging at entry: the startup banner carries the PID."""
+    import os
+
+    monkeypatch.setenv("MVGEOS_LOG_DIR", str(tmp_path))
+    old_handlers = _clear_root_handlers()
+    try:
+        with (
+            patch("mvgeos_gui.main.ui.run"),
+            patch("sys.argv", ["mvgeos-gui", "--web"]),
+        ):
+            main()
+    finally:
+        _restore_root_handlers(old_handlers)
+    content = (tmp_path / "mvgeos-gui.log").read_text(encoding="utf-8")
+    assert f"pid={os.getpid()}" in content
+    assert "starting" in content
+
+
+def test_main_logs_uncaught_server_exception_with_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An exception escaping ui.run must land in the log with a traceback,
+    then propagate (exit code preserved)."""
+    monkeypatch.setenv("MVGEOS_LOG_DIR", str(tmp_path))
+    old_handlers = _clear_root_handlers()
+    try:
+        with (
+            patch(
+                "mvgeos_gui.main.ui.run",
+                side_effect=RuntimeError("server-boom-xyz"),
+            ),
+            patch("sys.argv", ["mvgeos-gui", "--web"]),
+            pytest.raises(RuntimeError, match="server-boom-xyz"),
+        ):
+            main()
+    finally:
+        _restore_root_handlers(old_handlers)
+    content = (tmp_path / "mvgeos-gui.log").read_text(encoding="utf-8")
+    assert "server-boom-xyz" in content
+    assert "Traceback" in content

@@ -10,6 +10,7 @@ from mvgeos_gui.components.command_palette import (
     render_rename_dialog,
 )
 from mvgeos_gui.components.diagnostics_panel import render_diagnostics_panel
+from mvgeos_gui.components.file_preview import render_file_preview_dialog
 from mvgeos_gui.components.home_screen import render_home_screen
 from mvgeos_gui.components.login_screen import render_login_screen
 from mvgeos_gui.components.packages_panel import render_packages_panel
@@ -44,6 +45,7 @@ def render_shell(state: AppState) -> None:
                     state.tome_title,
                     len(state.loaded_tomes),
                     str(state.project_path),
+                    state.current_user,
                 )
             ]
 
@@ -57,6 +59,7 @@ def render_shell(state: AppState) -> None:
                     state.tome_title,
                     len(state.loaded_tomes),
                     str(state.project_path),
+                    state.current_user,
                 )
 
             sidebar_container()
@@ -69,6 +72,7 @@ def render_shell(state: AppState) -> None:
                     state.tome_title,
                     len(state.loaded_tomes),
                     str(state.project_path),
+                    state.current_user,
                 )
                 if cur != last_sidebar_state[0]:
                     sidebar_container.refresh()
@@ -193,6 +197,7 @@ def render_shell(state: AppState) -> None:
             getattr(state, "_show_workspace_settings", False),
             getattr(state, "_show_login", False),
             getattr(state, "_show_rename_dialog", False),
+            getattr(state, "_preview_file", None),
             len(state.artifacts),
         )
     ]
@@ -204,6 +209,7 @@ def render_shell(state: AppState) -> None:
         render_artifact_drawer(state)
         render_app_settings_modal(state)
         render_workspace_settings_modal(state)
+        render_file_preview_dialog(state)
         if getattr(state, "_show_login", False):
             render_login_screen(state)
         last_overlay_state[0] = (
@@ -213,6 +219,7 @@ def render_shell(state: AppState) -> None:
             getattr(state, "_show_workspace_settings", False),
             getattr(state, "_show_login", False),
             getattr(state, "_show_rename_dialog", False),
+            getattr(state, "_preview_file", None),
             len(state.artifacts),
         )
 
@@ -226,6 +233,7 @@ def render_shell(state: AppState) -> None:
             getattr(state, "_show_workspace_settings", False),
             getattr(state, "_show_login", False),
             getattr(state, "_show_rename_dialog", False),
+            getattr(state, "_preview_file", None),
             len(state.artifacts),
         )
         if cur != last_overlay_state[0]:

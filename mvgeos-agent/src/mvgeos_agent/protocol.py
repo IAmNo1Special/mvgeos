@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from mvgeos_core.events import (
@@ -15,6 +16,26 @@ from mvgeos_runes.rune_runner import RuneRunner
 
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.snapshot import RuntimeSnapshot
+
+
+@dataclass
+class ReloadResult:
+    """Outcome of an engine reload (``Mvge.reload()``)."""
+
+    ok: bool
+    """Whether the reload took effect (or was cleanly queued)."""
+
+    message: str
+    """Human-readable outcome detail, including failure diagnostics."""
+
+    queued: bool = False
+    """True when the reload was deferred to the next turn boundary."""
+
+    prompt_changed: bool = False
+    """True when the rebuild produced a different system prompt."""
+
+    spells_changed: bool = False
+    """True when the rebuilt spell set differs from the previous one."""
 
 
 @runtime_checkable
@@ -138,6 +159,15 @@ class MvgeAgent(Protocol):
 
     async def reset_session(self, *, resume_tome_id: str | None = None) -> None:
         """Reset or resume session lifecycle."""
+        ...
+
+    async def reload(self) -> ReloadResult:
+        """Rebuild runes, system prompt, spells, and harness mid-session.
+
+        Transactional: a failed reload preserves last-known-good state and
+        surfaces the exact diagnostic. When a turn is in flight the reload
+        queues until the turn boundary.
+        """
         ...
 
     def build_snapshot(self) -> RuntimeSnapshot:

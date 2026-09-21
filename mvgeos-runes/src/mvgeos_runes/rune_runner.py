@@ -5,7 +5,7 @@ import contextlib
 import dataclasses
 import logging
 import traceback
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +21,8 @@ from mvgeos_core.approval import (
 )
 
 from mvgeos_runes.installer import read_or_create_install_id
+from mvgeos_runes.loader import load_factory_from_manifest
+from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_api import RuneAPI
 from mvgeos_runes.types import (
     Diagnostic,
@@ -268,6 +270,94 @@ class RuneRunner:
         ]
         self._rune_instances.pop(rune_name, None)
         self._spell_version += 1
+
+    async def refresh_runes(self, extensions_dirs: Sequence[Path]) -> list[Diagnostic]:
+        """Clear and re-execute every rune factory across the given dirs.
+
+        This is the runner half of ``Mvge.reload()``: one refresh path for
+        all rune code, replacing the old per-rune watcher hot-reload. New
+        rune directories are loaded; changed ones are cleared and
+        re-executed (override semantics, so registrations never
+        duplicate); broken manifests or factories become diagnostics
+        instead of aborting the refresh.
+        """
+        diagnostics: list[Diagnostic] = []
+        for extensions_dir in extensions_dirs:
+            if not extensions_dir.is_dir():
+                continue
+            for child in sorted(extensions_dir.iterdir()):
+                manifest_path = child / "manifest.json"
+                if not child.is_dir() or not manifest_path.is_file():
+                    continue
+                manifest = load_manifest(child)
+                if manifest is None:
+                    diagnostics.append(
+                        Diagnostic(
+                            kind=DiagnosticKind.LOAD_FAILURE,
+                            rune_name=child.name,
+                            message=f"Manifest invalid or missing: {manifest_path}",
+                            path=str(manifest_path),
+                        )
+                    )
+                    continue
+                factory = load_factory_from_manifest(
+                    manifest, child, diagnostics=diagnostics
+                )
+                if factory is None:
+                    continue
+                self.clear_rune(manifest.name)
+                self._loaded_manifests = [
+                    m for m in self._loaded_manifests if m.name != manifest.name
+                ]
+                self._loaded_manifests.append(manifest)
+                self._loaded_rune_names.add(manifest.name)
+                for sc in manifest.shortcuts:
+                    self.register_shortcut(sc, override=True)
+                self._current_loading_rune = manifest.name
+                api = self.create_api(rune_name=manifest.name, override=True)
+                try:
+                    result = factory(api)
+                    if isinstance(result, Awaitable):
+                        result = await result
+                except Exception as exc:
+                    diagnostics.append(
+                        Diagnostic(
+                            kind=DiagnosticKind.LOAD_FAILURE,
+                            rune_name=manifest.name,
+                            message=f"Factory raised during refresh: {exc}",
+                            path=str(child),
+                        )
+                    )
+                    continue
+                finally:
+                    self._current_loading_rune = None
+                if result is not None:
+                    self._rune_instances[manifest.name] = result
+        self._designate_spell_gateway()
+        return diagnostics
+
+    async def rehydrate_runes(self, payload: Any) -> list[str]:
+        """Refresh hook-derived rune instance state from a fresh payload.
+
+        This is the dedicated rehydrate path: it is NOT the
+        prompt-mutating ``BEFORE_MVGE_START`` hook. Each loaded rune
+        instance defining ``rehydrate(payload)`` receives the fresh
+        payload (awaited when awaitable). Per-rune failures are isolated
+        into the returned error strings; the reload continues.
+        """
+        errors: list[str] = []
+        for name, instance in list(self._rune_instances.items()):
+            rehydrate = getattr(instance, "rehydrate", None)
+            if not callable(rehydrate):
+                continue
+            try:
+                result = rehydrate(payload)
+                if isinstance(result, Awaitable):
+                    await result
+            except Exception as exc:
+                errors.append(f"{name}: {exc}")
+                logger.warning("Rune %s rehydrate failed: %s", name, exc)
+        return errors
 
     def register_spell_gate(
         self, handler: SpellGateHandler, rune_name: str | None = None

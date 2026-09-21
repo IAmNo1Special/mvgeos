@@ -4,6 +4,7 @@ import re
 import urllib.parse
 
 from nicegui import ui
+from nicegui.elements.dialog import Dialog
 
 _WINDOWS_RESERVED = {
     "CON",
@@ -75,3 +76,33 @@ def download_artifact(title: str, content: str) -> None:
         f"a.download = `{filename}`; a.click();"
     )
     ui.notify(f"Downloading {filename}", type="positive", position="bottom")
+
+
+_FOCUS_TRAP_JS = (
+    "(e) => {"
+    " const root = e.target.closest('.q-dialog');"
+    " if (!root) return;"
+    " const sel = 'a[href], button:not([disabled]), input:not([disabled]),'"
+    " + ' select:not([disabled]), textarea:not([disabled]),'"
+    " + ' [tabindex]:not([tabindex=\"-1\"])';"
+    " const items = [...root.querySelectorAll(sel)]"
+    " .filter((el) => el.getClientRects().length > 0);"
+    " if (items.length === 0) return;"
+    " const first = items[0];"
+    " const last = items[items.length - 1];"
+    " const active = document.activeElement;"
+    " if (e.shiftKey && active === first) { e.preventDefault(); last.focus(); }"
+    " else if (!e.shiftKey && active === last)"
+    " { e.preventDefault(); first.focus(); }"
+    "}"
+)
+
+
+def install_focus_trap(dialog: Dialog) -> None:
+    """Trap Tab navigation inside an open dialog.
+
+    Registers a client-side Tab keydown handler on the dialog that wraps
+    focus from the last focusable element back to the first (and vice versa
+    with Shift+Tab), instead of letting Tab escape behind the modal.
+    """
+    dialog.on("keydown.tab", None, js_handler=_FOCUS_TRAP_JS)

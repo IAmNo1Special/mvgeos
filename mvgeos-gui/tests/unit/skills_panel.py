@@ -145,3 +145,22 @@ async def test_skills_panel_install_dialog(user: User) -> None:
     user.find(marker="skill_install_btn").click()
     await user.should_see("Install Skill")
     await user.should_see("Git URL or local path")
+
+
+@pytest.mark.asyncio
+async def test_skills_panel_empty_states_guide_next_steps(user: User) -> None:
+    """Empty states must explain what skills are and point at Install Skill."""
+    state = AppState()
+    state.active_skills = []
+    state.load_skills = MagicMock(return_value=[])  # type: ignore[method-assign]
+
+    @ui.page("/test_skills_empty_guidance")
+    def page() -> None:
+        render_skills_panel(state)
+
+    await user.open("/test_skills_empty_guidance")
+    await user.should_see("No skills loaded")
+    await user.should_see("reusable capabilities")
+    await user.should_see("Install Skill")
+    await user.should_see("No additional skills found")
+    await user.should_see("Discovered skills appear here")

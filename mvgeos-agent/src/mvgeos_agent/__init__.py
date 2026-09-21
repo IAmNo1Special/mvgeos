@@ -30,7 +30,7 @@ from mvgeos_agent.installer import (
     uninstall_mvge,
 )
 from mvgeos_agent.mvge import Mvge
-from mvgeos_agent.protocol import AgentFactory, MvgeAgent
+from mvgeos_agent.protocol import AgentFactory, MvgeAgent, ReloadResult
 from mvgeos_agent.snapshot import (
     RuntimeSnapshot,
     SnapshotConfigEntry,
@@ -60,6 +60,7 @@ __all__ = [
     "PEP723ScriptSpell",
     "PromptSource",
     "ResolvedPrompt",
+    "ReloadResult",
     "RuneSpellWrapper",
     "RuntimeSnapshot",
     "SLASH_COMMANDS",

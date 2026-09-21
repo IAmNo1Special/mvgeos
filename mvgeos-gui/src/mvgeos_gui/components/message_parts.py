@@ -17,32 +17,40 @@ from mvgeos_gui.utils import copy_to_clipboard
 def render_message_header(msg: ChatMessage) -> ui.row:
     """Render the header row: avatar, model badge, mana usage, timestamp."""
     with ui.row().classes(
-        "w-full items-center justify-between pb-2 border-b border-[#241f38]"
+        "w-full items-center justify-between pb-2 border-b border-[var(--bg-tint)]"
     ) as row:
         with ui.row().classes("items-center gap-2"):
             with ui.row().classes(
-                "w-6 h-6 rounded-lg bg-[#7b6cf6]/20 border "
-                "border-[#7b6cf6]/40 items-center justify-center"
+                "w-6 h-6 rounded-lg "
+                "bg-[var(--accent-primary-a20)] "
+                "border "
+                "border-[var(--accent-primary-a40)] "
+                "items-center justify-center"
             ):
-                ui.icon("auto_awesome", size="14px").classes("text-[#7b6cf6]")
-            ui.label("Mvge").classes("text-xs font-semibold text-[#eceaf4]")
+                ui.icon("auto_awesome", size="14px").classes(
+                    "text-[var(--accent-primary)]"
+                )
+            ui.label("Mvge").classes("text-xs font-semibold text-[var(--text-primary)]")
             if msg.model:
                 model_slug = msg.model.split("/")[-1].split(":")[0]
-                ui.badge(model_slug, color="grey-9").props("rounded dense").classes(
-                    "text-[10px] text-[#9c94b3] font-mono"
+                ui.badge(model_slug).props("rounded dense").classes(
+                    "text-[10px] text-[var(--text-secondary)] font-mono "
+                    "bg-[var(--bg-card)] border border-[var(--border-subtle)]"
                 )
 
         with ui.row().classes("items-center gap-2"):
             if msg.mana_used > 0:
                 with ui.row().classes(
                     "items-center gap-1 px-2 py-0.5 rounded "
-                    "bg-[#0e0e12] border border-[#292335]"
+                    "bg-[var(--bg-card)] border border-[var(--border-subtle)]"
                 ):
-                    ui.icon("bolt", size="12px").classes("text-[#f59e0b]")
+                    ui.icon("bolt", size="12px").classes("text-[var(--text-warn)]")
                     ui.label(f"{msg.mana_used:,} Mana").classes(
-                        "text-[10px] text-[#f59e0b] font-mono"
+                        "text-[10px] text-[var(--text-warn)] font-mono"
                     )
-            ui.label(msg.timestamp).classes("text-[10px] text-[#6e6584] font-mono")
+            ui.label(msg.timestamp).classes(
+                "text-[10px] text-[var(--text-muted)] font-mono"
+            )
 
     return row
 
@@ -84,7 +92,7 @@ def render_streaming_indicator(msg: ChatMessage) -> ui.row | None:
             else "Channeling response..."
         )
         ui.label(stream_label).classes(
-            "text-[11px] text-[#9c94b3] italic animate-pulse"
+            "text-[11px] text-[var(--text-secondary)] italic animate-pulse"
         )
     return row
 
@@ -97,8 +105,8 @@ def render_error_display(msg: ChatMessage) -> ui.row | None:
     if not error_message:
         return None
     with ui.row().classes("items-start gap-2 mb-2") as row:
-        ui.icon("error", size="14px").classes("text-[#ef4444]")
-        ui.label(error_message).classes("text-xs text-[#ef4444]")
+        ui.icon("error", size="14px").classes("text-[var(--deletion-red)]")
+        ui.label(error_message).classes("text-xs text-[var(--deletion-red)]")
     return row
 
 
@@ -109,7 +117,8 @@ def render_message_footer(
     if msg.is_streaming and not (msg.content or msg.contemplation):
         return None
     with ui.row().classes(
-        "w-full items-center justify-end gap-1 pt-2 border-t border-[#241f38]/60"
+        "w-full items-center justify-end gap-1 pt-2 border-t "
+        "border-[var(--bg-tint-a60)]"
     ) as row:
         copy_text = msg.content or "\n\n".join(msg.contemplation)
         with ui.button(
@@ -142,14 +151,16 @@ def render_missing_rune_card(msg: ChatMessage, state: AppState) -> ui.card | Non
     missing_rune = str(msg.missing_rune)
     with (
         ui.card().classes(
-            "w-full p-3 bg-[#181320] border border-[#f59e0b]/40 rounded-xl my-2"
+            "w-full p-3 bg-[var(--bg-code)] border "
+            "border-[var(--text-warn-a40)] rounded-xl "
+            "my-2"
         ) as card,
         ui.row().classes("w-full items-center justify-between"),
     ):
         with ui.row().classes("items-center gap-2"):
-            ui.icon("extension", size="18px").classes("text-[#f59e0b]")
+            ui.icon("extension", size="18px").classes("text-[var(--text-warn)]")
             ui.label(f"Missing Extension: {missing_rune}").classes(
-                "text-xs font-semibold text-[#f59e0b]"
+                "text-xs font-semibold text-[var(--text-warn)]"
             )
         with ui.row().classes("items-center gap-2"):
 
@@ -184,7 +195,8 @@ def render_assistant_message(
             "w-full max-w-3xl mx-auto px-6 py-3 items-start"
         ) as container,
         ui.card().classes(
-            "w-full bg-[#000000] border border-[#292335] rounded-2xl "
+            "w-full bg-[var(--bg-canvas)] border border-[var(--border-subtle)] "
+            "rounded-2xl "
             "p-4 gap-3 shadow-lg"
         ),
     ):

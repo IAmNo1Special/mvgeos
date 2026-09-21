@@ -255,7 +255,7 @@ class TestLoad:
 def _watcher_factory(
     log: list[MagicMock],
 ) -> Callable[..., MagicMock]:
-    def _make(*args: Any) -> MagicMock:
+    def _make(*args: Any, **kwargs: Any) -> MagicMock:
         watcher = MagicMock(start=AsyncMock(), stop=AsyncMock())
         log.append(watcher)
         return watcher
@@ -314,7 +314,7 @@ class TestStartAndShutdown:
         ) as watcher_cls:
             await lifecycle.start()
 
-        watcher_cls.assert_called_once_with(runes_dir, runner)
+        watcher_cls.assert_called_once_with(runes_dir, runner, reload_callback=None)
 
     @pytest.mark.asyncio
     async def test_start_skips_already_watched_paths(self, tmp_path: Path) -> None:

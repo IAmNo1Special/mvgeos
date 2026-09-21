@@ -1028,20 +1028,24 @@ name = "mvgeos-agent"
 version = "0.5.5"
 source = { editable = "mvgeos-agent" }
 dependencies = [
+    { name = "httpx" },
     { name = "mvgeos-core" },
     { name = "mvgeos-provider" },
     { name = "mvgeos-runes" },
     { name = "mvgeos-tome" },
     { name = "pydantic" },
+    { name = "python-dotenv" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "mvgeos-core", editable = "mvgeos-core" },
     { name = "mvgeos-provider", editable = "mvgeos-provider" },
     { name = "mvgeos-runes", editable = "mvgeos-runes" },
     { name = "mvgeos-tome", editable = "mvgeos-tome" },
     { name = "pydantic", specifier = ">=2.0" },
+    { name = "python-dotenv", specifier = ">=1.2.2" },
 ]
 
 [[package]]
@@ -1049,6 +1053,7 @@ name = "mvgeos-cli"
 version = "0.5.5"
 source = { editable = "mvgeos-cli" }
 dependencies = [
+    { name = "click" },
     { name = "mvgeos-agent" },
     { name = "mvgeos-core" },
     { name = "mvgeos-provider" },
@@ -1061,6 +1066,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "click", specifier = ">=8.0" },
     { name = "mvgeos-agent", editable = "mvgeos-agent" },
     { name = "mvgeos-core", editable = "mvgeos-core" },
     { name = "mvgeos-provider", editable = "mvgeos-provider" },

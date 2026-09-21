@@ -16,8 +16,9 @@ from nicegui import ui
 
 from mvgeos_gui.app import build_page, init_app
 from mvgeos_gui.models.user import User, UserRole
+from mvgeos_gui.services.config_service import AppSettings, ConfigService
 from mvgeos_gui.services.tome_service import TomeService
-from mvgeos_gui.state import AppState
+from mvgeos_gui.state import AppState, ServerState
 
 
 def _mock_user() -> User:
@@ -203,9 +204,9 @@ async def test_channeling_input_dock(user: User) -> None:
 @pytest.mark.asyncio
 async def test_init_app_registers_index(user: User) -> None:
     """Verify init_app registers the root index page properly."""
-    state = AppState(project_path=Path("C:/demo/init-project"))
-    app_state = init_app(state)
-    assert app_state == state
+    server = ServerState(project_path=Path("C:/demo/init-project"))
+    returned = init_app(server)
+    assert returned is server
 
     await user.open("/")
     await user.should_see("MvgeOS")
@@ -487,3 +488,24 @@ async def test_packages_panel_renders(user: User) -> None:
 
     await user.open("/test_packages_panel")
     await user.should_see("Marketplace")
+
+
+@pytest.mark.asyncio
+async def test_build_page_uses_saved_theme(user, tmp_path: Path) -> None:
+    """build_page boots with the persisted theme and keeps the DarkMode handle.
+
+    Observable result: with "light" persisted, the page's DarkMode handle
+    is off (``value is False``).
+    """
+    service = ConfigService(config_dir=tmp_path)
+    service.save_app_settings(AppSettings(theme="light"))
+    state = AppState(project_path=tmp_path)
+    state._config_service = service
+
+    @ui.page("/test_saved_theme")
+    def page() -> None:
+        build_page(state)
+
+    await user.open("/test_saved_theme")
+    assert state._dark_mode is not None
+    assert state._dark_mode.value is False

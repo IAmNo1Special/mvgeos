@@ -9,31 +9,34 @@ from mvgeos_gui.state import AppState
 def render_status_bar(state: AppState) -> ui.row:
     """Render the bottom status bar."""
     bar = ui.row().classes(
-        "w-full h-7 bg-[#050506] border-t border-[#292335] items-center px-3 shrink-0"
+        "w-full h-7 bg-[var(--bg-sunken-deep)] border-t "
+        "border-[var(--border-subtle)] items-center px-3 shrink-0"
     )
 
     with bar:
         # Mvge status indicator
         status_colors = {
-            "idle": "bg-[#6e6584]",
-            "channeling": "bg-[#7b6cf6]",
-            "working": "bg-[#22c55e]",
+            "idle": "bg-[var(--text-muted)]",
+            "channeling": "bg-[var(--accent-primary)]",
+            "working": "bg-[var(--addition-green)]",
         }
-        status_color = status_colors.get(state.mvge_status, "bg-[#6e6584]")
+        status_color = status_colors.get(state.mvge_status, "bg-[var(--text-muted)]")
         ui.element("div").classes(f"h-2 w-2 rounded-full {status_color} shrink-0")
 
         # Mvge label
-        ui.label("MvgeOS").classes("text-[10px] text-[#6e6584] ml-2 mr-4")
+        ui.label("MvgeOS").classes("text-[10px] text-[var(--text-muted)] ml-2 mr-4")
 
         # Active model
         if state.selected_model:
             model_slug = state.selected_model.split("/")[-1].split(":")[0]
-            ui.label(model_slug).classes("text-[10px] text-[#9c94b3] font-mono mr-4")
+            ui.label(model_slug).classes(
+                "text-[10px] text-[var(--text-secondary)] font-mono mr-4"
+            )
 
         # Mana usage
         if state.total_mana_used > 0:
             ui.label(f"{state.total_mana_used:,} Mana").classes(
-                "text-[10px] text-[#f59e0b] font-mono mr-4"
+                "text-[10px] text-[var(--text-warn)] font-mono mr-4"
             )
 
         # Context window gauge (real provider usage vs verified registry window)
@@ -41,24 +44,29 @@ def render_status_bar(state: AppState) -> ui.row:
 
         # Streaming indicator
         if state.is_channeling:
-            ui.label("Channeling...").classes("text-[10px] text-[#7b6cf6] italic mr-4")
+            ui.label("Channeling...").classes(
+                "text-[10px] text-[var(--accent-primary)] italic mr-4"
+            )
 
         # Spacer
         ui.element("div").classes("flex-1")
 
-        # Context / compact toggles
+        # Context / compact toggles. The two buttons must stay visually
+        # distinct in every state (a previous revision showed two
+        # near-identical view_sidebar icons) and each carries a tooltip
+        # naming its action.
         with ui.row().classes("items-center gap-3"):
             ui.button(
-                icon="dock" if state.review_open else "view_sidebar",
+                icon="dock" if state.review_open else "rate_review",
                 on_click=state.toggle_review,
             ).props("flat dense round text-color=grey-5 size=xs").mark(
                 "toggle_review_btn"
-            )
+            ).tooltip("Toggle review panel")
             ui.button(
                 icon="view_sidebar" if state.sidebar_open else "menu",
                 on_click=state.toggle_sidebar,
             ).props("flat dense round text-color=grey-5 size=xs").mark(
                 "toggle_sidebar_btn"
-            )
+            ).tooltip("Toggle sidebar")
 
     return bar

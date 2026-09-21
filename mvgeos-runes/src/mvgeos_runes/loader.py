@@ -228,6 +228,12 @@ def load_factory_from_manifest(
     if spec is None or spec.loader is None:
         return None
     mod = importlib.util.module_from_spec(spec)
+    # Force a fresh read of the entry point: a quick same-second rewrite
+    # can leave a stale __pycache__ entry the loader would otherwise trust,
+    # silently re-executing old code on refresh.
+    stale_bytecode = Path(importlib.util.cache_from_source(str(entry)))
+    if stale_bytecode.is_file():
+        stale_bytecode.unlink()
     try:
         spec.loader.exec_module(mod)
     except Exception as err:

@@ -13,6 +13,12 @@ from mvgeos_core.approval import (
     SpellGateHandler,
 )
 
+from mvgeos_runes.rune_audit import (
+    AuditError,
+    RuneAuditLog,
+    default_rune_ops_dir,
+    utcnow,
+)
 from mvgeos_runes.types import (
     RegisteredCommand,
     RuneContext,
@@ -38,11 +44,15 @@ class RuneAPI:
         rune_name: str | None = None,
         override: bool = False,
         install_id: str | None = None,
+        audit_log: RuneAuditLog | None = None,
     ) -> None:
         self._runner = runner
         self._rune_name = rune_name
         self._override = override
         self._install_id = install_id
+        # Engine-owned: the rune-op audit log. Defaults to the user-scope
+        # ``.agents/extensions/audit.jsonl``; injectable for tests.
+        self._audit_log = audit_log or RuneAuditLog(default_rune_ops_dir())
 
     @property
     def install_id(self) -> str | None:
@@ -209,3 +219,56 @@ class RuneAPI:
 
     def emit_event(self, channel: str, data: Any) -> None:
         self._runner.emit_event(channel, data)
+
+    def audit(
+        self,
+        op: str,
+        *,
+        outcome: str,
+        code: str,
+        message: str,
+        target: str | None = None,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        """Append a rune-op audit event to the engine-owned audit log.
+
+        The engine stamps the rune's identity and the timestamp — ``extra``
+        can never override them, so a rune cannot forge another rune's
+        entries. The log is append-only: there is no read/rewrite path, so
+        history cannot be rewritten through this API.
+
+        Args:
+            op: The mutating operation name (e.g. ``"revise_persona"``).
+            outcome: ``"ok"`` or ``"failed"``.
+            code: Machine-readable outcome code (``"ok"`` or the op's
+                failure code, e.g. ``"snapshot_failed"``).
+            message: Human-readable outcome detail.
+            target: The mutated target (path, name, or snapshot id).
+            extra: Additional record fields; stamped fields always win.
+
+        Raises:
+            AuditError: If the durable append fails. Callers must surface
+                this loudly — an op that cannot prove it happened must
+                never report silent success.
+            ValueError: If ``op`` is empty.
+        """
+        if not op:
+            raise ValueError("audit op name must be non-empty")
+        record: dict[str, Any] = dict(extra) if extra else {}
+        record.update(
+            {
+                "timestamp": utcnow(),
+                "rune": self._rune_name or "unknown",
+                "op": op,
+                "outcome": outcome,
+                "code": code,
+                "target": target,
+                "message": message,
+            }
+        )
+        try:
+            self._audit_log.append_event(record)
+        except AuditError:
+            raise
+        except OSError as exc:
+            raise AuditError(f"audit append failed: {exc}") from exc

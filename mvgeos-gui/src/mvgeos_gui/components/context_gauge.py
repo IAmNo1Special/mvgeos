@@ -17,6 +17,6 @@ def render_context_gauge(state: AppState) -> None:
     gauge = build_context_gauge(state)
     if gauge is None:
         return
-    ui.label(gauge.format()).classes("text-[10px] text-[#9c94b3] font-mono mr-4").mark(
-        "context_gauge"
-    )
+    ui.label(gauge.format()).classes(
+        "text-[10px] text-[var(--text-secondary)] font-mono mr-4"
+    ).mark("context_gauge")

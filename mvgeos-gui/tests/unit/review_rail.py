@@ -27,7 +27,8 @@ async def test_render_review_rail_empty_changes(user: User) -> None:
     await user.open("/test_rail_empty")
     await user.should_see("Review")
     await user.should_see("Changed files")
-    await user.should_see("No changes detected")
+    await user.should_see("No agent changes yet")
+    await user.should_see("changes made by the agent in this session")
 
 
 @pytest.mark.asyncio
@@ -123,3 +124,20 @@ async def test_review_rail_has_no_permission_dropdown(user: User) -> None:
     await user.open("/test_rail_no_permission")
     await user.should_not_see("Permission mode")
     await user.should_see("Changed files")
+
+
+@pytest.mark.asyncio
+async def test_render_review_rail_empty_state_names_what_it_tracks(
+    user: User,
+) -> None:
+    """The empty state must say it is waiting on agent-made changes."""
+    state = AppState()
+    state.changed_files = []
+
+    @ui.page("/test_rail_empty_guidance")
+    def page() -> None:
+        render_review_rail(state)
+
+    await user.open("/test_rail_empty_guidance")
+    await user.should_see("No agent changes yet")
+    await user.should_see("changes made by the agent in this session")

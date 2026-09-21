@@ -232,6 +232,7 @@ class MentionIndex:
         self._skills = skills or []
         self._max_files = max_files
         self._cache: list[MentionItem] | None = None
+        self._signature: tuple[tuple[tuple[str, float], ...], int] | None = None
         self._gitignore_spec: pathspec.PathSpec[Any] | None = None
         self._load_gitignore()
 
@@ -312,10 +313,73 @@ class MentionIndex:
         return items
 
     def get_all_items(self) -> list[MentionItem]:
-        """Return cached file + skill items (built on first call)."""
-        if self._cache is None:
+        """Return cached file + skill items, rebuilding when the tree changed.
+
+        The index rebuilds lazily on query: a cheap directory-mtime
+        signature of the project tree is compared on every call, so files
+        added, removed, or renamed after startup appear in @ completions
+        without a restart and without a background file watcher.
+        """
+        signature = self._tree_signature()
+        if self._cache is None or signature != self._signature:
+            # The .gitignore itself may have changed: reload before
+            # reindexing so new ignore rules apply immediately.
+            self._load_gitignore()
             self._cache = self.index_files() + self.index_skills()
+            self._signature = signature
         return list(self._cache)
+
+    def _tree_signature(self) -> tuple[tuple[tuple[str, float], ...], int] | None:
+        """Cheap staleness signature of the indexed directory tree.
+
+        Records ``(relative dir path, mtime)`` for every indexed
+        directory plus the project ``.gitignore`` file, and the total
+        file count as a backstop for filesystems with coarse mtime
+        granularity. A directory's mtime changes when entries are added,
+        removed, or renamed inside it, so any tree change that affects
+        the index alters this signature. File *content* edits are
+        intentionally ignored: the index only cares about paths. Returns
+        None when the project directory does not exist.
+        """
+        if not self._project_path.is_dir():
+            return None
+        dirs: list[tuple[str, float]] = []
+        file_count = 0
+        gitignore = self._project_path / ".gitignore"
+        if gitignore.is_file():
+            with contextlib.suppress(OSError):
+                dirs.append((".gitignore", gitignore.stat().st_mtime))
+        stack = [self._project_path]
+        while stack:
+            current = stack.pop()
+            try:
+                current_mtime = current.stat().st_mtime
+            except OSError:
+                continue
+            try:
+                rel = current.relative_to(self._project_path).as_posix()
+            except ValueError:
+                continue
+            dirs.append((rel, current_mtime))
+            try:
+                with os.scandir(current) as it:
+                    entries = list(it)
+            except OSError:
+                continue
+            for entry in entries:
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        if entry.name in SKIP_DIRS:
+                            continue
+                        if self._is_ignored(Path(entry.path)):
+                            continue
+                        stack.append(Path(entry.path))
+                    else:
+                        file_count += 1
+                except OSError:
+                    continue
+        dirs.sort()
+        return (tuple(dirs), file_count)
 
     def search(self, query: str) -> list[MentionItem]:
         """Return fuzzy-filtered mention items."""

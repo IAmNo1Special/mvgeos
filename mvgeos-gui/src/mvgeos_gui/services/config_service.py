@@ -153,6 +153,16 @@ class ConfigService:
         return settings
 
     def save_app_settings(self, settings: AppSettings) -> None:
+        """Persist ``settings`` as the complete application settings state.
+
+        The passed object is the full desired state (the settings modal
+        always builds it from the currently loaded settings), so fields at
+        their default value evict any stored override: resetting a setting
+        back to its default must persist, not silently keep the old value.
+        Keys unknown to :class:`AppSettings` already present in the file are
+        preserved untouched.
+        """
+        self.app_settings_path.parent.mkdir(parents=True, exist_ok=True)
         self.app_settings_path.parent.mkdir(parents=True, exist_ok=True)
         existing: dict[str, Any] = {}
         if self.app_settings_path.exists():
@@ -164,6 +174,18 @@ class ConfigService:
                 existing = {}
 
         merged = {**existing, **self._settings_to_dict(settings)}
+
+        # _settings_to_dict omits default-valued fields, so without this a
+        # value reset to its default would leave the stale file override in
+        # place (e.g. switching the theme back to dark never persisted).
+        defaults = AppSettings()
+        for field_name in AppSettings.__dataclass_fields__:
+            if (
+                field_name != _API_KEY_FIELD
+                and field_name in merged
+                and getattr(settings, field_name) == getattr(defaults, field_name)
+            ):
+                del merged[field_name]
 
         # The API key lives in the OS keyring when one is available; it
         # never touches disk unless the backend is missing.

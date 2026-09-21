@@ -9,6 +9,7 @@ import pytest
 from nicegui import ui
 from nicegui.testing import User
 
+from mvgeos_gui.components import settings_modal as settings_modal_module
 from mvgeos_gui.components.settings_modal import render_app_settings_modal
 from mvgeos_gui.services.config_service import AppSettings, ConfigService
 from mvgeos_gui.state import AppState
@@ -213,3 +214,138 @@ async def test_app_settings_modal_does_not_render_when_hidden(
 
     await user.open("/test_settings_hidden")
     await user.should_not_see("Application Settings")
+
+
+@pytest.mark.asyncio
+async def test_app_settings_modal_api_key_is_masked_with_toggle(
+    user: User, tmp_path: Path
+) -> None:
+    """C8: API key must be a masked password input with a show/hide toggle."""
+    state = _make_state(tmp_path, AppSettings(api_key="sk-secret"))
+
+    @ui.page("/test_settings_api_key_masked")
+    def page() -> None:
+        render_app_settings_modal(state)
+
+    await user.open("/test_settings_api_key_masked")
+    api_input = next(iter(user.find(marker="api_key_input").elements))
+    assert api_input._props.get("type") == "password"
+    toggle_icons = [
+        el
+        for el in user.find(ui.icon).elements
+        if el._props.get("name") in ("visibility", "visibility_off")
+    ]
+    assert toggle_icons, "expected a show/hide toggle on the API key input"
+
+
+@pytest.mark.asyncio
+async def test_app_settings_modal_save_reports_all_validation_errors(
+    user: User, tmp_path: Path
+) -> None:
+    """C9: mana -5 + temperature 999 must report BOTH errors in one pass."""
+    state = _make_state(tmp_path)
+
+    @ui.page("/test_settings_all_errors")
+    def page() -> None:
+        render_app_settings_modal(state)
+
+    await user.open("/test_settings_all_errors")
+    mana_input = next(iter(user.find(marker="mana_limit_input").elements))
+    mana_input.set_value("-5")
+    temp_input = next(iter(user.find(marker="temperature_input").elements))
+    temp_input.set_value("999")
+
+    user.find("Save").click()
+    assert state._show_app_settings is True
+    await user.should_see("Invalid mana limit")
+    await user.should_see("Invalid temperature")
+
+
+@pytest.mark.asyncio
+async def test_app_settings_modal_traps_focus(user: User, tmp_path: Path) -> None:
+    """C26: a Tab keydown trap must be registered on the settings dialog."""
+    state = _make_state(tmp_path)
+
+    @ui.page("/test_settings_focus_trap")
+    def page() -> None:
+        render_app_settings_modal(state)
+
+    await user.open("/test_settings_focus_trap")
+    dialog = next(iter(user.find(ui.dialog).elements))
+    trap_listeners = [
+        listener
+        for listener in dialog._event_listeners.values()
+        if listener.type == "keydown.tab"
+        and listener.js_handler
+        and "focus" in listener.js_handler
+    ]
+    assert trap_listeners, "expected a Tab focus trap on the settings dialog"
+
+
+@pytest.mark.asyncio
+async def test_saving_new_theme_applies_it_live(
+    user: User, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Saving a changed theme in Settings switches the live page theme."""
+    service = ConfigService(config_dir=tmp_path)
+    service.save_app_settings(AppSettings(theme="dark"))
+    state = AppState()
+    state._config_service = service
+    state._show_app_settings = True
+
+    applied: list[tuple[str, object]] = []
+    monkeypatch.setattr(
+        settings_modal_module,
+        "apply_theme",
+        lambda theme, dark_mode: applied.append((theme, dark_mode)),
+    )
+
+    @ui.page("/test_settings_theme_apply")
+    def page() -> None:
+        from mvgeos_gui.styles import inject_theme
+
+        state._dark_mode = inject_theme("dark")
+        render_app_settings_modal(state)
+
+    await user.open("/test_settings_theme_apply")
+    await user.should_see("Theme")
+
+    select = next(iter(user.find(marker="theme_select").elements))
+    select.set_value("light")
+    user.find("Save", kind=ui.button).click()
+
+    assert service.load_app_settings().theme == "light"
+    assert applied == [("light", state._dark_mode)]
+
+
+@pytest.mark.asyncio
+async def test_saving_unchanged_theme_does_not_reapply(
+    user: User, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Saving Settings without touching the theme leaves the page alone."""
+    service = ConfigService(config_dir=tmp_path)
+    service.save_app_settings(AppSettings(theme="dark"))
+    state = AppState()
+    state._config_service = service
+    state._show_app_settings = True
+
+    applied: list[tuple[str, object]] = []
+    monkeypatch.setattr(
+        settings_modal_module,
+        "apply_theme",
+        lambda theme, dark_mode: applied.append((theme, dark_mode)),
+    )
+
+    @ui.page("/test_settings_theme_noop")
+    def page() -> None:
+        from mvgeos_gui.styles import inject_theme
+
+        state._dark_mode = inject_theme("dark")
+        render_app_settings_modal(state)
+
+    await user.open("/test_settings_theme_noop")
+    await user.should_see("Theme")
+
+    user.find("Save", kind=ui.button).click()
+
+    assert applied == []

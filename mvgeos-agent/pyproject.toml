@@ -10,6 +10,8 @@ dependencies = [
     "mvgeos-tome",
     "mvgeos-runes",
     "pydantic>=2.0",
+    "python-dotenv>=1.2.2",
+    "httpx>=0.28.1",
 ]
 
 [tool.uv.sources]

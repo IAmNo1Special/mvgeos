@@ -13,7 +13,9 @@ def render_file_tree(state: AppState) -> None:
     """Render the workspace file tree."""
     root = state.project_path
     if not root.exists():
-        ui.label("Project folder not found").classes("text-xs text-[#ef4444] p-4")
+        ui.label("Project folder not found").classes(
+            "text-xs text-[var(--deletion-red)] p-4"
+        )
         return
 
     with ui.column().classes("w-full h-full overflow-y-auto p-2"):
@@ -28,7 +30,10 @@ def _render_tree(state: AppState, root: Path, path: Path, depth: int) -> None:
         return
 
     for entry in entries:
-        if entry.name.startswith(".") and entry.name not in (".git", ".agents"):
+        # All dotfiles stay hidden, including version-control internals
+        # (.git) and tooling dirs (.agents): the tree is for browsing the
+        # workspace, not repository plumbing.
+        if entry.name.startswith("."):
             continue
         if entry.is_dir():
             with ui.expansion(
@@ -39,13 +44,15 @@ def _render_tree(state: AppState, root: Path, path: Path, depth: int) -> None:
                 _render_tree(state, root, entry, depth + 1)
         else:
             row_cls = (
-                f"pl-{depth * 4 + 2} py-1 cursor-pointer hover:bg-[#0e0e12] "
+                f"pl-{depth * 4 + 2} py-1 cursor-pointer hover:bg-[var(--bg-card)] "
                 f"rounded text-xs w-full items-center gap-1"
             )
             with (
                 ui.row()
                 .classes(row_cls)
-                .on("click", lambda p=entry: state.open_in_editor())
+                .on("click", lambda p=entry: state.open_file_preview(p))
             ):
-                ui.icon("insert_drive_file", size="12px").classes("text-[#9c94b3]")
-                ui.label(entry.name).classes("text-[#eceaf4] truncate")
+                ui.icon("insert_drive_file", size="12px").classes(
+                    "text-[var(--text-secondary)]"
+                )
+                ui.label(entry.name).classes("text-[var(--text-primary)] truncate")
