@@ -153,3 +153,45 @@ async def test_workspace_settings_modal_cancel_action(
     )
     dialog._handle_event({"listener_id": listener_id, "args": None})
     assert state._show_workspace_settings is False
+
+
+@pytest.mark.asyncio
+async def test_workspace_settings_modal_rejects_missing_directory(
+    user: User, tmp_path: Path
+) -> None:
+    """C24: saving with a nonexistent project directory must be rejected."""
+    project_dir = tmp_path / "does-not-exist"
+    state = _make_state(tmp_path, project_dir)
+
+    @ui.page("/test_workspace_missing_dir")
+    def page() -> None:
+        render_workspace_settings_modal(state)
+
+    await user.open("/test_workspace_missing_dir")
+    user.find("Save").click()
+    assert state._show_workspace_settings is True
+    await user.should_see("does not exist")
+    assert not (project_dir / ".agents").exists()
+
+
+@pytest.mark.asyncio
+async def test_workspace_settings_modal_traps_focus(user: User, tmp_path: Path) -> None:
+    """C26: a Tab keydown trap must be registered on the workspace dialog."""
+    project_dir = tmp_path / "my-project"
+    project_dir.mkdir()
+    state = _make_state(tmp_path, project_dir)
+
+    @ui.page("/test_workspace_focus_trap")
+    def page() -> None:
+        render_workspace_settings_modal(state)
+
+    await user.open("/test_workspace_focus_trap")
+    dialog = next(iter(user.find(ui.dialog).elements))
+    trap_listeners = [
+        listener
+        for listener in dialog._event_listeners.values()
+        if listener.type == "keydown.tab"
+        and listener.js_handler
+        and "focus" in listener.js_handler
+    ]
+    assert trap_listeners, "expected a Tab focus trap on the workspace dialog"

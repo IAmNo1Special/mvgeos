@@ -81,13 +81,13 @@ def render_login_screen(state: AppState) -> None:
             state.hide_login()
             state.notify()
 
+        password_input.on("keydown.enter", lambda _e: _do_login())
+
         ui.button(
             "Sign In",
             on_click=_do_login,
         ).props("unelevated no-caps").classes(
             "w-full mvge-glow-btn text-white font-medium py-2.5 rounded-lg"
         )
-
-        ui.label("Default: admin / admin").classes("text-xs text-center text-[#6e6584]")
 
     dialog.open()
