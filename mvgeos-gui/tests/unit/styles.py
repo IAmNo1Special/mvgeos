@@ -193,3 +193,26 @@ def test_mobile_drawer_off_canvas() -> None:
     btn = _rule_block(VOID_THEME_CSS, ".mobile-menu-btn")
     assert "display: none" in btn
     assert "position: fixed" in btn
+
+
+def test_settings_dialog_viewport_constrained() -> None:
+    """Settings card is capped at the viewport; form rows stack (Major #5)."""
+    card = _rule_block(VOID_THEME_CSS, ".settings-dialog-card")
+    assert "max-width: calc(100vw - 2rem)" in card
+    assert "min-width: 0" in card
+    assert "@media (max-width: 560px)" in VOID_THEME_CSS
+    assert "flex: 1 1 100%" in VOID_THEME_CSS
+
+
+def test_model_select_ellipsizes() -> None:
+    """Long model names ellipsize instead of clipping mid-word (Minor C1)."""
+    rules = _rule_block(VOID_THEME_CSS, ".model-select .q-field__input")
+    assert "text-overflow: ellipsis" in rules
+    assert "white-space: nowrap" in rules
+    assert "min-width: 0" in rules
+
+
+def test_modal_backdrop_dims_page() -> None:
+    """Modal backdrop is stronger than Quasar's 0.4 default (Minor C16)."""
+    rules = _rule_block(VOID_THEME_CSS, ".q-dialog__backdrop")
+    assert "rgba(0, 0, 0, 0.6)" in rules

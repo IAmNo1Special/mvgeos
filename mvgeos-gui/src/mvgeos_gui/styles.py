@@ -677,6 +677,13 @@ html, body {
     transform: rotate(180deg) !important;
 }
 
+/* ── Modal backdrop: read as a modal (Minor C16) ────────────────
+   Quasar's default 0.4 scrim barely separates the dialog from the
+   page; 0.6 gives the void theme's depth without hiding context. */
+.q-dialog__backdrop {
+    background: rgba(0, 0, 0, 0.6) !important;
+}
+
 /* ── Mobile navigation drawer (Major #4) ────────────────────────
    Breakpoint 768px: at that width the 260px sidebar still leaves
    >500px of content; below it the crush begins (at 390px the sidebar
@@ -743,6 +750,39 @@ html, body {
     .sidebar-container .collapse-btn-icon {
         display: none !important;
     }
+}
+
+/* ── Settings dialog: viewport-constrained (Major #5) ───────────
+   The two-column form rows overflowed narrow viewports because the
+   searchable model select's min-content width (205px) exceeds a
+   ~147px column and flex items refuse to shrink below min-content.
+   Below 560px the columns stack full-width; every column gets
+   min-width: 0 so long controls can shrink; the card itself is
+   capped at the viewport. The body already scrolls internally
+   (max-h-[70vh] overflow-auto). */
+.settings-dialog-card {
+    max-width: calc(100vw - 2rem);
+    min-width: 0;
+}
+@media (max-width: 560px) {
+    .settings-form-row {
+        flex-wrap: wrap;
+    }
+    .settings-form-row > * {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+}
+
+/* ── Settings model picker: ellipsis, not mid-word clip (C1) ──── */
+.model-select .q-field__native {
+    min-width: 0;
+}
+.model-select .q-field__input {
+    min-width: 0;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
 }
 
 """

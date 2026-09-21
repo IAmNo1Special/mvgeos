@@ -69,7 +69,8 @@ def render_app_settings_modal(state: AppState) -> None:
     with (
         ui.dialog().classes("w-full max-w-2xl").on("close", _on_close) as dialog,
         ui.card().classes(
-            "w-full bg-[#08080a] border border-[#292335] rounded-xl p-0 overflow-hidden"
+            "w-full bg-[#08080a] border border-[#292335] rounded-xl p-0 "
+            "overflow-hidden settings-dialog-card"
         ),
     ):
         with ui.row().classes(
@@ -87,8 +88,8 @@ def render_app_settings_modal(state: AppState) -> None:
             ).props("flat dense round text-color=grey-5 size=sm")
 
         with ui.column().classes("w-full p-4 gap-4 max-h-[70vh] overflow-auto"):
-            with ui.row().classes("w-full gap-4"):  # noqa: SIM117
-                with ui.column().classes("flex-1 gap-1"):
+            with ui.row().classes("w-full gap-4 settings-form-row"):  # noqa: SIM117
+                with ui.column().classes("flex-1 gap-1 min-w-0"):
                     ui.label("API Key").classes("text-xs text-[#9c94b3]")
                     ui.input(
                         value=str(edited["api_key"]),
@@ -97,7 +98,7 @@ def render_app_settings_modal(state: AppState) -> None:
                         "api_key_input"
                     )
 
-                with ui.column().classes("flex-1 gap-1"):
+                with ui.column().classes("flex-1 gap-1 min-w-0"):
                     ui.label("Default Model").classes("text-xs text-[#9c94b3]")
                     ui.select(
                         options=get_model_options(),
@@ -106,12 +107,12 @@ def render_app_settings_modal(state: AppState) -> None:
                             "default_model", e.value
                         ),
                         with_input=True,
-                    ).props("dense outlined dark").classes("w-full").mark(
+                    ).props("dense outlined dark").classes("w-full model-select").mark(
                         "model_select"
                     )
 
-            with ui.row().classes("w-full gap-4"):  # noqa: SIM117
-                with ui.column().classes("flex-1 gap-1"):
+            with ui.row().classes("w-full gap-4 settings-form-row"):  # noqa: SIM117
+                with ui.column().classes("flex-1 gap-1 min-w-0"):
                     ui.label("Mana Limit (max_tokens)").classes(
                         "text-xs text-[#9c94b3]"
                     )
@@ -122,7 +123,7 @@ def render_app_settings_modal(state: AppState) -> None:
                         "mana_limit_input"
                     )
 
-                with ui.column().classes("flex-1 gap-1"):
+                with ui.column().classes("flex-1 gap-1 min-w-0"):
                     ui.label("Temperature").classes("text-xs text-[#9c94b3]")
                     ui.input(
                         value=str(edited["temperature"]),
@@ -131,8 +132,8 @@ def render_app_settings_modal(state: AppState) -> None:
                         "w-full"
                     ).mark("temperature_input")
 
-            with ui.row().classes("w-full gap-4"):  # noqa: SIM117
-                with ui.column().classes("flex-1 gap-1"):
+            with ui.row().classes("w-full gap-4 settings-form-row"):  # noqa: SIM117
+                with ui.column().classes("flex-1 gap-1 min-w-0"):
                     ui.label("Theme").classes("text-xs text-[#9c94b3]")
                     ui.select(
                         AVAILABLE_THEMES,
