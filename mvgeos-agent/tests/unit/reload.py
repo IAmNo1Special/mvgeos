@@ -44,6 +44,17 @@ def _make_registry(realm: Realm | None = None) -> RealmRegistry:
     return registry
 
 
+def _isolate_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the fake user home at tmp so all config stays hermetic.
+
+    POSIX resolves ``~`` from ``HOME``; Windows' ``ntpath.expanduser``
+    ignores ``HOME`` and reads ``USERPROFILE`` instead, so both must be
+    redirected or the agent resolves the real user profile on Windows.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+
 def _make_agent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -51,7 +62,7 @@ def _make_agent(
     **kwargs: Any,
 ) -> Mvge:
     """Build an agent rooted at a fake HOME so all config stays in tmp."""
-    monkeypatch.setenv("HOME", str(tmp_path))
+    _isolate_home(tmp_path, monkeypatch)
     caller_dir = tmp_path / "caller"
     caller_dir.mkdir(parents=True, exist_ok=True)
     config_dir = _config_dir(tmp_path)
@@ -223,7 +234,7 @@ async def test_reload_reuses_explicit_environment_inputs(
     )
     # Isolate HOME before resolving, mirroring _make_agent, so the
     # environment is built against the sandbox rather than the real user.
-    monkeypatch.setenv("HOME", str(tmp_path))
+    _isolate_home(tmp_path, monkeypatch)
     env = MvgeEnvironment.resolve(
         agent_name="reload-test",
         project_dir=project_dir,
@@ -610,7 +621,7 @@ async def test_reload_reuses_custom_prompt_input(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Reload replays a caller-supplied custom prompt, not the default."""
-    monkeypatch.setenv("HOME", str(tmp_path))
+    _isolate_home(tmp_path, monkeypatch)
     env = MvgeEnvironment.resolve(
         agent_name="reload-test",
         custom_prompt="CUSTOM PERSONA",
@@ -795,7 +806,7 @@ async def test_reload_reuses_explicit_config_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Reload replays an explicitly supplied config dir, not ~/.agents."""
-    monkeypatch.setenv("HOME", str(tmp_path))
+    _isolate_home(tmp_path, monkeypatch)
     cfg = tmp_path / "custom-cfg"
     cfg.mkdir()
     (cfg / "SYSTEM.md").write_text("# CFG PERSONA\nYou are Cfg.\n", encoding="utf-8")
@@ -821,7 +832,7 @@ async def test_reload_reuses_explicit_global_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Reload replays an explicitly supplied global dir for appends."""
-    monkeypatch.setenv("HOME", str(tmp_path))
+    _isolate_home(tmp_path, monkeypatch)
     gdir = tmp_path / "custom-global"
     gdir.mkdir()
     (gdir / "APPEND_SYSTEM.md").write_text("GLOBAL APPEND MARKER", encoding="utf-8")
@@ -905,7 +916,7 @@ async def test_lifecycle_watches_reload_trigger_set(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """File events in rune, spell, and config dirs all fire the trigger."""
-    monkeypatch.setenv("HOME", str(tmp_path))
+    _isolate_home(tmp_path, monkeypatch)
     runes_dir = tmp_path / "runes"
     runes_dir.mkdir(parents=True, exist_ok=True)
     spells_dir = tmp_path / "caller" / "spells"
