@@ -774,7 +774,9 @@ CURVY_COMPOSER_CSS = """
     height: 20px;
     position: absolute;
     background: linear-gradient(90deg, transparent, #010201);
-    top: 16px;
+    /* Tracks the send button: text fading out under it, wherever it sits. */
+    top: 50%;
+    transform: translateY(-50%);
     right: 62px;
     z-index: 1;
 }
@@ -935,7 +937,9 @@ CURVY_COMPOSER_CSS = """
     width: 40px;
     position: absolute;
     overflow: hidden;
-    top: 5px;
+    /* Glued to the send button: both ride the input zone's vertical center. */
+    top: 50%;
+    transform: translateY(-50%);
     right: 5px;
     border-radius: 10px;
     z-index: 1;
@@ -970,7 +974,10 @@ CURVY_COMPOSER_CSS = """
 }
 .mvge-send-btn {
     position: absolute !important;
-    top: 6px !important;
+    /* Center-right of the input zone: tracks the zone's height as the
+       textarea autogrows, instead of riding the top edge. */
+    top: 50% !important;
+    transform: translateY(-50%) !important;
     right: 6px !important;
     width: 38px !important;
     height: 40px !important;
@@ -1026,17 +1033,34 @@ CURVY_COMPOSER_CSS = """
 }
 /* Composer attach control: collapse Quasar's uploader chrome (gray header
    with "0.0B / 0.00%" subtitle + file list) into a single "+" picker
-   button. Picked files auto-upload and surface as chips above the input. */
+   button. Picked files auto-upload and surface as chips above the input.
+   NB: the picker button lives INSIDE .q-uploader__header-content, so only
+   the title/subtitle text may be hidden -- hiding header-content wholesale
+   makes the button invisible. */
 .mvge-upload-btn.q-uploader {
     background: transparent !important;
     box-shadow: none !important;
     width: auto !important;
 }
+/* Attach control stays on the model picker's vertical axis, independent
+   of the toolbar row's own alignment classes. */
+.mvge-upload-btn {
+    align-self: center;
+}
 .mvge-upload-btn .q-uploader__header {
     background: transparent !important;
     padding: 0 !important;
 }
-.mvge-upload-btn .q-uploader__header-content {
+/* Picker icon matches the toolbar's muted violet tone. The header must
+   carry no Quasar bg-* class (see composer.py): bg-* utilities beat theme
+   overrides, so the color prop was dropped instead of overridden. */
+.mvge-upload-btn .q-btn {
+    color: #9c94b3;
+}
+.mvge-upload-btn .q-uploader__title {
+    display: none !important;
+}
+.mvge-upload-btn .q-uploader__subtitle {
     display: none !important;
 }
 .mvge-upload-btn .q-uploader__list {

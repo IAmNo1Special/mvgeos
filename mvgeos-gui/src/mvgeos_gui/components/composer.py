@@ -347,9 +347,9 @@ def render_composer(state: AppState) -> None:
                         on_upload=_handle_upload,
                         label="",
                         auto_upload=True,
-                    ).props("flat dense round color=grey-5").classes(
-                        "mvge-upload-btn"
-                    ).mark("composer_upload_btn")
+                    ).props("flat dense round").classes("mvge-upload-btn").mark(
+                        "composer_upload_btn"
+                    )
 
                     @ui.refreshable
                     def cascading_selector_view() -> None:

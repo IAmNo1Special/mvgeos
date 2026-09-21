@@ -489,3 +489,23 @@ async def test_composer_send_attachment_only_goes_through(user: User) -> None:
     assert isinstance(sent, list)
     assert sent[0]["type"] == "file"
     assert sent[0]["file"]["filename"] == "hello.py"
+
+
+@pytest.mark.asyncio
+async def test_composer_upload_button_has_no_gray_header(user: User) -> None:
+    """Verify the attach button renders without Quasar's gray header block.
+
+    Regression: the uploader carried ``color=grey-5``, which paints
+    ``bg-grey-5`` on the header. Quasar's ``bg-*`` utilities beat theme
+    overrides (verified in a rendered page), so the attach control showed
+    as a gray square instead of a clean icon button in the toolbar.
+    """
+    state = AppState()
+
+    @ui.page("/test_composer_upload_no_gray")
+    def page() -> None:
+        render_chat_panel(state)
+
+    await user.open("/test_composer_upload_no_gray")
+    (upload,) = user.find(marker="composer_upload_btn").elements
+    assert "color" not in upload.props

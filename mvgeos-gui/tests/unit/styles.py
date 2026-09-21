@@ -84,14 +84,93 @@ def test_composer_upload_chrome_collapsed() -> None:
     """Attach control collapses to an icon button, not the uploader chrome.
 
     Regression: the composer showed Quasar's gray uploader header
-    ("0.0B / 0.00%") and file list in the toolbar. The theme hides both
-    so only the "+" picker button remains.
+    ("0.0B / 0.00%") and file list in the toolbar. The theme hides the
+    title/subtitle text and the list so only the "+" picker button remains.
+    The picker button nests inside ``.q-uploader__header-content``, so that
+    element itself must stay visible.
     """
     list_rules = _rule_block(CURVY_COMPOSER_CSS, ".mvge-upload-btn .q-uploader__list")
     assert "display" in list_rules
     assert "none" in list_rules
-    header_rules = _rule_block(
-        CURVY_COMPOSER_CSS, ".mvge-upload-btn .q-uploader__header-content"
+    title_rules = _rule_block(CURVY_COMPOSER_CSS, ".mvge-upload-btn .q-uploader__title")
+    assert "display" in title_rules
+    assert "none" in title_rules
+    subtitle_rules = _rule_block(
+        CURVY_COMPOSER_CSS, ".mvge-upload-btn .q-uploader__subtitle"
     )
-    assert "display" in header_rules
-    assert "none" in header_rules
+    assert "display" in subtitle_rules
+    assert "none" in subtitle_rules
+    assert ".mvge-upload-btn .q-uploader__header-content" not in CURVY_COMPOSER_CSS
+
+
+def test_composer_upload_picker_button_stays_visible() -> None:
+    """The attach picker button must not be hidden along with the chrome.
+
+    Regression: the theme hid ``.q-uploader__header-content`` wholesale, but
+    Quasar nests the file-picker button inside that element, so the attach
+    control rendered as an invisible zero-size box in the toolbar. Only the
+    title/subtitle text and the file list may be hidden.
+    """
+    assert ".mvge-upload-btn .q-uploader__header-content" not in CURVY_COMPOSER_CSS
+    title_rules = _rule_block(CURVY_COMPOSER_CSS, ".mvge-upload-btn .q-uploader__title")
+    assert "none" in title_rules
+    subtitle_rules = _rule_block(
+        CURVY_COMPOSER_CSS, ".mvge-upload-btn .q-uploader__subtitle"
+    )
+    assert "none" in subtitle_rules
+    list_rules = _rule_block(CURVY_COMPOSER_CSS, ".mvge-upload-btn .q-uploader__list")
+    assert "none" in list_rules
+
+
+def test_composer_upload_picker_icon_matches_toolbar() -> None:
+    """Attach picker icon uses the toolbar's muted violet tone."""
+    btn_rules = _rule_block(CURVY_COMPOSER_CSS, ".mvge-upload-btn .q-btn")
+    assert "#9c94b3" in btn_rules
+
+
+def test_send_button_vertically_centered_in_input_zone() -> None:
+    """Send/stop button sits center-right of the input zone, not top-right.
+
+    Regression: the button was pinned ``top: 6px`` in the input zone, so it
+    rode high while the textarea autogrew. It must be vertically centered so
+    it tracks the zone's height.
+    """
+    btn_rules = _rule_block(CURVY_COMPOSER_CSS, ".mvge-send-btn")
+    assert "top: 50%" in btn_rules
+    assert "translateY(-50%)" in btn_rules
+    assert "top: 6px" not in btn_rules
+
+
+def test_send_border_tracks_send_button() -> None:
+    """Decorative send-border glow stays glued to the send button.
+
+    Regression guard: ``.mvge-send-border`` is the rotating-border wrapper
+    behind ``.mvge-send-btn``; parked at ``top: 5px`` it would detach from
+    the centered button.
+    """
+    border_rules = _rule_block(CURVY_COMPOSER_CSS, ".mvge-send-border")
+    assert "top: 50%" in border_rules
+    assert "translateY(-50%)" in border_rules
+
+
+def test_send_input_mask_tracks_send_button() -> None:
+    """Text fade mask follows the send button to center-right.
+
+    Regression guard: ``.mvge-input-mask`` fades prompt text sliding under
+    the send button; parked at ``top: 16px`` it would leave a stray fade bar
+    at the top and let text bleed behind the centered button.
+    """
+    mask_rules = _rule_block(CURVY_COMPOSER_CSS, "\n.mvge-input-mask")
+    assert "top: 50%" in mask_rules
+    assert "translateY(-50%)" in mask_rules
+
+
+def test_composer_upload_button_centered_with_model_picker() -> None:
+    """Attach control is vertically centered with the model picker.
+
+    The toolbar row already centers its children via ``items-center``; this
+    pins the alignment on the uploader itself so the "+" stays on the
+    picker's axis even if the toolbar row classes change later.
+    """
+    btn_rules = _rule_block(CURVY_COMPOSER_CSS, ".mvge-upload-btn")
+    assert "align-self: center" in btn_rules
