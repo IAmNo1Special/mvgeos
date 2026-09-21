@@ -165,3 +165,22 @@ async def test_sidebar_sign_in_button_rendered_when_no_user(user: User) -> None:
     await user.open("/test_sidebar_signin_collapsed")
     sign_in_btn = user.find(marker="sign_in_btn")
     assert sign_in_btn is not None
+
+
+def test_mobile_drawer_bootstrap_wiring() -> None:
+    """Drawer bootstrap creates hamburger + scrim and toggles drawer (Major #4).
+
+    The script is injected via ui.add_body_html and must be idempotent
+    across sidebar re-renders: it guards on window.__mvgeDrawerWired,
+    creates the hamburger/scrim in <body> (outside the transformed
+    sidebar container so position: fixed keeps working), and closes on
+    scrim click, in-drawer tap, or Escape.
+    """
+    from mvgeos_gui.components.sidebar import MOBILE_DRAWER_BOOTSTRAP
+
+    assert "__mvgeDrawerWired" in MOBILE_DRAWER_BOOTSTRAP
+    assert "mobile-menu-btn" in MOBILE_DRAWER_BOOTSTRAP
+    assert "sidebar-scrim" in MOBILE_DRAWER_BOOTSTRAP
+    assert "mobile-open" in MOBILE_DRAWER_BOOTSTRAP
+    assert "Escape" in MOBILE_DRAWER_BOOTSTRAP
+    assert "document.body.appendChild" in MOBILE_DRAWER_BOOTSTRAP

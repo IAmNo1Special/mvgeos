@@ -16,8 +16,8 @@ def render_skills_panel(state: AppState) -> None:
                 "Install Skill",
                 icon="add",
                 on_click=lambda: _render_install_dialog(state, skills_view.refresh),
-            ).props("unelevated dense color=purple-7").classes(
-                "text-white text-sm font-medium"
+            ).props("unelevated dense no-caps").classes(
+                "mvge-glow-btn text-white text-sm font-medium"
             ).mark("skill_install_btn")
 
         @ui.refreshable
@@ -30,7 +30,7 @@ def render_skills_panel(state: AppState) -> None:
             ui.button(
                 "Back to Chat",
                 on_click=lambda: state.set_current_view("chat"),
-            ).props("unelevated").classes("mvge-glow-btn text-white")
+            ).props("flat no-caps text-color=grey-5")
 
 
 def _render_skills_lists(state: AppState, refresh: object) -> None:
@@ -104,8 +104,8 @@ def _render_skills_lists(state: AppState, refresh: object) -> None:
                     ui.button(
                         "Add",
                         on_click=lambda m=manifest: _add_skill(state, m, refresh),
-                    ).props("unelevated dense size=sm color=purple-7").classes(
-                        "text-white text-xs font-medium"
+                    ).props("unelevated dense no-caps size=sm").classes(
+                        "mvge-glow-btn text-white text-xs font-medium"
                     ).mark(f"skill_add_{manifest.name}")
                 ui.label(manifest.description or "No description").classes(
                     "text-xs text-[#9c94b3] mt-1"
@@ -201,7 +201,7 @@ def _render_install_dialog(state: AppState, refresh: object) -> None:
                     )
 
             ui.button("Install", on_click=_install).props(
-                "unelevated dense color=purple-7"
-            ).classes("text-white text-sm font-medium")
+                "unelevated dense no-caps"
+            ).classes("mvge-glow-btn text-white text-sm font-medium")
 
     dialog.open()

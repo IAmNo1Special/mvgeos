@@ -212,9 +212,21 @@ html, body {
         opacity var(--glow-btn-speed),
         filter var(--glow-btn-speed);
 }
+/* Hover must be unmistakable (was: border retint + text glow only).
+   The lift comes from brightness(1.3) plus a violet outer glow and a
+   brighter border; no background-color change here because Quasar's
+   bg-* utility (!important) owns the button background. */
 .mvge-glow-btn:hover {
     border: solid 1px hsla(var(--highlight-color-hue), 100%, 80%,
-        40%) !important;
+        55%) !important;
+    box-shadow:
+        0 0 22px rgba(123, 108, 246, 0.5),
+        inset 0px 1px 1px rgba(255, 255, 255, 0.25),
+        inset 0px 2px 2px rgba(255, 255, 255, 0.15),
+        inset 0px 4px 4px rgba(255, 255, 255, 0.1),
+        inset 0px 8px 8px rgba(255, 255, 255, 0.05),
+        inset 0px 16px 16px rgba(255, 255, 255, 0.05) !important;
+    filter: brightness(1.3);
     text-shadow: 0 0 8px rgba(157, 143, 255, 0.8);
 }
 .mvge-glow-btn:hover::before {
@@ -675,6 +687,131 @@ html, body {
 }
 .collapse-btn-icon.collapsed {
     transform: rotate(180deg) !important;
+}
+
+/* ── One button voice (Nit C3) ──────────────────────────────────
+   Labels are written in Title Case in source; Quasar's default
+   uppercase transform is what made Sessions/Skills/Marketplace shout.
+   Primary page-level CTAs use .mvge-glow-btn; secondary or dismissive
+   actions (Back to Chat, Cancel) stay flat and quiet. */
+.q-btn {
+    text-transform: none !important;
+}
+
+/* ── Modal backdrop: read as a modal (Minor C16) ────────────────
+   Quasar's default 0.4 scrim barely separates the dialog from the
+   page; 0.6 gives the void theme's depth without hiding context. */
+.q-dialog__backdrop {
+    background: rgba(0, 0, 0, 0.6) !important;
+}
+
+/* ── Mobile navigation drawer (Major #4) ────────────────────────
+   Breakpoint 768px: at that width the 260px sidebar still leaves
+   >500px of content; below it the crush begins (at 390px the sidebar
+   eats two thirds of the viewport). A drawer was chosen over forcing
+   the 56px icon rail: the app already speaks overlay drawers
+   (artifact drawer, command palette), and the drawer gives content
+   the full viewport instead of a 334px remainder. Below the
+   breakpoint the sidebar leaves the flex flow (position: fixed) and
+   slides off-canvas until .mobile-open; the hamburger opens it and
+   the scrim, Escape, or any tap inside the drawer closes it. */
+.mobile-menu-btn {
+    display: none;
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 1298;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    align-items: center;
+    justify-content: center;
+    background-color: #0e0e12;
+    border: 1px solid var(--border-subtle);
+    color: var(--accent-primary);
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+.mobile-menu-btn .material-icons {
+    font-size: 22px;
+}
+.sidebar-scrim {
+    display: none;
+}
+@media (max-width: 768px) {
+    .mobile-menu-btn {
+        display: inline-flex;
+    }
+    .sidebar-container {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        bottom: 0 !important;
+        height: 100vh !important;
+        max-height: 100vh !important;
+        z-index: 1300 !important;
+        max-width: 85vw;
+        transform: translateX(-105%);
+        transition: transform 0.25s ease-in-out !important;
+        box-shadow: 8px 0 32px rgba(0, 0, 0, 0.5);
+    }
+    .sidebar-container.mobile-open {
+        transform: translateX(0) !important;
+    }
+    .sidebar-scrim.mobile-open {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 1299;
+        background: rgba(0, 0, 0, 0.55);
+        cursor: pointer;
+    }
+    /* The desktop collapse chevron has no meaning inside the drawer;
+       the drawer is dismissed via scrim / Escape / nav tap. */
+    .sidebar-container .collapse-btn-icon {
+        display: none !important;
+    }
+}
+
+/* ── Settings dialog: viewport-constrained (Major #5) ───────────
+   The two-column form rows overflowed narrow viewports because the
+   searchable model select's min-content width (205px) exceeds a
+   ~147px column and flex items refuse to shrink below min-content.
+   Below 560px the columns stack full-width; every column gets
+   min-width: 0 so long controls can shrink; the card itself is
+   capped at the viewport. The body already scrolls internally
+   (max-h-[70vh] overflow-auto). */
+.settings-dialog-card {
+    max-width: calc(100vw - 2rem);
+    min-width: 0;
+}
+@media (max-width: 560px) {
+    .settings-form-row {
+        flex-wrap: wrap;
+    }
+    .settings-form-row > * {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+}
+
+/* ── Settings model picker: ellipsis, not mid-word clip (C1) ──── */
+.model-select .q-field__native {
+    min-width: 0;
+}
+.model-select .q-field__input {
+    min-width: 0;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+/* ── Home stat cards: equal-height row (Minor C2) ────────────────
+   NiceGUI's .nicegui-row sets align-items: flex-start, so a card
+   whose value wraps to two lines stands taller than its siblings.
+   Stretch restores the equal-height row. */
+.home-stats-row {
+    align-items: stretch !important;
 }
 """
 

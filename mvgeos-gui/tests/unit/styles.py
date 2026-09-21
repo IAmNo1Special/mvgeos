@@ -174,3 +174,68 @@ def test_composer_upload_button_centered_with_model_picker() -> None:
     """
     btn_rules = _rule_block(CURVY_COMPOSER_CSS, ".mvge-upload-btn")
     assert "align-self: center" in btn_rules
+
+
+def test_mobile_drawer_off_canvas() -> None:
+    """Below 768px the sidebar becomes an off-canvas drawer (Major #4).
+
+    The sidebar leaves the flex flow (fixed), slides out of view with
+    translateX(-105%), and returns with .mobile-open. The hamburger and
+    scrim exist but stay hidden on desktop.
+    """
+    assert "@media (max-width: 768px)" in VOID_THEME_CSS
+    assert "translateX(-105%)" in VOID_THEME_CSS
+    opened = _rule_block(VOID_THEME_CSS, ".sidebar-container.mobile-open")
+    assert "translateX(0) !important" in opened
+    scrim = _rule_block(VOID_THEME_CSS, ".sidebar-scrim.mobile-open")
+    assert "display: block" in scrim
+    assert "position: fixed" in scrim
+    btn = _rule_block(VOID_THEME_CSS, ".mobile-menu-btn")
+    assert "display: none" in btn
+    assert "position: fixed" in btn
+
+
+def test_settings_dialog_viewport_constrained() -> None:
+    """Settings card is capped at the viewport; form rows stack (Major #5)."""
+    card = _rule_block(VOID_THEME_CSS, ".settings-dialog-card")
+    assert "max-width: calc(100vw - 2rem)" in card
+    assert "min-width: 0" in card
+    assert "@media (max-width: 560px)" in VOID_THEME_CSS
+    assert "flex: 1 1 100%" in VOID_THEME_CSS
+
+
+def test_model_select_ellipsizes() -> None:
+    """Long model names ellipsize instead of clipping mid-word (Minor C1)."""
+    rules = _rule_block(VOID_THEME_CSS, ".model-select .q-field__input")
+    assert "text-overflow: ellipsis" in rules
+    assert "white-space: nowrap" in rules
+    assert "min-width: 0" in rules
+
+
+def test_home_stats_row_stretches() -> None:
+    """Stat cards share one row height (Minor C2).
+
+    NiceGUI's .nicegui-row sets align-items: flex-start, so a card whose
+    value wraps stands taller than its siblings without this override.
+    """
+    rules = _rule_block(VOID_THEME_CSS, ".home-stats-row")
+    assert "align-items: stretch !important" in rules
+
+
+def test_modal_backdrop_dims_page() -> None:
+    """Modal backdrop is stronger than Quasar's 0.4 default (Minor C16)."""
+    rules = _rule_block(VOID_THEME_CSS, ".q-dialog__backdrop")
+    assert "rgba(0, 0, 0, 0.6)" in rules
+
+
+def test_button_labels_keep_title_case() -> None:
+    """One button voice: Quasar's uppercase transform is off (Nit C3)."""
+    rules = _rule_block(VOID_THEME_CSS, ".q-btn")
+    assert "text-transform: none !important" in rules
+
+
+def test_glow_button_hover_clearly_visible() -> None:
+    """Primary CTA hover is unmistakable: glow, brightness, border (Nit C17)."""
+    rules = _rule_block(VOID_THEME_CSS, ".mvge-glow-btn:hover")
+    assert "filter: brightness(1.3)" in rules
+    assert "0 0 22px rgba(123, 108, 246, 0.5)" in rules
