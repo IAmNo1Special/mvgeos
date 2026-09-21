@@ -856,3 +856,47 @@ async def test_packages_panel_empty_state_explains_how_to_get_packages(
     await user.should_see("No packages found")
     await user.should_see("Install Rune from URL/Git")
     await user.should_see("marketplace name, git URL, or local path")
+
+
+@pytest.mark.asyncio
+async def test_packages_panel_install_dialog_validates_empty_source(
+    user: User,
+) -> None:
+    """Empty rune install submission must show inline validation, not no-op."""
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+
+    @ui.page("/test_packages_install_validation")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_packages_install_validation")
+    user.find(marker="package_open_install_dialog_btn").click()
+    await user.should_see("Install Extension Rune")
+    user.find(marker="package_dialog_install_btn").click()
+    await user.should_see("Enter a git URL, local path, or marketplace rune name")
+
+
+@pytest.mark.asyncio
+async def test_packages_panel_mvge_install_dialog_validates_empty_source(
+    user: User,
+) -> None:
+    """Empty mvge install submission must show inline validation, not no-op."""
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+
+    @ui.page("/test_packages_mvge_install_validation")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_packages_mvge_install_validation")
+    user.find(marker="mvge_open_install_dialog_btn").click()
+    await user.should_see("Install Mvge Agent")
+    user.find(marker="mvge_dialog_install_btn").click()
+    await user.should_see("Enter a git URL, local path, or marketplace mvge name")

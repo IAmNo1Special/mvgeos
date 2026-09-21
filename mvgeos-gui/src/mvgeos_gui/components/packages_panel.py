@@ -264,6 +264,12 @@ def render_packages_panel(state: AppState) -> None:
             .classes("w-full text-xs")
             .mark("package_dialog_source_input")
         )
+        source_error = (
+            ui.label("Enter a git URL, local path, or marketplace rune name.")
+            .classes("text-[11px] text-[#ef4444] -mt-2")
+            .mark("package_dialog_source_error")
+        )
+        source_error.visible = False
 
         with ui.row().classes("w-full justify-end gap-2 mt-2"):
             ui.button("Cancel", on_click=install_dialog.close).props(
@@ -273,8 +279,10 @@ def render_packages_panel(state: AppState) -> None:
             async def _do_install() -> None:
                 source = (source_input.value or "").strip()
                 if not source:
+                    source_error.visible = True
                     ui.notify("Please enter a rune source", type="warning")
                     return
+                source_error.visible = False
                 ui.notify(f"Installing {source}...", type="info")
                 success = await state.install_rune_async(source)
                 if success:
@@ -306,6 +314,12 @@ def render_packages_panel(state: AppState) -> None:
             .classes("w-full text-xs")
             .mark("mvge_dialog_source_input")
         )
+        mvge_source_error = (
+            ui.label("Enter a git URL, local path, or marketplace mvge name.")
+            .classes("text-[11px] text-[#ef4444] -mt-2")
+            .mark("mvge_dialog_source_error")
+        )
+        mvge_source_error.visible = False
 
         with ui.row().classes("w-full justify-end gap-2 mt-2"):
             ui.button("Cancel", on_click=mvge_install_dialog.close).props(
@@ -315,8 +329,10 @@ def render_packages_panel(state: AppState) -> None:
             async def _do_mvge_install() -> None:
                 source = (mvge_source_input.value or "").strip()
                 if not source:
+                    mvge_source_error.visible = True
                     ui.notify("Please enter an agent source", type="warning")
                     return
+                mvge_source_error.visible = False
                 ui.notify(f"Installing {source}...", type="info")
                 success = await state.install_mvge_async(source)
                 if success:
