@@ -1,4 +1,4 @@
-"""Command palette quick switcher (Ctrl/Cmd+Shift+P)."""
+"""Command palette quick switcher (Ctrl/Cmd+K or Ctrl/Cmd+Shift+P)."""
 
 from __future__ import annotations
 
@@ -256,7 +256,10 @@ def render_command_palette(state: AppState) -> None:
             ui.input(
                 placeholder="Type a command, session, or file...", on_change=_on_query
             )
-            .props("dense dark outlined rounded borderless bg-[#0e0e12] text-white")
+            .props(
+                "dense dark outlined rounded borderless bg-[#0e0e12] "
+                "text-white autofocus"
+            )
             .classes("w-full mb-3 mx-4")
             .mark("palette_search_input")
         )

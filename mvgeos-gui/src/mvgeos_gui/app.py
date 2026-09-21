@@ -23,7 +23,12 @@ def build_page(state: AppState | None = None) -> None:
         <script>
             document.addEventListener('keydown', function(e) {
                 var isP = (e.key === 'p' || e.key === 'P');
-                if ((e.metaKey || e.ctrlKey) && e.shiftKey && isP) {
+                var isK = (e.key === 'k' || e.key === 'K');
+                var mod = (e.metaKey || e.ctrlKey) && !e.altKey;
+                if (mod && e.shiftKey && isP) {
+                    e.preventDefault();
+                }
+                if (mod && !e.shiftKey && isK) {
                     e.preventDefault();
                 }
             });
@@ -31,11 +36,13 @@ def build_page(state: AppState | None = None) -> None:
     """)
 
     render_shell(current_state)
-    # Global chords (Ctrl/Cmd+Shift+P palette, Esc priority chain). The head
-    # script above only preventDefaults the browser's own handling of the
-    # chord; this bridge is what actually responds to it. Registered with
-    # ignore=[] so the chords work while typing in the composer or any
-    # other input.
+    # Global chords (Ctrl/Cmd+K or Ctrl/Cmd+Shift+P palette, Esc priority
+    # chain). The head script above only preventDefaults the browser's own
+    # handling of the chords; this bridge is what actually responds to
+    # them. Registered exactly once with ignore=[] so the chords work
+    # while typing in the composer or any other input: a second
+    # registration would dispatch every chord twice and toggle the
+    # palette open then immediately closed again.
     register_global_keyboard(current_state)
 
     # Web mode: a disconnect/refresh must fail closed — pending approval
@@ -49,12 +56,6 @@ def build_page(state: AppState | None = None) -> None:
             presenter.on_client_disconnect()
 
     ui.context.client.on_disconnect(_on_client_disconnect)
-    # Global chords (Ctrl/Cmd+Shift+P palette, Esc priority chain). The head
-    # script above only preventDefaults the browser's own handling of the
-    # chord; this bridge is what actually responds to it. Registered with
-    # ignore=[] so the chords work while typing in the composer or any
-    # other input.
-    register_global_keyboard(current_state)
 
 
 def _prewarm_client(client_state: AppState) -> None:

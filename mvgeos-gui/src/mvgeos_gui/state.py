@@ -48,6 +48,7 @@ from mvgeos_runes import (
 )
 from mvgeos_runes.types import SkillManifest
 from mvgeos_tome.types import TomeEntry, TomeEntryType, TomeVersionError
+from nicegui import app as nicegui_app
 
 from mvgeos_gui.approval.presenter import unbind_approval_presenter
 from mvgeos_gui.approval.queue import ApprovalQueue
@@ -1254,16 +1255,17 @@ class AppState:
         self.notify()
 
     def toggle_sidebar(self) -> None:
-        """Toggle left sidebar collapsed state."""
-        try:
-            from nicegui import app as nicegui_app
+        """Toggle left sidebar collapsed state.
 
-            nicegui_app.storage.user[
-                "sidebar-collapsed"
-            ] = not nicegui_app.storage.user.get("sidebar-collapsed", False)
-            self.sidebar_open = not nicegui_app.storage.user["sidebar-collapsed"]
-        except Exception:
-            self.sidebar_open = not self.sidebar_open
+        ``sidebar_open`` is the single source of truth: the chevron
+        reflects it and this toggle flips it. The per-browser cookie only
+        persists the choice across sessions (seeded once in
+        ``app.index_page``); it is never read back to derive the rendered
+        state, so a stale cookie can no longer make a click a no-op.
+        """
+        self.sidebar_open = not self.sidebar_open
+        with contextlib.suppress(Exception):
+            nicegui_app.storage.user["sidebar-collapsed"] = not self.sidebar_open
         self.notify()
 
     def toggle_review(self) -> None:
