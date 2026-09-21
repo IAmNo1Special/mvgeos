@@ -80,4 +80,4 @@ def render_sessions_panel(state: AppState) -> None:
             ui.button(
                 "Back to Chat",
                 on_click=lambda: state.set_current_view("chat"),
-            ).props("unelevated").classes("mvge-glow-btn text-white")
+            ).props("flat no-caps text-color=grey-5")

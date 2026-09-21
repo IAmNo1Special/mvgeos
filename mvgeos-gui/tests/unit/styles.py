@@ -212,7 +212,30 @@ def test_model_select_ellipsizes() -> None:
     assert "min-width: 0" in rules
 
 
+def test_home_stats_row_stretches() -> None:
+    """Stat cards share one row height (Minor C2).
+
+    NiceGUI's .nicegui-row sets align-items: flex-start, so a card whose
+    value wraps stands taller than its siblings without this override.
+    """
+    rules = _rule_block(VOID_THEME_CSS, ".home-stats-row")
+    assert "align-items: stretch !important" in rules
+
+
 def test_modal_backdrop_dims_page() -> None:
     """Modal backdrop is stronger than Quasar's 0.4 default (Minor C16)."""
     rules = _rule_block(VOID_THEME_CSS, ".q-dialog__backdrop")
     assert "rgba(0, 0, 0, 0.6)" in rules
+
+
+def test_button_labels_keep_title_case() -> None:
+    """One button voice: Quasar's uppercase transform is off (Nit C3)."""
+    rules = _rule_block(VOID_THEME_CSS, ".q-btn")
+    assert "text-transform: none !important" in rules
+
+
+def test_glow_button_hover_clearly_visible() -> None:
+    """Primary CTA hover is unmistakable: glow, brightness, border (Nit C17)."""
+    rules = _rule_block(VOID_THEME_CSS, ".mvge-glow-btn:hover")
+    assert "filter: brightness(1.3)" in rules
+    assert "0 0 22px rgba(123, 108, 246, 0.5)" in rules

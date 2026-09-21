@@ -212,9 +212,21 @@ html, body {
         opacity var(--glow-btn-speed),
         filter var(--glow-btn-speed);
 }
+/* Hover must be unmistakable (was: border retint + text glow only).
+   The lift comes from brightness(1.3) plus a violet outer glow and a
+   brighter border; no background-color change here because Quasar's
+   bg-* utility (!important) owns the button background. */
 .mvge-glow-btn:hover {
     border: solid 1px hsla(var(--highlight-color-hue), 100%, 80%,
-        40%) !important;
+        55%) !important;
+    box-shadow:
+        0 0 22px rgba(123, 108, 246, 0.5),
+        inset 0px 1px 1px rgba(255, 255, 255, 0.25),
+        inset 0px 2px 2px rgba(255, 255, 255, 0.15),
+        inset 0px 4px 4px rgba(255, 255, 255, 0.1),
+        inset 0px 8px 8px rgba(255, 255, 255, 0.05),
+        inset 0px 16px 16px rgba(255, 255, 255, 0.05) !important;
+    filter: brightness(1.3);
     text-shadow: 0 0 8px rgba(157, 143, 255, 0.8);
 }
 .mvge-glow-btn:hover::before {
@@ -677,6 +689,15 @@ html, body {
     transform: rotate(180deg) !important;
 }
 
+/* ── One button voice (Nit C3) ──────────────────────────────────
+   Labels are written in Title Case in source; Quasar's default
+   uppercase transform is what made Sessions/Skills/Marketplace shout.
+   Primary page-level CTAs use .mvge-glow-btn; secondary or dismissive
+   actions (Back to Chat, Cancel) stay flat and quiet. */
+.q-btn {
+    text-transform: none !important;
+}
+
 /* ── Modal backdrop: read as a modal (Minor C16) ────────────────
    Quasar's default 0.4 scrim barely separates the dialog from the
    page; 0.6 gives the void theme's depth without hiding context. */
@@ -785,6 +806,13 @@ html, body {
     white-space: nowrap;
 }
 
+/* ── Home stat cards: equal-height row (Minor C2) ────────────────
+   NiceGUI's .nicegui-row sets align-items: flex-start, so a card
+   whose value wraps to two lines stands taller than its siblings.
+   Stretch restores the equal-height row. */
+.home-stats-row {
+    align-items: stretch !important;
+}
 """
 
 GOOGLE_FONTS_HTML = (

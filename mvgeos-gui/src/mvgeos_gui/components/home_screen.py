@@ -51,12 +51,13 @@ def render_home_screen(state: AppState) -> None:
                 icon="add",
                 on_click=lambda: state.set_current_view("chat"),
             ).props("unelevated no-caps").classes(
-                "bg-[#0e0e12] hover:bg-[#16161d] text-[#eceaf4] border "
-                "border-[#292335] text-xs px-4 py-2 rounded-lg"
+                "mvge-glow-btn text-white text-xs font-medium px-5 py-2"
             )
 
         # Stats
-        with ui.row().classes("gap-4 flex-wrap justify-center w-full max-w-3xl"):
+        with ui.row().classes(
+            "gap-4 flex-wrap justify-center w-full max-w-3xl home-stats-row"
+        ):
             _stat_card("Sessions", str(len(state.loaded_tomes)))
             _stat_card("Mana Used", f"{state.total_mana_used:,}")
             _stat_card("Model", state.selected_model.split("/")[-1].split(":")[0])
