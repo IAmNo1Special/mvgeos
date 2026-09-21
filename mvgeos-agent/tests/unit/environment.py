@@ -845,9 +845,7 @@ class TestSigilPayload:
         assert payload.cwd == str(tmp_path)
         assert payload.spells_dir == spells_dir.as_posix()
         expected_system_path = (
-            env.resolved_prompt.path.as_posix()
-            if env.resolved_prompt.path
-            else None
+            env.resolved_prompt.path.as_posix() if env.resolved_prompt.path else None
         )
         assert payload.system_path == expected_system_path
         assert payload.runes_paths == [p.as_posix() for p in env.runes_paths]

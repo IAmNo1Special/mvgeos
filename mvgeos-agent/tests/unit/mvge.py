@@ -650,9 +650,7 @@ class TestActiveSpellsDirRecording:
         spells_dir = tmp_path / "spells"
         spells_dir.mkdir()
         (spells_dir / "greet.py").write_text(
-            "def greet(name: str) -> str:\n"
-            "    '''Greet someone.'''\n"
-            "    return name\n",
+            "def greet(name: str) -> str:\n    '''Greet someone.'''\n    return name\n",
             encoding="utf-8",
         )
 

@@ -62,6 +62,7 @@ class TestRuneContext:
         assert ctx1 != ctx3
         assert hash(ctx1) == hash(ctx2)
 
+
 class TestBeforeMvgeStartData:
     def _minimal(self) -> "BeforeMvgeStartData":
         return BeforeMvgeStartData(
