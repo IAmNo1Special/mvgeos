@@ -1390,3 +1390,23 @@ def inject_theme(theme: str = "dark") -> DarkMode:
     else:
         dark_mode.disable()
     return dark_mode
+
+
+def apply_theme(theme: str, dark_mode: DarkMode) -> None:
+    """Switch the live page to ``theme`` without rebuilding stylesheets.
+
+    The theme stylesheets are static (``:root`` holds the dark tokens,
+    ``html[data-theme="light"]`` overrides them), so switching is a single
+    ``data-theme`` attribute write plus toggling the existing Quasar
+    DarkMode element created by :func:`inject_theme` -- never a second
+    element that would fight the first.
+    """
+    if theme not in ("dark", "light"):
+        raise ValueError(f"unknown theme: {theme!r}")
+    ui.run_javascript(
+        f'document.documentElement.setAttribute("data-theme", "{theme}");'
+    )
+    if theme == "dark":
+        dark_mode.enable()
+    else:
+        dark_mode.disable()

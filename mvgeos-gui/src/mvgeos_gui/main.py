@@ -19,6 +19,7 @@ from nicegui import app, ui
 
 from mvgeos_gui.app import init_app
 from mvgeos_gui.core.logging import install_crash_handlers, setup_logging
+from mvgeos_gui.services.config_service import ConfigService
 from mvgeos_gui.state import ServerState
 
 DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
@@ -164,9 +165,10 @@ def calculate_initial_window_geometry(
     return target_width, target_height, None, None
 
 
-def enable_windows_dark_titlebar(title: str = APP_TITLE) -> bool:
-    """Apply immersive dark mode to Windows native titlebar.
+def enable_windows_dark_titlebar(title: str = APP_TITLE, dark: bool = True) -> bool:
+    """Apply the immersive titlebar theme to the Windows native titlebar.
 
+    :param dark: True for the dark titlebar, False for the light one.
     Returns True if the titlebar was found and updated, False otherwise.
     """
     if platform.system() != "Windows":
@@ -178,7 +180,7 @@ def enable_windows_dark_titlebar(title: str = APP_TITLE) -> bool:
         hwnd = windll.user32.FindWindowW(None, title)
         if hwnd:
             dwmwa_use_immersive_dark_mode = 20
-            value = ctypes.c_int(1)
+            value = ctypes.c_int(1 if dark else 0)
             windll.dwmapi.DwmSetWindowAttribute(
                 hwnd,
                 dwmwa_use_immersive_dark_mode,
@@ -279,8 +281,16 @@ def main() -> None:
     if not args.web:
         width, height, x, y = calculate_initial_window_geometry()
 
+    # The native window chrome (pywebview background, Windows DWM
+    # titlebar) renders before any page exists, so it follows the persisted
+    # theme read here rather than waiting for inject_theme().
+    saved_theme = ConfigService().load_app_settings().theme
+    use_dark_chrome = saved_theme != "light"
+
     if not args.web:
-        app.native.window_args["background_color"] = "#000000"
+        app.native.window_args["background_color"] = (
+            "#000000" if use_dark_chrome else "#ffffff"
+        )
         app.native.window_args["min_size"] = (800, 500)
         if x is not None:
             app.native.window_args["x"] = x
@@ -291,7 +301,7 @@ def main() -> None:
 
             async def _apply_dark_titlebar() -> None:
                 for _ in range(20):  # up to ~2 seconds
-                    if enable_windows_dark_titlebar(APP_TITLE):
+                    if enable_windows_dark_titlebar(APP_TITLE, dark=use_dark_chrome):
                         return
                     await asyncio.sleep(0.1)
 
@@ -315,7 +325,7 @@ def main() -> None:
             "port": args.port,
             "title": APP_TITLE,
             "reload": args.reload,
-            "dark": True,
+            "dark": use_dark_chrome,
             "reconnect_timeout": 60.0,
             "storage_secret": _get_storage_secret(),
         }

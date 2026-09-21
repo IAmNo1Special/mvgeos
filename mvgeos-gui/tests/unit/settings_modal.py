@@ -279,3 +279,70 @@ async def test_app_settings_modal_traps_focus(user: User, tmp_path: Path) -> Non
         and "focus" in listener.js_handler
     ]
     assert trap_listeners, "expected a Tab focus trap on the settings dialog"
+
+
+@pytest.mark.asyncio
+async def test_saving_new_theme_applies_it_live(
+    user: User, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Saving a changed theme in Settings switches the live page theme."""
+    service = ConfigService(config_dir=tmp_path)
+    service.save_app_settings(AppSettings(theme="dark"))
+    state = AppState()
+    state._config_service = service
+    state._show_app_settings = True
+
+    applied: list[tuple[str, object]] = []
+    monkeypatch.setattr(
+        "mvgeos_gui.components.settings_modal.apply_theme",
+        lambda theme, dark_mode: applied.append((theme, dark_mode)),
+    )
+
+    @ui.page("/test_settings_theme_apply")
+    def page() -> None:
+        from mvgeos_gui.styles import inject_theme
+
+        state._dark_mode = inject_theme("dark")
+        render_app_settings_modal(state)
+
+    await user.open("/test_settings_theme_apply")
+    await user.should_see("Theme")
+
+    select = next(iter(user.find(marker="theme_select").elements))
+    select.set_value("light")
+    user.find("Save", kind=ui.button).click()
+
+    assert service.load_app_settings().theme == "light"
+    assert applied == [("light", state._dark_mode)]
+
+
+@pytest.mark.asyncio
+async def test_saving_unchanged_theme_does_not_reapply(
+    user: User, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Saving Settings without touching the theme leaves the page alone."""
+    service = ConfigService(config_dir=tmp_path)
+    service.save_app_settings(AppSettings(theme="dark"))
+    state = AppState()
+    state._config_service = service
+    state._show_app_settings = True
+
+    applied: list[tuple[str, object]] = []
+    monkeypatch.setattr(
+        "mvgeos_gui.components.settings_modal.apply_theme",
+        lambda theme, dark_mode: applied.append((theme, dark_mode)),
+    )
+
+    @ui.page("/test_settings_theme_noop")
+    def page() -> None:
+        from mvgeos_gui.styles import inject_theme
+
+        state._dark_mode = inject_theme("dark")
+        render_app_settings_modal(state)
+
+    await user.open("/test_settings_theme_noop")
+    await user.should_see("Theme")
+
+    user.find("Save", kind=ui.button).click()
+
+    assert applied == []

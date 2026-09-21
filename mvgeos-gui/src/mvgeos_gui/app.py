@@ -17,7 +17,9 @@ def build_page(state: AppState | None = None) -> None:
     current_state.load_tomes()
     from mvgeos_gui.styles import inject_theme
 
-    inject_theme()
+    saved_theme = current_state._config_service.load_app_settings().theme
+    theme = saved_theme if saved_theme in ("dark", "light") else "dark"
+    current_state._dark_mode = inject_theme(theme)
 
     ui.add_head_html("""
         <script>

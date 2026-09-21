@@ -47,6 +47,7 @@ from mvgeos_runes import (
 from mvgeos_runes.types import SkillManifest
 from mvgeos_tome.types import TomeEntry, TomeEntryType, TomeVersionError
 from nicegui import app as nicegui_app
+from nicegui.elements.dark_mode import DarkMode
 
 from mvgeos_gui.approval.presenter import unbind_approval_presenter
 from mvgeos_gui.approval.queue import ApprovalQueue
@@ -310,6 +311,13 @@ class AppState:
     background_tasks: list[BackgroundTask] = field(default_factory=list)
     _autocomplete_service: AutocompleteService | None = field(
         default=None, repr=False, compare=False
+    )
+    # The page's Quasar DarkMode element, created by inject_theme() in
+    # build_page. Settings reuses it via apply_theme() so a theme change
+    # never mints a competing second element. Per-client: it belongs to
+    # this browser session's page.
+    _dark_mode: DarkMode | None = field(
+        default=None, init=False, repr=False, compare=False
     )
     _change_listeners: list[Callable[[], Any]] = field(
         default_factory=list, repr=False, compare=False

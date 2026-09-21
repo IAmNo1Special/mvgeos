@@ -9,6 +9,7 @@ from nicegui import ui
 
 from mvgeos_gui.services.config_service import AppSettings, ConfigService
 from mvgeos_gui.state import AppState
+from mvgeos_gui.styles import apply_theme
 from mvgeos_gui.utils import install_focus_trap
 
 AVAILABLE_THEMES = ["dark", "light"]
@@ -61,6 +62,9 @@ def render_app_settings_modal(state: AppState) -> None:
                 theme=str(edited["theme"]),
             )
         )
+        new_theme = str(edited["theme"])
+        if new_theme != current.theme and state._dark_mode is not None:
+            apply_theme(new_theme, state._dark_mode)
         if str(edited["default_model"]) != state.selected_model:
             state.switch_model(str(edited["default_model"]))
         state.close_app_settings()
@@ -99,7 +103,7 @@ def render_app_settings_modal(state: AppState) -> None:
                             password=True,
                             password_toggle_button=True,
                         )
-                        .props("dense outlined dark")
+                        .props("dense outlined")
                         .classes("w-full")
                         .mark("api_key_input")
                     )
@@ -115,7 +119,7 @@ def render_app_settings_modal(state: AppState) -> None:
                             "default_model", e.value
                         ),
                         with_input=True,
-                    ).props("dense outlined dark").classes("w-full model-select").mark(
+                    ).props("dense outlined").classes("w-full model-select").mark(
                         "model_select"
                     )
 
@@ -127,7 +131,7 @@ def render_app_settings_modal(state: AppState) -> None:
                     ui.input(
                         value=str(edited["mana_limit"]),
                         on_change=lambda e: edited.__setitem__("mana_limit", e.value),
-                    ).props("dense outlined dark type=number").classes("w-full").mark(
+                    ).props("dense outlined type=number").classes("w-full").mark(
                         "mana_limit_input"
                     )
 
@@ -138,7 +142,7 @@ def render_app_settings_modal(state: AppState) -> None:
                     ui.input(
                         value=str(edited["temperature"]),
                         on_change=lambda e: edited.__setitem__("temperature", e.value),
-                    ).props("dense outlined dark type=number step=0.1").classes(
+                    ).props("dense outlined type=number step=0.1").classes(
                         "w-full"
                     ).mark("temperature_input")
 
@@ -149,9 +153,7 @@ def render_app_settings_modal(state: AppState) -> None:
                         AVAILABLE_THEMES,
                         value=str(edited["theme"]),
                         on_change=lambda e: edited.__setitem__("theme", e.value),
-                    ).props("dense outlined dark").classes("w-full").mark(
-                        "theme_select"
-                    )
+                    ).props("dense outlined").classes("w-full").mark("theme_select")
 
         with ui.row().classes(
             "w-full px-4 py-3 items-center justify-end gap-2 "

@@ -56,7 +56,7 @@ def render_contemplation_card(
             icon="psychology",
             value=initial_val,
         )
-        .props("dense dense-toggle header-class=bg-[var(--bg-raised)] dark")
+        .props("dense dense-toggle header-class=bg-[var(--bg-raised)]")
         .classes(
             "w-full rounded-xl bg-[var(--bg-sunken-alt)] border "
             "border-[var(--bg-card-hover)] "
@@ -92,7 +92,7 @@ def render_worked_card(
             icon="schedule" if step.is_complete else "hourglass_top",
             value=initial_val,
         )
-        .props("dense dense-toggle header-class=bg-[var(--bg-card)] dark")
+        .props("dense dense-toggle header-class=bg-[var(--bg-card)]")
         .classes(
             "w-full rounded-xl bg-[var(--bg-card)] border "
             "border-[var(--border-subtle)] "
@@ -122,7 +122,7 @@ def render_worked_card(
             )
             with (
                 ui.expansion("Parameters", icon="unfold_more", value=params_val)
-                .props("dense dense-toggle dark")
+                .props("dense dense-toggle")
                 .classes("text-[10px] text-[var(--text-muted)]")
             ) as p_exp:
                 ui.code(str(step.params)).classes(
@@ -141,7 +141,7 @@ def render_worked_card(
                 )
                 with (
                     ui.expansion("Result", icon="unfold_more", value=result_val)
-                    .props("dense dense-toggle dark")
+                    .props("dense dense-toggle")
                     .classes("text-[10px] text-[var(--text-muted)]")
                 ) as r_exp:
                     ui.code(preview).classes(
@@ -177,7 +177,7 @@ def render_files_card(
             icon="find_in_page",
             value=initial_val,
         )
-        .props("dense dense-toggle header-class=bg-[var(--bg-card)] dark")
+        .props("dense dense-toggle header-class=bg-[var(--bg-card)]")
         .classes(
             "w-full rounded-xl bg-[var(--bg-card)] border "
             "border-[var(--border-subtle)] "
@@ -221,7 +221,7 @@ def render_files_card(
                         ui.expansion(
                             "File details", icon="unfold_more", value=details_val
                         )
-                        .props("dense dense-toggle dark")
+                        .props("dense dense-toggle")
                         .classes("text-[10px] text-[var(--text-muted)]")
                     ) as d_exp:
                         ui.code(preview).classes(
@@ -257,7 +257,7 @@ def render_commands_card(
             icon="terminal",
             value=initial_val,
         )
-        .props("dense dense-toggle header-class=bg-[var(--bg-card)] dark")
+        .props("dense dense-toggle header-class=bg-[var(--bg-card)]")
         .classes(
             "w-full rounded-xl bg-[var(--bg-card)] border "
             "border-[var(--border-subtle)] "

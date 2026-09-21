@@ -286,7 +286,7 @@ def render_packages_panel(state: AppState) -> None:
         ).classes("text-xs text-[var(--text-secondary)]")
         source_input = (
             ui.input(placeholder="git URL, local path, or marketplace rune name")
-            .props("dense dark outlined rounded")
+            .props("dense outlined rounded")
             .classes("w-full text-xs")
             .mark("package_dialog_source_input")
         )
@@ -339,7 +339,7 @@ def render_packages_panel(state: AppState) -> None:
         ).classes("text-xs text-[var(--text-secondary)]")
         mvge_source_input = (
             ui.input(placeholder="git URL, local path, or marketplace mvge name")
-            .props("dense dark outlined rounded")
+            .props("dense outlined rounded")
             .classes("w-full text-xs")
             .mark("mvge_dialog_source_input")
         )
@@ -405,9 +405,10 @@ def render_packages_panel(state: AppState) -> None:
                     ui.label(m_name).classes(
                         "text-sm font-semibold text-[var(--text-primary)]"
                     )
-                    ui.badge(f"v{m_version}", color="grey-9").props(
-                        "rounded dense"
-                    ).classes("text-[10px] text-[var(--text-secondary)] font-mono")
+                    ui.badge(f"v{m_version}").props("rounded dense").classes(
+                        "text-[10px] text-[var(--text-secondary)] font-mono "
+                        "bg-[var(--bg-card)] border border-[var(--border-subtle)]"
+                    )
                     ui.badge(m_runtime, color="purple-9").props(
                         "rounded dense"
                     ).classes("text-[10px]")
@@ -562,11 +563,9 @@ def render_packages_panel(state: AppState) -> None:
                                 "text-[var(--text-muted)]"
                             )
                             for dep in m_deps:
-                                ui.badge(str(dep), color="dark").props(
-                                    "rounded dense"
-                                ).classes(
+                                ui.badge(str(dep)).props("rounded dense").classes(
                                     "text-[9px] text-[var(--text-secondary)] "
-                                    "font-mono "
+                                    "font-mono bg-[var(--bg-card)] "
                                     "border border-[var(--border-subtle)]"
                                 )
 
@@ -599,9 +598,10 @@ def render_packages_panel(state: AppState) -> None:
                     ui.label(name).classes(
                         "text-sm font-semibold text-[var(--text-primary)]"
                     )
-                    ui.badge(f"v{version}", color="grey-9").props(
-                        "rounded dense"
-                    ).classes("text-[10px] text-[var(--text-secondary)] font-mono")
+                    ui.badge(f"v{version}").props("rounded dense").classes(
+                        "text-[10px] text-[var(--text-secondary)] font-mono "
+                        "bg-[var(--bg-card)] border border-[var(--border-subtle)]"
+                    )
                     ui.badge(runtime, color="purple-9").props("rounded dense").classes(
                         "text-[10px]"
                     )
@@ -768,11 +768,9 @@ def render_packages_panel(state: AppState) -> None:
                                     if isinstance(h, str)
                                     else getattr(h, "value", str(h))
                                 )
-                                ui.badge(h_name, color="dark").props(
-                                    "rounded dense"
-                                ).classes(
+                                ui.badge(h_name).props("rounded dense").classes(
                                     "text-[9px] text-[var(--text-secondary)] "
-                                    "font-mono "
+                                    "font-mono bg-[var(--bg-card)] "
                                     "border border-[var(--border-subtle)]"
                                 )
 
@@ -783,11 +781,9 @@ def render_packages_panel(state: AppState) -> None:
                                 "text-[var(--text-muted)]"
                             )
                             for dep in python_deps:
-                                ui.badge(str(dep), color="dark").props(
-                                    "rounded dense"
-                                ).classes(
+                                ui.badge(str(dep)).props("rounded dense").classes(
                                     "text-[9px] text-[var(--text-secondary)] "
-                                    "font-mono "
+                                    "font-mono bg-[var(--bg-card)] "
                                     "border border-[var(--border-subtle)]"
                                 )
 
@@ -815,7 +811,7 @@ def render_packages_panel(state: AppState) -> None:
                     ),
                     on_change=lambda e: _on_search(str(e.value or "")),
                 )
-                .props("dense dark outlined rounded")
+                .props("dense outlined rounded")
                 .classes("flex-1 text-xs")
                 .mark("package_search_input", "mvge_search_input")
             )
@@ -862,7 +858,7 @@ def render_packages_panel(state: AppState) -> None:
                     on_change=lambda e: _set_filter(
                         "type", str(e.value or "All Types")
                     ),
-                ).props("dense dark outlined rounded options-dense").classes(
+                ).props("dense outlined rounded options-dense").classes(
                     "min-w-[130px] text-xs"
                 ).mark("package_filter_type_select")
 
@@ -872,7 +868,7 @@ def render_packages_panel(state: AppState) -> None:
                     on_change=lambda e: _set_filter(
                         "hook", str(e.value or "All Hooks")
                     ),
-                ).props("dense dark outlined rounded options-dense").classes(
+                ).props("dense outlined rounded options-dense").classes(
                     "min-w-[140px] text-xs"
                 ).mark("package_filter_hook_select")
 
@@ -880,7 +876,7 @@ def render_packages_panel(state: AppState) -> None:
                     options=["All Deps"],
                     value=search_state["dep"],
                     on_change=lambda e: _set_filter("dep", str(e.value or "All Deps")),
-                ).props("dense dark outlined rounded options-dense").classes(
+                ).props("dense outlined rounded options-dense").classes(
                     "min-w-[130px] text-xs"
                 ).mark("package_filter_dep_select")
 
@@ -890,7 +886,7 @@ def render_packages_panel(state: AppState) -> None:
                     on_change=lambda e: _set_filter(
                         "spell", str(e.value or "All Spells")
                     ),
-                ).props("dense dark outlined rounded options-dense").classes(
+                ).props("dense outlined rounded options-dense").classes(
                     "min-w-[140px] text-xs"
                 ).mark("mvge_filter_spell_select")
 
@@ -907,7 +903,7 @@ def render_packages_panel(state: AppState) -> None:
                         on_change=lambda e: _set_filter(
                             "sort", str(e.value or "Alphabetical (A-Z)")
                         ),
-                    ).props("dense dark outlined rounded options-dense").classes(
+                    ).props("dense outlined rounded options-dense").classes(
                         "min-w-[160px] text-xs"
                     ).mark("package_sort_select", "mvge_sort_select")
 

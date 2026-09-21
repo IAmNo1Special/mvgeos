@@ -403,7 +403,7 @@ def render_composer(state: AppState) -> None:
                                 value=state.selected_realm,
                                 on_change=lambda e: state.switch_realm(e.value),
                             )
-                            .props("dense borderless dark rounded text-xs")
+                            .props("dense borderless rounded text-xs")
                             .classes("text-xs text-[var(--text-secondary)] font-mono")
                             .mark("realm_select")
                         ):
@@ -428,7 +428,7 @@ def render_composer(state: AppState) -> None:
                                     value=state.selected_provider,
                                     on_change=lambda e: state.switch_provider(e.value),
                                 )
-                                .props("dense borderless dark rounded text-xs")
+                                .props("dense borderless rounded text-xs")
                                 .classes(
                                     "text-xs text-[var(--text-secondary)] font-mono"
                                 )
@@ -444,7 +444,7 @@ def render_composer(state: AppState) -> None:
                                 value=state.selected_model,
                                 on_change=lambda e: state.switch_model(e.value),
                             )
-                            .props("dense borderless dark rounded text-xs")
+                            .props("dense borderless rounded text-xs")
                             .classes("text-xs text-[var(--text-secondary)] font-mono")
                             .mark("model_select")
                         ):
@@ -469,7 +469,7 @@ def render_composer(state: AppState) -> None:
                                         e.value
                                     ),
                                 )
-                                .props("dense borderless dark rounded text-xs")
+                                .props("dense borderless rounded text-xs")
                                 .classes(
                                     "text-xs text-[var(--text-secondary)] font-mono"
                                 )

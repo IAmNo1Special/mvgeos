@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
+from typing import cast
 
 import pytest
 from nicegui import ui
+from nicegui.elements.dark_mode import DarkMode
 from nicegui.testing import User
 
 from mvgeos_gui.styles import (
@@ -13,6 +15,7 @@ from mvgeos_gui.styles import (
     GOOGLE_FONTS_HTML,
     LIGHT_THEME_CSS,
     VOID_THEME_CSS,
+    apply_theme,
     inject_theme,
     theme_dataset_script,
 )
@@ -267,7 +270,8 @@ def test_light_theme_keeps_violet_brand() -> None:
     for token in ("--accent-primary", "--accent-pink", "--border-active"):
         dark = re.search(re.escape(token) + r"\s*:\s*([^;]+);", VOID_THEME_CSS)
         light = re.search(re.escape(token) + r"\s*:\s*([^;]+);", LIGHT_THEME_CSS)
-        assert dark is not None and light is not None
+        assert dark is not None
+        assert light is not None
         assert dark.group(1).strip() == light.group(1).strip()
 
 
@@ -310,3 +314,55 @@ async def test_inject_theme_light(user: User) -> None:
 
     await user.open("/test_styles_light")
     await user.should_see("Light Theme Injected")
+
+
+def test_apply_theme_rejects_unknown_theme() -> None:
+    """apply_theme validates the theme name before touching the page."""
+    with pytest.raises(ValueError, match="unknown theme"):
+        apply_theme("midnight", cast("DarkMode", None))
+
+
+@pytest.mark.asyncio
+async def test_apply_theme_switches_to_light(
+    user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """apply_theme("light") stamps <html data-theme> and disables Quasar dark."""
+    scripts: list[str] = []
+    monkeypatch.setattr(
+        ui, "run_javascript", lambda code, **kwargs: scripts.append(code)
+    )
+
+    @ui.page("/test_apply_theme_light")
+    def page() -> None:
+        dark_mode = inject_theme("dark")
+        assert dark_mode.value is True
+        apply_theme("light", dark_mode)
+        ui.label(f"dark-mode-value={dark_mode.value}")
+
+    await user.open("/test_apply_theme_light")
+    await user.should_see("dark-mode-value=False")
+    assert len(scripts) == 1
+    assert 'setAttribute("data-theme", "light")' in scripts[0]
+
+
+@pytest.mark.asyncio
+async def test_apply_theme_switches_to_dark(
+    user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """apply_theme("dark") stamps <html data-theme> and enables Quasar dark."""
+    scripts: list[str] = []
+    monkeypatch.setattr(
+        ui, "run_javascript", lambda code, **kwargs: scripts.append(code)
+    )
+
+    @ui.page("/test_apply_theme_dark")
+    def page() -> None:
+        dark_mode = inject_theme("light")
+        assert dark_mode.value is False
+        apply_theme("dark", dark_mode)
+        ui.label(f"dark-mode-value={dark_mode.value}")
+
+    await user.open("/test_apply_theme_dark")
+    await user.should_see("dark-mode-value=True")
+    assert len(scripts) == 1
+    assert 'setAttribute("data-theme", "dark")' in scripts[0]
