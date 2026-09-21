@@ -17,7 +17,7 @@ from nicegui import ui
 from mvgeos_gui.app import build_page, init_app
 from mvgeos_gui.models.user import User, UserRole
 from mvgeos_gui.services.tome_service import TomeService
-from mvgeos_gui.state import AppState
+from mvgeos_gui.state import AppState, ServerState
 
 
 def _mock_user() -> User:
@@ -203,9 +203,9 @@ async def test_channeling_input_dock(user: User) -> None:
 @pytest.mark.asyncio
 async def test_init_app_registers_index(user: User) -> None:
     """Verify init_app registers the root index page properly."""
-    state = AppState(project_path=Path("C:/demo/init-project"))
-    app_state = init_app(state)
-    assert app_state == state
+    server = ServerState(project_path=Path("C:/demo/init-project"))
+    returned = init_app(server)
+    assert returned is server
 
     await user.open("/")
     await user.should_see("MvgeOS")

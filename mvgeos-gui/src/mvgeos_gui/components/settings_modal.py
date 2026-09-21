@@ -30,8 +30,7 @@ def render_app_settings_modal(state: AppState) -> None:
     }
 
     def _on_close() -> None:
-        state._show_app_settings = False
-        state.notify()
+        state.close_app_settings()
 
     def _save() -> None:
         try:
@@ -62,8 +61,7 @@ def render_app_settings_modal(state: AppState) -> None:
         )
         if str(edited["default_model"]) != state.selected_model:
             state.switch_model(str(edited["default_model"]))
-        state._show_app_settings = False
-        state.notify()
+        state.close_app_settings()
         ui.notify("Settings saved", type="positive")
 
     with (

@@ -1919,3 +1919,123 @@ def test_remove_attachment_drops_content() -> None:
 
     assert state.pending_attachments == ["b.py"]
     assert state.pending_attachment_contents == {"b.py": b"y = 2"}
+
+
+class TestServerStateSplit:
+    """Major #1: AppState is per-client; server-global config lives on
+    ServerState and is shared across the clients of one server."""
+
+    def test_server_state_defaults(self) -> None:
+        from mvgeos_gui.state import ServerState
+
+        server = ServerState()
+        assert server.project_path == Path.cwd()
+        assert server.selected_model == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        assert server.recent_projects == [Path.cwd()]
+        assert server.api_key is None
+        assert server.client_states == []
+
+    def test_new_client_state_registers(self) -> None:
+        from mvgeos_gui.state import ServerState
+
+        server = ServerState()
+        a = server.new_client_state()
+        b = server.new_client_state()
+        assert a is not b
+        assert len(server.client_states) == 2
+
+    def test_client_states_share_server_config(self) -> None:
+        from mvgeos_gui.state import ServerState
+
+        server = ServerState()
+        a = server.new_client_state()
+        b = server.new_client_state()
+
+        a.switch_model("openai/gpt-4o-mini")
+        assert b.selected_model == "openai/gpt-4o-mini"
+
+        b.set_contemplation_level("high")
+        assert a.contemplation_level == "high"
+
+        a.set_project(Path("/shared/proj"))
+        assert b.project_path == Path("/shared/proj")
+        assert a.project_path == Path("/shared/proj")
+
+    def test_client_states_have_independent_ui_state(self) -> None:
+        from mvgeos_gui.state import ServerState
+
+        server = ServerState()
+        a = server.new_client_state()
+        b = server.new_client_state()
+
+        a.open_app_settings()
+        a.set_current_view("sessions")
+        a.toggle_sidebar()
+        a.plan_mode = True
+        a.messages.append(InvocationTranscript.for_summoner("msg-a"))
+
+        assert b._show_app_settings is False
+        assert b.current_view == "chat"
+        assert b.sidebar_open is True
+        assert b.plan_mode is False
+        assert b.messages == []
+
+    def test_drop_client_state_stops_channeling(self) -> None:
+        from mvgeos_gui.state import ServerState
+
+        server = ServerState()
+        a = server.new_client_state()
+        a.is_channeling = True
+        server.drop_client_state(a)
+        assert server.client_states == []
+        assert a.is_channeling is False
+
+    def test_standalone_app_state_keeps_working(self) -> None:
+        """AppState() without a server behaves exactly like the old
+        single shared state (backwards compatible for tests/embedding)."""
+        state = AppState(project_path=Path("/solo"))
+        assert state.project_path == Path("/solo")
+        assert Path("/solo") in state.recent_projects
+        state.switch_model("openai/gpt-4o-mini")
+        assert state.selected_model == "openai/gpt-4o-mini"
+        state.open_app_settings()
+        assert state._show_app_settings is True
+
+    def test_set_project_invalidates_all_clients_caches(self, tmp_path: Path) -> None:
+        """set_project is server-global: every client's project-bound
+        caches are dropped and their tome lists reloaded."""
+        from mvgeos_gui.state import ServerState
+
+        server = ServerState()
+        state_a = server.new_client_state()
+        state_b = server.new_client_state()
+        new_project = tmp_path / "proj"
+        new_project.mkdir()
+
+        state_b.agent_service = object()  # type: ignore[assignment]
+        state_b._autocomplete_service = object()  # type: ignore[assignment]
+
+        state_a.set_project(new_project)
+
+        assert state_a.project_path == new_project
+        assert state_b.project_path == new_project
+        assert state_a.agent_service is None
+        assert state_b.agent_service is None
+        assert state_b._autocomplete_service is None
+        assert new_project in state_b.recent_projects
+
+    def test_shared_write_notifies_all_clients(self) -> None:
+        """A shared configuration write refreshes every connected client."""
+        from mvgeos_gui.state import ServerState
+
+        server = ServerState()
+        state_a = server.new_client_state()
+        state_b = server.new_client_state()
+        seen: list[str] = []
+        state_a.subscribe(lambda: seen.append("a"))
+        state_b.subscribe(lambda: seen.append("b"))
+
+        state_a.selected_model = "anthropic/claude-opus-4-6"
+
+        assert state_b.selected_model == "anthropic/claude-opus-4-6"
+        assert seen == ["a", "b"]
