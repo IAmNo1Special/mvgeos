@@ -6,9 +6,11 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from nicegui import app as nicegui_app
 from nicegui import ui
 from nicegui.testing import User
 
+from mvgeos_gui.components.shell import render_shell
 from mvgeos_gui.components.sidebar import render_sidebar
 from mvgeos_gui.models.user import User as MvgeUser
 from mvgeos_gui.models.user import UserRole
@@ -184,3 +186,65 @@ def test_mobile_drawer_bootstrap_wiring() -> None:
     assert "mobile-open" in MOBILE_DRAWER_BOOTSTRAP
     assert "Escape" in MOBILE_DRAWER_BOOTSTRAP
     assert "document.body.appendChild" in MOBILE_DRAWER_BOOTSTRAP
+
+
+@pytest.mark.asyncio
+async def test_sidebar_first_click_collapses_fresh_client(
+    user: User, tmp_path: Path
+) -> None:
+    """Fresh browser (no cookie): the first chevron click visibly collapses."""
+    state = AppState(project_path=tmp_path, sidebar_open=True)
+    state.current_user = _mock_user()
+
+    @ui.page("/test_sidebar_first_click")
+    def page() -> None:
+        nicegui_app.storage.user.pop("sidebar-collapsed", None)
+        render_shell(state)
+
+    await user.open("/test_sidebar_first_click")
+    await user.should_see("+ New Conversation")
+    user.find(marker="collapse_sidebar_btn").click()
+    await user.should_not_see("+ New Conversation")
+    assert user.find(marker="expand_sidebar_btn") is not None
+
+
+@pytest.mark.asyncio
+async def test_sidebar_toggle_follows_rendered_state_not_stale_cookie(
+    user: User, tmp_path: Path
+) -> None:
+    """The chevron toggles the single source of truth (state.sidebar_open).
+
+    If the per-browser cookie disagrees with the rendered state, the
+    toggle must still move the visible state — deriving the new state
+    from the cookie made the first click a no-op.
+    """
+    state = AppState(project_path=tmp_path, sidebar_open=False)
+    state.current_user = _mock_user()
+
+    @ui.page("/test_sidebar_stale_cookie")
+    def page() -> None:
+        # Stale cookie claims "expanded" while the client renders collapsed.
+        nicegui_app.storage.user["sidebar-collapsed"] = False
+        render_shell(state)
+
+    await user.open("/test_sidebar_stale_cookie")
+    await user.should_not_see("+ New Conversation")
+    user.find(marker="expand_sidebar_btn").click()
+    await user.should_see("+ New Conversation")
+    assert user.find(marker="collapse_sidebar_btn") is not None
+
+
+@pytest.mark.asyncio
+async def test_sidebar_refreshes_on_login(user: User, tmp_path: Path) -> None:
+    """Setting current_user re-renders the sidebar without a page reload."""
+    state = AppState(project_path=tmp_path, sidebar_open=True)
+
+    @ui.page("/test_sidebar_login_refresh")
+    def page() -> None:
+        render_shell(state)
+
+    await user.open("/test_sidebar_login_refresh")
+    await user.should_see("Sign In")
+    state.current_user = _mock_user()
+    state.notify()
+    await user.should_see("+ New Conversation")
