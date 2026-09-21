@@ -1587,6 +1587,11 @@ class Mvge:
         self._agent_tome = await MvgeTome.open_or_create(
             self._tome_factory,
             self._tome_resume,
+            # Record the agent's project directory, not the host process cwd:
+            # embedders (e.g. the GUI) run the engine in-process with a
+            # project path that differs from os.getcwd(). The project filter
+            # in session listings matches on this value.
+            cwd=self._effective_cwd(),
             runner=self._runner,
             model=model_id,
             contemplation_level=str(self._contemplation_level),

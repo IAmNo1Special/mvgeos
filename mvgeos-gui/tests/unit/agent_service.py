@@ -13,9 +13,11 @@ from mvgeos_core.events import (
     MvgeEvent,
     MvgeEventType,
 )
+from mvgeos_tome.handle import TomeHandleFactory
 
 from mvgeos_gui.models import ChatMessage, StepType, TaskStatus
 from mvgeos_gui.services.agent_service import AgentService, resolve_api_key
+from mvgeos_gui.services.tome_service import TomeService
 from mvgeos_gui.state import AppState
 
 
@@ -1958,3 +1960,34 @@ async def test_compact_active_tome_attaches_fresh_agent(
     assert result == "Compaction completed"
     fresh.initialize.assert_awaited_once()
     fresh.compact.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_adopts_tome_as_session_row(tmp_path: Path) -> None:
+    """Successful turns must surface a persisted session row (Major #9).
+
+    The engine creates the tome during the turn; run_prompt's finally block
+    adopts it into state. Assert the session appears in loaded_tomes (what
+    the Sessions page and Recent Sessions render) and becomes the active
+    tome.
+    """
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    tome_dir = tmp_path / "tomes"
+    tome_service = TomeService(tome_dir=tome_dir)
+    tome_id = TomeHandleFactory(tome_dir).create_tome(str(project_dir)).tome_id
+
+    state = AppState(project_path=project_dir, tome_service=tome_service)
+    stub = MagicMock()
+    stub.tome_id = tome_id
+    stub.run = AsyncMock()
+    service = AgentService(
+        project_path=project_dir,
+        api_key="test-api-key",
+        agent_factory=lambda **kwargs: stub,  # noqa: E731
+    )
+    message = ChatMessage(role="assistant", is_streaming=True)
+    await service.run_prompt("hello", state, message)
+
+    assert state.active_tome_id == tome_id
+    assert tome_id in [entry.tome_id for entry in state.loaded_tomes]
