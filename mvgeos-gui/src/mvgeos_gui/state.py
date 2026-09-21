@@ -6,9 +6,7 @@ import asyncio
 import contextlib
 import inspect
 import logging
-import os
 import shutil
-import subprocess
 import time
 import uuid
 from collections.abc import Callable, Coroutine
@@ -334,6 +332,7 @@ class AppState:
     )
     _show_app_settings: bool = False
     _show_rename_dialog: bool = False
+    _preview_file: Path | None = field(default=None, repr=False, compare=False)
     _show_workspace_settings: bool = False
     _show_login: bool = False
     _auth_service: AuthService = field(
@@ -725,6 +724,26 @@ class AppState:
     def open_rename_dialog(self) -> None:
         """Open the Rename session dialog."""
         self._show_rename_dialog = True
+        self.notify()
+
+    @property
+    def preview_file(self) -> Path | None:
+        """File currently shown in the in-browser preview dialog, if any."""
+        return self._preview_file
+
+    def open_file_preview(self, path: Path) -> None:
+        """Preview a workspace file in the browser.
+
+        The file tree calls this instead of spawning a server-side editor:
+        a browser session has no use for an ``$EDITOR`` process on the
+        server, so the file opens read-only inside the GUI.
+        """
+        self._preview_file = path
+        self.notify()
+
+    def close_file_preview(self) -> None:
+        """Close the file preview dialog."""
+        self._preview_file = None
         self.notify()
 
     def close_rename_dialog(self) -> None:
@@ -1176,15 +1195,6 @@ class AppState:
         if not self.is_channeling or self.channeling_started_at is None:
             return None
         return max(0.0, time.monotonic() - self.channeling_started_at)
-
-    def open_in_editor(self) -> None:
-        """Spawn the default editor in the active project directory."""
-        editor = os.environ.get("EDITOR", "code")
-        with contextlib.suppress(FileNotFoundError):
-            subprocess.Popen(
-                [editor, str(self.project_path)],
-                start_new_session=True,
-            )
 
     def fork_tome(self) -> str | None:
         """Fork the active Tome and switch to the new branch."""

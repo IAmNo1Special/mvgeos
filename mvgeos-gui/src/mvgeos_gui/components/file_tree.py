@@ -48,7 +48,7 @@ def _render_tree(state: AppState, root: Path, path: Path, depth: int) -> None:
             with (
                 ui.row()
                 .classes(row_cls)
-                .on("click", lambda p=entry: state.open_in_editor())
+                .on("click", lambda p=entry: state.open_file_preview(p))
             ):
                 ui.icon("insert_drive_file", size="12px").classes("text-[#9c94b3]")
                 ui.label(entry.name).classes("text-[#eceaf4] truncate")

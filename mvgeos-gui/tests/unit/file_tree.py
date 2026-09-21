@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from nicegui import ui
@@ -33,7 +33,6 @@ async def test_file_tree_renders_files_and_dirs(tmp_path: Path, user: User) -> N
     (tmp_path / ".hidden").write_text("secret")
 
     state = AppState(project_path=tmp_path)
-    state.open_in_editor = MagicMock()  # type: ignore[method-assign]
 
     @ui.page("/test_file_tree_valid")
     def page() -> None:
@@ -70,7 +69,6 @@ async def test_file_tree_hides_dotfiles_including_git(
     (tmp_path / "visible.txt").write_text("hello")
 
     state = AppState(project_path=tmp_path)
-    state.open_in_editor = MagicMock()  # type: ignore[method-assign]
 
     @ui.page("/test_file_tree_dotfiles")
     def page() -> None:
