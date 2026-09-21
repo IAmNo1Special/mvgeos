@@ -1,11 +1,14 @@
 """Application setup and page route definitions for mvgeos-gui."""
 
+import asyncio
+import contextlib
+
 from nicegui import app, ui
 
 from mvgeos_gui.components.keyboard import register_global_keyboard
 from mvgeos_gui.components.shell import render_shell
 from mvgeos_gui.core.database import init_db
-from mvgeos_gui.state import AppState
+from mvgeos_gui.state import AppState, ServerState
 
 
 def build_page(state: AppState | None = None) -> None:
@@ -54,23 +57,44 @@ def build_page(state: AppState | None = None) -> None:
     register_global_keyboard(current_state)
 
 
-def init_app(state: AppState | None = None) -> AppState:
-    """Initialize application routes and return the AppState instance."""
+def _prewarm_client(client_state: AppState) -> None:
+    """Warm the per-client agent on page load (best effort, non-blocking)."""
+    service = client_state.get_agent_service()
+
+    async def _warm() -> None:
+        with contextlib.suppress(Exception):
+            await service.prewarm(client_state)
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    loop.create_task(_warm())
+
+
+def init_app(server: ServerState | None = None) -> ServerState:
+    """Initialize application routes and return the ServerState instance.
+
+    Every browser session gets its own per-client AppState minted from the
+    server, so no UI state (dialogs, current view, sidebar, transcript,
+    plan mode, auth) leaks across sessions. Disconnecting clients are
+    dropped fail-closed.
+    """
     init_db()
-    app_state = state or AppState()
+    server_state = server or ServerState()
 
     @ui.page("/")
     def index_page() -> None:
-        build_page(app_state)
+        client_state = server_state.new_client_state()
+        # A returning browser keeps its sidebar preference: seed the fresh
+        # per-client flag from the per-browser cookie.
+        with contextlib.suppress(Exception):
+            if app.storage.user.get("sidebar-collapsed", False):
+                client_state.sidebar_open = False
+        ui.context.client.on_disconnect(
+            lambda: server_state.drop_client_state(client_state)
+        )
+        build_page(client_state)
+        _prewarm_client(client_state)
 
-    async def _prewarm_background() -> None:
-        try:
-            service = app_state.get_agent_service()
-            await service.prewarm(app_state)
-        except Exception:
-            pass
-
-    if not getattr(app, "is_started", False):
-        app.on_startup(_prewarm_background)
-
-    return app_state
+    return server_state

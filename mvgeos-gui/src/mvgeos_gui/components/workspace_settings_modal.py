@@ -30,8 +30,7 @@ def render_workspace_settings_modal(state: AppState) -> None:
     }
 
     def _on_close() -> None:
-        state._show_workspace_settings = False
-        state.notify()
+        state.close_workspace_settings()
 
     def _save() -> None:
         try:
@@ -52,8 +51,7 @@ def render_workspace_settings_modal(state: AppState) -> None:
             ),
         )
         state.reset_agent()
-        state._show_workspace_settings = False
-        state.notify()
+        state.close_workspace_settings()
         ui.notify("Workspace settings saved", type="positive")
 
     with (

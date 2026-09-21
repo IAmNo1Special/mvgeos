@@ -17,7 +17,7 @@ def render_login_screen(state: AppState) -> None:
     auth = getattr(state, "_auth_service", None) or AuthService()
 
     if state._show_app_settings:
-        state._show_app_settings = False
+        state.close_app_settings()
 
     with (
         ui.dialog().on("close", state.hide_login) as dialog,

@@ -49,6 +49,7 @@ from mvgeos_runes import (
 from mvgeos_runes.types import SkillManifest
 from mvgeos_tome.types import TomeEntry, TomeEntryType, TomeVersionError
 
+from mvgeos_gui.approval.presenter import unbind_approval_presenter
 from mvgeos_gui.approval.queue import ApprovalQueue
 from mvgeos_gui.approval.types import PermissionsView
 from mvgeos_gui.autocomplete import (
@@ -83,10 +84,131 @@ def format_channeling_elapsed(seconds: float) -> str:
     return f"{total // 60}m {total % 60:02d}s"
 
 
+# AppState fields that are server-global rather than per-client. Reads of
+# these names fall through to the owning ServerState via __getattr__ and
+# writes pass through via __setattr__, so all sessions share one live
+# configuration while every call site keeps working unchanged.
+_SHARED_FIELDS = frozenset(
+    {
+        "project_path",
+        "recent_projects",
+        "api_key",
+        "selected_realm",
+        "selected_provider",
+        "selected_model",
+        "contemplation_level",
+        "tome_service",
+        "_config_service",
+    }
+)
+
+
+@dataclass
+class ServerState:
+    """Server-global configuration shared by every connected browser session.
+
+    One ServerState exists per GUI process. Each browser session gets its
+    own per-client AppState (see :meth:`new_client_state`); the client
+    states delegate the fields named in ``_SHARED_FIELDS`` to this object,
+    so every session reads and writes the same project, model selection,
+    and credentials while all UI state stays per-client.
+    """
+
+    project_path: Path = field(default_factory=Path.cwd)
+    recent_projects: list[Path] = field(default_factory=list)
+    api_key: str | None = None
+    selected_realm: str = "openrouter"
+    selected_provider: str | None = "nvidia"
+    selected_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    contemplation_level: str = "medium"
+    tome_service: TomeService = field(
+        default_factory=TomeService, repr=False, compare=False
+    )
+    _config_service: ConfigService = field(
+        default_factory=ConfigService, repr=False, compare=False
+    )
+    _clients: list[AppState] = field(default_factory=list, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        """Initialize server invariants now that constructor kwargs landed."""
+        if self.project_path and self.project_path not in self.recent_projects:
+            self.recent_projects.insert(0, self.project_path)
+        if "/" in self.selected_model and self.selected_provider == "nvidia":
+            self.selected_provider = self.selected_model.split("/")[0]
+
+    @property
+    def client_states(self) -> list[AppState]:
+        """Snapshot of the currently connected per-client states."""
+        return list(self._clients)
+
+    def new_client_state(self) -> AppState:
+        """Mint a fresh per-client AppState bound to this server.
+
+        The state is built standalone first and then rebound: shared-field
+        constructor defaults must never be written through to this
+        server, which would clobber its live configuration.
+        """
+        state = AppState()
+        state._server = self
+        self._clients.append(state)
+        return state
+
+    def _notify_clients(self) -> None:
+        """Refresh every connected client after a shared mutation.
+
+        Shared configuration is server-global: when one client changes
+        it, every session's UI must re-render where the change is
+        visible (model switcher, project name, ...). Listeners are
+        check-and-refresh callbacks, so unaffected clients are cheap.
+        """
+        for client in list(self._clients):
+            with contextlib.suppress(Exception):
+                client.notify()
+
+    def drop_client_state(self, state: AppState) -> None:
+        """Detach a client session: fail closed and release its resources.
+
+        Pending approval casts are denied (their decision surface is
+        gone), the agent task is cancelled, and UI listeners are dropped.
+        """
+        self._clients = [s for s in self._clients if s is not state]
+        with contextlib.suppress(Exception):
+            state.stop_channeling()
+        with contextlib.suppress(Exception):
+            state.clear_listeners()
+        with contextlib.suppress(Exception):
+            unbind_approval_presenter(state)
+
+    def shutdown(self) -> None:
+        """Server shutdown: fail closed for every connected client."""
+        for client in list(self._clients):
+            self.drop_client_state(client)
+
+
 @dataclass
 class AppState:
-    """Reactive state container for MvgeOS desktop GUI session."""
+    """Per-client reactive UI state for one MvgeOS browser session.
 
+    Server-global configuration (project path, model selection, API key,
+    and the config/tome services) lives on the owning ServerState. The
+    fields named in ``_SHARED_FIELDS`` are delegated to it transparently:
+    reads fall through via ``__getattr__`` and writes pass through via
+    ``__setattr__``, so every call site keeps working unchanged while all
+    sessions share one live configuration. Everything else on this object
+    (dialog flags, current view, sidebar, transcript, plan mode, auth) is
+    strictly per-client and never leaks across sessions.
+    """
+
+    # Owning server for the shared configuration. Not a constructor
+    # argument: it is assigned by ServerState.new_client_state(), or built
+    # lazily as a private server for standalone AppState() use.
+    _server: ServerState | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    # NOTE: the fields below are server-global (see _SHARED_FIELDS). They
+    # stay declared so AppState(...) keeps its constructor signature, but
+    # their values live on the owning ServerState: __setattr__ buffers them
+    # during __init__ and __getattr__ delegates reads to the server.
     project_path: Path = field(default_factory=Path.cwd)
     active_tome_id: str | None = None
     tome_title: str = "New Conversation"
@@ -190,13 +312,49 @@ class AppState:
     # "spell-allow" | "spell-deny" | "session" | "project".
     _approval_confirm_kind: str = ""
 
+    def __getattr__(self, name: str) -> Any:
+        """Fall through to the owning ServerState for shared fields.
+
+        Only fires when normal lookup fails, so per-client fields and
+        methods are never affected. Names outside _SHARED_FIELDS raise
+        AttributeError as usual.
+        """
+        if name in _SHARED_FIELDS:
+            return getattr(self._ensure_server(), name)
+        raise AttributeError(f"{type(self).__name__} has no attribute {name!r}")
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Write shared fields through to the owning ServerState.
+
+        While the dataclass __init__ is still running there is no server
+        yet: shared values are buffered and the server is constructed from
+        them in __post_init__, so constructor kwargs seed the server
+        instead of being clobbered by its defaults.
+        """
+        if name in _SHARED_FIELDS:
+            if self.__dict__.get("_server") is None:
+                self.__dict__.setdefault("_pending_shared", {})[name] = value
+            else:
+                server = self._ensure_server()
+                setattr(server, name, value)
+                # Shared configuration changed: every connected client
+                # sees the same value, so refresh them all where visible.
+                server._notify_clients()
+            return
+        object.__setattr__(self, name, value)
+
+    def _ensure_server(self) -> ServerState:
+        """Return the owning ServerState, building a private one if needed."""
+        server = self.__dict__.get("_server")
+        if server is None:
+            pending = self.__dict__.pop("_pending_shared", {})
+            server = ServerState(**pending)
+            self.__dict__["_server"] = server
+        return server
+
     def __post_init__(self) -> None:
-        """Initialize state invariants."""
-        if not self.recent_projects and self.project_path:
-            self.recent_projects.append(self.project_path)
-        if "/" in self.selected_model and self.selected_provider == "nvidia":
-            prefix = self.selected_model.split("/")[0]
-            self.selected_provider = prefix
+        """Build the backing server from any buffered shared kwargs."""
+        self._ensure_server()
 
     def subscribe(self, listener: Callable[[], Any]) -> None:
         """Subscribe a listener callback to state changes."""
@@ -556,18 +714,32 @@ class AppState:
         self.notify()
 
     def set_project(self, path: Path) -> None:
-        """Change the active workspace project path."""
-        # Pending approvals belong to the old project: deny them before the
-        # state change completes.
+        """Change the active workspace project path.
+
+        The project is server-global: every connected client's
+        project-bound caches (agent service, autocomplete) are dropped,
+        their pending approvals are denied, and their tome lists are
+        reloaded for the new project.
+        """
         self._on_approval_context_change()
         self.project_path = path
+        self._invalidate_project_caches()
+        self.add_recent_project(path)
+        server = self.__dict__.get("_server")
+        if server is not None:
+            for client in server.client_states:
+                if client is not self:
+                    client._on_approval_context_change()
+                    client._invalidate_project_caches()
+        self.notify()
+
+    def _invalidate_project_caches(self) -> None:
+        """Drop project-bound caches and reload the tome list."""
         self.agent_service = None
         self._autocomplete_service = None
         self.clear_attachments()
         self.clear_mentions()
-        self.add_recent_project(path)
         self.load_tomes()
-        self.notify()
 
     def add_recent_project(self, path: Path) -> None:
         """Add or move a project path to the front of recent projects."""
@@ -1385,3 +1557,13 @@ class AppState:
         except Exception as exc:
             logger.warning("Failed to uninstall mvge '%s': %s", mvge_name, exc)
             return False
+
+
+# Dataclass fields declared with a plain default keep that default as a
+# class attribute, which would shadow __getattr__ and break delegation for
+# the shared fields. Remove those class attributes: the dataclass machinery
+# (init defaults, repr, eq) already captured them in __dataclass_fields__.
+for _shared_name in _SHARED_FIELDS:
+    with contextlib.suppress(AttributeError):
+        delattr(AppState, _shared_name)
+del _shared_name

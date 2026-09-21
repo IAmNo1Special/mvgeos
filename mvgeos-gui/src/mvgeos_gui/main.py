@@ -16,8 +16,7 @@ from types import ModuleType
 from nicegui import app, ui
 
 from mvgeos_gui.app import init_app
-from mvgeos_gui.approval.presenter import unbind_approval_presenter
-from mvgeos_gui.state import AppState
+from mvgeos_gui.state import ServerState
 
 DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 APP_TITLE = "MvgeOS"
@@ -223,12 +222,12 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
 def main() -> None:
     """Main entry point function for mvgeos-gui console script."""
     args = parse_args()
-    state = AppState(
+    server = ServerState(
         project_path=args.project,
         selected_model=args.model,
         api_key=args.api_key,
     )
-    init_app(state)
+    init_app(server)
 
     # Window placement is a native-mode concern only. Probing the display in
     # web mode would needlessly touch pywebview's GUI backends.
@@ -255,11 +254,9 @@ def main() -> None:
             app.on_startup(_apply_dark_titlebar)
 
     def _cleanup() -> None:
-        state.stop_channeling()
-        state.clear_listeners()
-        # Unbind the Approval Rune presenter: pending casts deny, the
-        # engine slot is cleared, and the session badge is dropped.
-        unbind_approval_presenter(state)
+        # Fail closed for every connected client: pending approval casts
+        # are denied, agent tasks cancelled, UI listeners dropped.
+        server.shutdown()
 
     app.on_shutdown(_cleanup)
 
