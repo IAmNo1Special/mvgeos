@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.6] - 2026-09-21
+
+
+### Bug Fixes
+
+- **cli:** harden approval-mode help test against colored output (61c84ca)
+
+- **gui:** center send/stop button and align attach with model picker (1335caa)
+
+- **gui:** drop stale test for removed open_in_editor() (17e136d)
+
+- **cli:** skip PTY approval tests where pty is unavailable (0d2b49c)
+
+- **ci:** make Windows suite green (46bfe9d)
+
+- **gui:** detect @-mention index renames on Windows (825b1cf)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (3533b48)
+
+- **release:** v0.5.6 (6502a38)
+
+
+### Features
+
+- **attachments:** send files as native OpenRouter content parts (429a245)
+
+
+### Tests
+
+- **gui:** fix defective theme tests and pin native chrome theming (b7eb647)
+
+
+### Merge
+
+- approval gate, CLI and GUI presenters onto main (96b21ac)
+
+
+### Style
+
+- **agent:** apply ruff formatting to attachment content handling (eff48ef)
+
+
 ## [0.5.5] - 2026-09-20
 
 
