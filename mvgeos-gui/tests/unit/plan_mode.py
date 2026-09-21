@@ -14,6 +14,7 @@ from mvgeos_gui.components.command_palette import (
     get_palette_commands,
     render_command_palette,
 )
+from mvgeos_gui.services import agent_service
 from mvgeos_gui.state import AppState
 
 
@@ -133,10 +134,7 @@ def _keyless_state(tmp_path, monkeypatch) -> AppState:
     """
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("MVGEOS_API_KEY", raising=False)
-    monkeypatch.setattr(
-        "mvgeos_gui.services.agent_service.load_api_key_from_auth",
-        lambda: None,
-    )
+    monkeypatch.setattr(agent_service, "load_api_key_from_auth", lambda: None)
     return AppState(project_path=tmp_path)
 
 
