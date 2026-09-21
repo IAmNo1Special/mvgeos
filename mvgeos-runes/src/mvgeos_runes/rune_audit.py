@@ -121,6 +121,10 @@ class RuneAuditLog:
         if too_big or too_old:
             stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
             archive = self.data_dir / f"audit-{stamp}.jsonl"
+            suffix = 0
+            while archive.exists():
+                suffix += 1
+                archive = self.data_dir / f"audit-{stamp}-{suffix}.jsonl"
             try:
                 os.replace(path, archive)
                 os.chmod(archive, 0o600)

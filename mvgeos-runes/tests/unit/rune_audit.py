@@ -116,3 +116,15 @@ def test_default_dir_falls_back_to_user_agents(
     monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
     assert default_rune_ops_dir() == tmp_path / ".agents" / "rune-ops"
+
+
+def test_rotation_never_overwrites_existing_archive(tmp_path: Path) -> None:
+    log = RuneAuditLog(tmp_path / "rune-ops", max_bytes=1)
+    log.append_event({"op": "first"})
+    log.append_event({"op": "second"})
+    log.append_event({"op": "third"})
+
+    archives = sorted((tmp_path / "rune-ops").glob("audit-*.jsonl"))
+    assert len(archives) == 2
+    ops = [record["op"] for archive in archives for record in read_records(archive)]
+    assert sorted(ops) == ["first", "second"]
