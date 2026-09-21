@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -805,6 +806,20 @@ def test_mention_index_rebuilds_when_file_renamed() -> None:
     index = MentionIndex(proj)
     assert "main.py" in _mention_labels(index)
     (proj / "main.py").rename(proj / "renamed.py")
+    labels = _mention_labels(index)
+    assert "renamed.py" in labels
+    assert "main.py" not in labels
+
+
+def test_mention_index_rebuilds_when_rename_leaves_dir_mtime_unchanged() -> None:
+    # Windows does not update a directory's st_mtime on a same-directory
+    # rename, so simulate that here: the index must still notice the rename.
+    proj = _make_temp_project({"main.py": "code"})
+    index = MentionIndex(proj)
+    assert "main.py" in _mention_labels(index)
+    stat_before = proj.stat()
+    (proj / "main.py").rename(proj / "renamed.py")
+    os.utime(proj, (stat_before.st_atime, stat_before.st_mtime))
     labels = _mention_labels(index)
     assert "renamed.py" in labels
     assert "main.py" not in labels

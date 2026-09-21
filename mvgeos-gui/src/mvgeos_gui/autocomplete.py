@@ -8,6 +8,7 @@ to the GUI.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -232,7 +233,7 @@ class MentionIndex:
         self._skills = skills or []
         self._max_files = max_files
         self._cache: list[MentionItem] | None = None
-        self._signature: tuple[tuple[tuple[str, float], ...], int] | None = None
+        self._signature: tuple[tuple[tuple[str, float, str], ...], int] | None = None
         self._gitignore_spec: pathspec.PathSpec[Any] | None = None
         self._load_gitignore()
 
@@ -329,26 +330,43 @@ class MentionIndex:
             self._signature = signature
         return list(self._cache)
 
-    def _tree_signature(self) -> tuple[tuple[tuple[str, float], ...], int] | None:
+    @staticmethod
+    def _hash_entry_names(entries: list[os.DirEntry[str]]) -> str:
+        """Hash the sorted immediate entry names of a directory.
+
+        Windows does not update a directory's ``st_mtime`` on a
+        same-directory rename (it updates LastChangeTime, which
+        ``os.stat`` does not expose), so mtime alone misses renames.
+        Including entry names makes the signature change on
+        add/remove/rename on every platform.
+        """
+        hasher = hashlib.sha256()
+        for name in sorted(entry.name for entry in entries):
+            hasher.update(name.encode("utf-8", "surrogatepass"))
+            hasher.update(b"\x00")
+        return hasher.hexdigest()
+
+    def _tree_signature(self) -> tuple[tuple[tuple[str, float, str], ...], int] | None:
         """Cheap staleness signature of the indexed directory tree.
 
-        Records ``(relative dir path, mtime)`` for every indexed
-        directory plus the project ``.gitignore`` file, and the total
+        Records ``(relative dir path, mtime, entry-names hash)`` for every
+        indexed directory plus the project ``.gitignore`` file, and the total
         file count as a backstop for filesystems with coarse mtime
-        granularity. A directory's mtime changes when entries are added,
-        removed, or renamed inside it, so any tree change that affects
-        the index alters this signature. File *content* edits are
+        granularity. A directory's mtime changes when entries are added or
+        removed inside it, but on Windows a same-directory rename does not
+        update ``st_mtime``; the entry-names hash covers renames (and
+        add/remove) on every platform. File *content* edits are
         intentionally ignored: the index only cares about paths. Returns
         None when the project directory does not exist.
         """
         if not self._project_path.is_dir():
             return None
-        dirs: list[tuple[str, float]] = []
+        dirs: list[tuple[str, float, str]] = []
         file_count = 0
         gitignore = self._project_path / ".gitignore"
         if gitignore.is_file():
             with contextlib.suppress(OSError):
-                dirs.append((".gitignore", gitignore.stat().st_mtime))
+                dirs.append((".gitignore", gitignore.stat().st_mtime, ""))
         stack = [self._project_path]
         while stack:
             current = stack.pop()
@@ -360,12 +378,12 @@ class MentionIndex:
                 rel = current.relative_to(self._project_path).as_posix()
             except ValueError:
                 continue
-            dirs.append((rel, current_mtime))
             try:
                 with os.scandir(current) as it:
                     entries = list(it)
             except OSError:
-                continue
+                entries = []
+            dirs.append((rel, current_mtime, self._hash_entry_names(entries)))
             for entry in entries:
                 try:
                     if entry.is_dir(follow_symlinks=False):
