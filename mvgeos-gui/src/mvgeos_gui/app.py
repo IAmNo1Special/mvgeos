@@ -9,13 +9,13 @@ from mvgeos_gui.components.keyboard import register_global_keyboard
 from mvgeos_gui.components.shell import render_shell
 from mvgeos_gui.core.database import init_db
 from mvgeos_gui.state import AppState, ServerState
+from mvgeos_gui.styles import inject_theme
 
 
 def build_page(state: AppState | None = None) -> None:
     """Construct the MvgeOS GUI layout on the current page."""
     current_state = state or AppState()
     current_state.load_tomes()
-    from mvgeos_gui.styles import inject_theme
 
     saved_theme = current_state._config_service.load_app_settings().theme
     theme = saved_theme if saved_theme in ("dark", "light") else "dark"
