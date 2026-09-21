@@ -63,16 +63,17 @@ def render_composer(state: AppState) -> None:
                             for idx, name in enumerate(state.pending_attachments):
                                 with ui.row().classes(
                                     "items-center gap-1 px-2 py-0.5 rounded-md "
-                                    "bg-[#292335]"
+                                    "bg-[var(--border-subtle)]"
                                 ):
                                     ui.icon("insert_drive_file", size="12px").classes(
-                                        "text-[#9c94b3]"
+                                        "text-[var(--text-secondary)]"
                                     )
                                     ui.label(name).classes(
-                                        "text-xs text-[#eceaf4] truncate max-w-[140px]"
+                                        "text-xs text-[var(--text-primary)] truncate "
+                                        "max-w-[140px]"
                                     )
                                     ui.icon("close", size="10px").classes(
-                                        "text-[#6e6584] cursor-pointer"
+                                        "text-[var(--text-muted)] cursor-pointer"
                                     ).on(
                                         "click",
                                         lambda _, i=idx: state.remove_attachment(i),
@@ -83,16 +84,18 @@ def render_composer(state: AppState) -> None:
                             for idx, chip in enumerate(state.selected_mentions):
                                 with ui.row().classes(
                                     "items-center gap-1 px-2 py-0.5 rounded-md "
-                                    "bg-[#292335] border border-[#7b6cf6]/30"
+                                    "bg-[var(--border-subtle)] border "
+                                    "border-[var(--accent-primary-a30)]"
                                 ):
                                     ui.icon("insert_drive_file", size="12px").classes(
-                                        "text-[#9c94b3]"
+                                        "text-[var(--text-secondary)]"
                                     )
                                     ui.label(chip.text).classes(
-                                        "text-xs text-[#eceaf4] truncate max-w-[160px]"
+                                        "text-xs text-[var(--text-primary)] truncate "
+                                        "max-w-[160px]"
                                     )
                                     ui.icon("close", size="10px").classes(
-                                        "text-[#6e6584] cursor-pointer"
+                                        "text-[var(--text-muted)] cursor-pointer"
                                     ).on(
                                         "click",
                                         lambda _, i=idx: state.remove_selected_mention(
@@ -130,7 +133,8 @@ def render_composer(state: AppState) -> None:
                         )
                         .props("autogrow borderless dense rows=2")
                         .classes(
-                            "w-full bg-transparent text-sm text-[#eceaf4] resize-none"
+                            "w-full bg-transparent text-sm "
+                            "text-[var(--text-primary)] resize-none"
                         )
                         .mark("prompt_input")
                     )
@@ -241,8 +245,9 @@ def render_composer(state: AppState) -> None:
                         with (
                             ui.element("div")
                             .classes(
-                                "absolute z-50 w-full bg-[#292335] "
-                                "border border-[#7b6cf6] rounded-lg shadow-xl "
+                                "absolute z-50 w-full bg-[var(--border-subtle)] "
+                                "border border-[var(--accent-primary)] rounded-lg "
+                                "shadow-xl "
                                 "max-h-48 overflow-y-auto bottom-full mb-1"
                             )
                             .props(f"id={popup_id}")
@@ -250,9 +255,9 @@ def render_composer(state: AppState) -> None:
                             for idx, item in enumerate(items):
                                 is_selected = idx == selected_idx
                                 item_cls = (
-                                    "bg-[#7b6cf6]/20"
+                                    "bg-[var(--accent-primary-a20)]"
                                     if is_selected
-                                    else "hover:bg-[#292335]/50"
+                                    else "hover:bg-[var(--border-subtle-a50)]"
                                 )
                                 with (
                                     ui.row()
@@ -269,11 +274,13 @@ def render_composer(state: AppState) -> None:
                                     .props(f'data-index="{idx}"')
                                 ):
                                     ui.icon("help_outline", size="14px").classes(
-                                        "text-[#9c94b3]"
+                                        "text-[var(--text-secondary)]"
                                     )
                                     ui.label(
                                         str(ac_service.get_item_label(item))
-                                    ).classes("text-xs text-[#eceaf4] truncate")
+                                    ).classes(
+                                        "text-xs text-[var(--text-primary)] truncate"
+                                    )
 
                         if items and 0 <= selected_idx < len(items):
                             ui.run_javascript(f"""
@@ -310,7 +317,7 @@ def render_composer(state: AppState) -> None:
                                         if elapsed is not None
                                         else "0s"
                                     )
-                                    .classes("text-xs text-[#9c94b3]")
+                                    .classes("text-xs text-[var(--text-secondary)]")
                                     .mark("channeling_elapsed")
                                 )
                         else:
@@ -397,7 +404,7 @@ def render_composer(state: AppState) -> None:
                                 on_change=lambda e: state.switch_realm(e.value),
                             )
                             .props("dense borderless dark rounded text-xs")
-                            .classes("text-xs text-[#9c94b3] font-mono")
+                            .classes("text-xs text-[var(--text-secondary)] font-mono")
                             .mark("realm_select")
                         ):
                             ui.tooltip("Realm")
@@ -422,7 +429,9 @@ def render_composer(state: AppState) -> None:
                                     on_change=lambda e: state.switch_provider(e.value),
                                 )
                                 .props("dense borderless dark rounded text-xs")
-                                .classes("text-xs text-[#9c94b3] font-mono")
+                                .classes(
+                                    "text-xs text-[var(--text-secondary)] font-mono"
+                                )
                                 .mark("provider_select")
                             ):
                                 ui.tooltip("Provider")
@@ -436,7 +445,7 @@ def render_composer(state: AppState) -> None:
                                 on_change=lambda e: state.switch_model(e.value),
                             )
                             .props("dense borderless dark rounded text-xs")
-                            .classes("text-xs text-[#9c94b3] font-mono")
+                            .classes("text-xs text-[var(--text-secondary)] font-mono")
                             .mark("model_select")
                         ):
                             ui.tooltip("Model")
@@ -461,7 +470,9 @@ def render_composer(state: AppState) -> None:
                                     ),
                                 )
                                 .props("dense borderless dark rounded text-xs")
-                                .classes("text-xs text-[#9c94b3] font-mono")
+                                .classes(
+                                    "text-xs text-[var(--text-secondary)] font-mono"
+                                )
                                 .mark("contemplation_select")
                             ):
                                 ui.tooltip("Contemplation Level")

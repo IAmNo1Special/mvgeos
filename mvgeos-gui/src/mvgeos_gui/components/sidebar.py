@@ -66,7 +66,7 @@ def render_sidebar(state: AppState) -> ui.column:
     container = (
         ui.column()
         .classes(
-            "h-full bg-[#08080a] border-r border-[#292335] "
+            "h-full bg-[var(--bg-surface)] border-r border-[var(--border-subtle)] "
             "shrink-0 flex flex-col no-wrap overflow-hidden sidebar-container"
         )
         .style(f"width: {collapsed_width if collapsed else expanded_width}px")
@@ -78,7 +78,7 @@ def render_sidebar(state: AppState) -> ui.column:
             with (
                 ui.row().classes(
                     "w-full h-12 items-center justify-center "
-                    "border-b border-[#292335] shrink-0"
+                    "border-b border-[var(--border-subtle)] shrink-0"
                 ),
                 ui.button(
                     icon="chevron_right",
@@ -92,12 +92,14 @@ def render_sidebar(state: AppState) -> ui.column:
         else:
             with ui.row().classes(
                 "w-full h-12 items-center justify-between px-3 "
-                "border-b border-[#292335] shrink-0 no-wrap"
+                "border-b border-[var(--border-subtle)] shrink-0 no-wrap"
             ):
                 with ui.row().classes("items-center gap-2 no-wrap"):
-                    ui.icon("auto_awesome", size="16px").classes("text-[#7b6cf6]")
+                    ui.icon("auto_awesome", size="16px").classes(
+                        "text-[var(--accent-primary)]"
+                    )
                     ui.label("MvgeOS").classes(
-                        "text-sm font-semibold text-[#eceaf4] tracking-wide"
+                        "text-sm font-semibold text-[var(--text-primary)] tracking-wide"
                     )
                 with (
                     ui.button(
@@ -116,18 +118,22 @@ def render_sidebar(state: AppState) -> ui.column:
             with (
                 ui.row().classes("w-full justify-center py-2 shrink-0"),
                 ui.element("div").classes(
-                    "cursor-pointer p-1.5 rounded-md hover:bg-[#0e0e12]/60"
+                    "cursor-pointer p-1.5 rounded-md hover:bg-[var(--bg-card-a60)]"
                 ),
             ):
-                ui.icon("folder_open", size="16px").classes("text-[#7b6cf6]")
+                ui.icon("folder_open", size="16px").classes(
+                    "text-[var(--accent-primary)]"
+                )
                 ui.tooltip(f"Project: {project_name}")
         else:
             with ui.row().classes(
                 "w-full px-3 py-2 items-center gap-2 shrink-0 no-wrap"
             ):
-                ui.icon("folder_open", size="14px").classes("text-[#7b6cf6] shrink-0")
+                ui.icon("folder_open", size="14px").classes(
+                    "text-[var(--accent-primary)] shrink-0"
+                )
                 ui.label(project_name).classes(
-                    "text-xs text-[#eceaf4] truncate font-medium flex-1"
+                    "text-xs text-[var(--text-primary)] truncate font-medium flex-1"
                 )
 
         # New Conversation button / Sign In
@@ -141,8 +147,9 @@ def render_sidebar(state: AppState) -> ui.column:
                     )
                     .props("flat dense round size=sm")
                     .classes(
-                        "bg-[#0e0e12] hover:bg-[#16161d] text-[#eceaf4] "
-                        "border border-[#292335]"
+                        "bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] "
+                        "text-[var(--text-primary)] "
+                        "border border-[var(--border-subtle)]"
                     )
                     .mark("new_conversation_btn"),
                 ):
@@ -153,8 +160,9 @@ def render_sidebar(state: AppState) -> ui.column:
                         "+ New Conversation",
                         on_click=state.new_conversation,
                     ).props("unelevated no-caps").classes(
-                        "w-full bg-[#0e0e12] hover:bg-[#16161d] text-[#eceaf4] "
-                        "border border-[#292335] text-xs font-medium py-2 "
+                        "w-full bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] "
+                        "text-[var(--text-primary)] "
+                        "border border-[var(--border-subtle)] text-xs font-medium py-2 "
                         "rounded-lg text-left pl-3"
                     ).mark("new_conversation_btn")
         else:
@@ -222,37 +230,40 @@ def render_sidebar(state: AppState) -> ui.column:
                 with (
                     ui.row().classes("mx-3 mt-3 shrink-0"),
                     ui.card().classes(
-                        "w-full p-3 bg-[#0e0e12] border border-[#292335] rounded-lg"
+                        "w-full p-3 bg-[var(--bg-card)] border "
+                        "border-[var(--border-subtle)] rounded-lg"
                     ),
                 ):
                     ui.label("Current Session").classes(
                         "text-[10px] font-semibold uppercase "
-                        "tracking-wider text-[#6e6584]"
+                        "tracking-wider text-[var(--text-muted)]"
                     )
                     ui.label(state.tome_title).classes(
-                        "text-sm text-[#eceaf4] truncate mt-1"
+                        "text-sm text-[var(--text-primary)] truncate mt-1"
                     )
                     if state.active_tome_id:
                         ui.label(state.active_tome_id[:8]).classes(
-                            "text-[10px] text-[#6e6584] font-mono mt-0.5"
+                            "text-[10px] text-[var(--text-muted)] font-mono mt-0.5"
                         )
 
             # Recent Sessions
             with ui.column().classes("mt-4 flex-1 min-h-0 overflow-y-auto px-2 w-full"):
                 ui.label("Recent Sessions").classes(
                     "text-[10px] font-semibold uppercase tracking-wider "
-                    "text-[#6e6584] px-2 py-1"
+                    "text-[var(--text-muted)] px-2 py-1"
                 )
                 if not state.loaded_tomes:
                     ui.label("No sessions yet").classes(
-                        "text-[11px] text-[#6e6584] px-2 py-2"
+                        "text-[11px] text-[var(--text-muted)] px-2 py-2"
                     )
                 else:
                     for entry in state.loaded_tomes:
                         bg = (
-                            "bg-[#0e0e12]/70 border border-[#292335]/60"
+                            "bg-[var(--bg-card-a70)] "
+                            "border "
+                            "border-[var(--border-subtle-a60)]"
                             if entry.is_active
-                            else "hover:bg-[#0e0e12]/40"
+                            else "hover:bg-[var(--bg-card-a40)]"
                         )
                         with (
                             ui.row()
@@ -266,20 +277,22 @@ def render_sidebar(state: AppState) -> ui.column:
                             )
                         ):
                             ui.icon("chat_bubble_outline", size="12px").classes(
-                                "text-[#9c94b3] shrink-0"
+                                "text-[var(--text-secondary)] shrink-0"
                             )
                             ui.label(entry.title).classes(
-                                "text-[#eceaf4] truncate text-[11px] flex-1"
+                                "text-[var(--text-primary)] truncate text-[11px] flex-1"
                             )
                             with ui.row().classes("items-center gap-1 shrink-0"):
                                 ui.label(entry.relative_time).classes(
-                                    "text-[10px] text-[#6e6584]"
+                                    "text-[10px] text-[var(--text-muted)]"
                                 )
                                 if entry.git_branch:
                                     ui.label(entry.git_branch).classes(
                                         "text-[10px] px-1 py-0.5 rounded "
-                                        "bg-[#7b6cf6]/10 text-[#7b6cf6] "
-                                        "border border-[#7b6cf6]/30 font-mono"
+                                        "bg-[var(--accent-primary-a10)] "
+                                        "text-[var(--accent-primary)] "
+                                        "border border-[var(--accent-primary-a30)] "
+                                        "font-mono"
                                     )
         else:
             ui.element("div").classes("flex-1")
@@ -287,16 +300,20 @@ def render_sidebar(state: AppState) -> ui.column:
         # Bottom: version
         if collapsed:
             with ui.row().classes(
-                "w-full border-t border-[#292335] py-2 "
+                "w-full border-t border-[var(--border-subtle)] py-2 "
                 "justify-center items-center shrink-0"
             ):
-                ui.label(f"v{__version__}").classes("text-[9px] text-[#6e6584]")
+                ui.label(f"v{__version__}").classes(
+                    "text-[9px] text-[var(--text-muted)]"
+                )
         else:
             with ui.row().classes(
-                "w-full border-t border-[#292335] px-3 py-2 items-center "
+                "w-full border-t border-[var(--border-subtle)] px-3 py-2 items-center "
                 "justify-end shrink-0 no-wrap"
             ):
-                ui.label(f"v{__version__}").classes("text-[10px] text-[#6e6584]")
+                ui.label(f"v{__version__}").classes(
+                    "text-[10px] text-[var(--text-muted)]"
+                )
 
     # Mobile drawer wiring (Major #4): idempotent, see module constant.
     ui.add_body_html(MOBILE_DRAWER_BOOTSTRAP)
@@ -317,7 +334,10 @@ def _sidebar_item(
     active_cls = (
         "nav-link-active text-primary"
         if active
-        else "text-[#9c94b3] hover:text-[#eceaf4] hover:bg-[#0e0e12]/60"
+        else (
+            "text-[var(--text-secondary)] hover:text-[var(--text-primary)] "
+            "hover:bg-[var(--bg-card-a60)]"
+        )
     )
     handle_click = (
         on_click if on_click is not None else lambda: state.set_current_view(view)
@@ -333,7 +353,8 @@ def _sidebar_item(
             .mark(f"sidebar_nav_{view}")
         ):
             ui.icon(icon, size="16px").classes(
-                "shrink-0 " + ("nav-icon-active" if active else "text-[#9c94b3]")
+                "shrink-0 "
+                + ("nav-icon-active" if active else "text-[var(--text-secondary)]")
             )
             sidebar_hint(label)
     else:
@@ -347,6 +368,7 @@ def _sidebar_item(
             .mark(f"sidebar_nav_{view}")
         ):
             ui.icon(icon, size="14px").classes(
-                "shrink-0 " + ("nav-icon-active" if active else "text-[#9c94b3]")
+                "shrink-0 "
+                + ("nav-icon-active" if active else "text-[var(--text-secondary)]")
             )
             ui.label(label).classes("font-normal truncate flex-1")

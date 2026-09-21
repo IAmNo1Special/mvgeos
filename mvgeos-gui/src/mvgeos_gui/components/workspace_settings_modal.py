@@ -64,17 +64,20 @@ def render_workspace_settings_modal(state: AppState) -> None:
     with (
         ui.dialog().classes("w-full max-w-2xl").on("close", _on_close) as dialog,
         ui.card().classes(
-            "w-full bg-[#08080a] border border-[#292335] rounded-xl p-0 overflow-hidden"
+            "w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] "
+            "rounded-xl p-0 overflow-hidden"
         ),
     ):
         with ui.row().classes(
             "w-full h-11 px-4 items-center justify-between "
-            "border-b border-[#292335] bg-[#101014]"
+            "border-b border-[var(--border-subtle)] bg-[var(--bg-raised)]"
         ):
             with ui.row().classes("items-center gap-2"):
-                ui.icon("folder_open", size="16px").classes("text-[#7b6cf6]")
+                ui.icon("folder_open", size="16px").classes(
+                    "text-[var(--accent-primary)]"
+                )
                 ui.label("Project Workspace Settings").classes(
-                    "text-sm font-medium text-[#eceaf4]"
+                    "text-sm font-medium text-[var(--text-primary)]"
                 )
             ui.button(
                 icon="close",
@@ -84,7 +87,9 @@ def render_workspace_settings_modal(state: AppState) -> None:
         with ui.column().classes("w-full p-4 gap-4 max-h-[70vh] overflow-auto"):
             with ui.row().classes("w-full gap-4"):
                 with ui.column().classes("flex-1 gap-1"):
-                    ui.label("Project Name").classes("text-xs text-[#9c94b3]")
+                    ui.label("Project Name").classes(
+                        "text-xs text-[var(--text-secondary)]"
+                    )
                     project_name_input = (
                         ui.input(
                             value=str(edited["project_name"]),
@@ -98,15 +103,20 @@ def render_workspace_settings_modal(state: AppState) -> None:
                     )
 
                 with ui.column().classes("flex-1 gap-1"):
-                    ui.label("Project Directory").classes("text-xs text-[#9c94b3]")
+                    ui.label("Project Directory").classes(
+                        "text-xs text-[var(--text-secondary)]"
+                    )
                     ui.label(str(project_dir)).classes(
-                        "text-xs text-[#6e6584] font-mono p-2 "
-                        "bg-[#050507] rounded border border-[#292335]"
+                        "text-xs text-[var(--text-muted)] font-mono p-2 "
+                        "bg-[var(--bg-sunken)] rounded border "
+                        "border-[var(--border-subtle)]"
                     )
 
             with ui.row().classes("w-full gap-4"):  # noqa: SIM117
                 with ui.column().classes("flex-1 gap-1"):
-                    ui.label("Contemplation Level").classes("text-xs text-[#9c94b3]")
+                    ui.label("Contemplation Level").classes(
+                        "text-xs text-[var(--text-secondary)]"
+                    )
                     supported = (
                         state.get_contemplation_levels_for_selected_model()
                         if hasattr(state, "get_contemplation_levels_for_selected_model")
@@ -130,7 +140,7 @@ def render_workspace_settings_modal(state: AppState) -> None:
 
         with ui.row().classes(
             "w-full px-4 py-3 items-center justify-end gap-2 "
-            "border-t border-[#292335] bg-[#101014]"
+            "border-t border-[var(--border-subtle)] bg-[var(--bg-raised)]"
         ):
             ui.button("Cancel", on_click=lambda: dialog.close()).props(
                 "flat dense no-caps text-color=grey-5"

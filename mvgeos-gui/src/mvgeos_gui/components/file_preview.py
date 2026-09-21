@@ -41,18 +41,19 @@ def render_file_preview_dialog(state: AppState) -> None:
     with (
         ui.dialog().on("close", _on_close) as dialog,
         ui.card().classes(
-            "p-4 gap-3 w-full max-w-3xl bg-[#08080a] border border-[#292335] rounded-xl"
+            "p-4 gap-3 w-full max-w-3xl bg-[var(--bg-surface)] border "
+            "border-[var(--border-subtle)] rounded-xl"
         ),
     ):
         ui.label(f"File preview: {target.name}").classes(
-            "text-sm font-semibold text-[#eceaf4]"
+            "text-sm font-semibold text-[var(--text-primary)]"
         ).mark("file_preview_title")
         content = _read_preview(target)
         if content is None:
             ui.label(
                 "This file cannot be previewed "
                 "(binary, too large, or could not be read)."
-            ).classes("text-xs text-[#9c94b3]")
+            ).classes("text-xs text-[var(--text-secondary)]")
         else:
             ui.code(content, language="text").classes(
                 "w-full max-h-[60vh] overflow-y-auto text-xs"

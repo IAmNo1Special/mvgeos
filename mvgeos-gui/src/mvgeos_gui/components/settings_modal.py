@@ -69,18 +69,19 @@ def render_app_settings_modal(state: AppState) -> None:
     with (
         ui.dialog().classes("w-full max-w-2xl").on("close", _on_close) as dialog,
         ui.card().classes(
-            "w-full bg-[#08080a] border border-[#292335] rounded-xl p-0 "
+            "w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] "
+            "rounded-xl p-0 "
             "overflow-hidden settings-dialog-card"
         ),
     ):
         with ui.row().classes(
             "w-full h-11 px-4 items-center justify-between "
-            "border-b border-[#292335] bg-[#101014]"
+            "border-b border-[var(--border-subtle)] bg-[var(--bg-raised)]"
         ):
             with ui.row().classes("items-center gap-2"):
-                ui.icon("settings", size="16px").classes("text-[#7b6cf6]")
+                ui.icon("settings", size="16px").classes("text-[var(--accent-primary)]")
                 ui.label("Application Settings").classes(
-                    "text-sm font-medium text-[#eceaf4]"
+                    "text-sm font-medium text-[var(--text-primary)]"
                 )
             ui.button(
                 icon="close",
@@ -90,7 +91,7 @@ def render_app_settings_modal(state: AppState) -> None:
         with ui.column().classes("w-full p-4 gap-4 max-h-[70vh] overflow-auto"):
             with ui.row().classes("w-full gap-4 settings-form-row"):  # noqa: SIM117
                 with ui.column().classes("flex-1 gap-1 min-w-0"):
-                    ui.label("API Key").classes("text-xs text-[#9c94b3]")
+                    ui.label("API Key").classes("text-xs text-[var(--text-secondary)]")
                     api_key_input = (
                         ui.input(
                             value=str(edited["api_key"]),
@@ -104,7 +105,9 @@ def render_app_settings_modal(state: AppState) -> None:
                     )
 
                 with ui.column().classes("flex-1 gap-1 min-w-0"):
-                    ui.label("Default Model").classes("text-xs text-[#9c94b3]")
+                    ui.label("Default Model").classes(
+                        "text-xs text-[var(--text-secondary)]"
+                    )
                     ui.select(
                         options=get_model_options(),
                         value=str(edited["default_model"]),
@@ -119,7 +122,7 @@ def render_app_settings_modal(state: AppState) -> None:
             with ui.row().classes("w-full gap-4 settings-form-row"):  # noqa: SIM117
                 with ui.column().classes("flex-1 gap-1 min-w-0"):
                     ui.label("Mana Limit (max_tokens)").classes(
-                        "text-xs text-[#9c94b3]"
+                        "text-xs text-[var(--text-secondary)]"
                     )
                     ui.input(
                         value=str(edited["mana_limit"]),
@@ -129,7 +132,9 @@ def render_app_settings_modal(state: AppState) -> None:
                     )
 
                 with ui.column().classes("flex-1 gap-1 min-w-0"):
-                    ui.label("Temperature").classes("text-xs text-[#9c94b3]")
+                    ui.label("Temperature").classes(
+                        "text-xs text-[var(--text-secondary)]"
+                    )
                     ui.input(
                         value=str(edited["temperature"]),
                         on_change=lambda e: edited.__setitem__("temperature", e.value),
@@ -139,7 +144,7 @@ def render_app_settings_modal(state: AppState) -> None:
 
             with ui.row().classes("w-full gap-4 settings-form-row"):  # noqa: SIM117
                 with ui.column().classes("flex-1 gap-1 min-w-0"):
-                    ui.label("Theme").classes("text-xs text-[#9c94b3]")
+                    ui.label("Theme").classes("text-xs text-[var(--text-secondary)]")
                     ui.select(
                         AVAILABLE_THEMES,
                         value=str(edited["theme"]),
@@ -150,7 +155,7 @@ def render_app_settings_modal(state: AppState) -> None:
 
         with ui.row().classes(
             "w-full px-4 py-3 items-center justify-end gap-2 "
-            "border-t border-[#292335] bg-[#101014]"
+            "border-t border-[var(--border-subtle)] bg-[var(--bg-raised)]"
         ):
             ui.button("Cancel", on_click=lambda: dialog.close()).props(
                 "flat dense no-caps text-color=grey-5"

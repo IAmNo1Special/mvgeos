@@ -35,38 +35,45 @@ def render_rune_settings_dialog(
     with (
         ui.dialog() as dialog,
         ui.card().classes(
-            f"{width} max-w-[90vw] bg-[#0e0e12] border border-[#292335] "
+            f"{width} max-w-[90vw] bg-[var(--bg-card)] "
+            "border border-[var(--border-subtle)] "
             "rounded-xl p-5 gap-4"
         ),
     ):
         with ui.row().classes("w-full items-center justify-between"):
             ui.label(f"{name} Settings").classes(
-                "text-base font-semibold text-[#eceaf4]"
+                "text-base font-semibold text-[var(--text-primary)]"
             )
             ui.button(icon="close", on_click=dialog.close).props(
                 "flat dense round text-color=grey-5 size=sm"
             )
 
-        ui.label(f"v{version}").classes("text-xs text-[#9c94b3] font-mono -mt-3")
+        ui.label(f"v{version}").classes(
+            "text-xs text-[var(--text-secondary)] font-mono -mt-3"
+        )
         if desc:
-            ui.label(desc).classes("text-sm text-[#b8b3c9]")
+            ui.label(desc).classes("text-sm text-[var(--text-violet-soft)]")
 
-        ui.separator().classes("bg-[#292335]")
+        ui.separator().classes("bg-[var(--border-subtle)]")
 
         with ui.row().classes("w-full items-center justify-between"):
             with ui.column().classes("gap-0"):
-                ui.label("Enabled").classes("text-sm font-medium text-[#eceaf4]")
+                ui.label("Enabled").classes(
+                    "text-sm font-medium text-[var(--text-primary)]"
+                )
                 ui.label("Disabled runes are not loaded by the agent.").classes(
-                    "text-xs text-[#6e6584]"
+                    "text-xs text-[var(--text-muted)]"
                 )
             enabled_switch = ui.switch(value=bool(enabled)).props("color=purple-6")
 
         if extra_section is not None:
-            ui.separator().classes("bg-[#292335]")
+            ui.separator().classes("bg-[var(--border-subtle)]")
             extra_section()
 
         if path:
-            ui.label(path).classes("text-[11px] text-[#6e6584] font-mono break-all")
+            ui.label(path).classes(
+                "text-[11px] text-[var(--text-muted)] font-mono break-all"
+            )
 
         with ui.row().classes("w-full justify-end gap-2 mt-2"):
             ui.button("Cancel", on_click=dialog.close).props(

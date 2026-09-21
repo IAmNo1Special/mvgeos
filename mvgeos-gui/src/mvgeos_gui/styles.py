@@ -63,6 +63,22 @@ VOID_THEME_CSS = """
     --text-terminal: #a49cc8;
     --link: #9d8fff;
     --link-hover: #c9bcff;
+    --text-muted-a70: color-mix(in srgb, var(--text-muted) 70%, transparent);
+    --accent-primary-a30: color-mix(in srgb, var(--accent-primary) 30%, transparent);
+    --border-subtle-a60: color-mix(in srgb, var(--border-subtle) 60%, transparent);
+    --border-subtle-a50: color-mix(in srgb, var(--border-subtle) 50%, transparent);
+    --bg-card-a60: color-mix(in srgb, var(--bg-card) 60%, transparent);
+    --text-danger-a40: color-mix(in srgb, var(--text-danger) 40%, transparent);
+    --accent-primary-a20: color-mix(in srgb, var(--accent-primary) 20%, transparent);
+    --text-warn-a40: color-mix(in srgb, var(--text-warn) 40%, transparent);
+    --text-fuchsia-a40: color-mix(in srgb, var(--text-fuchsia) 40%, transparent);
+    --deletion-red-a10: color-mix(in srgb, var(--deletion-red) 10%, transparent);
+    --bg-tint-a60: color-mix(in srgb, var(--bg-tint) 60%, transparent);
+    --bg-card-a70: color-mix(in srgb, var(--bg-card) 70%, transparent);
+    --bg-card-a40: color-mix(in srgb, var(--bg-card) 40%, transparent);
+    --addition-green-a10: color-mix(in srgb, var(--addition-green) 10%, transparent);
+    --accent-primary-a40: color-mix(in srgb, var(--accent-primary) 40%, transparent);
+    --accent-primary-a10: color-mix(in srgb, var(--accent-primary) 10%, transparent);
 }
 
 *, *::before, *::after {
@@ -916,6 +932,22 @@ html[data-theme="light"] {
     --accent-pink: #cf30aa;
     --addition-green: #15803d;
     --deletion-red: #dc2626;
+    --text-muted-a70: color-mix(in srgb, var(--text-muted) 70%, transparent);
+    --accent-primary-a30: color-mix(in srgb, var(--accent-primary) 30%, transparent);
+    --border-subtle-a60: color-mix(in srgb, var(--border-subtle) 60%, transparent);
+    --border-subtle-a50: color-mix(in srgb, var(--border-subtle) 50%, transparent);
+    --bg-card-a60: color-mix(in srgb, var(--bg-card) 60%, transparent);
+    --text-danger-a40: color-mix(in srgb, var(--text-danger) 40%, transparent);
+    --accent-primary-a20: color-mix(in srgb, var(--accent-primary) 20%, transparent);
+    --text-warn-a40: color-mix(in srgb, var(--text-warn) 40%, transparent);
+    --text-fuchsia-a40: color-mix(in srgb, var(--text-fuchsia) 40%, transparent);
+    --deletion-red-a10: color-mix(in srgb, var(--deletion-red) 10%, transparent);
+    --bg-tint-a60: color-mix(in srgb, var(--bg-tint) 60%, transparent);
+    --bg-card-a70: color-mix(in srgb, var(--bg-card) 70%, transparent);
+    --bg-card-a40: color-mix(in srgb, var(--bg-card) 40%, transparent);
+    --addition-green-a10: color-mix(in srgb, var(--addition-green) 10%, transparent);
+    --accent-primary-a40: color-mix(in srgb, var(--accent-primary) 40%, transparent);
+    --accent-primary-a10: color-mix(in srgb, var(--accent-primary) 10%, transparent);
 }
 
 /* Light-theme adjustments for decorative rules that are not tokenized:
@@ -1322,8 +1354,7 @@ CURVY_COMPOSER_CSS = """
 
 
 THEME_SCRIPT_TEMPLATE = (
-    '<script>document.documentElement.setAttribute("data-theme", "{theme}");'
-    "</script>"
+    '<script>document.documentElement.setAttribute("data-theme", "{theme}");</script>'
 )
 
 
