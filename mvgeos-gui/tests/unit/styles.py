@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -416,3 +417,22 @@ def test_dark_placeholder_token_contrast() -> None:
     match = re.search(r"--text-placeholder:\s*(#[0-9a-fA-F]{6})", VOID_THEME_CSS)
     assert match is not None
     assert _contrast_ratio(match.group(1), "#16161d") >= 3.0
+
+
+def test_no_fixed_dark_badge_colors_in_components() -> None:
+    """Component badges must not pin a fixed dark Quasar palette color.
+
+    Regression: ``color="grey-9"`` badges paired theme-adaptive
+    ``text-[var(--text-secondary)]`` text with a fixed dark-gray
+    background, rendering unreadable in the light theme. Badges now use
+    theme tokens (``bg-[var(--bg-card)]``) instead.
+    """
+    components = (
+        Path(__file__).resolve().parents[3] / "src" / "mvgeos_gui" / "components"
+    )
+    offenders = [
+        path.name
+        for path in sorted(components.glob("*.py"))
+        if 'color="grey-9"' in path.read_text() or "color='grey-9'" in path.read_text()
+    ]
+    assert offenders == []

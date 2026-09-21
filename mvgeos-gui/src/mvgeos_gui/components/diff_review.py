@@ -35,9 +35,10 @@ def render_diff_modal(state: object, diff_view: DiffView) -> None:
                 ui.label(diff_view.file_path).classes(
                     "text-sm font-medium text-[var(--text-primary)] font-mono"
                 )
-                ui.badge(diff_view.status, color="grey-9").props(
-                    "rounded dense"
-                ).classes("text-[10px] text-[var(--text-secondary)] font-mono")
+                ui.badge(diff_view.status).props("rounded dense").classes(
+                    "text-[10px] text-[var(--text-secondary)] font-mono "
+                    "bg-[var(--bg-card)] border border-[var(--border-subtle)]"
+                )
                 if add_total > 0:
                     ui.badge(
                         f"+{add_total}",

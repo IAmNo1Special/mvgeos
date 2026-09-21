@@ -542,9 +542,10 @@ def _render_grant_card(
                 "text-xs font-semibold text-[var(--text-primary)] font-mono flex-1"
             )
             if grant.scope_label:
-                ui.badge(grant.scope_label, color="grey-9").props(
-                    "rounded dense"
-                ).classes("text-[10px] text-[var(--text-secondary)]")
+                ui.badge(grant.scope_label).props("rounded dense").classes(
+                    "text-[10px] text-[var(--text-secondary)] "
+                    "bg-[var(--bg-card)] border border-[var(--border-subtle)]"
+                )
             ui.button("Revoke", on_click=lambda: revoke(kind, grant.grant_id)).props(
                 "flat dense"
             ).classes("text-xs text-[var(--text-danger)]").mark(

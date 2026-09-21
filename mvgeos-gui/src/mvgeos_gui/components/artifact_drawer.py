@@ -73,8 +73,9 @@ def render_artifact_card(artifact: Artifact, state: AppState) -> None:
                 ui.label(artifact.title).classes(
                     "text-sm font-semibold text-[var(--text-primary)]"
                 )
-                ui.badge(type_label, color="grey-9").props("rounded dense").classes(
-                    "text-[9px] text-[var(--text-secondary)] font-mono uppercase"
+                ui.badge(type_label).props("rounded dense").classes(
+                    "text-[9px] text-[var(--text-secondary)] font-mono uppercase "
+                    "bg-[var(--bg-card)] border border-[var(--border-subtle)]"
                 )
             with ui.row().classes("items-center gap-1"):
                 ui.label(artifact.created_at).classes(
@@ -123,9 +124,9 @@ def render_artifact_drawer(state: AppState) -> None:
                 )
                 ui.badge(
                     artifact.artifact_type.value.replace("_", " ").title(),
-                    color="grey-9",
                 ).props("rounded dense").classes(
-                    "text-[9px] text-[var(--text-secondary)] font-mono uppercase"
+                    "text-[9px] text-[var(--text-secondary)] font-mono uppercase "
+                    "bg-[var(--bg-card)] border border-[var(--border-subtle)]"
                 )
             ui.button(
                 icon="close",

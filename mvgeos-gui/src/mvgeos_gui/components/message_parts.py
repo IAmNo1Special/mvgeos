@@ -33,8 +33,9 @@ def render_message_header(msg: ChatMessage) -> ui.row:
             ui.label("Mvge").classes("text-xs font-semibold text-[var(--text-primary)]")
             if msg.model:
                 model_slug = msg.model.split("/")[-1].split(":")[0]
-                ui.badge(model_slug, color="grey-9").props("rounded dense").classes(
-                    "text-[10px] text-[var(--text-secondary)] font-mono"
+                ui.badge(model_slug).props("rounded dense").classes(
+                    "text-[10px] text-[var(--text-secondary)] font-mono "
+                    "bg-[var(--bg-card)] border border-[var(--border-subtle)]"
                 )
 
         with ui.row().classes("items-center gap-2"):

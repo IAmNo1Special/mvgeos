@@ -199,10 +199,9 @@ def render_files_card(
                         "max-w-[320px]"
                     )
                     if f.lines:
-                        ui.badge(f.lines, color="grey-9").props(
-                            "rounded dense"
-                        ).classes(
-                            "text-[10px] text-[var(--text-secondary)] font-mono px-1.5"
+                        ui.badge(f.lines).props("rounded dense").classes(
+                            "text-[10px] text-[var(--text-secondary)] font-mono px-1.5 "
+                            "bg-[var(--bg-card)] border border-[var(--border-subtle)]"
                         )
                 ui.badge(f.operation.upper(), color="deep-purple-9").props(
                     "rounded dense"
