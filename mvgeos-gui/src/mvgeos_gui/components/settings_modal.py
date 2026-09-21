@@ -9,6 +9,7 @@ from nicegui import ui
 
 from mvgeos_gui.services.config_service import AppSettings, ConfigService
 from mvgeos_gui.state import AppState
+from mvgeos_gui.utils import install_focus_trap
 
 AVAILABLE_THEMES = ["dark", "light"]
 
@@ -34,22 +35,23 @@ def render_app_settings_modal(state: AppState) -> None:
         state.notify()
 
     def _save() -> None:
+        errors: list[str] = []
+        mana_limit = 0
         try:
             mana_limit = int(edited["mana_limit"])
             if mana_limit <= 0:
-                raise ValueError("Mana limit must be positive")
+                raise ValueError("Mana limit must be a positive integer")
         except (ValueError, TypeError):
-            ui.notify("Invalid mana limit: must be a positive integer", type="negative")
-            return
+            errors.append("Invalid mana limit: must be a positive integer")
+        temperature = 0.0
         try:
             temperature = float(edited["temperature"])
             if temperature < 0.0 or temperature > 2.0:
                 raise ValueError("Temperature must be between 0.0 and 2.0")
         except (ValueError, TypeError):
-            ui.notify(
-                "Invalid temperature: must be between 0.0 and 2.0",
-                type="negative",
-            )
+            errors.append("Invalid temperature: must be between 0.0 and 2.0")
+        if errors:
+            ui.notify("\n".join(errors), type="negative", multi_line=True)
             return
         config_service.save_app_settings(
             AppSettings(
@@ -90,11 +92,16 @@ def render_app_settings_modal(state: AppState) -> None:
             with ui.row().classes("w-full gap-4"):  # noqa: SIM117
                 with ui.column().classes("flex-1 gap-1"):
                     ui.label("API Key").classes("text-xs text-[#9c94b3]")
-                    ui.input(
-                        value=str(edited["api_key"]),
-                        on_change=lambda e: edited.__setitem__("api_key", e.value),
-                    ).props("dense outlined dark").classes("w-full").mark(
-                        "api_key_input"
+                    api_key_input = (
+                        ui.input(
+                            value=str(edited["api_key"]),
+                            on_change=lambda e: edited.__setitem__("api_key", e.value),
+                            password=True,
+                            password_toggle_button=True,
+                        )
+                        .props("dense outlined dark")
+                        .classes("w-full")
+                        .mark("api_key_input")
                     )
 
                 with ui.column().classes("flex-1 gap-1"):
@@ -153,4 +160,6 @@ def render_app_settings_modal(state: AppState) -> None:
                 "unelevated dense no-caps mvge-glow-btn text-white"
             )
 
+    install_focus_trap(dialog)
     dialog.open()
+    api_key_input.run_method("focus")

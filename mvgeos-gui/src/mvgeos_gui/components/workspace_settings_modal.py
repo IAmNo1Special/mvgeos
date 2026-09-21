@@ -8,6 +8,7 @@ from nicegui import ui
 
 from mvgeos_gui.services.config_service import ConfigService, WorkspaceSettings
 from mvgeos_gui.state import AppState
+from mvgeos_gui.utils import install_focus_trap
 
 CONTEMPLATION_LEVELS = ["none", "low", "medium", "high", "x-high"]
 
@@ -34,6 +35,12 @@ def render_workspace_settings_modal(state: AppState) -> None:
         state.notify()
 
     def _save() -> None:
+        if not project_dir.is_dir():
+            ui.notify(
+                f"Workspace directory does not exist: {project_dir}",
+                type="negative",
+            )
+            return
         try:
             temp = float(edited["temperature"])
             tokens = int(edited["max_tokens"])
@@ -80,11 +87,16 @@ def render_workspace_settings_modal(state: AppState) -> None:
             with ui.row().classes("w-full gap-4"):
                 with ui.column().classes("flex-1 gap-1"):
                     ui.label("Project Name").classes("text-xs text-[#9c94b3]")
-                    ui.input(
-                        value=str(edited["project_name"]),
-                        on_change=lambda e: edited.__setitem__("project_name", e.value),
-                    ).props("dense outlined dark").classes("w-full").mark(
-                        "project_name_input"
+                    project_name_input = (
+                        ui.input(
+                            value=str(edited["project_name"]),
+                            on_change=lambda e: edited.__setitem__(
+                                "project_name", e.value
+                            ),
+                        )
+                        .props("dense outlined dark")
+                        .classes("w-full")
+                        .mark("project_name_input")
                     )
 
                 with ui.column().classes("flex-1 gap-1"):
@@ -129,4 +141,6 @@ def render_workspace_settings_modal(state: AppState) -> None:
                 "unelevated dense no-caps mvge-glow-btn text-white"
             )
 
+    install_focus_trap(dialog)
     dialog.open()
+    project_name_input.run_method("focus")

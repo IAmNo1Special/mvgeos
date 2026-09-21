@@ -213,3 +213,69 @@ async def test_app_settings_modal_does_not_render_when_hidden(
 
     await user.open("/test_settings_hidden")
     await user.should_not_see("Application Settings")
+
+
+@pytest.mark.asyncio
+async def test_app_settings_modal_api_key_is_masked_with_toggle(
+    user: User, tmp_path: Path
+) -> None:
+    """C8: API key must be a masked password input with a show/hide toggle."""
+    state = _make_state(tmp_path, AppSettings(api_key="sk-secret"))
+
+    @ui.page("/test_settings_api_key_masked")
+    def page() -> None:
+        render_app_settings_modal(state)
+
+    await user.open("/test_settings_api_key_masked")
+    api_input = next(iter(user.find(marker="api_key_input").elements))
+    assert api_input._props.get("type") == "password"
+    toggle_icons = [
+        el
+        for el in user.find(ui.icon).elements
+        if el._props.get("name") in ("visibility", "visibility_off")
+    ]
+    assert toggle_icons, "expected a show/hide toggle on the API key input"
+
+
+@pytest.mark.asyncio
+async def test_app_settings_modal_save_reports_all_validation_errors(
+    user: User, tmp_path: Path
+) -> None:
+    """C9: mana -5 + temperature 999 must report BOTH errors in one pass."""
+    state = _make_state(tmp_path)
+
+    @ui.page("/test_settings_all_errors")
+    def page() -> None:
+        render_app_settings_modal(state)
+
+    await user.open("/test_settings_all_errors")
+    mana_input = next(iter(user.find(marker="mana_limit_input").elements))
+    mana_input.set_value("-5")
+    temp_input = next(iter(user.find(marker="temperature_input").elements))
+    temp_input.set_value("999")
+
+    user.find("Save").click()
+    assert state._show_app_settings is True
+    await user.should_see("Invalid mana limit")
+    await user.should_see("Invalid temperature")
+
+
+@pytest.mark.asyncio
+async def test_app_settings_modal_traps_focus(user: User, tmp_path: Path) -> None:
+    """C26: a Tab keydown trap must be registered on the settings dialog."""
+    state = _make_state(tmp_path)
+
+    @ui.page("/test_settings_focus_trap")
+    def page() -> None:
+        render_app_settings_modal(state)
+
+    await user.open("/test_settings_focus_trap")
+    dialog = next(iter(user.find(ui.dialog).elements))
+    trap_listeners = [
+        listener
+        for listener in dialog._event_listeners.values()
+        if listener.type == "keydown.tab"
+        and listener.js_handler
+        and "focus" in listener.js_handler
+    ]
+    assert trap_listeners, "expected a Tab focus trap on the settings dialog"

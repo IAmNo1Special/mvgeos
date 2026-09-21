@@ -37,7 +37,7 @@ async def test_login_screen_renders(user: User) -> None:
     await user.open("/test_login_screen")
     await user.should_see("Sign in to continue")
     await user.should_see("Sign In")
-    await user.should_see("Default: admin / admin")
+    await user.should_not_see("Default: admin / admin")
 
 
 @pytest.mark.asyncio
@@ -186,3 +186,44 @@ async def test_login_screen_exception_handling(user: User) -> None:
     inputs[1].value = "admin"
     user.find("Sign In").click()
     await user.should_see("Login error: DB error")
+
+
+@pytest.mark.asyncio
+async def test_login_screen_password_enter_submits(user: User) -> None:
+    """B-7: pressing Enter in the password field submits the login."""
+    state = AppState()
+    state._show_login = True
+
+    @ui.page("/test_login_enter")
+    def page() -> None:
+        render_login_screen(state)
+
+    await user.open("/test_login_enter")
+    inputs = sorted(user.find(ui.input).elements, key=lambda el: el.id)
+    inputs[0].value = "admin"
+    inputs[1].value = "admin"
+    password_input = inputs[1]
+    listener_id = next(
+        k
+        for k, v in password_input._event_listeners.items()
+        if v.type == "keydown.enter"
+    )
+    password_input._handle_event({"listener_id": listener_id, "args": None})
+    assert state.current_user is not None
+    assert state.current_user.username == "admin"
+    assert state._show_login is False
+
+
+@pytest.mark.asyncio
+async def test_login_screen_shows_no_credential_hint(user: User) -> None:
+    """C28: the login form must not advertise default credentials."""
+    state = AppState()
+    state._show_login = True
+
+    @ui.page("/test_login_no_hint")
+    def page() -> None:
+        render_login_screen(state)
+
+    await user.open("/test_login_no_hint")
+    await user.should_not_see("Default: admin / admin")
+    await user.should_not_see("admin / admin")
