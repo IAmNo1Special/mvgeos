@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from collections import deque
 from dataclasses import dataclass
 
@@ -27,6 +28,19 @@ from mvgeos_core.approval import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_project_root(value: str) -> str:
+    """Platform-normalized form of a project root for comparison.
+
+    The engine hands ``project_root`` over as a raw string while the GUI
+    passes ``str(Path)``; on Windows those spell the same directory with
+    different separators (``/`` vs ``\\``), which a naive string compare
+    reads as a context change and force-denies the decision. Normalizing
+    both sides keeps the stale check fail-closed on genuinely different
+    directories while accepting identical ones.
+    """
+    return os.path.normcase(os.path.normpath(value))
 
 
 def is_request_stale(
@@ -43,7 +57,9 @@ def is_request_stale(
     queue always binds the decision to the active request, so they need
     no separate check. An empty tome id counts as "no active tome".
     """
-    if project_root is not None and request.project_root != project_root:
+    if project_root is not None and _normalize_project_root(
+        request.project_root
+    ) != _normalize_project_root(project_root):
         return True
     live_tome = tome_id or None
     request_tome = request.tome_id or None

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 
 import pytest
 from mvgeos_core.approval import (
@@ -152,6 +153,27 @@ def test_is_request_stale_ignores_none_tome_on_both_sides() -> None:
     req = _req(tome_id=None)
     assert not is_request_stale(req, project_root="/proj", tome_id=None)
     assert is_request_stale(req, project_root="/proj", tome_id="t1")
+
+
+def test_is_request_stale_ignores_trailing_slash_spelling() -> None:
+    """A trailing slash does not make the same directory look moved."""
+    req = _req(project_root="/proj/a")
+    assert not is_request_stale(req, project_root="/proj/a/", tome_id="t1")
+
+
+@pytest.mark.skipif(
+    os.name != "nt",
+    reason=(
+        "Separator-insensitive project-root comparison only differs on "
+        "Windows, where str(Path) uses backslashes."
+    ),
+)
+def test_is_request_stale_ignores_windows_separator_spelling() -> None:
+    """The same directory spelled with / vs \\ is not a context change."""
+    req = _req(project_root="C:/proj/a")
+    assert not is_request_stale(req, project_root="C:\\proj\\a", tome_id="t1")
+    # A genuinely different directory is still stale (fail-closed).
+    assert is_request_stale(req, project_root="C:\\proj\\b", tome_id="t1")
 
 
 @pytest.mark.asyncio

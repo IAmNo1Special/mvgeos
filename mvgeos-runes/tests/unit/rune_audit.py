@@ -37,6 +37,15 @@ def test_append_writes_single_jsonl_record(tmp_path: Path) -> None:
     assert records[0]["outcome"] == "ok"
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason=(
+        "Windows has no POSIX permission bits: os.chmod cannot express "
+        "0o700/0o600 there, so the mode-bit assertion cannot pass. The audit "
+        "log relies on default Windows ACLs on that platform; a Windows ACL "
+        "implementation would remove this skip."
+    ),
+)
 def test_append_sets_restrictive_permissions(tmp_path: Path) -> None:
     log = RuneAuditLog(tmp_path / "extensions")
     log.append_event({"op": "teach", "outcome": "ok"})
@@ -115,6 +124,8 @@ def test_default_dir_falls_back_to_user_agents(
 ) -> None:
     monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
+    # Windows' ntpath.expanduser ignores HOME and reads USERPROFILE.
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     assert default_rune_ops_dir() == tmp_path / ".agents" / "extensions"
 
 
