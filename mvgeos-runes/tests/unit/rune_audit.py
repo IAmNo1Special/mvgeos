@@ -28,22 +28,22 @@ def read_records(path: Path) -> list[dict]:
 
 
 def test_append_writes_single_jsonl_record(tmp_path: Path) -> None:
-    log = RuneAuditLog(tmp_path / "rune-ops")
+    log = RuneAuditLog(tmp_path / "extensions")
     log.append_event({"op": "revise_persona", "outcome": "ok"})
 
-    records = read_records(tmp_path / "rune-ops" / AUDIT_FILENAME)
+    records = read_records(tmp_path / "extensions" / AUDIT_FILENAME)
     assert len(records) == 1
     assert records[0]["op"] == "revise_persona"
     assert records[0]["outcome"] == "ok"
 
 
 def test_append_sets_restrictive_permissions(tmp_path: Path) -> None:
-    log = RuneAuditLog(tmp_path / "rune-ops")
+    log = RuneAuditLog(tmp_path / "extensions")
     log.append_event({"op": "teach", "outcome": "ok"})
 
-    assert stat.S_IMODE(os.stat(tmp_path / "rune-ops").st_mode) == 0o700
+    assert stat.S_IMODE(os.stat(tmp_path / "extensions").st_mode) == 0o700
     assert (
-        stat.S_IMODE(os.stat(tmp_path / "rune-ops" / AUDIT_FILENAME).st_mode) == 0o600
+        stat.S_IMODE(os.stat(tmp_path / "extensions" / AUDIT_FILENAME).st_mode) == 0o600
     )
 
 
@@ -107,7 +107,7 @@ def test_default_dir_prefers_global_dir_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
-    assert default_rune_ops_dir() == tmp_path / "global" / "rune-ops"
+    assert default_rune_ops_dir() == tmp_path / "global" / "extensions"
 
 
 def test_default_dir_falls_back_to_user_agents(
@@ -115,16 +115,16 @@ def test_default_dir_falls_back_to_user_agents(
 ) -> None:
     monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
-    assert default_rune_ops_dir() == tmp_path / ".agents" / "rune-ops"
+    assert default_rune_ops_dir() == tmp_path / ".agents" / "extensions"
 
 
 def test_rotation_never_overwrites_existing_archive(tmp_path: Path) -> None:
-    log = RuneAuditLog(tmp_path / "rune-ops", max_bytes=1)
+    log = RuneAuditLog(tmp_path / "extensions", max_bytes=1)
     log.append_event({"op": "first"})
     log.append_event({"op": "second"})
     log.append_event({"op": "third"})
 
-    archives = sorted((tmp_path / "rune-ops").glob("audit-*.jsonl"))
+    archives = sorted((tmp_path / "extensions").glob("audit-*.jsonl"))
     assert len(archives) == 2
     ops = [record["op"] for archive in archives for record in read_records(archive)]
     assert sorted(ops) == ["first", "second"]

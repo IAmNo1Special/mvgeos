@@ -104,7 +104,7 @@ def test_audit_default_log_lands_in_user_scope_dir(
 
     api.audit("teach", outcome="failed", code="snapshot_failed", message="m")
 
-    audit_path = tmp_path / "global" / "rune-ops" / AUDIT_FILENAME
+    audit_path = tmp_path / "global" / "extensions" / AUDIT_FILENAME
     assert audit_path.is_file()
     (record,) = read_records(audit_path)
     assert record["rune"] == "some-rune"

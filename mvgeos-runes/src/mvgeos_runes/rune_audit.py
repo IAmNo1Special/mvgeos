@@ -32,7 +32,7 @@ try:
 except ImportError:  # pragma: no cover - Windows
     fcntl = None  # type: ignore[assignment]
 
-AUDIT_DIRNAME = "rune-ops"
+AUDIT_DIRNAME = "extensions"
 AUDIT_FILENAME = "audit.jsonl"
 DEFAULT_MAX_BYTES = 25 * 1024 * 1024
 DEFAULT_MAX_AGE_DAYS = 30
@@ -52,7 +52,7 @@ def utcnow() -> str:
 
 
 def default_rune_ops_dir() -> Path:
-    """User-scope ``.agents`` dir + ``rune-ops``.
+    """User-scope ``.agents`` dir + ``extensions``.
 
     ``$MVGEOS_GLOBAL_DIR`` wins when set (the skills-bridge scope
     convention); otherwise ``~/.agents``.

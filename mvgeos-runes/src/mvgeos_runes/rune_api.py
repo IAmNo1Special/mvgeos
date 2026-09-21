@@ -51,7 +51,7 @@ class RuneAPI:
         self._override = override
         self._install_id = install_id
         # Engine-owned: the rune-op audit log. Defaults to the user-scope
-        # ``.agents/rune-ops/audit.jsonl``; injectable for tests.
+        # ``.agents/extensions/audit.jsonl``; injectable for tests.
         self._audit_log = audit_log or RuneAuditLog(default_rune_ops_dir())
 
     @property
