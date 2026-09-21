@@ -5,6 +5,7 @@ violet primary and pink secondary, matching the curvy composer.
 """
 
 from nicegui import ui
+from nicegui.elements.dark_mode import DarkMode
 
 VOID_THEME_CSS = """
 :root {
@@ -21,6 +22,47 @@ VOID_THEME_CSS = """
     --accent-pink: #cf30aa;
     --addition-green: #22c55e;
     --deletion-red: #ef4444;
+    --bg-raised: #101014;
+    --bg-sunken: #050507;
+    --bg-sunken-deep: #050506;
+    --bg-well: #0c0c10;
+    --bg-well-alt: #0e0e14;
+    --bg-sunken-alt: #0a0a0e;
+    --bg-well-deep: #08080c;
+    --bg-overlay: #14121a;
+    --bg-code: #181320;
+    --bg-dialog: #0e0c13;
+    --bg-tint: #241f38;
+    --bg-tint-deep: #2a2438;
+    --bg-danger-wash: #2a1215;
+    --bg-pink-wash: #2a1030;
+    --bg-composer: #010201;
+    --bg-code-inline: #101015;
+    --border-strong: #211c34;
+    --border-code: #23232e;
+    --text-bright: #f4f2fa;
+    --text-body: #c9c4da;
+    --text-body-soft: #bdb8d2;
+    --text-h3: #ddd9ea;
+    --text-dim: #8f87a8;
+    --text-dim-deep: #6b6580;
+    --text-faint: #5f5778;
+    --text-placeholder: #c0b9c0;
+    --text-icon-bright: #d6d6e6;
+    --text-danger: #f87171;
+    --text-danger-soft: #fca5a5;
+    --danger-strong: #e5484d;
+    --text-warn: #f59e0b;
+    --text-warn-bright: #fbbf24;
+    --text-fuchsia: #e879f9;
+    --text-fuchsia-pale: #f5d0fe;
+    --text-violet-pale: #e0daf7;
+    --text-violet-soft: #b8b3c9;
+    --text-violet-soft2: #b8b0cc;
+    --text-contemplation-code: #a79fc4;
+    --text-terminal: #a49cc8;
+    --link: #9d8fff;
+    --link-hover: #c9bcff;
 }
 
 *, *::before, *::after {
@@ -29,7 +71,7 @@ VOID_THEME_CSS = """
 
 ::selection {
     background: rgba(123, 108, 246, 0.4);
-    color: #f4f2fa;
+    color: var(--text-bright);
 }
 
 :focus-visible {
@@ -101,11 +143,11 @@ html, body {
     background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-    background: #292335;
+    background: var(--border-subtle);
     border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-    background: #7b6cf6;
+    background: var(--accent-primary);
 }
 
 /* MvgeOS buttons & controls */
@@ -307,10 +349,10 @@ html, body {
     font-weight: 700;
     line-height: 1.25;
     letter-spacing: -0.02em;
-    color: #f4f2fa;
+    color: var(--text-bright);
     margin: 1.35em 0 0.55em;
     padding-bottom: 0.32em;
-    border-bottom: 1px solid #211c34;
+    border-bottom: 1px solid var(--border-strong);
 }
 .markdown-content h2,
 .nicegui-markdown h2 {
@@ -318,7 +360,7 @@ html, body {
     font-weight: 600;
     line-height: 1.3;
     letter-spacing: -0.015em;
-    color: #eceaf4;
+    color: var(--text-primary);
     margin: 1.25em 0 0.5em;
 }
 .markdown-content h3,
@@ -326,14 +368,14 @@ html, body {
     font-size: 1.12em;
     font-weight: 600;
     line-height: 1.35;
-    color: #ddd9ea;
+    color: var(--text-h3);
     margin: 1.1em 0 0.4em;
 }
 .markdown-content h4,
 .nicegui-markdown h4 {
     font-size: 1em;
     font-weight: 600;
-    color: #bdb8d2;
+    color: var(--text-body-soft);
     margin: 1em 0 0.35em;
 }
 .markdown-content h5,
@@ -352,28 +394,28 @@ html, body {
 .markdown-content p,
 .nicegui-markdown p {
     margin: 0.8em 0;
-    color: #c9c4da;
+    color: var(--text-body);
 }
 .markdown-content strong,
 .nicegui-markdown strong {
     font-weight: 620;
-    color: #eceaf4;
+    color: var(--text-primary);
 }
 .markdown-content em,
 .nicegui-markdown em {
     font-style: italic;
-    color: #bdb8d2;
+    color: var(--text-body-soft);
 }
 .markdown-content a,
 .nicegui-markdown a {
-    color: #9d8fff;
+    color: var(--link);
     text-decoration: none;
     border-bottom: 1px solid transparent;
     transition: color 0.15s, border-color 0.15s;
 }
 .markdown-content a:hover,
 .nicegui-markdown a:hover {
-    color: #c9bcff;
+    color: var(--link-hover);
     border-bottom-color: rgba(157, 143, 255, 0.5);
 }
 
@@ -397,11 +439,11 @@ html, body {
 .nicegui-markdown li {
     margin: 0.32em 0;
     padding-left: 0.15em;
-    color: #c9c4da;
+    color: var(--text-body);
 }
 .markdown-content li::marker,
 .nicegui-markdown li::marker {
-    color: #5f5778;
+    color: var(--text-faint);
 }
 .markdown-content li > p,
 .nicegui-markdown li > p {
@@ -424,9 +466,9 @@ html, body {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.84em;
     font-weight: 500;
-    background: #101015;
-    border: 1px solid #23232e;
-    color: #ddd9ea;
+    background: var(--bg-code-inline);
+    border: 1px solid var(--border-code);
+    color: var(--text-h3);
     padding: 0.16em 0.38em;
     border-radius: 5px;
     white-space: break-spaces;
@@ -438,8 +480,8 @@ html, body {
 .nicegui-markdown pre,
 .markdown-content .codehilite,
 .nicegui-markdown .codehilite {
-    background: #050507 !important;
-    border: 1px solid #241f38 !important;
+    background: var(--bg-sunken) !important;
+    border: 1px solid var(--bg-tint) !important;
     border-radius: 8px !important;
     padding: 12px 14px !important;
     margin: 0.9em 0 !important;
@@ -459,7 +501,7 @@ html, body {
     border-radius: 0 !important;
     font-size: 12.5px !important;
     font-weight: 400 !important;
-    color: #eceaf4 !important;
+    color: var(--text-primary) !important;
     white-space: pre !important;
     word-break: normal !important;
     display: block;
@@ -478,12 +520,12 @@ html, body {
     border-left: 3px solid var(--accent-primary);
     background: rgba(123, 108, 246, 0.07);
     border-radius: 0 7px 7px 0;
-    color: #8f87a8;
+    color: var(--text-dim);
 }
 .markdown-content blockquote p,
 .nicegui-markdown blockquote p {
     margin: 0.4em 0;
-    color: #8f87a8;
+    color: var(--text-dim);
 }
 
 /* Tables */
@@ -493,20 +535,20 @@ html, body {
     border-collapse: collapse;
     margin: 0.9em 0;
     font-size: 0.92em;
-    border: 1px solid #292335;
+    border: 1px solid var(--border-subtle);
     border-radius: 7px;
     overflow: hidden;
     display: table;
 }
 .markdown-content th,
 .nicegui-markdown th {
-    background: #0e0e12;
-    color: #eceaf4;
+    background: var(--bg-card);
+    color: var(--text-primary);
     font-weight: 600;
     text-align: left;
     padding: 8px 12px;
-    border-bottom: 1px solid #292335;
-    border-right: 1px solid #292335;
+    border-bottom: 1px solid var(--border-subtle);
+    border-right: 1px solid var(--border-subtle);
 }
 .markdown-content th:last-child,
 .nicegui-markdown th:last-child {
@@ -515,9 +557,9 @@ html, body {
 .markdown-content td,
 .nicegui-markdown td {
     padding: 7px 12px;
-    border-bottom: 1px solid #0e0e12;
-    border-right: 1px solid #0e0e12;
-    color: #bdb8d2;
+    border-bottom: 1px solid var(--bg-card);
+    border-right: 1px solid var(--bg-card);
+    color: var(--text-body-soft);
 }
 .markdown-content td:last-child,
 .nicegui-markdown td:last-child {
@@ -537,7 +579,7 @@ html, body {
 .nicegui-markdown hr {
     border: none;
     height: 1px;
-    background: linear-gradient(90deg, transparent, #292335, transparent);
+    background: linear-gradient(90deg, transparent, var(--border-subtle), transparent);
     margin: 1.25em 0;
 }
 
@@ -546,7 +588,7 @@ html, body {
 .nicegui-markdown img {
     max-width: 100%;
     border-radius: 7px;
-    border: 1px solid #292335;
+    border: 1px solid var(--border-subtle);
     margin: 0.85em 0;
 }
 
@@ -559,12 +601,12 @@ html, body {
 .nicegui-markdown kbd {
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.78em;
-    background: #101014;
-    border: 1px solid #292335;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-subtle);
     border-bottom-width: 2px;
     padding: 0.15em 0.4em;
     border-radius: 4px;
-    color: #bdb8d2;
+    color: var(--text-body-soft);
 }
 
 /* Contemplation variant — muted italic thought content */
@@ -573,7 +615,7 @@ html, body {
 .markdown-contemplation li,
 .markdown-contemplation strong,
 .markdown-contemplation em {
-    color: #8f87a8 !important;
+    color: var(--text-dim) !important;
 }
 .markdown-contemplation {
     font-style: italic;
@@ -582,7 +624,7 @@ html, body {
 }
 .markdown-contemplation code {
     font-style: normal;
-    color: #a79fc4 !important;
+    color: var(--text-contemplation-code) !important;
     background: rgba(16, 16, 21, 0.9) !important;
     border-color: rgba(35, 35, 46, 0.7) !important;
 }
@@ -590,8 +632,8 @@ html, body {
 /* Terminal output variant — dense mono on deep backdrop */
 .markdown-terminal pre,
 .markdown-terminal .codehilite {
-    background: #000000 !important;
-    border-color: #0e0e14 !important;
+    background: var(--bg-canvas) !important;
+    border-color: var(--bg-well-alt) !important;
     padding: 8px 10px !important;
     margin: 0 !important;
     box-shadow: none !important;
@@ -599,7 +641,7 @@ html, body {
 .markdown-terminal pre code,
 .markdown-terminal .codehilite code,
 .markdown-terminal .codehilite pre {
-    color: #a49cc8 !important;
+    color: var(--text-terminal) !important;
     font-size: 11.5px !important;
     line-height: 1.55 !important;
 }
@@ -656,7 +698,7 @@ html, body {
     box-shadow: 0 0 8px rgba(123, 108, 246, 0.7) !important;
 }
 .nav-icon-active {
-    color: #9d8fff !important;
+    color: var(--link) !important;
     filter: drop-shadow(0 0 6px rgba(123, 108, 246, 0.6));
 }
 
@@ -675,7 +717,7 @@ html, body {
     border-color: var(--border-active) !important;
 }
 .q-tooltip {
-    background: #16161d !important;
+    background: var(--bg-card-hover) !important;
     border: 1px solid var(--border-subtle) !important;
     color: var(--text-primary) !important;
     font-size: 11px !important;
@@ -726,7 +768,7 @@ html, body {
     border-radius: 12px;
     align-items: center;
     justify-content: center;
-    background-color: #0e0e12;
+    background-color: var(--bg-card);
     border: 1px solid var(--border-subtle);
     color: var(--accent-primary);
     cursor: pointer;
@@ -815,6 +857,79 @@ html, body {
 }
 """
 
+# ── Light theme ("Porcelain"): the same violet brand on light surfaces.
+# Every token declared in :root above gets a light value here; the block
+# is selected via ``html[data-theme="light"]`` so dark stays the default.
+LIGHT_THEME_CSS = """
+html[data-theme="light"] {
+    --bg-canvas: #efeaf7;
+    --bg-surface: #ffffff;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f0ebf9;
+    --bg-raised: #f5f2fa;
+    --bg-sunken: #e9e4f2;
+    --bg-sunken-deep: #e3dded;
+    --bg-well: #f6f3fb;
+    --bg-well-alt: #f2eefa;
+    --bg-sunken-alt: #ede8f5;
+    --bg-well-deep: #f6f3fb;
+    --bg-overlay: #f5f2fa;
+    --bg-code: #f5f2fa;
+    --bg-dialog: #ffffff;
+    --bg-tint: #eae4f8;
+    --bg-tint-deep: #e2d8f4;
+    --bg-danger-wash: #fdeeee;
+    --bg-pink-wash: #faeef8;
+    --bg-composer: #ffffff;
+    --bg-code-inline: #efeaf8;
+    --border-subtle: #d9d2e8;
+    --border-strong: #cfc6e2;
+    --border-code: #d9d2e8;
+    --border-active: #7b6cf6;
+    --text-primary: #1d1a2b;
+    --text-secondary: #5d5675;
+    --text-muted: #6f6584;
+    --text-bright: #1d1a2b;
+    --text-body: #48435e;
+    --text-body-soft: #565170;
+    --text-h3: #3a3550;
+    --text-dim: #7e7594;
+    --text-dim-deep: #8a829e;
+    --text-faint: #948da8;
+    --text-placeholder: #8d86a3;
+    --text-icon-bright: #1d1a2b;
+    --text-danger: #c62828;
+    --text-danger-soft: #e05252;
+    --danger-strong: #dc2626;
+    --text-warn: #b45309;
+    --text-warn-bright: #d97706;
+    --text-fuchsia: #a21caf;
+    --text-fuchsia-pale: #86198f;
+    --text-violet-pale: #5b4bc4;
+    --text-violet-soft: #6f6589;
+    --text-violet-soft2: #72668c;
+    --text-contemplation-code: #655c80;
+    --text-terminal: #5d5675;
+    --link: #6a5ae0;
+    --link-hover: #5848c8;
+    --accent-primary: #7b6cf6;
+    --accent-pink: #cf30aa;
+    --addition-green: #15803d;
+    --deletion-red: #dc2626;
+}
+
+/* Light-theme adjustments for decorative rules that are not tokenized:
+   the composer glow is a dark halo, so it is softened on light
+   surfaces; the modal scrim stays dark to keep dialogs readable. */
+html[data-theme="light"] .mvge-glow {
+    opacity: 0.22;
+}
+html[data-theme="light"] ::selection {
+    background: rgba(123, 108, 246, 0.35);
+    color: #1d1a2b;
+}
+"""
+
 GOOGLE_FONTS_HTML = (
     '<link rel="preconnect" href="https://fonts.googleapis.com">\n'
     '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
@@ -855,7 +970,7 @@ CURVY_COMPOSER_CSS = """
     position: relative;
     z-index: 1;
     width: 100%;
-    background-color: #010201;
+    background-color: var(--bg-composer);
     border-radius: 10px;
     padding: 10px 10px 6px 10px;
 }
@@ -870,9 +985,9 @@ CURVY_COMPOSER_CSS = """
 }
 .mvge-main textarea.q-field__native,
 .mvge-main textarea {
-    background-color: #010201 !important;
+    background-color: var(--bg-composer) !important;
     border: none !important;
-    color: white !important;
+    color: var(--text-primary) !important;
     padding-left: 16px !important;
     padding-right: 62px !important;
     padding-top: 6px !important;
@@ -884,7 +999,7 @@ CURVY_COMPOSER_CSS = """
 }
 .mvge-main textarea.q-field__native::placeholder,
 .mvge-main textarea::placeholder {
-    color: #c0b9c0 !important;
+    color: var(--text-placeholder) !important;
     opacity: 1 !important;
 }
 .mvge-main textarea.q-field__native:focus,
@@ -910,7 +1025,7 @@ CURVY_COMPOSER_CSS = """
     width: 60px;
     height: 20px;
     position: absolute;
-    background: linear-gradient(90deg, transparent, #010201);
+    background: linear-gradient(90deg, transparent, var(--bg-composer));
     /* Tracks the send button: text fading out under it, wherever it sits. */
     top: 50%;
     transform: translateY(-50%);
@@ -1192,7 +1307,7 @@ CURVY_COMPOSER_CSS = """
    carry no Quasar bg-* class (see composer.py): bg-* utilities beat theme
    overrides, so the color prop was dropped instead of overridden. */
 .mvge-upload-btn .q-btn {
-    color: #9c94b3;
+    color: var(--text-secondary);
 }
 .mvge-upload-btn .q-uploader__title {
     display: none !important;
@@ -1206,10 +1321,41 @@ CURVY_COMPOSER_CSS = """
 """
 
 
-def inject_theme() -> None:
-    """Inject the Void theme stylesheet and Quasar palette into NiceGUI."""
+THEME_SCRIPT_TEMPLATE = (
+    '<script>document.documentElement.setAttribute("data-theme", "{theme}");'
+    "</script>"
+)
+
+
+def theme_dataset_script(theme: str) -> str:
+    """Boot script stamping the active theme onto ``<html data-theme>``.
+
+    The theme stylesheets are static: ``:root`` holds the dark tokens and
+    ``html[data-theme="light"]`` overrides them, so switching themes is a
+    single attribute write with no stylesheet rebuild.
+    """
+    return THEME_SCRIPT_TEMPLATE.format(theme=theme)
+
+
+def inject_theme(theme: str = "dark") -> DarkMode:
+    """Inject the theme stylesheets and Quasar palette into NiceGUI.
+
+    :param theme: ``"dark"`` (Void) or ``"light"`` (Porcelain).
+    :returns: the page's DarkMode element, so callers can toggle it later
+        (e.g. after a theme change in Settings) without minting a second
+        element that would fight the first.
+    """
+    if theme not in ("dark", "light"):
+        raise ValueError(f"unknown theme: {theme!r}")
     ui.add_head_html(GOOGLE_FONTS_HTML)
     ui.add_css(VOID_THEME_CSS)
+    ui.add_css(LIGHT_THEME_CSS)
     ui.add_css(CURVY_COMPOSER_CSS)
+    ui.add_head_html(theme_dataset_script(theme))
     ui.colors(primary="#7b6cf6")
-    ui.dark_mode().enable()
+    dark_mode = ui.dark_mode()
+    if theme == "dark":
+        dark_mode.enable()
+    else:
+        dark_mode.disable()
+    return dark_mode

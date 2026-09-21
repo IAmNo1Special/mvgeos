@@ -11,8 +11,10 @@ from nicegui.testing import User
 from mvgeos_gui.styles import (
     CURVY_COMPOSER_CSS,
     GOOGLE_FONTS_HTML,
+    LIGHT_THEME_CSS,
     VOID_THEME_CSS,
     inject_theme,
+    theme_dataset_script,
 )
 
 
@@ -125,7 +127,7 @@ def test_composer_upload_picker_button_stays_visible() -> None:
 def test_composer_upload_picker_icon_matches_toolbar() -> None:
     """Attach picker icon uses the toolbar's muted violet tone."""
     btn_rules = _rule_block(CURVY_COMPOSER_CSS, ".mvge-upload-btn .q-btn")
-    assert "#9c94b3" in btn_rules
+    assert "var(--text-secondary)" in btn_rules
 
 
 def test_send_button_vertically_centered_in_input_zone() -> None:
@@ -239,3 +241,72 @@ def test_glow_button_hover_clearly_visible() -> None:
     rules = _rule_block(VOID_THEME_CSS, ".mvge-glow-btn:hover")
     assert "filter: brightness(1.3)" in rules
     assert "0 0 22px rgba(123, 108, 246, 0.5)" in rules
+
+
+def _root_tokens(css: str) -> set[str]:
+    """Token names declared in the ``:root`` block."""
+    match = re.search(r":root\s*\{([^}]*)\}", css)
+    assert match is not None, "missing :root block"
+    return set(re.findall(r"(--[\w-]+)\s*:", match.group(1)))
+
+
+def _light_tokens(css: str) -> set[str]:
+    """Token names overridden in the light-theme block."""
+    match = re.search(r'html\[data-theme="light"\]\s*\{([^}]*)\}', css)
+    assert match is not None, "missing light theme override block"
+    return set(re.findall(r"(--[\w-]+)\s*:", match.group(1)))
+
+
+def test_light_theme_overrides_every_dark_token() -> None:
+    """Every dark token must have a light value: no half-themed surfaces."""
+    assert _light_tokens(LIGHT_THEME_CSS) == _root_tokens(VOID_THEME_CSS)
+
+
+def test_light_theme_keeps_violet_brand() -> None:
+    """Brand accents are identical in both themes."""
+    for token in ("--accent-primary", "--accent-pink", "--border-active"):
+        dark = re.search(re.escape(token) + r"\s*:\s*([^;]+);", VOID_THEME_CSS)
+        light = re.search(re.escape(token) + r"\s*:\s*([^;]+);", LIGHT_THEME_CSS)
+        assert dark is not None and light is not None
+        assert dark.group(1).strip() == light.group(1).strip()
+
+
+def test_light_theme_text_readable_on_light_surfaces() -> None:
+    """Light-theme text tokens must be dark (no light-on-light text)."""
+
+    def luminance(hex_color: str) -> float:
+        hex_color = hex_color.lstrip("#")
+        r, g, b = (int(hex_color[i : i + 2], 16) / 255 for i in (0, 2, 4))
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+    for token in ("--text-primary", "--text-secondary", "--text-muted"):
+        match = re.search(
+            re.escape(token) + r"\s*:\s*(#[0-9a-fA-F]{6})", LIGHT_THEME_CSS
+        )
+        assert match is not None, f"{token} missing from light theme"
+        assert luminance(match.group(1)) < 0.45, f"{token} too light for a light theme"
+
+
+def test_inject_theme_rejects_unknown_theme() -> None:
+    """inject_theme validates the theme name before touching NiceGUI."""
+    with pytest.raises(ValueError, match="unknown theme"):
+        inject_theme("midnight")
+
+
+def test_theme_dataset_script_names_theme() -> None:
+    """The boot script stamps the chosen theme onto <html>."""
+    assert 'setAttribute("data-theme", "light")' in theme_dataset_script("light")
+    assert 'setAttribute("data-theme", "dark")' in theme_dataset_script("dark")
+
+
+@pytest.mark.asyncio
+async def test_inject_theme_light(user: User) -> None:
+    """inject_theme("light") renders a page without error."""
+
+    @ui.page("/test_styles_light")
+    def page() -> None:
+        inject_theme("light")
+        ui.label("Light Theme Injected")
+
+    await user.open("/test_styles_light")
+    await user.should_see("Light Theme Injected")
