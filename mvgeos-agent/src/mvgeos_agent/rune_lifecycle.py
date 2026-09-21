@@ -11,8 +11,9 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Any
 
 from mvgeos_core.sandbox import MvgeSandbox
 from mvgeos_provider.registry import RealmRegistry
@@ -54,6 +55,8 @@ class RuneLifecycle:
         cwd: str | None = None,
         mode: str = "cli",
         global_dir: Path | None = None,
+        reload_callback: Callable[[], Any] | None = None,
+        extra_watch_dirs: Sequence[str | Path] = (),
     ) -> None:
         self._agent_name = agent_name
         self._api_key = api_key
@@ -67,6 +70,10 @@ class RuneLifecycle:
         self._watchers: list[RuneWatcher] = []
         self._watched_paths: set[str] = set()
         self._paths_with_scope: list[tuple[Path, RuneScope]] = []
+        # Engine reload trigger: when set, watchers run in trigger mode and
+        # call this (Mvge.reload) instead of reloading runes themselves.
+        self._reload_callback = reload_callback
+        self._extra_watch_dirs: list[Path] = [Path(d) for d in extra_watch_dirs]
 
     @property
     def runner(self) -> RuneRunner | None:
@@ -163,14 +170,37 @@ class RuneLifecycle:
         May be called before :meth:`load`, in which case the configured
         rune paths are resolved on demand. Paths already being watched
         are skipped so repeated start calls never spawn duplicate
-        observers.
+        observers. When a reload callback is set, every watcher runs in
+        trigger mode: file events fire ``Mvge.reload()`` instead of
+        reloading runes directly.
         """
         runner = self._ensure_runner()
         paths_with_scope = self._paths_with_scope or self.resolve_paths()
         for path, _scope in paths_with_scope:
             if not path.exists() or str(path) in self._watched_paths:
                 continue
-            watcher = RuneWatcher(path, runner)
+            watcher = RuneWatcher(path, runner, reload_callback=self._reload_callback)
+            await watcher.start()
+            self._watchers.append(watcher)
+            self._watched_paths.add(str(path))
+        await self.watch_dirs(self._extra_watch_dirs)
+
+    async def watch_dirs(self, dirs: Sequence[str | Path]) -> None:
+        """Watch additional directories with the reload callback.
+
+        No-op without a reload callback: extra trigger dirs are only
+        meaningful for the engine reload. Already-watched and missing
+        directories are skipped. Used after a reload to pick up trigger
+        dirs that appeared since startup (e.g. a new spells directory).
+        """
+        if self._reload_callback is None:
+            return
+        runner = self._ensure_runner()
+        for raw in dirs:
+            path = Path(raw).expanduser()
+            if not path.is_dir() or str(path) in self._watched_paths:
+                continue
+            watcher = RuneWatcher(path, runner, reload_callback=self._reload_callback)
             await watcher.start()
             self._watchers.append(watcher)
             self._watched_paths.add(str(path))

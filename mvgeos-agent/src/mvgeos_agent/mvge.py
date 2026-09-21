@@ -41,13 +41,20 @@ from mvgeos_core.invocations import (
 )
 from mvgeos_core.loop import StreamFn
 from mvgeos_core.spells import MvgeSpell
-from mvgeos_provider.base import Realm
+from mvgeos_provider.base import Realm, RealmFactory
 from mvgeos_provider.model_registry import ModelRegistry
 from mvgeos_provider.registry import RealmRegistry, get_default_realm_registry
 from mvgeos_runes.codecs import load_session_codecs
+from mvgeos_runes.rune_audit import (
+    AuditError,
+    RuneAuditLog,
+    default_rune_ops_dir,
+    utcnow,
+)
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     Diagnostic,
+    DiagnosticKind,
     RegisteredCommand,
     RuneShortcut,
     SkillDiagnostic,
@@ -61,7 +68,12 @@ from mvgeos_agent.compatibility import (
     SessionCompatibilityReport,
     validate_session_compatibility,
 )
-from mvgeos_agent.environment import MvgeEnvironment, resolve_config_dir
+from mvgeos_agent.environment import (
+    MvgeEnvironment,
+    PromptSource,
+    resolve_config_dir,
+    resolve_system_prompt,
+)
 from mvgeos_agent.function_spell import (
     RuneSpellWrapper,
     SpellUnion,
@@ -74,6 +86,7 @@ from mvgeos_agent.harness import (
     CompactionSettings,
     MvgeHarness,
 )
+from mvgeos_agent.protocol import ReloadResult
 from mvgeos_agent.rune_lifecycle import RuneLifecycle
 from mvgeos_agent.snapshot import RuntimeSnapshot
 from mvgeos_agent.types import MvgeState
@@ -172,6 +185,91 @@ def _apply_gateway_allowlist(runner: RuneRunner) -> str | None:
     runner.set_global_spell_allowlist(names)
     logger.info("Spell-gateway mode engaged via rune '%s'", gateway)
     return gateway
+
+
+_ProviderSnapshot = tuple[dict[str, dict[str, Any]], dict[str, RealmFactory]]
+"""Rune-registered provider configs and realm factories, for rollback."""
+
+
+_RETIRED_SHUTDOWN_ATTEMPTS = 3
+"""How many times reload retries stopping the retired lifecycle's watchers."""
+
+
+def _snapshot_provider_registrations(
+    registry: RealmRegistry,
+) -> _ProviderSnapshot:
+    """Capture rune-registered provider state using the public API."""
+    providers: dict[str, dict[str, Any]] = {}
+    for name in registry.get_registered_providers():
+        config = registry.get_provider_config(name)
+        if config is not None:
+            providers[name] = dict(config)
+    factories: dict[str, RealmFactory] = {}
+    for prefix in registry.get_registered_realm_factories():
+        factory = registry.get_realm_factory(prefix)
+        if factory is not None:
+            factories[prefix] = factory
+    return providers, factories
+
+
+def _restore_provider_registrations(
+    registry: RealmRegistry, snapshot: _ProviderSnapshot
+) -> None:
+    """Roll provider state back to a snapshot taken before candidate load.
+
+    Candidate rune factories execute against the shared registry; when the
+    candidate build later fails, this removes or repairs anything the
+    candidate added so the failed reload leaves no trace.
+    """
+    snap_providers, snap_factories = snapshot
+    # Provider configs and realm factories live in separate namespaces;
+    # one name may appear in both, so each is restored independently.
+    for name in registry.get_registered_providers():
+        wanted = snap_providers.get(name)
+        current = registry.get_provider_config(name)
+        if wanted is None:
+            if current is not None:
+                registry.unregister_provider(name)
+        elif current != wanted:
+            registry.unregister_provider(name)
+            registry.register_provider(name, wanted)
+    for prefix in registry.get_registered_realm_factories():
+        wanted_factory = snap_factories.get(prefix)
+        if wanted_factory is None:
+            registry.unregister_realm_factory(prefix)
+        elif registry.get_realm_factory(prefix) is not wanted_factory:
+            registry.register_realm_factory(prefix, wanted_factory)
+
+
+@dataclasses.dataclass
+class _ReloadedState:
+    """Validated candidate state for one reload; swapped in atomically.
+
+    ``_build_reload_state`` constructs this fully before anything is
+    swapped, so a failure anywhere in the build leaves the live
+    last-known-good state untouched: the candidate lifecycle owns a
+    fresh runner (factories re-executed, rehydrate applied), the
+    candidate harness is built pre-swap, and the swap itself is
+    synchronous.
+    """
+
+    environment: MvgeEnvironment
+    prompt_source: PromptSource
+    prompt: str
+    discovered_spells: list[SpellUnion]
+    built_spells: list[MvgeSpell]
+    active_spells_dir: Path | None
+    rune_diagnostics: list[Diagnostic | SkillDiagnostic]
+    rehydrate_errors: list[str]
+    spell_file_warnings: list[str]
+    prompt_changed: bool
+    spells_changed: bool
+    summary: str
+    runner: RuneRunner | None
+    lifecycle: RuneLifecycle | None
+    harness: MvgeHarness | None
+    gateway_rune: str | None
+    """Spell-gateway rune engaged on the candidate runner, if any."""
 
 
 class Mvge:
@@ -337,6 +435,23 @@ class Mvge:
         self._runner: RuneRunner | None = None
         self._rune_lifecycle: RuneLifecycle | None = None
         self._prompt_source = environment.resolved_prompt.source
+        # Inputs for re-resolving the base SYSTEM.md chain on reload: the
+        # exact values MvgeEnvironment.resolve used, so reload re-discovers
+        # identically whether the environment was built here or handed in
+        # (CLI/GUI).
+        self._prompt_resolve_kwargs: dict[str, Any] = dict(
+            environment.prompt_resolve_kwargs
+        ) or {"agent_name": name}
+        # Turn-boundary reload: a reload requested mid-turn queues here and
+        # the in-flight turn keeps its LoopContext untouched.
+        self._run_in_flight = False
+        self._reload_pending = False
+        self._reload_diagnostics: list[Diagnostic | SkillDiagnostic] = []
+        # Spell-gateway tracking: the rune name when the global spell
+        # allowlist was engaged via a rune's ``spell_gateway`` manifest
+        # declaration, else None (no allowlist, or an explicitly
+        # configured policy that gateway mode must never override).
+        self._gateway_engaged_rune: str | None = None
         self._model: Model | None = None
         self._realm: Realm | None = None
         self._agent_tome: MvgeTome | None = None
@@ -435,6 +550,13 @@ class Mvge:
         return None
 
     @property
+    def system_prompt(self) -> str:
+        """The active system prompt: last-known-good after a failed reload."""
+        if self._state is not None:
+            return self._state.system_prompt
+        return ""
+
+    @property
     def enabled_spells(self) -> list[str]:
         spells = self._build_spells()
         if spells:
@@ -474,6 +596,7 @@ class Mvge:
             self._state.spells = spells
             if self._harness is not None:
                 self._harness = self._build_harness()
+                self._compaction = self._harness.compaction
         if enabled and not spells:
             logger.warning(
                 "Plan mode enabled but no spells are marked read-only; "
@@ -499,6 +622,462 @@ class Mvge:
             self._state.spells = self._build_spells()
             # Refresh the spell index used by the dispatcher
             self._state._spell_index = {s.name: s for s in self._state.spells}
+
+    async def reload(self) -> ReloadResult:
+        """Rebuild the runtime mid-session: runes, prompt, spells, harness.
+
+        The sole engine-owned reload mechanism; the file watcher is only a
+        trigger that calls this. Steps, in order:
+
+        1. Turn boundary: a reload requested mid-turn queues until the turn
+           completes; the in-flight turn keeps its LoopContext.
+        2. Prompt rebuild: the base SYSTEM.md discovery chain is
+           re-resolved from pristine pre-sigil content, and the
+           prompt-mutating BEFORE_MVGE_START hook fires exactly once for
+           the rebuild.
+        3. Spell rediscovery: per-file import failures are diagnosed and
+           the file dropped, never aborting the reload.
+        4. Rune rehydrate: hook-derived instance state is refreshed from a
+           fresh payload without refiring the prompt-mutating hook.
+        5. Harness rebuild when the prompt or spell set changed.
+        6. Transactional: every fallible step validates on a candidate
+           before the swap; a failed reload preserves last-known-good
+           state and surfaces the exact diagnostic. The swap itself is
+           synchronous.
+        7. Watcher handover: the candidate lifecycle's watchers start
+           after the swap (covering trigger dirs that appeared since
+           initialization); a handover failure is audited as a loud
+           failure with the new state live.
+
+        Every executed reload writes exactly one record to the user-scope
+        audit log (``$MVGEOS_GLOBAL_DIR/extensions/audit.jsonl`` when set,
+        else ``~/.agents/extensions/audit.jsonl``). A reload queued
+        mid-turn is audited when it executes at the turn boundary, and
+        concurrent queued requests coalesce into that single execution.
+        A reload rejected before initialization performs no work and
+        writes no record.
+        """
+        if self._run_in_flight:
+            self._reload_pending = True
+            return ReloadResult(
+                ok=True,
+                queued=True,
+                message=(
+                    "Reload queued: a turn is in flight; it applies at the "
+                    "next turn boundary."
+                ),
+            )
+        if not self._initialized:
+            return ReloadResult(
+                ok=False, message="Agent not initialized; nothing to reload."
+            )
+        # Provider registrations are the one shared-mutable step of the
+        # build (rune factories re-execute against the shared registry):
+        # snapshot first so any build failure rolls them back.
+        provider_snapshot = _snapshot_provider_registrations(self._provider_registry)
+        try:
+            rebuilt = await self._build_reload_state()
+        except Exception as exc:
+            _restore_provider_registrations(self._provider_registry, provider_snapshot)
+            diagnostic = f"Reload failed: {exc}"
+            logger.exception("Reload failed; last-known-good state preserved")
+            self._reload_diagnostics = [
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name="engine",
+                    message=diagnostic,
+                )
+            ]
+            audit_error = self._audit_reload(
+                ok=False, code="reload_failed", message=diagnostic
+            )
+            message = diagnostic + "; last-known-good state preserved."
+            if audit_error is not None:
+                message += f" ({audit_error})"
+            return ReloadResult(ok=False, message=message)
+        old_lifecycle = self._apply_reload_state(rebuilt)
+        # Watcher handover: the candidate lifecycle (already swapped in)
+        # starts its watchers — rune paths plus the trigger dirs computed
+        # from the NEW active spells dir, so a spells dir that appeared
+        # since initialization is picked up. The retired lifecycle's
+        # watchers stop afterwards. There is a brief overlap where both
+        # sets are live: both fire the same engine reload, which is
+        # idempotent, so duplicate triggers only mean duplicate reloads.
+        watcher_error: str | None = None
+        if self._rune_lifecycle is not None:
+            try:
+                await self._rune_lifecycle.start()
+            except Exception as exc:
+                watcher_error = f"watcher re-sync failed: {exc}"
+                logger.exception(
+                    "Reload applied but watcher re-sync failed; "
+                    "file-triggered reloads are paused until the next "
+                    "successful reload"
+                )
+        retired_shutdown_error: str | None = None
+        if old_lifecycle is not None:
+            # Bounded retry: a transient observer-teardown failure should
+            # not leave zombie watchers behind without trying again.
+            # Only when every attempt fails is the error recorded — the
+            # new state is still live either way.
+            for attempt in range(_RETIRED_SHUTDOWN_ATTEMPTS):
+                try:
+                    await old_lifecycle.shutdown()
+                    retired_shutdown_error = None
+                    break
+                except Exception as exc:
+                    retired_shutdown_error = f"retired watcher shutdown failed: {exc}"
+                    if attempt == _RETIRED_SHUTDOWN_ATTEMPTS - 1:
+                        logger.exception(
+                            "Retired rune watchers did not shut down "
+                            "cleanly after reload"
+                        )
+        if watcher_error is not None:
+            # The swap succeeded — the new state IS live — but the
+            # post-swap watcher handover failed. Per the §4.6 audit
+            # pattern the result is a loud failure that states plainly
+            # what is live and what is not.
+            message = f"{rebuilt.summary}; reload IS live but {watcher_error}."
+            audit_error = self._audit_reload(
+                ok=False,
+                code="watcher_sync_failed",
+                message=message,
+                extra={
+                    "prompt_changed": rebuilt.prompt_changed,
+                    "spells_changed": rebuilt.spells_changed,
+                    "rune_diagnostics": len(rebuilt.rune_diagnostics),
+                    "rehydrate_errors": rebuilt.rehydrate_errors,
+                    "spell_file_warnings": rebuilt.spell_file_warnings,
+                },
+            )
+            if audit_error is not None:
+                message += f" ({audit_error})"
+            self._reload_diagnostics = [
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name="engine",
+                    message=message,
+                )
+            ]
+            return ReloadResult(ok=False, message=message)
+        audit_error = self._audit_reload(
+            ok=True,
+            code="reload_ok",
+            message=rebuilt.summary,
+            extra={
+                "prompt_changed": rebuilt.prompt_changed,
+                "spells_changed": rebuilt.spells_changed,
+                "rune_diagnostics": len(rebuilt.rune_diagnostics),
+                "rehydrate_errors": rebuilt.rehydrate_errors,
+                "spell_file_warnings": rebuilt.spell_file_warnings,
+                # None unless the retired lifecycle's watchers failed to
+                # stop; the new state is still live in that case.
+                "retired_shutdown_error": retired_shutdown_error,
+            },
+        )
+        if audit_error is not None:
+            # §4.6, normative: an audit append failure turns the result
+            # into audit_failed (ok=False), never a silent ok. The
+            # mutation succeeded — the message states plainly that the
+            # reload IS live but unrecorded.
+            message = (
+                f"audit_failed: {audit_error}; {rebuilt.summary} — "
+                "the reload IS live but unrecorded."
+            )
+            self._reload_diagnostics = [
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name="engine",
+                    message=message,
+                )
+            ]
+            return ReloadResult(
+                ok=False,
+                message=message,
+                prompt_changed=rebuilt.prompt_changed,
+                spells_changed=rebuilt.spells_changed,
+            )
+        self._reload_diagnostics = [
+            *rebuilt.rune_diagnostics,
+            *(
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name="engine",
+                    message=warning,
+                )
+                for warning in rebuilt.spell_file_warnings
+            ),
+            *(
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name="engine",
+                    message=error,
+                )
+                for error in rebuilt.rehydrate_errors
+            ),
+            *(
+                [
+                    Diagnostic(
+                        kind=DiagnosticKind.LOAD_FAILURE,
+                        rune_name="engine",
+                        message=retired_shutdown_error,
+                    )
+                ]
+                if retired_shutdown_error is not None
+                else []
+            ),
+        ]
+        return ReloadResult(
+            ok=True,
+            message=rebuilt.summary,
+            prompt_changed=rebuilt.prompt_changed,
+            spells_changed=rebuilt.spells_changed,
+        )
+
+    async def _build_reload_state(self) -> _ReloadedState:
+        """Build the validated candidate state for a reload.
+
+        Raises on any failure; the caller preserves last-known-good state.
+        Nothing here mutates the live agent: rune factories are
+        re-executed on a candidate runner owned by a candidate lifecycle,
+        the prompt-mutating hook fires on that candidate, rehydrate
+        touches only candidate instances, and the candidate harness is
+        built before the swap. Rune-declared providers are re-registered
+        on the shared provider registry as at construction, but the
+        pre-load state is snapshotted and restored if the build fails, so
+        a failed reload leaves no provider trace behind.
+        """
+        # 1. Rediscover spells, tolerantly: per-file failures become
+        #    warnings and the file is dropped, never aborting the reload.
+        spell_file_warnings: list[str] = []
+
+        def _on_file_error(path: Path, exc: Exception) -> None:
+            spell_file_warnings.append(f"{path.name}: {exc}")
+
+        discovered, active_dir = self._discover_spells_impl(
+            on_file_error=_on_file_error
+        )
+
+        # 2. Re-resolve the pristine base prompt (pre-sigil content) using
+        #    the exact discovery inputs recorded at construction.
+        fresh_prompt = resolve_system_prompt(**self._prompt_resolve_kwargs)
+        new_environment = dataclasses.replace(
+            self._environment,
+            resolved_prompt=fresh_prompt,
+            active_spells_dir=active_dir,
+        )
+
+        # 3. Candidate rune lifecycle: a fresh runner with every factory
+        #    re-executed from current disk state. The live runner and its
+        #    instances stay untouched until the swap, so a later failure
+        #    still preserves last-known-good rune state.
+        candidate_lifecycle: RuneLifecycle | None = None
+        candidate_runner: RuneRunner | None = self._runner
+        rune_diagnostics: list[Diagnostic | SkillDiagnostic] = []
+        if self._rune_lifecycle is not None:
+            candidate_lifecycle = RuneLifecycle(
+                agent_name=self._name,
+                api_key=self._api_key,
+                runes_paths=self._runes_paths,
+                environment=new_environment,
+                provider_registry=self._provider_registry,
+                reload_callback=self.reload,
+                extra_watch_dirs=self._reload_trigger_dirs(active_dir),
+            )
+            await candidate_lifecycle.load()
+            candidate_runner = candidate_lifecycle.runner
+            if candidate_runner is not None:
+                rune_diags = list(candidate_runner.diagnostics)
+                rune_diagnostics = [
+                    *rune_diags,
+                    *candidate_runner.skill_diagnostics,
+                ]
+                # A previously working rune that no longer loads (broken
+                # manifest or factory, reported as a diagnostic) fails the
+                # whole candidate: the spec grants rune refresh no tolerant
+                # drop semantics, so last-known-good is preserved. A rune
+                # deleted from disk (no diagnostic) is a legitimate
+                # removal and proceeds.
+                if self._runner is not None:
+                    live_names = {m.name for m in self._runner.loaded_manifests}
+                    candidate_names = {
+                        m.name for m in candidate_runner.loaded_manifests
+                    }
+                    lost = live_names - candidate_names
+                    broken = sorted(lost & {d.rune_name for d in rune_diags})
+                    if broken:
+                        raise RuntimeError(
+                            "previously loaded rune(s) no longer load: "
+                            + ", ".join(broken)
+                        )
+            if candidate_lifecycle.environment is not None:
+                new_environment = candidate_lifecycle.environment
+
+        # Gateway policy on the candidate, before spell/prompt assembly
+        # (the startup order): an explicitly configured live allowlist is
+        # transferred so user/harness policy survives the reload; a
+        # gateway-engaged view is re-derived from the candidate's runes so
+        # a removed or changed gateway rune cannot leave a stale view
+        # behind. Ephemeral widenings are re-discoverable after reload.
+        gateway_rune = self._gateway_engaged_rune
+        if candidate_runner is not None and candidate_lifecycle is not None:
+            live_allowlist = (
+                self._runner.get_global_spell_allowlist()
+                if self._runner is not None
+                else None
+            )
+            if live_allowlist is not None and self._gateway_engaged_rune is None:
+                candidate_runner.set_global_spell_allowlist(live_allowlist)
+            else:
+                gateway_rune = _apply_gateway_allowlist(candidate_runner)
+
+        new_spells = self._build_spells_from(discovered, runner=candidate_runner)
+        # The prompt-mutating hook fires exactly once for this rebuild,
+        # on the candidate runner — never on the live instances.
+        new_prompt = await self._assemble_prompt_async(
+            new_environment, new_spells, active_dir, runner=candidate_runner
+        )
+
+        # 4. Fresh sigil payload for rehydration: hook-derived rune
+        #    instance state is restored on the candidate WITHOUT refiring
+        #    the prompt-mutating hook.
+        payload = new_environment.build_sigil_payload(
+            base_prompt=fresh_prompt.text,
+            spell_names=[s.name for s in new_spells],
+            config_dir=self.config_dir,
+            custom_prompt=self._custom_system_prompt,
+            cwd=self._effective_cwd(),
+            active_spells_dir=active_dir,
+        )
+        rehydrate_errors: list[str] = []
+        if candidate_runner is not None:
+            rehydrate_errors = await candidate_runner.rehydrate_runes(payload)
+
+        old_prompt = self._state.system_prompt if self._state is not None else None
+        old_spell_names = (
+            sorted(s.name for s in self._state.spells)
+            if self._state is not None
+            else []
+        )
+        new_spell_names = sorted(s.name for s in new_spells)
+        prompt_changed = old_prompt is not None and new_prompt != old_prompt
+        spells_changed = new_spell_names != old_spell_names
+        summary = (
+            f"Reload complete: prompt "
+            f"{'changed' if prompt_changed else 'unchanged'}, "
+            f"{len(new_spell_names)} spell(s) "
+            f"({'changed' if spells_changed else 'unchanged'})"
+        )
+        if rune_diagnostics:
+            summary += f", {len(rune_diagnostics)} rune diagnostic(s)"
+        if rehydrate_errors:
+            summary += f", {len(rehydrate_errors)} rehydrate error(s)"
+        if spell_file_warnings:
+            summary += f", {len(spell_file_warnings)} spell file(s) skipped"
+
+        # 5. Candidate harness, built BEFORE the swap: a construction
+        #    failure here still preserves last-known-good state. The
+        #    harness holds the live state object by reference and reads
+        #    prompt/spells per turn, so building it pre-swap is exact.
+        #    Rebuilt only when the reload changed something the harness
+        #    captured (prompt, spell set), per the set_plan_mode
+        #    precedent.
+        candidate_harness: MvgeHarness | None = None
+        if self._harness is not None and (prompt_changed or spells_changed):
+            candidate_harness = self._build_harness()
+
+        return _ReloadedState(
+            environment=new_environment,
+            prompt_source=fresh_prompt.source,
+            prompt=new_prompt,
+            discovered_spells=discovered,
+            built_spells=new_spells,
+            active_spells_dir=active_dir,
+            rune_diagnostics=rune_diagnostics,
+            rehydrate_errors=rehydrate_errors,
+            spell_file_warnings=spell_file_warnings,
+            prompt_changed=prompt_changed,
+            spells_changed=spells_changed,
+            summary=summary,
+            runner=candidate_runner,
+            lifecycle=candidate_lifecycle,
+            harness=candidate_harness,
+            gateway_rune=gateway_rune,
+        )
+
+    def _apply_reload_state(self, rebuilt: _ReloadedState) -> RuneLifecycle | None:
+        """Swap in validated reload state.
+
+        Synchronous so the swap cannot interleave with another task: the
+        candidate was fully validated before this runs. Returns the
+        retired lifecycle so the caller can hand its watchers over to
+        the candidate's after the swap.
+        """
+        old_lifecycle = self._rune_lifecycle
+        self._environment = rebuilt.environment
+        self._prompt_source = rebuilt.prompt_source
+        self._spells = rebuilt.discovered_spells
+        self._active_spells_dir = rebuilt.active_spells_dir
+        if self._state is not None:
+            self._state.system_prompt = rebuilt.prompt
+            self._state.spells = rebuilt.built_spells
+            self._state._spell_index = {s.name: s for s in rebuilt.built_spells}
+        if rebuilt.lifecycle is not None and rebuilt.runner is not None:
+            # A genuine candidate: swap the runner with its wiring and
+            # retire the old lifecycle. (Without a candidate lifecycle the
+            # live runner stays exactly as it was.)
+            self._runner = rebuilt.runner
+            self._runner.on_event(
+                "mvge_event",
+                lambda ev: self._event_bus.emit(ev.type, ev.data),
+            )
+            self._gateway_engaged_rune = rebuilt.gateway_rune
+            self._rune_lifecycle = rebuilt.lifecycle
+        if rebuilt.harness is not None:
+            self._harness = rebuilt.harness
+            self._compaction = rebuilt.harness.compaction
+        return old_lifecycle
+
+    def _audit_reload(
+        self,
+        *,
+        ok: bool,
+        code: str,
+        message: str,
+        extra: dict[str, Any] | None = None,
+    ) -> str | None:
+        """Append one reload record to the user-scope audit log.
+
+        The ``rune`` field carries the engine's own identity (``"engine"``):
+        reload is harness machinery, and no rune can emit it —
+        ``RuneAPI.audit`` always stamps the calling rune's manifest name.
+
+        Returns an error description when the durable append fails, else
+        None. Audit-write failure is never silent: the caller surfaces it
+        loudly in the result message and diagnostics.
+        """
+        record: dict[str, Any] = dict(extra) if extra else {}
+        record.update(
+            {
+                "timestamp": utcnow(),
+                "rune": "engine",
+                "op": "reload",
+                "outcome": "ok" if ok else "failed",
+                "code": code,
+                "target": None,
+                "message": message,
+            }
+        )
+        try:
+            RuneAuditLog(default_rune_ops_dir()).append_event(record)
+        except (AuditError, OSError) as exc:
+            return f"audit append failed: {exc}"
+        return None
+
+    @property
+    def reload_pending(self) -> bool:
+        """Whether a reload is queued for the next turn boundary."""
+        return self._reload_pending
 
     @property
     def registered_commands(self) -> list[str]:
@@ -570,6 +1149,7 @@ class Mvge:
     @property
     def diagnostics(self) -> list[Diagnostic | SkillDiagnostic]:
         diags: list[Diagnostic | SkillDiagnostic] = list(self._resume_diagnostics)
+        diags.extend(self._reload_diagnostics)
         if self._environment is not None and self._environment.diagnostics:
             for d in self._environment.diagnostics:
                 if d not in diags:
@@ -603,6 +1183,21 @@ class Mvge:
         """Explicitly initialize runes and skills."""
         await self._load_runes()
 
+    def _reload_trigger_dirs(self, active_spells_dir: Path | None) -> list[Path]:
+        """Directories whose changes must trigger an engine reload.
+
+        The configured rune extension directories are watched by the
+        lifecycle itself; this adds the resolved active spells directory
+        (new/changed spell files) and the agent config directory
+        (SYSTEM.md edits by revise_persona/teach). Only existing
+        directories can be watched. The active dir is passed explicitly
+        so reload can compute the candidate set before swapping.
+        """
+        dirs = [self.config_dir]
+        if active_spells_dir is not None:
+            dirs.append(active_spells_dir)
+        return [d for d in dirs if d.is_dir()]
+
     async def _load_runes(self) -> None:
         """Initialize the RuneLifecycle collaborator."""
         if self._rune_lifecycle is None:
@@ -613,6 +1208,8 @@ class Mvge:
                 environment=self._environment,
                 provider_registry=self._provider_registry,
                 runner=self._runner,
+                reload_callback=self.reload,
+                extra_watch_dirs=self._reload_trigger_dirs(self._active_spells_dir),
             )
         await self._rune_lifecycle.load()
         await self._rune_lifecycle.start()
@@ -621,7 +1218,7 @@ class Mvge:
             self._runner.on_event(
                 "mvge_event", lambda ev: self._event_bus.emit(ev.type, ev.data)
             )
-            _apply_gateway_allowlist(self._runner)
+            self._gateway_engaged_rune = _apply_gateway_allowlist(self._runner)
         if self._rune_lifecycle.environment is not None:
             self._environment = self._rune_lifecycle.environment
         if self._environment.diagnostics:
@@ -724,8 +1321,22 @@ class Mvge:
 
     def _build_spells(self) -> list[MvgeSpell]:
         """Convert injected callables and rune spells to executable MvgeSpells."""
-        spells: list[MvgeSpell] = []
-        for s in self._spells:
+        return self._build_spells_from(self._spells)
+
+    def _build_spells_from(
+        self,
+        spells: Sequence[SpellUnion],
+        runner: RuneRunner | None = None,
+    ) -> list[MvgeSpell]:
+        """Build executable spells from an explicit spell list.
+
+        Lets reload validate a rebuilt spell set before swapping it in;
+        the normal path passes the live spell list. ``runner`` selects
+        which runner's registered spells are merged: the live runner by
+        default, the candidate runner during a reload build.
+        """
+        built: list[MvgeSpell] = []
+        for s in spells:
             spell = coerce_spell(s)
             if not _validate_spell_name(spell.name):
                 logger.warning(
@@ -734,13 +1345,14 @@ class Mvge:
                     spell.name,
                 )
                 continue
-            spells.append(spell)
+            built.append(spell)
 
-        seen_names: set[str] = {s.name for s in spells}
+        seen_names: set[str] = {s.name for s in built}
 
-        if self._runner is not None:
-            active = set(self._runner.get_active_spells())
-            for rs in self._runner.get_all_registered_spells():
+        active_runner = runner if runner is not None else self._runner
+        if active_runner is not None:
+            active = set(active_runner.get_active_spells())
+            for rs in active_runner.get_all_registered_spells():
                 if rs.name not in active:
                     continue
 
@@ -798,21 +1410,21 @@ class Mvge:
                     spell_name = prefixed_name
 
                 seen_names.add(spell_name)
-                spells.append(spell_to_add)
+                built.append(spell_to_add)
 
         if self._enabled_spells_filter is not None:
-            spells = [s for s in spells if s.name in self._enabled_spells_filter]
+            built = [s for s in built if s.name in self._enabled_spells_filter]
 
-        if self._runner is not None:
-            global_allowlist = self._runner.get_global_spell_allowlist()
+        if active_runner is not None:
+            global_allowlist = active_runner.get_global_spell_allowlist()
             if global_allowlist is not None:
                 allowlist_set = set(global_allowlist)
-                spells = [s for s in spells if s.name in allowlist_set]
+                built = [s for s in built if s.name in allowlist_set]
 
         if self._plan_mode:
-            spells = [s for s in spells if s.read_only]
+            built = [s for s in built if s.read_only]
 
-        return spells
+        return built
 
     def _build_system_prompt(self) -> str:
         """Build the agent system prompt string."""
@@ -820,21 +1432,42 @@ class Mvge:
 
     async def _build_system_prompt_async(self) -> str:
         """Async version that supports rune prompt injection via sigil hooks."""
-        active_names = [s.name for s in self._build_spells()]
-        effective_cwd = (
-            self._config_manager.project_dir
-            if self._config_manager is not None
-            and self._config_manager.project_dir is not None
-            else Path.cwd()
+        return await self._assemble_prompt_async(
+            self._environment, self._build_spells(), self._active_spells_dir
         )
-        return await self._environment.assemble_system_prompt(
-            runner=self._runner,
-            base_prompt=self._build_system_prompt(),
+
+    def _effective_cwd(self) -> Path:
+        if (
+            self._config_manager is not None
+            and self._config_manager.project_dir is not None
+        ):
+            return self._config_manager.project_dir
+        return Path.cwd()
+
+    async def _assemble_prompt_async(
+        self,
+        environment: MvgeEnvironment,
+        spells: Sequence[MvgeSpell],
+        active_spells_dir: Path | None,
+        runner: RuneRunner | None = None,
+    ) -> str:
+        """Assemble the system prompt against an explicit environment.
+
+        Lets reload validate a fully rebuilt prompt before swapping it in;
+        the normal path passes the live environment and spell set.
+        ``runner`` selects which runner's BEFORE_MVGE_START chain fires:
+        the live runner by default, the candidate runner during a reload
+        build (so the hook never touches live rune instances pre-swap).
+        """
+        active_names = [s.name for s in spells]
+        return await environment.assemble_system_prompt(
+            runner=runner if runner is not None else self._runner,
+            base_prompt=environment.resolved_prompt.text,
             custom_prompt=getattr(self, "_custom_system_prompt", ""),
-            cwd=effective_cwd,
+            cwd=self._effective_cwd(),
             spell_names=active_names,
             config_dir=self.config_dir,
-            active_spells_dir=self._active_spells_dir,
+            active_spells_dir=active_spells_dir,
         )
 
     async def _run_impl(self) -> MvgeInvocation:
@@ -857,12 +1490,24 @@ class Mvge:
         self._abort_controller = AbortController()
         signal = self._abort_controller.signal
 
-        return await self._harness.run(
-            stream_fn,
-            model=dataclasses.asdict(self._model),
-            contemplation_level=self._contemplation_level,
-            signal=signal,
-        )
+        self._run_in_flight = True
+        try:
+            return await self._harness.run(
+                stream_fn,
+                model=dataclasses.asdict(self._model),
+                contemplation_level=self._contemplation_level,
+                signal=signal,
+            )
+        finally:
+            self._run_in_flight = False
+            if self._reload_pending:
+                # Turn boundary: the in-flight turn kept its LoopContext;
+                # the queued reload applies now.
+                self._reload_pending = False
+                try:
+                    await self.reload()
+                except Exception:
+                    logger.exception("Queued reload failed at turn boundary")
 
     def _make_stream_fn(
         self,
@@ -1008,12 +1653,17 @@ class Mvge:
         )
 
         self._harness = self._build_harness()
+        self._compaction = self._harness.compaction
 
     def _build_harness(self) -> MvgeHarness:
         """Construct the MvgeHarness from the wired collaborators.
 
         Single construction path used both at wire-up and when plan mode
         retires the harness for a fresh one carrying the new spell set.
+
+        Pure: the caller owns assigning ``self._harness`` and syncing
+        ``self._compaction`` from the result, so reload can build a
+        candidate harness before swapping anything live.
         """
         assert self._state is not None
         harness = MvgeHarness(
@@ -1025,7 +1675,6 @@ class Mvge:
             compaction_settings=self._compaction_settings,
             refresh_spells=self._build_spells,
         )
-        self._compaction = harness.compaction
         return harness
 
     async def run(self, prompt: str | list[dict[str, Any]]) -> MvgeInvocation:

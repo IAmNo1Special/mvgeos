@@ -14,6 +14,7 @@ from mvgeos_core.invocations import MvgeInvocation
 from mvgeos_agent import (
     Mvge,
     MvgeAgent,
+    ReloadResult,
 )
 from mvgeos_agent.environment import MvgeEnvironment
 
@@ -121,6 +122,9 @@ class DummyAgent:
 
     async def compact(self) -> str:
         return "compacted"
+
+    async def reload(self) -> ReloadResult:
+        return ReloadResult(ok=True, message="Reload complete.")
 
     def get_skills_catalog(self) -> list[dict[str, str]]:
         return []

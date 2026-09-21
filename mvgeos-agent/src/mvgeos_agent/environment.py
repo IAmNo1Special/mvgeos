@@ -486,6 +486,14 @@ class MvgeEnvironment:
     agent_config: AgentConfig | None = None
     global_dir: Path | None = None
     active_spells_dir: Path | None = None
+    prompt_resolve_kwargs: dict[str, Any] = field(default_factory=dict)
+    """Inputs used to resolve the base SYSTEM.md chain.
+
+    Recorded by :meth:`resolve` so engine reload can re-run the identical
+    discovery (custom -> caller -> project -> agent-scope -> default) even
+    when the environment was built by an external caller (CLI/GUI) with
+    different inputs.
+    """
 
     @classmethod
     def resolve(
@@ -530,15 +538,16 @@ class MvgeEnvironment:
             runes_paths=runes_paths,
         )
 
-        resolved_prompt = resolve_system_prompt(
-            agent_name=agent_name,
-            custom=custom_prompt,
-            config_dir=config_dir,
-            project_dir=project_dir,
-            caller_dir=caller_dir,
-            global_dir=global_dir,
-            default=DEFAULT_SYSTEM_PROMPT,
-        )
+        resolved_prompt_inputs: dict[str, Any] = {
+            "agent_name": agent_name,
+            "custom": custom_prompt,
+            "config_dir": config_dir,
+            "project_dir": project_dir,
+            "caller_dir": caller_dir,
+            "global_dir": global_dir,
+            "default": DEFAULT_SYSTEM_PROMPT,
+        }
+        resolved_prompt = resolve_system_prompt(**resolved_prompt_inputs)
 
         diags: list[Diagnostic | SkillDiagnostic] = []
         if runner is not None:
@@ -565,6 +574,7 @@ class MvgeEnvironment:
             agent_config=coerced,
             global_dir=global_dir,
             active_spells_dir=active_spells_dir,
+            prompt_resolve_kwargs=resolved_prompt_inputs,
         )
 
     def render_system_prompt(
