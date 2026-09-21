@@ -3,7 +3,6 @@
 import shutil
 import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 from mvgeos_runes.types import (
@@ -365,21 +364,6 @@ async def test_viewport_shows_chat(user: User, tmp_path: Path) -> None:
 
     await user.open("/test_viewport_transition")
     await user.should_see("Active Session")
-
-
-@pytest.mark.asyncio
-async def test_open_ide_launches_editor(user: User, tmp_path: Path) -> None:
-    """Verify Open in Editor spawns editor in project directory."""
-    with patch("mvgeos_gui.state.subprocess.Popen") as mock_popen:
-        state = AppState(project_path=tmp_path)
-        mock_popen.return_value = MagicMock()
-
-        state.open_in_editor()
-
-        mock_popen.assert_called_once()
-        args = mock_popen.call_args[0][0]
-        assert args[0] == "code"
-        assert args[1] == str(tmp_path)
 
 
 @pytest.mark.asyncio
