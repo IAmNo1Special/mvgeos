@@ -20,6 +20,27 @@ from mvgeos_gui.state import AppState
 logger = logging.getLogger(__name__)
 
 
+class _MarketplaceFetchProbe(logging.Handler):
+    """Observes marketplace fetch failures via the libraries' warnings.
+
+    The library fetch helpers (mvgeos_runes / mvgeos_agent installers)
+    swallow network errors: on failure they log
+    "Failed to fetch marketplace ..." and return {}. The only failure
+    signal that survives is that warning, so this handler watches for it
+    while a fetch is in flight. Fetches are awaited sequentially, so a
+    warning seen during one fetch belongs to that fetch: reset ``failed``
+    before each fetch and read it right after.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.WARNING)
+        self.failed = False
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.getMessage().startswith("Failed to fetch marketplace"):
+            self.failed = True
+
+
 def open_folder_in_explorer(target_path: str | Path) -> bool:
     """Open a directory or file's parent in the OS default file explorer."""
     try:
@@ -236,6 +257,10 @@ def render_packages_panel(state: AppState) -> None:
     installed_data: list[dict[str, Any]] = []
     marketplace_mvges_data: dict[str, Any] = {}
     installed_mvges_data: list[dict[str, Any]] = []
+    # Tracks catalog fetch failures separately from empty data: a failed
+    # fetch must show a distinct error state, not the "No packages found"
+    # empty-catalog message.
+    catalog_error: dict[str, bool] = {"runes": False, "mvges": False}
     search_state: dict[str, str] = {
         "query": "",
         "type": "All Types",
@@ -945,6 +970,31 @@ def render_packages_panel(state: AppState) -> None:
                 filtered.append(info)
 
             if not filtered:
+                # Distinct state for a failed catalog fetch: the catalog
+                # didn't load at all, so this is not "no packages match" --
+                # show the error and a retry instead.
+                catalog_failed = catalog_error["runes"] or catalog_error["mvges"]
+                has_installed = bool(installed_data) or bool(installed_mvges_data)
+                if catalog_failed and not has_installed:
+                    with ui.column().classes(
+                        "items-center justify-center p-8 gap-2 w-full"
+                    ):
+                        ui.icon("cloud_off", size="32px").classes("text-[#e5484d]")
+                        ui.label("Couldn't load the marketplace catalog").classes(
+                            "text-sm text-[#eceaf4]"
+                        )
+                        ui.label(
+                            "The catalog couldn't be reached. Check your "
+                            "connection and try again. Installed packages "
+                            "still show once their listing loads."
+                        ).classes(
+                            "text-[11px] text-[#6e6584]/70 text-center max-w-[420px]"
+                        )
+                        ui.button(
+                            "Retry",
+                            on_click=lambda: ui.timer(0.01, _refresh_data, once=True),
+                        ).props("unelevated").classes("mvge-glow-btn text-white")
+                    return
                 with ui.column().classes(
                     "items-center justify-center p-8 gap-2 w-full"
                 ):
@@ -952,9 +1002,7 @@ def render_packages_panel(state: AppState) -> None:
                     ui.label("No packages found").classes("text-xs text-[#6e6584]")
                     ui.label(
                         "Get packages with the Install buttons above -- from "
-                        "a marketplace name, git URL, or local path. If the "
-                        "catalog failed to load, check your connection and "
-                        "reopen this view to retry."
+                        "a marketplace name, git URL, or local path."
                     ).classes("text-[11px] text-[#6e6584]/70 text-center max-w-[420px]")
                     has_active_filters = (
                         bool(query)
@@ -1007,37 +1055,63 @@ def render_packages_panel(state: AppState) -> None:
         render_packages()
 
     async def _refresh_data() -> None:
+        # The library fetch helpers swallow network errors and return {}
+        # on failure, so an empty result is ambiguous. Observe the
+        # installers' loggers during each fetch: a "Failed to fetch
+        # marketplace ..." warning marks a failed fetch, while a quiet
+        # empty result means a genuinely empty catalog.
+        fetch_probe = _MarketplaceFetchProbe()
+        installer_loggers = [
+            logging.getLogger("mvgeos_runes.installer"),
+            logging.getLogger("mvgeos_agent.installer"),
+        ]
+        for installer_logger in installer_loggers:
+            installer_logger.addHandler(fetch_probe)
         try:
-            mp = await state.fetch_marketplace_runes_async()
-            if mp:
-                marketplace_data.clear()
-                marketplace_data.update(mp)
-        except Exception as exc:
-            logger.warning("Failed to fetch marketplace runes: %s", exc)
+            try:
+                fetch_probe.failed = False
+                mp = await state.fetch_marketplace_runes_async()
+                if mp:
+                    marketplace_data.clear()
+                    marketplace_data.update(mp)
+                    catalog_error["runes"] = False
+                else:
+                    catalog_error["runes"] = fetch_probe.failed
+            except Exception as exc:
+                catalog_error["runes"] = True
+                logger.warning("Failed to fetch marketplace runes: %s", exc)
 
-        try:
-            inst = await state.list_installed_runes_async()
-            installed_data.clear()
-            installed_data.extend(inst)
-        except Exception as exc:
-            logger.warning("Failed to list installed runes: %s", exc)
+            try:
+                inst = await state.list_installed_runes_async()
+                installed_data.clear()
+                installed_data.extend(inst)
+            except Exception as exc:
+                logger.warning("Failed to list installed runes: %s", exc)
 
-        try:
-            mp_m = await state.fetch_marketplace_mvges_async()
-            if mp_m:
-                marketplace_mvges_data.clear()
-                marketplace_mvges_data.update(mp_m)
-        except Exception as exc:
-            logger.warning("Failed to fetch marketplace mvges: %s", exc)
+            try:
+                fetch_probe.failed = False
+                mp_m = await state.fetch_marketplace_mvges_async()
+                if mp_m:
+                    marketplace_mvges_data.clear()
+                    marketplace_mvges_data.update(mp_m)
+                    catalog_error["mvges"] = False
+                else:
+                    catalog_error["mvges"] = fetch_probe.failed
+            except Exception as exc:
+                catalog_error["mvges"] = True
+                logger.warning("Failed to fetch marketplace mvges: %s", exc)
 
-        try:
-            inst_m = await state.list_installed_mvges_async()
-            installed_mvges_data.clear()
-            installed_mvges_data.extend(inst_m)
-        except Exception as exc:
-            logger.warning("Failed to list installed mvges: %s", exc)
+            try:
+                inst_m = await state.list_installed_mvges_async()
+                installed_mvges_data.clear()
+                installed_mvges_data.extend(inst_m)
+            except Exception as exc:
+                logger.warning("Failed to list installed mvges: %s", exc)
 
-        render_filters.refresh()
-        render_packages.refresh()
+            render_filters.refresh()
+            render_packages.refresh()
+        finally:
+            for installer_logger in installer_loggers:
+                installer_logger.removeHandler(fetch_probe)
 
     ui.timer(0.01, _refresh_data, once=True)

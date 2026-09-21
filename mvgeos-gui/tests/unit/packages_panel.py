@@ -900,3 +900,85 @@ async def test_packages_panel_mvge_install_dialog_validates_empty_source(
     await user.should_see("Install Mvge Agent")
     user.find(marker="mvge_dialog_install_btn").click()
     await user.should_see("Enter a git URL, local path, or marketplace mvge name")
+
+
+@pytest.mark.asyncio
+async def test_packages_panel_catalog_failure_shows_error_state(
+    user: User,
+) -> None:
+    """Minor B-8: a failed catalog fetch must show a distinct, graceful
+    error state -- not the bare 'No packages found' empty-catalog text."""
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("catalog unreachable")
+    )
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("catalog unreachable")
+    )
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+
+    @ui.page("/test_packages_catalog_error")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_packages_catalog_error")
+    await user.should_see("Couldn't load the marketplace catalog", retries=10)
+    await user.should_not_see("No packages found")
+
+
+@pytest.mark.asyncio
+async def test_packages_panel_swallowed_fetch_failure_shows_error_state(
+    user: User,
+) -> None:
+    """B-8 real-world path: the library fetch helpers swallow network
+    errors -- they log 'Failed to fetch marketplace ...' and return {}.
+    That warning plus an empty result must show the error state."""
+    import logging
+
+    def _fail_runes(*args: object, **kwargs: object) -> dict:
+        logging.getLogger("mvgeos_runes.installer").warning(
+            "Failed to fetch marketplace runes from 'http://unreachable': boom"
+        )
+        return {}
+
+    def _fail_mvges(*args: object, **kwargs: object) -> dict:
+        logging.getLogger("mvgeos_agent.installer").warning(
+            "Failed to fetch marketplace mvges from 'http://unreachable': boom"
+        )
+        return {}
+
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(side_effect=_fail_runes)  # type: ignore[method-assign]
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(side_effect=_fail_mvges)  # type: ignore[method-assign]
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+
+    @ui.page("/test_packages_catalog_swallowed")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_packages_catalog_swallowed")
+    await user.should_see("Couldn't load the marketplace catalog", retries=10)
+    await user.should_not_see("No packages found")
+
+
+@pytest.mark.asyncio
+async def test_packages_panel_empty_catalog_still_shows_empty_state(
+    user: User,
+) -> None:
+    """B-8 companion: a catalog that loads quietly but is empty keeps the
+    'No packages found' guidance (distinct from the fetch-failure state)."""
+    state = AppState()
+    state.fetch_marketplace_runes_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_runes_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    state.fetch_marketplace_mvges_async = AsyncMock(return_value={})  # type: ignore[method-assign]
+    state.list_installed_mvges_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
+
+    @ui.page("/test_packages_catalog_empty_ok")
+    def page() -> None:
+        render_packages_panel(state)
+
+    await user.open("/test_packages_catalog_empty_ok")
+    await user.should_see("No packages found", retries=10)
+    await user.should_not_see("Couldn't load the marketplace catalog")
