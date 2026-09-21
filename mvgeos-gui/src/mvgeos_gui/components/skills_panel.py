@@ -41,7 +41,13 @@ def _render_skills_lists(state: AppState, refresh: object) -> None:
     )
     skills = state.active_skills
     if not skills:
-        ui.label("No skills loaded").classes("text-xs text-[#6e6584] mt-1")
+        with ui.column().classes("gap-1 mt-1"):
+            ui.label("No skills loaded").classes("text-xs text-[#6e6584]")
+            ui.label(
+                "Skills are reusable capabilities the agent can invoke. "
+                "Use Install Skill above to install one from a git URL or "
+                "local folder."
+            ).classes("text-[11px] text-[#6e6584]/70")
     else:
         for skill in skills:
             with ui.card().classes(
@@ -80,7 +86,12 @@ def _render_skills_lists(state: AppState, refresh: object) -> None:
     active_names = {s.name for s in state.active_skills}
     available = [m for m in discovered if m.name not in active_names]
     if not available:
-        ui.label("No additional skills found").classes("text-xs text-[#6e6584] mt-1")
+        with ui.column().classes("gap-1 mt-1"):
+            ui.label("No additional skills found").classes("text-xs text-[#6e6584]")
+            ui.label(
+                "Discovered skills appear here. Use Install Skill above to "
+                "install one from a git URL or local folder."
+            ).classes("text-[11px] text-[#6e6584]/70")
     else:
         for manifest in available:
             with ui.card().classes(
