@@ -12,6 +12,28 @@ from mvgeos_gui.autocomplete import AutocompleteService
 from mvgeos_gui.state import AppState, format_channeling_elapsed
 
 
+def _render_missing_rune_badge(state: AppState) -> None:
+    """Render the amber badge for a missing realm rune, if applicable.
+
+    Shown when the OpenRouter realm is selected but its rune is not
+    installed. The badge names the missing rune and points at the
+    Marketplace as the resolution path.
+    """
+    missing_rune = "openrouter-realm"
+    if state.selected_realm != "openrouter":
+        return
+    if state.is_rune_installed(missing_rune):
+        return
+    (
+        ui.badge(f"Missing rune: {missing_rune}", color="amber-8")
+        .props("rounded dense size=xs")
+        .classes("cursor-pointer")
+        .mark("missing_rune_badge")
+        .tooltip(f"Install {missing_rune} from the Marketplace")
+        .on("click", lambda: state.set_current_view("packages"))
+    )
+
+
 def render_composer(state: AppState) -> None:
     """Render the bottom composer input area.
 
@@ -380,16 +402,7 @@ def render_composer(state: AppState) -> None:
                         ):
                             ui.tooltip("Realm")
 
-                        if state.selected_realm == "openrouter" and not (
-                            state.is_rune_installed("openrouter-realm")
-                        ):
-                            (
-                                ui.badge("Rune missing", color="amber-8")
-                                .props("rounded dense size=xs")
-                                .classes("cursor-pointer")
-                                .tooltip("Click to open Marketplace")
-                                .on("click", lambda: state.set_current_view("packages"))
-                            )
+                        _render_missing_rune_badge(state)
 
                         # Tier 2: Provider Select (Visible only if router)
                         if is_router:
