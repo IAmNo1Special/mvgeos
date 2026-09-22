@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.7] - 2026-09-22
+
+
+### Bug Fixes
+
+- **gui,agent:** route dynamic slash commands through the GUI dispatcher (5e28b7d)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (7ba00e9)
+
+- **release:** v0.5.7 (e57a3b4)
+
+
+### Tests
+
+- **coverage:** cover auth, rune loader, skill installer, entry points, and settings dialog (c342838)
+
+
 ## [0.5.6] - 2026-09-21
 
 
