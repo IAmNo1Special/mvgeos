@@ -87,6 +87,21 @@ def format_channeling_elapsed(seconds: float) -> str:
     return f"{total // 60}m {total % 60:02d}s"
 
 
+def _resolve_skill_manifest_file(skill_dir: Path) -> Path | None:
+    """Locate the skill manifest file inside a skill directory.
+
+    Checks SKILL.md first, then falls back to lowercase skill.md per the
+    .agents protocol. Returns None when neither exists (not a skill).
+    """
+    upper = skill_dir / "SKILL.md"
+    if upper.is_file():
+        return upper
+    lower = skill_dir / "skill.md"
+    if lower.is_file():
+        return lower
+    return None
+
+
 def _scan_skill_manifests(project_path: Path) -> list[SkillManifest]:
     """Scan project and user skill directories for skill manifests.
 
@@ -102,7 +117,7 @@ def _scan_skill_manifests(project_path: Path) -> list[SkillManifest]:
         if not sdir.is_dir():
             continue
         for item in sorted(sdir.iterdir()):
-            if item.is_dir() and (item / "SKILL.md").is_file():
+            if item.is_dir() and _resolve_skill_manifest_file(item) is not None:
                 skills.append(
                     SkillManifest(
                         name=item.name,
