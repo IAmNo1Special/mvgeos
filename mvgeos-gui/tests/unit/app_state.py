@@ -2487,3 +2487,74 @@ def test_disable_rune_refreshes_autocomplete_suggestions() -> None:
             asyncio.run(state.set_rune_enabled_async("selfmod-bridge", False)) is True
         )
         assert "/selfmod" not in _slash_names(state, "/self")
+
+
+def _make_skill_dir(parent: Path, name: str, filename: str = "SKILL.md") -> Path:
+    skill_dir = parent / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / filename).write_text(
+        f"---\nname: {name}\ndescription: Desc of {name}\n---\nBody",
+        encoding="utf-8",
+    )
+    return skill_dir
+
+
+def test_scan_skill_manifests_lowercase_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A skill with only lowercase skill.md is discovered (protocol casing)."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    project = tmp_path / "proj"
+    skills_dir = project / ".agents" / "skills"
+    _make_skill_dir(skills_dir, "lower-skill", "skill.md")
+
+    manifests = state_module._scan_skill_manifests(project)
+
+    assert [m.name for m in manifests] == ["lower-skill"]
+
+
+def test_scan_skill_manifests_uppercase_preferred(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SKILL.md wins when both casings exist."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    project = tmp_path / "proj"
+    skills_dir = project / ".agents" / "skills"
+    s_dir = _make_skill_dir(skills_dir, "both-skill", "SKILL.md")
+    (s_dir / "skill.md").write_text(
+        "---\nname: both-skill\ndescription: Lower\n---\nLower",
+        encoding="utf-8",
+    )
+
+    manifests = state_module._scan_skill_manifests(project)
+
+    assert [m.name for m in manifests] == ["both-skill"]
+    assert manifests[0].path == str(s_dir)
+
+
+def test_scan_skill_manifests_neither_casing_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No manifest file at all means not a skill: skipped."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    project = tmp_path / "proj"
+    skills_dir = project / ".agents" / "skills"
+    (skills_dir / "empty-dir").mkdir(parents=True)
+
+    manifests = state_module._scan_skill_manifests(project)
+
+    assert manifests == []
+
+
+def test_scan_skill_manifests_uppercase_still_works(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Uppercase SKILL.md skills keep being discovered (regression)."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    project = tmp_path / "proj"
+    skills_dir = project / ".agents" / "skills"
+    _make_skill_dir(skills_dir, "upper-skill", "SKILL.md")
+
+    manifests = state_module._scan_skill_manifests(project)
+
+    assert [m.name for m in manifests] == ["upper-skill"]
