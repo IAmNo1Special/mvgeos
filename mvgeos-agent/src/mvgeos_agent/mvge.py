@@ -1077,8 +1077,12 @@ class Mvge:
         )
         try:
             RuneAuditLog(default_rune_ops_dir()).append_event(record)
-        except (AuditError, OSError) as exc:
-            return f"audit append failed: {exc}"
+        except Exception as exc:
+            # Audit failure is never silent and never fatal to the reload:
+            # log it loudly and return a description so the caller turns the
+            # result into a diagnosed audit_failed outcome.
+            logger.exception("Reload audit append failed")
+            return f"audit append failed: {type(exc).__name__}: {exc}"
         return None
 
     @property

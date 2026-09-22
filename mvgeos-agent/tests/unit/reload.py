@@ -511,6 +511,30 @@ async def test_audit_write_failure_is_surfaced_not_silent(
 
 
 @pytest.mark.asyncio
+async def test_audit_write_unexpected_error_is_surfaced_not_silent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A non-OSError audit failure (e.g. a serialization bug) is caught and
+    surfaced as an audit failure, not raised out of reload()."""
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        monkeypatch.setattr(
+            "mvgeos_runes.rune_audit.RuneAuditLog.append_event",
+            lambda self, record: (_ for _ in ()).throw(
+                ValueError("unserializable record")
+            ),
+        )
+        result = await agent.reload()
+        assert not result.ok
+        assert "audit_failed" in result.message
+        assert "IS live" in result.message
+        assert any("audit" in d.message.lower() for d in agent.diagnostics)
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
 async def test_reload_diagnoses_broken_spell_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
