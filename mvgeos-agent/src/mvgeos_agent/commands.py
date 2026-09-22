@@ -621,6 +621,32 @@ class CommandDispatcher:
             message=f"Unknown command: {cmd}\nType /help for available commands",
         )
 
+    async def is_command(self, text: str) -> bool:
+        """Whether ``dispatch()`` would handle this line as a command.
+
+        Lets hosts (the GUI chat) route only known commands to the
+        dispatcher while unknown ``/``-prefixed input still reaches the
+        model (harness skill activation, plain text). Mirrors
+        ``dispatch()``'s decision structure without executing anything:
+        static commands (plus their short aliases), the ``/skill``
+        activator, catalog skills, and dynamic rune commands.
+        """
+        parts = text.strip().split(maxsplit=1)
+        if not parts:
+            return False
+        cmd = parts[0]
+        if cmd in SLASH_COMMANDS:
+            return True
+        if cmd in ("/m", "/s", "/f", "/follow", "/thinking"):
+            return True
+        name = cmd.lstrip("/")
+        catalog = await self._get_skills_catalog_safe()
+        if any(s.get("name") == name for s in catalog):
+            return True
+        return any(
+            getattr(rcmd, "name", "") == name for rcmd in self._get_rune_commands_safe()
+        )
+
     async def _dispatch_rune_command(
         self, cmd: str, rcmd: Any, extra_args: str
     ) -> CommandOutcome:

@@ -562,3 +562,50 @@ async def test_dynamic_rune_command_error_handling() -> None:
     outcome = await dispatcher.dispatch("/mcp test")
     assert outcome.action == CommandAction.ERROR
     assert "MCP server connection failed" in outcome.message
+
+
+@pytest.mark.asyncio
+async def test_is_command_static_and_aliases() -> None:
+    agent = _create_mock_agent()
+    dispatcher = CommandDispatcher(agent)
+    assert await dispatcher.is_command("/help") is True
+    assert await dispatcher.is_command("/model gemini") is True
+    assert await dispatcher.is_command("/m") is True
+    assert await dispatcher.is_command("/thinking deep") is True
+    assert await dispatcher.is_command("  /spells  ") is True
+
+
+@pytest.mark.asyncio
+async def test_is_command_dynamic_rune_command() -> None:
+    from mvgeos_runes import RegisteredCommand
+
+    agent = _create_mock_agent()
+    agent.get_skills_catalog = MagicMock(return_value=[])
+    agent.get_registered_commands = MagicMock(
+        return_value=[
+            RegisteredCommand(
+                name="selfmod", description="Self-mod bridge", handler=AsyncMock()
+            ),
+        ]
+    )
+    dispatcher = CommandDispatcher(agent)
+    assert await dispatcher.is_command("/selfmod status") is True
+    assert await dispatcher.is_command("/selfmod") is True
+
+
+@pytest.mark.asyncio
+async def test_is_command_dynamic_skill() -> None:
+    agent = _create_mock_agent()
+    agent.get_skills_catalog = MagicMock(return_value=[{"name": "grill-me"}])
+    dispatcher = CommandDispatcher(agent)
+    assert await dispatcher.is_command("/grill-me now") is True
+
+
+@pytest.mark.asyncio
+async def test_is_command_unknown() -> None:
+    agent = _create_mock_agent()
+    agent.get_skills_catalog = MagicMock(return_value=[])
+    dispatcher = CommandDispatcher(agent)
+    assert await dispatcher.is_command("/foobar") is False
+    assert await dispatcher.is_command("hello") is False
+    assert await dispatcher.is_command("") is False

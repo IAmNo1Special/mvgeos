@@ -17,7 +17,6 @@ from dotenv import load_dotenv
 from mvgeos_agent import Mvge
 from mvgeos_agent.auth import load_api_key_from_auth
 from mvgeos_agent.commands import (
-    SLASH_COMMANDS,
     CommandAction,
     CommandDispatcher,
     CommandOutcome,
@@ -484,6 +483,22 @@ class AgentService:
         """Update a subagent background task's status/progress."""
         return state.update_background_task(task_id, status=status, progress=progress)
 
+    async def _is_dispatchable_command(self, stripped: str, state: AppState) -> bool:
+        """Whether a '/'-prefixed line is a known slash command.
+
+        Known static commands, catalog skills, and dynamic rune commands
+        route to the dispatcher; anything else falls through to the model
+        (harness skill activation, plain text). On agent-construction
+        failure returns True so dispatch_slash_command renders the usual
+        auth error instead of burning a model turn.
+        """
+        try:
+            agent = self.get_or_create_agent(state)
+        except Exception:
+            return True
+        dispatcher = CommandDispatcher(agent, self._model_registry)
+        return await dispatcher.is_command(stripped)
+
     async def dispatch_slash_command(
         self, prompt: str, state: AppState, message: ChatMessage
     ) -> None:
@@ -567,8 +582,9 @@ class AgentService:
         """Run agent with prompt asynchronously while capturing all events."""
         if isinstance(prompt, str):
             stripped = prompt.strip()
-            cmd_name = stripped.split(maxsplit=1)[0] if stripped else ""
-            if cmd_name in SLASH_COMMANDS:
+            if stripped.startswith("/") and await self._is_dispatchable_command(
+                stripped, state
+            ):
                 await self.dispatch_slash_command(prompt, state, message)
                 return
 
