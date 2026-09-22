@@ -1035,6 +1035,47 @@ class Mvge:
             gateway_rune=gateway_rune,
         )
 
+    def _commit_candidate_providers(
+        self,
+        live_runner: RuneRunner | None,
+        candidate_runner: RuneRunner,
+    ) -> None:
+        """Replace rune-owned provider registrations with the candidate's exact state.
+
+        ``RealmRegistry.register_provider()`` merges configs (``dict.update``),
+        so a successful reload must *replace* — not merge — the entries the
+        candidate build touched, and drop entries whose rune is gone.
+        Ownership is determined from the runners: names registered on the
+        live or candidate runner are rune-owned; anything else in the
+        registry is unrelated non-rune state and is left alone.
+        """
+        registry = self._provider_registry
+        candidate_providers = candidate_runner.get_registered_providers()
+        candidate_factories = candidate_runner.get_registered_realm_factories()
+        live_provider_names = (
+            set(live_runner.get_registered_providers())
+            if live_runner is not None
+            else set()
+        )
+        live_factory_prefixes = (
+            set(live_runner.get_registered_realm_factories())
+            if live_runner is not None
+            else set()
+        )
+        for name, config in candidate_providers.items():
+            # Replace, not merge: keys the rune dropped must not survive.
+            registry.unregister_provider(name)
+            registry.register_provider(name, dict(config))
+        for name in live_provider_names - set(candidate_providers):
+            # The providing rune is gone; its registration must not survive.
+            registry.unregister_provider(name)
+        for prefix, factory in candidate_factories.items():
+            # Realm factories already replace on register; re-register to
+            # make the candidate's factory the live one.
+            registry.register_realm_factory(prefix, factory)
+        for prefix in live_factory_prefixes - set(candidate_factories):
+            registry.unregister_realm_factory(prefix)
+
     def _apply_reload_state(self, rebuilt: _ReloadedState) -> RuneLifecycle | None:
         """Swap in validated reload state.
 
@@ -1056,6 +1097,7 @@ class Mvge:
             # A genuine candidate: swap the runner with its wiring and
             # retire the old lifecycle. (Without a candidate lifecycle the
             # live runner stays exactly as it was.)
+            self._commit_candidate_providers(self._runner, rebuilt.runner)
             self._runner = rebuilt.runner
             self._runner.on_event(
                 "mvge_event",

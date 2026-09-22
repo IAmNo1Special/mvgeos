@@ -1151,3 +1151,76 @@ async def test_concurrent_reloads_do_not_interleave(
         assert calls == 2
     finally:
         await agent.close()
+
+
+_PROVIDER_KEYS_RUNE_PY = """\
+import json
+import os
+from pathlib import Path
+
+
+def _probe_factory(**kwargs):
+    raise AssertionError("probe factory must not be invoked in these tests")
+
+
+def rune_factory(api):
+    keys = json.loads(
+        Path(os.environ["PROBE_PROVIDER_KEYS"]).read_text(encoding="utf-8")
+    )
+    api.register_provider("probe-prov", keys)
+    api.register_realm_factory("probe:", _probe_factory)
+"""
+
+
+@pytest.mark.asyncio
+async def test_reload_replaces_provider_config_not_merges(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A successful reload replaces rune-owned provider configs: keys the
+    rune dropped must not survive through register_provider()'s
+    dict.update merge."""
+    keys_file = tmp_path / "provider_keys.json"
+    keys_file.write_text(json.dumps({"keep": "1", "drop": "2"}), encoding="utf-8")
+    monkeypatch.setenv("PROBE_PROVIDER_KEYS", str(keys_file))
+    _write_probe_rune(tmp_path, body=_PROVIDER_KEYS_RUNE_PY)
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        assert agent._provider_registry.get_provider_config("probe-prov") == {
+            "keep": "1",
+            "drop": "2",
+        }
+        keys_file.write_text(json.dumps({"keep": "1"}), encoding="utf-8")
+        result = await agent.reload()
+        assert result.ok
+        assert agent._provider_registry.get_provider_config("probe-prov") == {
+            "keep": "1"
+        }
+        # The rune's realm factory is re-registered from the candidate.
+        assert agent._provider_registry.get_realm_factory("probe:") is not None
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
+async def test_reload_removes_deleted_rune_providers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rune deleted from disk takes its provider registration and realm
+    factory with it on the next successful reload."""
+    keys_file = tmp_path / "provider_keys.json"
+    keys_file.write_text(json.dumps({"keep": "1"}), encoding="utf-8")
+    monkeypatch.setenv("PROBE_PROVIDER_KEYS", str(keys_file))
+    _write_probe_rune(tmp_path, body=_PROVIDER_KEYS_RUNE_PY)
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        assert "probe-prov" in agent.registered_providers
+        assert agent._provider_registry.get_realm_factory("probe:") is not None
+        shutil.rmtree(tmp_path / "runes" / "probe-rune")
+        result = await agent.reload()
+        assert result.ok
+        assert "probe-prov" not in agent.registered_providers
+        assert agent._provider_registry.get_realm_factory("probe:") is None
+    finally:
+        await agent.close()
