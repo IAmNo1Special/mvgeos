@@ -2395,3 +2395,95 @@ async def test_active_session_restored_on_fresh_page_load(
 
     await user.open("/test_session_restore_second")
     assert fresh_state.active_tome_id == tome_id
+
+
+def _rune_dict(
+    name: str,
+    commands: list[str] | None = None,
+    enabled: bool = True,
+    description: str = "",
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "version": "0.1.0",
+        "description": description or f"{name} description",
+        "enabled": enabled,
+        "commands": commands or [],
+    }
+
+
+def _slash_names(state: AppState, query: str = "/") -> list[str]:
+    """Drive autocomplete the way the chat input does and read item names."""
+    service = state.get_autocomplete_service()
+    service.process_input(query, len(query))
+    return [str(getattr(item, "name", "")) for item in service.get_visible_items()]
+
+
+def test_autocomplete_suggests_installed_rune_commands() -> None:
+    state = AppState()
+    runes = [_rune_dict("selfmod-bridge", ["selfmod"])]
+    with patch.object(state_module, "list_installed_runes", return_value=runes):
+        names = _slash_names(state, "/self")
+    assert "/selfmod" in names
+    assert "/help" in _slash_names(state, "/help")
+
+
+def test_autocomplete_hides_disabled_rune_commands() -> None:
+    state = AppState()
+    runes = [_rune_dict("selfmod-bridge", ["selfmod"], enabled=False)]
+    with patch.object(state_module, "list_installed_runes", return_value=runes):
+        assert "/selfmod" not in _slash_names(state, "/self")
+
+
+def test_autocomplete_rune_command_cannot_shadow_cli_command() -> None:
+    state = AppState()
+    runes = [_rune_dict("evil-rune", ["reload", "selfmod"])]
+    with patch.object(state_module, "list_installed_runes", return_value=runes):
+        names = _slash_names(state, "/")
+    assert "/selfmod" in names
+    # /reload stays the single engine-owned entry
+    assert names.count("/reload") == 1
+
+
+def test_install_rune_refreshes_autocomplete_suggestions() -> None:
+    state = AppState()
+    installed: list[dict[str, Any]] = []
+    with patch.object(state_module, "list_installed_runes", return_value=installed):
+        assert "/selfmod" not in _slash_names(state, "/self")
+    installed.append(_rune_dict("selfmod-bridge", ["selfmod"]))
+    with (
+        patch.object(state_module, "install_rune", return_value=None),
+        patch.object(state_module, "list_installed_runes", return_value=installed),
+    ):
+        assert asyncio.run(state.install_rune_async("selfmod-bridge")) is True
+        assert "/selfmod" in _slash_names(state, "/self")
+
+
+def test_uninstall_rune_refreshes_autocomplete_suggestions() -> None:
+    state = AppState()
+    installed = [_rune_dict("selfmod-bridge", ["selfmod"])]
+    with patch.object(state_module, "list_installed_runes", return_value=installed):
+        assert "/selfmod" in _slash_names(state, "/self")
+    installed.clear()
+    with (
+        patch.object(state_module, "uninstall_rune", return_value=True),
+        patch.object(state_module, "list_installed_runes", return_value=installed),
+    ):
+        assert asyncio.run(state.uninstall_rune_async("selfmod-bridge")) is True
+        assert "/selfmod" not in _slash_names(state, "/self")
+
+
+def test_disable_rune_refreshes_autocomplete_suggestions() -> None:
+    state = AppState()
+    rune = _rune_dict("selfmod-bridge", ["selfmod"])
+    with patch.object(state_module, "list_installed_runes", return_value=[rune]):
+        assert "/selfmod" in _slash_names(state, "/self")
+    rune["enabled"] = False
+    with (
+        patch.object(state_module, "set_rune_enabled", return_value=True),
+        patch.object(state_module, "list_installed_runes", return_value=[rune]),
+    ):
+        assert (
+            asyncio.run(state.set_rune_enabled_async("selfmod-bridge", False)) is True
+        )
+        assert "/selfmod" not in _slash_names(state, "/self")

@@ -55,8 +55,10 @@ from mvgeos_gui.approval.queue import ApprovalQueue
 from mvgeos_gui.approval.types import PermissionsView
 from mvgeos_gui.autocomplete import (
     AutocompleteService,
+    CommandKind,
     MentionChip,
     MentionIndex,
+    SlashCommandItem,
     SlashCommandRegistry,
 )
 from mvgeos_gui.git_workspace import ChangedFile, get_changed_files, get_diff_for_file
@@ -590,14 +592,72 @@ class AppState:
 
         The service (popup mode, selection) is per-client, but the
         MentionIndex it queries is server-shared: one index per server,
-        refreshed when the project tree changes.
+        refreshed when the project tree changes. Rune slash commands are
+        read from installed, enabled rune manifests so autocomplete and
+        the command dispatcher agree on what exists.
         """
         if self._autocomplete_service is None:
-            command_registry = SlashCommandRegistry()
+            command_registry = SlashCommandRegistry(
+                rune_commands=self._rune_slash_commands()
+            )
             self._autocomplete_service = AutocompleteService(
                 self._ensure_server().mention_index, command_registry
             )
         return self._autocomplete_service
+
+    @staticmethod
+    def _rune_slash_commands() -> list[SlashCommandItem]:
+        """Build autocomplete items from installed, enabled rune manifests.
+
+        Disabled runes contribute nothing. A rune command that collides
+        with an engine-owned CLI command is dropped so it can never
+        shadow it (mirrors the dispatcher: e.g. /reload stays engine).
+        First claimant wins across runes.
+        """
+        try:
+            installed = list_installed_runes()
+        except Exception:
+            return []
+        cli_names = set(SlashCommandRegistry.CLI_SLASH_COMMANDS)
+        seen: set[str] = set()
+        items: list[SlashCommandItem] = []
+        for rune in installed:
+            if not rune.get("enabled", True):
+                continue
+            description = str(rune.get("description", "") or "")
+            commands = rune.get("commands", [])
+            if not isinstance(commands, list):
+                continue
+            for command in commands:
+                if not isinstance(command, str) or not command:
+                    continue
+                name = f"/{command}"
+                if name in cli_names or name in seen:
+                    continue
+                seen.add(name)
+                items.append(
+                    SlashCommandItem(
+                        kind=CommandKind.RUNE,
+                        name=name,
+                        description=description or f"Run extension command {command}",
+                        value=name,
+                    )
+                )
+        return items
+
+    def _drop_autocomplete_cache(self) -> None:
+        """Drop cached autocomplete services so rune commands rebuild.
+
+        Rune install/uninstall/enable/disable changes what the registry
+        should offer; the next keystroke rebuilds it. Propagates to other
+        connected clients the same way project changes do.
+        """
+        self._autocomplete_service = None
+        server = self.__dict__.get("_server")
+        if server is not None:
+            for client in server.client_states:
+                if client is not self:
+                    client._autocomplete_service = None
 
     def load_skills(self) -> list[SkillManifest]:
         """Load skill manifests from project and user skill directories."""
@@ -1656,6 +1716,7 @@ class AppState:
                     res = load_runes()
                     if inspect.isawaitable(res):
                         await res
+            self._drop_autocomplete_cache()
             self.notify()
             return True
         except Exception as exc:
@@ -1666,12 +1727,16 @@ class AppState:
         """Uninstall a rune and unregister its realm factory if registered."""
         result = bool(await asyncio.to_thread(uninstall_rune, rune_name))
         get_default_realm_registry().unregister_realm_factory(rune_name)
+        if result:
+            self._drop_autocomplete_cache()
         self.notify()
         return result
 
     async def set_rune_enabled_async(self, rune_name: str, enabled: bool) -> bool:
         """Enable or disable an installed rune by updating its manifest."""
         result = bool(await asyncio.to_thread(set_rune_enabled, rune_name, enabled))
+        if result:
+            self._drop_autocomplete_cache()
         self.notify()
         return result
 

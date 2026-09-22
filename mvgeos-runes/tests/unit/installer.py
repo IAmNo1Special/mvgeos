@@ -309,6 +309,7 @@ def test_list_installed_runes_success(tmp_path: Path) -> None:
         "path": str(alpha_dir),
         "hooks": [],
         "python_deps": [],
+        "commands": [],
         "type": "",
         "types": [],
         "created_at": "",
@@ -323,6 +324,7 @@ def test_list_installed_runes_success(tmp_path: Path) -> None:
         "path": str(beta_dir),
         "hooks": ["pre_turn"],
         "python_deps": ["pydantic>=2.0"],
+        "commands": [],
         "type": "planner",
         "types": ["planner"],
         "created_at": "",
@@ -558,3 +560,34 @@ def test_set_rune_enabled_enables_rune(tmp_path: Path) -> None:
 
 def test_set_rune_enabled_nonexistent_returns_false(tmp_path: Path) -> None:
     assert set_rune_enabled("nonexistent-rune", False, target_dir=tmp_path) is False
+
+
+def test_list_installed_runes_exposes_manifest_commands(tmp_path: Path) -> None:
+    rune_dir = tmp_path / "extensions" / "selfmod-bridge"
+    rune_dir.mkdir(parents=True)
+    (rune_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "name": "selfmod-bridge",
+                "version": "0.1.0",
+                "description": "Self modification bridge",
+                "commands": ["selfmod"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    installed = list_installed_runes(target_dir=tmp_path / "extensions")
+    assert len(installed) == 1
+    assert installed[0]["commands"] == ["selfmod"]
+
+
+def test_list_installed_runes_commands_defaults_to_empty(tmp_path: Path) -> None:
+    rune_dir = tmp_path / "extensions" / "plain-rune"
+    rune_dir.mkdir(parents=True)
+    (rune_dir / "manifest.json").write_text(
+        json.dumps({"name": "plain-rune", "version": "0.1.0"}),
+        encoding="utf-8",
+    )
+    installed = list_installed_runes(target_dir=tmp_path / "extensions")
+    assert len(installed) == 1
+    assert installed[0]["commands"] == []
