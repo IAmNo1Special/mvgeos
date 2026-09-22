@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from mvgeos_core.constants import resolve_rune_paths
 from mvgeos_core.spells import ExecutionMode
 
 from mvgeos_runes.loader import (
@@ -843,3 +844,45 @@ def test_load_manifests_skips_unparseable_dir_without_diagnostics() -> None:
         (bad / "manifest.json").write_text("{invalid json", encoding="utf-8")
 
         assert load_manifests(ext) == []
+
+
+def test_cross_home_does_not_load_cwd_project_runes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """REGRESSION (item 1) — UNRESOLVED, left red on purpose.
+
+    With HOME/USERPROFILE pointed at an isolated home and the CWD holding
+    ``.agents/extensions/<marker rune>``, resolving the default rune paths
+    and loading from them must not load the CWD-anchored rune.
+
+    Today ``resolve_rune_paths()`` emits a CWD-relative
+    ``.agents/extensions`` entry that ``load_runes_from_paths()`` resolves
+    against the process CWD regardless of HOME, so the marker rune loads.
+    The anchor choice — project-directory anchor, dropping the implicit
+    project entry, or a home anchor — is Malcom's decision; this test pins
+    the required behavior and stays red until he chooses.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(home / "global"))
+
+    cwd_dir = tmp_path / "cwd"
+    marker = cwd_dir / ".agents" / "extensions" / "cwd_marker"
+    marker.mkdir(parents=True)
+    (marker / "manifest.json").write_text(
+        '{"name": "cwd_marker", "version": "1.0.0", '
+        '"description": "marker", "entry_point": "rune.py"}',
+        encoding="utf-8",
+    )
+    (marker / "rune.py").write_text(
+        "def create_rune(api):\n    return object()\n", encoding="utf-8"
+    )
+    monkeypatch.chdir(cwd_dir)
+
+    paths = resolve_rune_paths("test-agent")
+    loads, _diagnostics = load_runes_from_paths(
+        [(path, RuneScope.PROJECT) for path in paths]
+    )
+    assert "cwd_marker" not in [load.manifest.name for load in loads]
