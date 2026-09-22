@@ -680,3 +680,43 @@ class TestRuneWatcherWatchPath:
         runner = RuneRunner()
         watcher = RuneWatcher(tmp_path, runner)
         assert watcher.watch_path == tmp_path.resolve()
+
+
+@pytest.mark.asyncio
+async def test_audit_appends_do_not_trigger_reload(tmp_path: Path) -> None:
+    """The engine audit log lives inside the watched extensions root; a real
+    RuneAuditLog.append_event() under that root must not fire the reload
+    trigger. Otherwise every reload's own audit record schedules another
+    reload — the audit storm (211 unsolicited reload_ok records in ~52s)."""
+    from mvgeos_runes.rune_audit import RuneAuditLog
+
+    ext_dir = tmp_path / "extensions"
+    ext_dir.mkdir()
+    audit = RuneAuditLog(ext_dir)
+
+    calls = 0
+
+    async def _callback() -> None:
+        nonlocal calls
+        calls += 1
+
+    watcher = RuneWatcher(ext_dir, RuneRunner(), reload_callback=_callback)
+    await watcher.start()
+    try:
+        audit.append_event({"op": "reload", "outcome": "ok"})
+        # Wait well past the debounce window for any scheduled callback.
+        await asyncio.sleep(1.2)
+        assert calls == 0
+    finally:
+        await watcher.stop()
+
+
+def test_is_ignored_covers_audit_files(tmp_path: Path) -> None:
+    """Root-level audit.jsonl and rotated audit-*.jsonl are ignored; a
+    nested audit.jsonl inside a rune dir still triggers that rune."""
+    handler = _RuneReloadHandler(tmp_path, lambda: None, fire_once=True)
+    assert handler._is_ignored(str(tmp_path / "audit.jsonl"))
+    assert handler._is_ignored(str(tmp_path / "audit-20260922-120000.jsonl"))
+    assert handler._is_ignored(str(tmp_path / "audit-20260922-120000-1.jsonl"))
+    assert not handler._is_ignored(str(tmp_path / "some_rune" / "audit.jsonl"))
+    assert not handler._is_ignored(str(tmp_path / "some_rune" / "rune.py"))

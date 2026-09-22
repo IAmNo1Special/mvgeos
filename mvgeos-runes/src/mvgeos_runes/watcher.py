@@ -120,6 +120,17 @@ class _RuneReloadHandler(FileSystemEventHandler):
             parts = src.relative_to(self._extensions_dir).parts
         except ValueError:
             parts = src.parts
+        # The engine's audit log lives at the root of the watched
+        # extensions dir; its own appends and rotations must not fire
+        # reloads, or every reload's audit record schedules another reload
+        # (audit storm). Root-level only: a nested audit.jsonl belongs to
+        # a rune and still triggers that rune.
+        if len(parts) == 1:
+            name = parts[0]
+            if name == "audit.jsonl" or (
+                name.startswith("audit-") and name.endswith(".jsonl")
+            ):
+                return True
         for part in parts:
             if part == "__pycache__" or (part.startswith(".") and part != "."):
                 return True
