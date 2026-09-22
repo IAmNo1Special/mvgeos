@@ -100,6 +100,19 @@ class _RuneReloadHandler(FileSystemEventHandler):
         except RuntimeError:
             logger.debug("Event loop closed while scheduling reload of %s", rune_name)
 
+    def cancel_pending(self) -> None:
+        """Cancel a debounced reload that has not fired yet.
+
+        Called on teardown so a file event that arrived before the stop
+        cannot fire the callback afterwards — e.g. ``Mvge.reload()`` on a
+        retired instance after ``Mvge.close()``.
+        """
+        future = self._debounce_future
+        self._debounce_future = None
+        self._pending.clear()
+        if future is not None and not future.done():
+            future.cancel()
+
     def _find_rune_dir(self, path: str) -> str | None:
         src_path = Path(path)
         try:
@@ -264,11 +277,17 @@ class RuneWatcher:
             if self._observer.is_alive():
                 # Wedged thread: fail loudly and stay armed so a retry can
                 # attempt the stop again. Never hang the caller forever.
+                # The pending debounce is left alone: the watcher is still
+                # live, so the burst still belongs to it.
                 raise TimeoutError(
                     f"Rune watcher for {self._extensions_dir} did not stop "
                     f"within {_OBSERVER_STOP_TIMEOUT_SECONDS}s; "
                     "observer thread still alive"
                 )
             self._observer = None
-            self._handler = None
+            if self._handler is not None:
+                # The observer is down: a debounced event must not fire
+                # the retired callback after this returns.
+                self._handler.cancel_pending()
+                self._handler = None
             logger.info("Rune watcher stopped")

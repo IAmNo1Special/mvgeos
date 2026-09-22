@@ -720,3 +720,31 @@ def test_is_ignored_covers_audit_files(tmp_path: Path) -> None:
     assert handler._is_ignored(str(tmp_path / "audit-20260922-120000-1.jsonl"))
     assert not handler._is_ignored(str(tmp_path / "some_rune" / "audit.jsonl"))
     assert not handler._is_ignored(str(tmp_path / "some_rune" / "rune.py"))
+
+
+@pytest.mark.asyncio
+async def test_stop_cancels_pending_debounce(tmp_path: Path) -> None:
+    """A file event debounced but not yet fired when stop() runs must not
+    reach the callback afterwards: otherwise a pre-teardown event fires
+    Mvge.reload() on the retired instance after close()."""
+    calls = 0
+
+    async def _callback() -> None:
+        nonlocal calls
+        calls += 1
+
+    watcher = RuneWatcher(tmp_path, RuneRunner(), reload_callback=_callback)
+    await watcher.start()
+    try:
+        assert watcher._handler is not None
+        # A file event arrives; the reload is debounced (0.5s), not fired.
+        watcher._handler.on_modified(
+            FileModifiedEvent(str(tmp_path / "some_rune" / "rune.py"))
+        )
+        await asyncio.sleep(0.1)
+        assert calls == 0
+    finally:
+        await watcher.stop()
+    # Past the debounce window: the cancelled burst must never fire.
+    await asyncio.sleep(0.7)
+    assert calls == 0
