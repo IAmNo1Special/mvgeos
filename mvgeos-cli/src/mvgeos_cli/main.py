@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import os
 import sys
+from pathlib import Path
 from typing import Any, cast
 
 import typer
@@ -116,6 +117,7 @@ async def _run_agent(
             agent_name=agent_name,
             extension_dir=extension_dir,
             overrides=overrides,
+            project_dir=Path.cwd(),
         )
         resolved = env.config
         model_id = model_id or str(resolved["model"].value)

@@ -50,14 +50,16 @@ def render_login_screen(state: AppState) -> None:
             "text-sm text-[var(--text-secondary)] -mt-2"
         )
 
+        ui.label("Username").classes("text-xs text-[var(--text-secondary)]")
         username_input = (
-            ui.input("Username", placeholder="Enter username")
+            ui.input(placeholder="Enter username")
             .classes("w-full")
             .props("outlined dense")
         )
 
+        ui.label("Password").classes("text-xs text-[var(--text-secondary)]")
         password_input = (
-            ui.input("Password", placeholder="Enter password", password=True)
+            ui.input(placeholder="Enter password", password=True)
             .classes("w-full")
             .props("outlined dense")
         )

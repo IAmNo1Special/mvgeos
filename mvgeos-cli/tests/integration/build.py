@@ -359,7 +359,9 @@ class TestAssemble:
 
         result = asyncio.run(_assemble("test-agent", None))
 
-        mock_env_cls.resolve.assert_called_once_with(agent_name="test-agent")
+        mock_env_cls.resolve.assert_called_once_with(
+            agent_name="test-agent", project_dir=Path.cwd()
+        )
         mock_agent_cls.assert_called_once_with(
             api_key="",
             name="test-agent",

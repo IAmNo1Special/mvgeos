@@ -509,3 +509,25 @@ async def test_composer_upload_button_has_no_gray_header(user: User) -> None:
     await user.open("/test_composer_upload_no_gray")
     (upload,) = user.find(marker="composer_upload_btn").elements
     assert "color" not in upload.props
+
+
+# ---------------------------------------------------------------------------
+# Attachment-only message rendering
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_attachment_only_message_shows_filenames(user: User) -> None:
+    """An attachment-only Summoner message must render its file names."""
+    state = AppState()
+    state.messages.append(
+        InvocationTranscript.for_summoner("", ["report.pdf", "notes.txt"])
+    )
+
+    @ui.page("/test_chat_panel_attachments")
+    def page() -> None:
+        render_chat_panel(state)
+
+    await user.open("/test_chat_panel_attachments")
+    await user.should_see("report.pdf")
+    await user.should_see("notes.txt")

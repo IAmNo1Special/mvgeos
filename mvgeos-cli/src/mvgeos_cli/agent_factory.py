@@ -120,6 +120,7 @@ async def create_agent(
         agent_name,
         extension_dir=extension_dir,
         overrides=overrides if overrides else None,
+        project_dir=Path.cwd(),
     )
     factory = resolve_agent_factory(agent_factory)
     factory_kwargs: dict[str, Any] = {

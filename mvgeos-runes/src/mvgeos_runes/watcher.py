@@ -16,6 +16,16 @@ from mvgeos_runes.rune_runner import RuneRunner
 
 logger = logging.getLogger(__name__)
 
+_OBSERVER_STOP_TIMEOUT_SECONDS = 5.0
+"""Bound for the watchdog observer thread join in :meth:`RuneWatcher.stop`.
+
+A stopped observer normally joins in milliseconds; a thread that is still
+alive after this long is wedged, and ``stop()`` raises ``TimeoutError``
+instead of hanging the caller (e.g. ``Mvge.reload()``) forever. The
+watcher stays armed after the timeout so the engine's retry loop can
+attempt the stop again.
+"""
+
 
 class _RuneReloadHandler(FileSystemEventHandler):
     """Debounces file-system events into reload callbacks.
@@ -90,6 +100,19 @@ class _RuneReloadHandler(FileSystemEventHandler):
         except RuntimeError:
             logger.debug("Event loop closed while scheduling reload of %s", rune_name)
 
+    def cancel_pending(self) -> None:
+        """Cancel a debounced reload that has not fired yet.
+
+        Called on teardown so a file event that arrived before the stop
+        cannot fire the callback afterwards — e.g. ``Mvge.reload()`` on a
+        retired instance after ``Mvge.close()``.
+        """
+        future = self._debounce_future
+        self._debounce_future = None
+        self._pending.clear()
+        if future is not None and not future.done():
+            future.cancel()
+
     def _find_rune_dir(self, path: str) -> str | None:
         src_path = Path(path)
         try:
@@ -110,6 +133,17 @@ class _RuneReloadHandler(FileSystemEventHandler):
             parts = src.relative_to(self._extensions_dir).parts
         except ValueError:
             parts = src.parts
+        # The engine's audit log lives at the root of the watched
+        # extensions dir; its own appends and rotations must not fire
+        # reloads, or every reload's audit record schedules another reload
+        # (audit storm). Root-level only: a nested audit.jsonl belongs to
+        # a rune and still triggers that rune.
+        if len(parts) == 1:
+            name = parts[0]
+            if name == "audit.jsonl" or (
+                name.startswith("audit-") and name.endswith(".jsonl")
+            ):
+                return True
         for part in parts:
             if part == "__pycache__" or (part.startswith(".") and part != "."):
                 return True
@@ -164,12 +198,21 @@ class RuneWatcher:
         runner: RuneRunner,
         reload_callback: Callable[[], Any] | None = None,
     ) -> None:
-        self._extensions_dir = extensions_dir
+        # Resolve to absolute at construction: every later use — the
+        # observer schedule, the event handler's base, the logs — sees
+        # the real directory instead of a deceptive relative string.
+        # This changes no anchoring semantics.
+        self._extensions_dir = Path(extensions_dir).expanduser().resolve()
         self._runner = runner
         self._reload_callback = reload_callback
         self._observer: Any = None
         self._handler: _RuneReloadHandler | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+
+    @property
+    def watch_path(self) -> Path:
+        """The absolute directory this watcher watches."""
+        return self._extensions_dir
 
     async def _reload_rune(self, rune_name: str) -> None:
         rune_dir = self._extensions_dir / rune_name
@@ -229,7 +272,21 @@ class RuneWatcher:
     async def stop(self) -> None:
         if self._observer is not None:
             self._observer.stop()
-            self._observer.join()
+            self._observer.join(timeout=_OBSERVER_STOP_TIMEOUT_SECONDS)
+            if self._observer.is_alive():
+                # Wedged thread: fail loudly and stay armed so a retry can
+                # attempt the stop again. Never hang the caller forever.
+                # The pending debounce is left alone: the watcher is still
+                # live, so the burst still belongs to it.
+                raise TimeoutError(
+                    f"Rune watcher for {self._extensions_dir} did not stop "
+                    f"within {_OBSERVER_STOP_TIMEOUT_SECONDS}s; "
+                    "observer thread still alive"
+                )
             self._observer = None
-            self._handler = None
+            if self._handler is not None:
+                # The observer is down: a debounced event must not fire
+                # the retired callback after this returns.
+                self._handler.cancel_pending()
+                self._handler = None
             logger.info("Rune watcher stopped")

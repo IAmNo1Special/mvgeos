@@ -62,7 +62,10 @@ Runes are user-installed extensions (not built-in). They are loaded from three s
 
 1. **User**: `~/.agents/extensions/`
 2. **Agent**: `~/.agents/agents/{agent_name}/extensions/`
-3. **Project**: `./.agents/extensions/`
+3. **Project**: `<project_dir>/.agents/extensions/` — anchored to an explicit
+   project directory (the GUI's `--project`, the CLI's working directory).
+   Never the ambient working directory: without an explicit anchor the
+   project layer is omitted entirely.
 
 ## Dependencies
 

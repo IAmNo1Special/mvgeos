@@ -170,17 +170,19 @@ def _render_install_dialog(state: AppState, refresh: object) -> None:
             "Install from a git repository or a local folder containing SKILL.md."
         ).classes("text-xs text-[var(--text-secondary)]")
 
+        ui.label("Git URL or local path").classes(
+            "text-xs text-[var(--text-secondary)]"
+        )
         source_input = (
             ui.input(
-                label="Git URL or local path",
                 placeholder="https://github.com/... or /path/to/skill",
             )
             .classes("w-full")
             .props("dark dense outlined")
         )
+        ui.label("Name (optional)").classes("text-xs text-[var(--text-secondary)]")
         name_input = (
             ui.input(
-                label="Name (optional)",
                 placeholder="Defaults to folder or repo name",
             )
             .classes("w-full")

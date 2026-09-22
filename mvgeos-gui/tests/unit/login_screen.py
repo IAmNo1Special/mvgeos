@@ -7,7 +7,8 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from nicegui import ui
+from nicegui import context, ui
+from nicegui.elements.input import Input
 from nicegui.testing import User
 
 from mvgeos_gui.components.login_screen import render_login_screen
@@ -227,3 +228,60 @@ async def test_login_screen_shows_no_credential_hint(user: User) -> None:
     await user.open("/test_login_no_hint")
     await user.should_not_see("Default: admin / admin")
     await user.should_not_see("admin / admin")
+
+
+# ---------------------------------------------------------------------------
+# Floating label / placeholder overlap
+# ---------------------------------------------------------------------------
+
+
+def _inputs_without_label_placeholder_overlap(client: object) -> list[str]:
+    """Names of inputs that set both a floating label and a placeholder.
+
+    Reads the element prop mapping directly: NiceGUI's public prop getter
+    (``get_computed_prop``) requires live browser JavaScript and is
+    unusable in the in-process test harness, so this is the narrowest
+    hook that detects the overlap regression.
+    """
+    elements = getattr(client, "elements", {})
+    bad: list[str] = []
+    for element in elements.values():
+        if isinstance(element, Input):
+            props = element._props  # noqa: SLF001 - no public sync accessor
+            if props.get("label") and props.get("placeholder"):
+                bad.append(str(props.get("label")))
+    return bad
+
+
+@pytest.mark.asyncio
+async def test_login_inputs_do_not_overlap_labels_and_placeholders(
+    user: User,
+) -> None:
+    """Sign-in inputs must use caption labels, not floating label+placeholder."""
+    state = AppState()
+    state._show_login = True
+    captured: dict[str, object] = {}
+
+    @ui.page("/test_login_no_overlap")
+    def page() -> None:
+        render_login_screen(state)
+        captured["client"] = context.client
+
+    await user.open("/test_login_no_overlap")
+    assert captured["client"] is not None
+    assert _inputs_without_label_placeholder_overlap(captured["client"]) == []
+
+
+@pytest.mark.asyncio
+async def test_login_fields_still_have_visible_captions(user: User) -> None:
+    """The caption labels above the sign-in inputs must remain visible."""
+    state = AppState()
+    state._show_login = True
+
+    @ui.page("/test_login_captions")
+    def page() -> None:
+        render_login_screen(state)
+
+    await user.open("/test_login_captions")
+    await user.should_see("Username")
+    await user.should_see("Password")

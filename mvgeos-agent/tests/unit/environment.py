@@ -204,6 +204,23 @@ class TestAgentConfigCoercion:
         cfg = coerce_agent_config({}, agent_name="my-agent", extension_dir="/ext")
         assert cfg.runes_paths == resolve_rune_paths("my-agent", "/ext")
 
+    def test_rune_paths_project_dir_anchors_project_layer(self, tmp_path: Path) -> None:
+        project = tmp_path / "project"
+        project.mkdir()
+        cfg = coerce_agent_config({}, project_dir=project)
+        assert cfg.runes_paths == resolve_rune_paths(
+            DEFAULT_AGENT_NAME, None, project_dir=project
+        )
+        assert project / ".agents" / "extensions" in cfg.runes_paths
+
+    def test_rune_paths_project_layer_omitted_without_project_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / ".agents" / "extensions").mkdir(parents=True)
+        monkeypatch.chdir(tmp_path)
+        cfg = coerce_agent_config({})
+        assert all(p.is_absolute() for p in cfg.runes_paths)
+
 
 # ---------------------------------------------------------------------------
 # Prompt & Guidelines Discovery Chain

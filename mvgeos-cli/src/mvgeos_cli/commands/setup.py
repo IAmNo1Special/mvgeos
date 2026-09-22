@@ -241,12 +241,12 @@ async def install_rune_python_deps(
 
 
 def collect_rune_dirs(
-    agent_name: str, extension_dir: str | None
+    agent_name: str, extension_dir: str | None, project_dir: Path | None = None
 ) -> list[tuple[RuneManifest, Path]]:
     """Load enabled runes and return (manifest, rune_dir) pairs."""
     results: list[tuple[RuneManifest, Path]] = []
     seen_names: set[str] = set()
-    for base in resolve_rune_paths(agent_name, extension_dir):
+    for base in resolve_rune_paths(agent_name, extension_dir, project_dir=project_dir):
         if not base.exists():
             continue
         # Sort for deterministic duplicate resolution: iterdir() order is
@@ -283,7 +283,7 @@ def setup_check(
         console.print(format_error(exc))
         raise typer.Exit(1) from None
 
-    runes = collect_rune_dirs(agent_name, extension_dir)
+    runes = collect_rune_dirs(agent_name, extension_dir, project_dir=Path.cwd())
 
     if not runes:
         console.print("[yellow]No runes found[/yellow]")
@@ -347,7 +347,7 @@ def install_missing_deps(
         console.print(format_error(exc))
         return 1
 
-    runes = collect_rune_dirs(agent_name, extension_dir)
+    runes = collect_rune_dirs(agent_name, extension_dir, project_dir=Path.cwd())
 
     if not runes:
         console.print("[yellow]No runes found[/yellow]")
