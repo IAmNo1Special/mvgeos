@@ -233,9 +233,7 @@ class RuneLifecycle:
                 remaining[key] = watcher
         self._watched = remaining
         if errors:
-            raise RuntimeError(
-                "rune watcher shutdown failed: " + "; ".join(errors)
-            )
+            raise RuntimeError("rune watcher shutdown failed: " + "; ".join(errors))
 
     def _ensure_runner(self) -> RuneRunner:
         if self._runner is None:
