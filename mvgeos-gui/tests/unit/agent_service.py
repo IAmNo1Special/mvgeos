@@ -13,6 +13,7 @@ from mvgeos_core.events import (
     MvgeEvent,
     MvgeEventType,
 )
+from mvgeos_runes import RegisteredCommand
 from mvgeos_tome.handle import TomeHandleFactory
 
 from mvgeos_gui.models import ChatMessage, StepType, TaskStatus
@@ -711,6 +712,42 @@ def test_background_tasks_cleared_on_new_conversation(
     agent_service.register_subagent_task(app_state, "sub-x", "Worker")
     app_state.new_conversation()
     assert app_state.background_tasks == []
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_routes_dynamic_slash_command(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Dynamic rune commands (e.g. /selfmod) must route to
+    dispatch_slash_command, never to the model. The CLI REPL already routes
+    every '/'-prefixed line through the dispatcher; the GUI chat must match
+    for commands the dispatcher knows. Caught by installed GUI proof:
+    '/selfmod status' was sent to the model as a regular turn instead of
+    reaching the rune."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock()
+    mock_agent.get_skills_catalog = MagicMock(return_value=[])
+    mock_agent.get_registered_commands = MagicMock(
+        return_value=[
+            RegisteredCommand(
+                name="selfmod",
+                description="Self-mod bridge",
+                handler=AsyncMock(),
+            )
+        ]
+    )
+    agent_service._agent = mock_agent
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    with patch.object(
+        agent_service, "dispatch_slash_command", new=AsyncMock()
+    ) as routed:
+        await agent_service.run_prompt("/selfmod status", app_state, msg)
+
+    routed.assert_awaited_once_with("/selfmod status", app_state, msg)
+    mock_agent.run.assert_not_awaited()
 
 
 @pytest.mark.asyncio
