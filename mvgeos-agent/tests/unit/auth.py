@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from mvgeos_agent.auth import (
     AUTH_DIR_PERMS,
     AUTH_FILE_PERMS,
@@ -141,3 +143,43 @@ def test_enforce_file_permissions_suppresses_oserror(tmp_path: Path) -> None:
         patch.object(Path, "chmod", side_effect=OSError("Chmod failed")),
     ):
         enforce_file_permissions(fake_file)
+
+
+def test_enforce_file_permissions_tolerates_missing_paths(tmp_path: Path) -> None:
+    """Missing parent directories and files are silently tolerated."""
+    enforce_file_permissions(tmp_path / "nope" / "auth.json")  # does not raise
+
+
+def test_load_api_key_from_auth_skips_chmod_on_windows(tmp_path: Path) -> None:
+    """On Windows the POSIX permission enforcement is skipped."""
+    fake_path = tmp_path / "openrouter.json"
+    fake_path.write_text(json.dumps({"api_key": "win-key"}), encoding="utf-8")
+    with (
+        patch("mvgeos_agent.auth.AUTH_FILE_PATH", fake_path),
+        patch.object(os, "name", "nt"),
+    ):
+        assert load_api_key_from_auth() == "win-key"
+
+
+def test_save_api_key_to_auth_on_windows(tmp_path: Path) -> None:
+    """On Windows the key is written without POSIX permission calls."""
+    fake_path = tmp_path / "auth" / "openrouter.json"
+    with (
+        patch("mvgeos_agent.auth.AUTH_FILE_PATH", fake_path),
+        patch.object(os, "name", "nt"),
+    ):
+        result = save_api_key_to_auth("secret")
+
+    assert result == fake_path
+    assert json.loads(fake_path.read_text(encoding="utf-8")) == {"api_key": "secret"}
+
+
+def test_save_api_key_to_auth_write_failure_reraises(tmp_path: Path) -> None:
+    """A write failure closes the fd and re-raises the original error."""
+    fake_path = tmp_path / "auth" / "openrouter.json"
+    with (
+        patch("mvgeos_agent.auth.AUTH_FILE_PATH", fake_path),
+        patch("builtins.open", side_effect=OSError("disk full")),
+        pytest.raises(OSError, match="disk full"),
+    ):
+        save_api_key_to_auth("secret")

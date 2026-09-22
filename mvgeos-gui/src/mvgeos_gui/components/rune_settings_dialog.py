@@ -102,6 +102,6 @@ def render_rune_settings_dialog(
 
             ui.button("Save", on_click=_save_settings).props(
                 "unelevated dense color=purple-7"
-            ).classes("text-white text-sm font-medium")
+            ).classes("text-white text-sm font-medium").mark("rune_settings_save_btn")
 
     dialog.open()

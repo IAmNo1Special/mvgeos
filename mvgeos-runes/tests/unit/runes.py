@@ -1,11 +1,13 @@
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from mvgeos_core.spells import ExecutionMode
 
 from mvgeos_runes.loader import (
+    _module_importable,
     load_factory_from_manifest,
     load_manifests,
     load_runes_from_paths,
@@ -665,3 +667,123 @@ def test_load_manifest_spell_gateway_non_bool_defaults_false() -> None:
         manifest = load_manifest(rune_dir)
         assert manifest is not None
         assert manifest.spell_gateway is False
+
+
+def _write_rune_entry(rune_dir: Path, entry_name: str, code: str) -> None:
+    rune_dir.mkdir(parents=True, exist_ok=True)
+    (rune_dir / entry_name).write_text(code, encoding="utf-8")
+
+
+def _basic_manifest(
+    name: str = "r", entry_point: str = "rune.py", **kwargs: object
+) -> RuneManifest:
+    return RuneManifest(
+        name=name,
+        version="1.0.0",
+        description="Test rune",
+        entry_point=entry_point,
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
+def test_module_importable_probe_error_is_not_importable() -> None:
+    """A find_spec probe error is treated as not importable."""
+    with patch("importlib.util.find_spec", side_effect=ValueError("bogus module name")):
+        assert _module_importable("not a module name") is False
+
+
+def test_load_factory_skips_incompatible_runtime_without_diagnostics() -> None:
+    """The TypeScript skip works without a diagnostics sink."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = Path(tmpdir) / "ts_rune"
+        _write_rune_entry(rune_dir, "index.ts", "console.log('hi');")
+        manifest = _basic_manifest(
+            name="ts_rune", entry_point="index.ts", runtime="typescript"
+        )
+
+        assert load_factory_from_manifest(manifest, rune_dir) is None
+
+
+def test_load_factory_missing_deps_without_diagnostics() -> None:
+    """Missing python_deps aborts the load even without a diagnostics sink."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = Path(tmpdir) / "r"
+        _write_rune_entry(rune_dir, "rune.py", "def rune_factory(api):\n    pass\n")
+        manifest = _basic_manifest(python_deps=["definitely-not-a-real-dep-xyz-123"])
+
+        assert load_factory_from_manifest(manifest, rune_dir) is None
+
+
+def test_load_factory_missing_entry_without_diagnostics() -> None:
+    """A missing entry point aborts the load without a diagnostics sink."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        manifest = _basic_manifest(entry_point="nope.py")
+
+        assert load_factory_from_manifest(manifest, Path(tmpdir)) is None
+
+
+def test_load_factory_unloadable_entry_returns_none() -> None:
+    """An entry point with no import loader yields no factory."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = Path(tmpdir) / "r"
+        _write_rune_entry(rune_dir, "rune.txt", "not python\n")
+        manifest = _basic_manifest(entry_point="rune.txt")
+
+        assert load_factory_from_manifest(manifest, rune_dir) is None
+
+
+def test_load_factory_exec_error_without_diagnostics() -> None:
+    """An entry point that raises on import yields no factory."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = Path(tmpdir) / "r"
+        _write_rune_entry(rune_dir, "rune.py", "raise RuntimeError('boom')\n")
+        manifest = _basic_manifest()
+
+        assert load_factory_from_manifest(manifest, rune_dir) is None
+
+
+def test_load_factory_missing_rune_factory_without_diagnostics() -> None:
+    """An entry point without a rune_factory export yields no factory."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = Path(tmpdir) / "r"
+        _write_rune_entry(rune_dir, "rune.py", "VALUE = 42\n")
+        manifest = _basic_manifest()
+
+        assert load_factory_from_manifest(manifest, rune_dir) is None
+
+
+def test_load_factory_zero_arg_factory_without_diagnostics() -> None:
+    """A rune_factory taking no arguments is rejected."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = Path(tmpdir) / "r"
+        _write_rune_entry(rune_dir, "rune.py", "def rune_factory():\n    pass\n")
+        manifest = _basic_manifest()
+
+        assert load_factory_from_manifest(manifest, rune_dir) is None
+
+
+def test_load_factory_signature_probe_error_is_tolerated() -> None:
+    """An uninspectable factory signature does not block loading."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = Path(tmpdir) / "r"
+        _write_rune_entry(rune_dir, "rune.py", "def rune_factory(api):\n    pass\n")
+        manifest = _basic_manifest()
+
+        with patch(
+            "mvgeos_runes.loader.inspect.signature",
+            side_effect=ValueError("no signature"),
+        ):
+            factory = load_factory_from_manifest(manifest, rune_dir)
+
+        assert callable(factory)
+
+
+def test_load_manifests_skips_unparseable_dir_without_diagnostics() -> None:
+    """Unparseable manifest directories are skipped without a diagnostics sink."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ext = Path(tmpdir) / "extensions"
+        bad = ext / "bad_rune"
+        bad.mkdir(parents=True)
+        (bad / "manifest.json").write_text("{invalid json", encoding="utf-8")
+
+        assert load_manifests(ext) == []
