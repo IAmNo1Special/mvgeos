@@ -62,6 +62,23 @@ def render_app_settings_modal(state: AppState) -> None:
                 theme=str(edited["theme"]),
             )
         )
+        # Publish the new key to the running app: the shared runtime key and
+        # every live per-client agent service. The current state is included
+        # explicitly: a standalone AppState (private server) is not in
+        # server.client_states, which only tracks connected browser sessions.
+        # Each cached agent is retired (its key is stale); future services
+        # inherit the shared key when they are constructed.
+        new_key = str(edited["api_key"]).strip() or None
+        state.api_key = new_key
+        server = state._ensure_server()
+        seen: set[int] = set()
+        for client in (state, *server.client_states):
+            if id(client) in seen:
+                continue
+            seen.add(id(client))
+            service = client.agent_service
+            if service is not None:
+                service.set_api_key(new_key)
         new_theme = str(edited["theme"])
         if new_theme != current.theme and state._dark_mode is not None:
             apply_theme(new_theme, state._dark_mode)

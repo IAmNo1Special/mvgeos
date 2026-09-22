@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import inspect
 import logging
+import os
 import shutil
 import time
 import uuid
@@ -128,6 +129,9 @@ _SHARED_FIELDS = frozenset(
     }
 )
 
+# Per-browser storage key for the active session id.
+_ACTIVE_TOME_STORAGE_KEY = "active-tome-id"
+
 
 @dataclass
 class ServerState:
@@ -227,9 +231,21 @@ class ServerState:
         """Detach a client session: fail closed and release its resources.
 
         Pending approval casts are denied (their decision surface is
-        gone), the agent task is cancelled, and UI listeners are dropped.
+        gone), the agent task is cancelled, UI listeners are dropped, and
+        the client's cached agent is closed in the background so its rune
+        watchers stop firing after disconnect. Background close is fine
+        here because the server keeps running.
         """
         self._clients = [s for s in self._clients if s is not state]
+        self._fail_closed_sync(state)
+        with contextlib.suppress(Exception):
+            service = state.agent_service
+            if service is not None:
+                service.close_agent_in_background()
+
+    @staticmethod
+    def _fail_closed_sync(state: AppState) -> None:
+        """Synchronous fail-closed steps shared by disconnect and shutdown."""
         with contextlib.suppress(Exception):
             state.stop_channeling()
         with contextlib.suppress(Exception):
@@ -237,10 +253,24 @@ class ServerState:
         with contextlib.suppress(Exception):
             unbind_approval_presenter(state)
 
-    def shutdown(self) -> None:
-        """Server shutdown: fail closed for every connected client."""
+    async def ashutdown(self) -> None:
+        """Awaited server shutdown: fail closed for every connected client.
+
+        Unlike :meth:`drop_client_state` (which must not block a live
+        server), shutdown awaits each cached agent's close, so rune
+        watchers are guaranteed stopped before the event loop tears down.
+        NiceGUI awaits async ``app.on_shutdown`` handlers inside
+        ``App.stop()`` before uvicorn cancels pending tasks; a shutdown
+        that merely scheduled background closes would be cancelled first.
+        Close failures are logged and suppressed: teardown must not raise.
+        """
         for client in list(self._clients):
-            self.drop_client_state(client)
+            self._fail_closed_sync(client)
+            with contextlib.suppress(Exception):
+                service = client.agent_service
+                if service is not None:
+                    await service.close_agent()
+            self._clients = [s for s in self._clients if s is not client]
 
 
 @dataclass
@@ -546,9 +576,14 @@ class AppState:
         return self.agent_service
 
     def reset_agent(self) -> None:
-        """Reset the cached agent in AgentService if one exists."""
+        """Reset the cached agent in AgentService if one exists.
+
+        The discarded agent is closed (stopping its rune watchers) rather
+        than merely dereferenced, so a replaced agent never keeps firing
+        reloads or holding its tome open.
+        """
         if self.agent_service is not None:
-            self.agent_service.reset_agent()
+            self.agent_service.close_agent_in_background()
 
     def get_autocomplete_service(self) -> AutocompleteService:
         """Retrieve or initialize the AutocompleteService for this session.
@@ -847,6 +882,9 @@ class AppState:
         # otherwise resume it on the next send instead of starting fresh.
         self.reset_agent()
         self.load_tomes()
+        # No active session: clear the persisted id so a page reload does
+        # not resurrect the ended conversation.
+        self.persist_active_tome()
 
     def record_context_usage(self, input_tokens: int, output_tokens: int) -> None:
         """Record the latest provider-reported token usage for the gauge."""
@@ -916,6 +954,14 @@ class AppState:
             return
         if meta is None:
             return
+        # A tome created in another workspace must never become the active
+        # session here. restore_active_tome() delegates to this method, and
+        # a stale browser-storage id can name a foreign tome. The same
+        # normalization as TomeService.list_tomes_for_project applies.
+        tome_cwd = os.path.normcase(os.path.normpath(meta.cwd))
+        project = os.path.normcase(os.path.normpath(str(self.project_path)))
+        if tome_cwd != project:
+            return
         # The tome is changing: deny pending approvals before the state
         # change completes.
         self._on_approval_context_change()
@@ -929,6 +975,45 @@ class AppState:
         self.reset_agent()
         self.load_messages_for_tome(meta.id)
         self.load_tomes()
+        self.persist_active_tome()
+
+    @property
+    def project_display_name(self) -> str:
+        """Human name for the workspace: persisted name or directory name."""
+        try:
+            name = self._config_service.load_workspace_settings(
+                self.project_path
+            ).project_name
+        except Exception:
+            name = ""
+        return name.strip() or self.project_path.name or str(self.project_path)
+
+    def persist_active_tome(self) -> None:
+        """Remember the active session id in per-browser storage.
+
+        A fresh page load restores it via :meth:`restore_active_tome`.
+        Best-effort: storage failures are ignored.
+        """
+        with contextlib.suppress(Exception):
+            nicegui_app.storage.user[_ACTIVE_TOME_STORAGE_KEY] = self.active_tome_id
+
+    def restore_active_tome(self) -> bool:
+        """Re-select the session persisted by an earlier page load.
+
+        Returns True when a stored session id still resolves to a tome.
+        Best-effort: unknown ids and storage errors restore nothing.
+        """
+        try:
+            stored = nicegui_app.storage.user.get(_ACTIVE_TOME_STORAGE_KEY)
+        except Exception:
+            return False
+        if not isinstance(stored, str) or not stored:
+            return False
+        try:
+            self.switch_to_tome(stored)
+        except Exception:
+            return False
+        return self.active_tome_id == stored
 
     def get_realms(self) -> list[str]:
         """Return available realm identifiers."""

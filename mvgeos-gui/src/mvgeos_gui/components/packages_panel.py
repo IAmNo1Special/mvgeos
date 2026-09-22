@@ -169,6 +169,9 @@ def _extract_rune_info(
         "git_url": git_url,
         "path": path,
         "is_installed": is_installed,
+        # Preserve the installed enabled-state; a missing flag defaults to
+        # enabled so marketplace-only entries render normally.
+        "enabled": bool(inst_meta.get("enabled", True)),
         "hooks": hooks,
         "python_deps": python_deps,
         "types": types,

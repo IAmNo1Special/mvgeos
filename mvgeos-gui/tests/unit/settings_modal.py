@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,8 +13,9 @@ from nicegui.testing import User
 
 from mvgeos_gui.components import settings_modal as settings_modal_module
 from mvgeos_gui.components.settings_modal import render_app_settings_modal
+from mvgeos_gui.services.agent_service import AgentService
 from mvgeos_gui.services.config_service import AppSettings, ConfigService
-from mvgeos_gui.state import AppState
+from mvgeos_gui.state import AppState, ServerState
 
 
 def _make_state(tmp_path: Path, settings: AppSettings | None = None) -> AppState:
@@ -349,3 +352,118 @@ async def test_saving_unchanged_theme_does_not_reapply(
     user.find("Save", kind=ui.button).click()
 
     assert applied == []
+
+
+# ---------------------------------------------------------------------------
+# API-key runtime propagation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_app_settings_modal_save_propagates_api_key_to_runtime(
+    user: User, tmp_path: Path
+) -> None:
+    """Saving a new key must update state.api_key and the live AgentService."""
+    state = _make_state(tmp_path)
+
+    seen_keys: list[Any] = []
+    closed: list[Any] = []
+
+    def factory(**kwargs: Any) -> Any:
+        seen_keys.append(kwargs.get("api_key"))
+        agent = MagicMock()
+
+        async def _close() -> None:
+            closed.append(agent)
+
+        agent.close = _close
+        return agent
+
+    service = AgentService(
+        project_path=tmp_path, api_key="sk-old-key", agent_factory=factory
+    )
+    state.agent_service = service
+    old_agent = service.get_or_create_agent(state)
+    assert seen_keys == ["sk-old-key"]
+
+    @ui.page("/test_settings_save_runtime_key")
+    def page() -> None:
+        render_app_settings_modal(state)
+
+    await user.open("/test_settings_save_runtime_key")
+    api_input = next(iter(user.find(marker="api_key_input").elements))
+    api_input.set_value("sk-new-key")
+
+    user.find("Save").click()
+    assert state.api_key == "sk-new-key"
+
+    for _ in range(100):
+        if closed:
+            break
+        await asyncio.sleep(0.01)
+    assert closed == [old_agent]
+
+    # The next agent construction resolves the new key.
+    new_agent = service.get_or_create_agent(state)
+    assert new_agent is not old_agent
+    assert seen_keys == ["sk-old-key", "sk-new-key"]
+
+
+@pytest.mark.asyncio
+async def test_app_settings_modal_save_rekeys_every_connected_client(
+    user: User, tmp_path: Path
+) -> None:
+    """All connected clients' agent services are re-keyed (dedup safe)."""
+    server = ServerState()
+    config = ConfigService(config_dir=tmp_path)
+    closed: list[Any] = []
+    seen_keys: list[Any] = []
+    services: list[AgentService] = []
+    olds: list[Any] = []
+
+    def factory(**kwargs: Any) -> Any:
+        seen_keys.append(kwargs.get("api_key"))
+        agent = MagicMock()
+
+        async def _close() -> None:
+            closed.append(agent)
+
+        agent.close = _close
+        return agent
+
+    clients = []
+    for _ in range(2):
+        client = server.new_client_state()
+        client._config_service = config
+        service = AgentService(
+            project_path=tmp_path, api_key="sk-old-key", agent_factory=factory
+        )
+        client.agent_service = service
+        olds.append(service.get_or_create_agent(client))
+        services.append(service)
+        clients.append(client)
+
+    state = server.client_states[0]
+    state._show_app_settings = True
+
+    @ui.page("/test_settings_save_multi_client")
+    def page() -> None:
+        render_app_settings_modal(state)
+
+    await user.open("/test_settings_save_multi_client")
+    api_input = next(iter(user.find(marker="api_key_input").elements))
+    api_input.set_value("sk-new-key")
+
+    user.find("Save").click()
+    assert state.api_key == "sk-new-key"
+
+    for _ in range(100):
+        if len(closed) == 2:
+            break
+        await asyncio.sleep(0.01)
+    assert closed == olds
+    # Both clients' next agents resolve the new key (each exactly once:
+    # the dedup in _save must not re-key any client twice).
+    for service, client in zip(services, clients, strict=True):
+        assert service.get_or_create_agent(client) is not None
+    assert seen_keys == ["sk-old-key", "sk-old-key", "sk-new-key", "sk-new-key"]

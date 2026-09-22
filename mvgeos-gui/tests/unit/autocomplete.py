@@ -833,3 +833,24 @@ def test_mention_index_rebuilds_when_gitignore_changes() -> None:
     labels = _mention_labels(index)
     assert "secret.py" not in labels
     assert "main.py" in labels
+
+
+# ---------------------------------------------------------------------------
+# Slash command registry completeness
+# ---------------------------------------------------------------------------
+
+
+def test_resume_listed_in_slash_autocomplete() -> None:
+    """/resume must appear in the slash autocomplete popup items."""
+    registry = SlashCommandRegistry()
+    names = [command.name for command in registry.get_commands()]
+    assert "/resume" in names
+    # ... and survive the fuzzy filter users actually type through.
+    for query in ("", "/", "r", "re", "res", "resume"):
+        filtered = [
+            command.name
+            for command in SlashCommandRegistry._filter_by_name(
+                registry.get_commands(), query
+            )
+        ]
+        assert "/resume" in filtered, f"/resume missing for query {query!r}"

@@ -7,6 +7,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mvgeos_agent.commands import CommandAction
 from mvgeos_core.channel import Model, MvgeResponse, RealmResponse
 from mvgeos_core.errors import AuthenticationError, RateLimitError
 from mvgeos_core.events import (
@@ -18,8 +19,9 @@ from mvgeos_tome.handle import TomeHandleFactory
 
 from mvgeos_gui.models import ChatMessage, StepType, TaskStatus
 from mvgeos_gui.services.agent_service import AgentService, resolve_api_key
+from mvgeos_gui.services.config_service import AppSettings, ConfigService
 from mvgeos_gui.services.tome_service import TomeService
-from mvgeos_gui.state import AppState
+from mvgeos_gui.state import AppState, ServerState
 
 
 @pytest.fixture
@@ -2028,3 +2030,354 @@ async def test_run_prompt_adopts_tome_as_session_row(tmp_path: Path) -> None:
 
     assert state.active_tome_id == tome_id
     assert tome_id in [entry.tome_id for entry in state.loaded_tomes]
+
+
+# ---------------------------------------------------------------------------
+# Lazy rune loading, API-key propagation, agent teardown, error rendering
+# ---------------------------------------------------------------------------
+
+
+class _LazyRuneAgent:
+    """Test double: rune runner appears only after ``load_runes()`` runs.
+
+    Mirrors the real Mvge delegation: ``get_registered_commands()`` serves
+    the runner's commands once the runner exists.
+    """
+
+    def __init__(self) -> None:
+        self._runner: Any = None
+        self.load_runes_calls = 0
+        self.close_calls = 0
+
+    def get_registered_commands(self) -> list[Any]:
+        if self._runner is None:
+            return []
+        return self._runner.get_commands()
+
+    async def load_runes(self) -> None:
+        self.load_runes_calls += 1
+        runner = MagicMock()
+
+        async def _handle_selfmod(args: str) -> str:
+            return "selfmod-ok"
+
+        command = MagicMock()
+        command.name = "selfmod"
+        command.description = "Run selfmod"
+        command.handler = _handle_selfmod
+        runner.get_commands.return_value = [command]
+        self._runner = runner
+
+    async def close(self) -> None:
+        self.close_calls += 1
+
+
+def _lazy_agent_service(tmp_path: Path, **kwargs: Any) -> AgentService:
+    return AgentService(
+        project_path=tmp_path,
+        api_key="sk-test",
+        agent_factory=lambda **kw: _LazyRuneAgent(),
+        **kwargs,
+    )
+
+
+def test_resolve_api_key_reads_saved_gui_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Saved GUI settings must feed key resolution when no env key exists."""
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("MVGEOS_API_KEY", raising=False)
+    # AUTH_FILE_PATH is expanded at import time: point it at tmp too.
+    monkeypatch.setattr("mvgeos_agent.auth.AUTH_FILE_PATH", tmp_path / "auth.json")
+    ConfigService().save_app_settings(AppSettings(api_key="sk-saved-gui"))
+
+    assert resolve_api_key() == "sk-saved-gui"
+
+
+def test_resolve_api_key_env_beats_saved_gui_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Explicit env keys keep precedence over the saved GUI settings."""
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-env")
+    monkeypatch.setattr("mvgeos_agent.auth.AUTH_FILE_PATH", tmp_path / "auth.json")
+    ConfigService().save_app_settings(AppSettings(api_key="sk-saved-gui"))
+
+    assert resolve_api_key() == "sk-env"
+
+
+@pytest.mark.asyncio
+async def test_set_api_key_rekeys_service_and_closes_old_agent(
+    tmp_path: Path,
+) -> None:
+    """set_api_key must rekey future agents and retire the cached one."""
+    seen_keys: list[Any] = []
+    fakes: list[_LazyRuneAgent] = []
+
+    def factory(**kwargs: Any) -> _LazyRuneAgent:
+        seen_keys.append(kwargs.get("api_key"))
+        fake = _LazyRuneAgent()
+        fakes.append(fake)
+        return fake
+
+    service = AgentService(
+        project_path=tmp_path, api_key="sk-old", agent_factory=factory
+    )
+    state = AppState(project_path=tmp_path)
+    old_agent = service.get_or_create_agent(state)
+    assert seen_keys == ["sk-old"]
+
+    service.set_api_key("sk-new")
+    for _ in range(100):
+        if old_agent.close_calls:
+            break
+        await asyncio.sleep(0.01)
+    assert old_agent.close_calls == 1
+
+    new_agent = service.get_or_create_agent(state)
+    assert new_agent is not old_agent
+    assert seen_keys == ["sk-old", "sk-new"]
+
+    # Re-saving the same key must not churn the agent.
+    service.set_api_key("sk-new")
+    await asyncio.sleep(0.05)
+    assert old_agent.close_calls == 1
+    assert service.get_or_create_agent(state) is new_agent
+
+
+@pytest.mark.asyncio
+async def test_rune_commands_dispatch_on_fresh_agent(tmp_path: Path) -> None:
+    """Dynamic rune commands must dispatch on a fresh agent (no model turn).
+
+    Regression: on a fresh page load the cached agent exists but its rune
+    runner is not initialized, so /<rune-command> fell through to the model
+    turn instead of dispatching locally.
+    """
+    service = _lazy_agent_service(tmp_path)
+    state = AppState(project_path=tmp_path)
+    agent = service.get_or_create_agent(state)
+    assert isinstance(agent, _LazyRuneAgent)
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    await service.run_prompt("/selfmod status", state, msg)
+
+    assert agent.load_runes_calls == 1
+    assert msg.content == "selfmod-ok"
+    assert msg.is_streaming is False
+
+    # A second command reuses the loaded runner without reloading.
+    msg2 = ChatMessage(role="assistant", is_streaming=True)
+    await service.run_prompt("/selfmod status", state, msg2)
+    assert agent.load_runes_calls == 1
+    assert msg2.content == "selfmod-ok"
+
+
+@pytest.mark.asyncio
+async def test_close_agent_closes_cached_agent(tmp_path: Path) -> None:
+    """close_agent() must close the cached agent and drop the reference."""
+    fakes: list[_LazyRuneAgent] = []
+    service = AgentService(
+        project_path=tmp_path,
+        api_key="sk-test",
+        agent_factory=lambda **kw: fakes.append(_LazyRuneAgent()) or fakes[-1],
+    )
+    state = AppState(project_path=tmp_path)
+    first = service.get_or_create_agent(state)
+
+    await service.close_agent()
+
+    assert first.close_calls == 1
+    # The reference was dropped: the next turn builds a fresh agent.
+    second = service.get_or_create_agent(state)
+    assert second is not first
+    # Closing with nothing cached is a safe no-op.
+    await service.close_agent()
+
+
+@pytest.mark.asyncio
+async def test_close_agent_tolerates_close_failure(tmp_path: Path) -> None:
+    """A failing agent.close() must not propagate: teardown is fail-closed."""
+
+    class _ExplodingAgent(_LazyRuneAgent):
+        async def close(self) -> None:
+            raise RuntimeError("watcher shutdown blew up")
+
+    service = AgentService(
+        project_path=tmp_path,
+        api_key="sk-test",
+        agent_factory=lambda **kw: _ExplodingAgent(),
+    )
+    state = AppState(project_path=tmp_path)
+    first = service.get_or_create_agent(state)
+
+    await service.close_agent()  # must not raise
+
+    # The reference was still dropped: the next turn builds a fresh agent.
+    assert service.get_or_create_agent(state) is not first
+
+
+def test_close_agent_in_background_without_loop_drops_reference(
+    tmp_path: Path,
+) -> None:
+    """Without a running loop the agent reference is dropped, not closed.
+
+    There is no event loop to schedule the async close on (documented
+    fallback); the stale agent is at least dereferenced.
+    """
+    service = _lazy_agent_service(tmp_path)
+    state = AppState(project_path=tmp_path)
+    agent = service.get_or_create_agent(state)
+
+    service.close_agent_in_background()
+
+    assert agent.close_calls == 0
+    assert service.get_or_create_agent(state) is not agent
+
+
+@pytest.mark.asyncio
+async def test_lazy_rune_load_failure_does_not_break_dispatch(
+    tmp_path: Path,
+) -> None:
+    """A failing load_runes() degrades to 'no dynamic commands', never a crash."""
+
+    class _BrokenLoader(_LazyRuneAgent):
+        async def load_runes(self) -> None:
+            raise RuntimeError("rune dir unreadable")
+
+    service = AgentService(
+        project_path=tmp_path,
+        api_key="sk-test",
+        agent_factory=lambda **kw: _BrokenLoader(),
+    )
+    state = AppState(project_path=tmp_path)
+    msg = ChatMessage(role="assistant", is_streaming=True)
+
+    outcome = await service.dispatch_slash_command("/selfmod status", state, msg)
+
+    assert outcome is not None
+    assert outcome.action == CommandAction.ERROR
+
+
+@pytest.mark.asyncio
+async def test_drop_client_state_closes_client_agent(tmp_path: Path) -> None:
+    """Client disconnect must stop the per-client agent's rune watchers."""
+    server = ServerState()
+    state = server.new_client_state()
+    fake = _LazyRuneAgent()
+    service = AgentService(
+        project_path=tmp_path,
+        api_key="sk-test",
+        agent_factory=lambda **kw: fake,
+    )
+    state.agent_service = service
+    service.get_or_create_agent(state)
+
+    server.drop_client_state(state)
+
+    for _ in range(100):
+        if fake.close_calls:
+            break
+        await asyncio.sleep(0.01)
+    assert fake.close_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_dispatch_error_outcome_not_duplicated_in_body(
+    tmp_path: Path,
+) -> None:
+    """ERROR outcomes render once as the error, not as body + error line."""
+    service = _lazy_agent_service(tmp_path)
+    state = AppState(project_path=tmp_path)
+    msg = ChatMessage(role="assistant", is_streaming=True)
+
+    outcome = await service.dispatch_slash_command(
+        "/model definitely-not-a-real-model", state, msg
+    )
+
+    assert outcome is not None
+    assert outcome.action == CommandAction.ERROR
+    assert msg.error_message == (
+        "Unknown model: definitely-not-a-real-model\n"
+        "Try /refresh-models to fetch the latest catalog"
+    )
+    assert msg.content == ""
+
+
+@pytest.mark.asyncio
+async def test_dispatch_construction_failure_not_duplicated_in_body(
+    tmp_path: Path,
+) -> None:
+    """Agent-construction failure renders once as the error, not body + error."""
+
+    def _boom(**kwargs: Any) -> Any:
+        raise RuntimeError("Cannot instantiate Mvge without an API key")
+
+    service = AgentService(
+        project_path=tmp_path, api_key="sk-test", agent_factory=_boom
+    )
+    state = AppState(project_path=tmp_path)
+    msg = ChatMessage(role="assistant", is_streaming=True)
+
+    outcome = await service.dispatch_slash_command("/help", state, msg)
+
+    assert outcome is None
+    assert msg.is_error is True
+    assert msg.error_message == "Cannot instantiate Mvge without an API key"
+    assert msg.content == ""
+
+
+@pytest.mark.asyncio
+async def test_execution_error_body_code_spans_exception_text(
+    tmp_path: Path,
+) -> None:
+    """Raw exception text in the markdown body must not be emphasis-mangled.
+
+    Identifiers like OPENROUTER_API_KEY would otherwise render as
+    OPENROUTER*API*KEY (the sweep saw "OPENROUTERAPI/KEY").
+    """
+
+    class _FailingAgent(_LazyRuneAgent):
+        async def run(self, prompt: object) -> None:
+            raise RuntimeError("provider said OPENROUTER_API_KEY is bad")
+
+    service = AgentService(
+        project_path=tmp_path,
+        api_key="sk-test",
+        agent_factory=lambda **kw: _FailingAgent(),
+    )
+    state = AppState(project_path=tmp_path)
+    msg = ChatMessage(role="assistant", is_streaming=True)
+
+    await service.run_prompt("hello", state, msg)
+
+    assert msg.is_error is True
+    assert "OPENROUTER_API_KEY" in msg.content
+    assert "`provider said OPENROUTER_API_KEY is bad`" in msg.content
+
+
+@pytest.mark.asyncio
+async def test_missing_key_error_names_openrouter_api_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The no-key error must name OPENROUTER_API_KEY (never OPENROUTERAPIKEY)."""
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("MVGEOS_API_KEY", raising=False)
+    monkeypatch.setattr("mvgeos_agent.auth.AUTH_FILE_PATH", tmp_path / "auth.json")
+
+    service = AgentService(project_path=tmp_path)
+    assert service.can_create_agent() is False
+    state = AppState(project_path=tmp_path)
+    msg = ChatMessage(role="assistant", is_streaming=True)
+
+    await service.run_prompt("hello", state, msg)
+
+    assert "OPENROUTER_API_KEY" in msg.content
+    assert "OPENROUTERAPIKEY" not in msg.content

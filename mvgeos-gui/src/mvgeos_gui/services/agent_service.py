@@ -44,6 +44,7 @@ from mvgeos_gui.models import (
     ChatMessage,
     TaskStatus,
 )
+from mvgeos_gui.services.config_service import ConfigService
 from mvgeos_gui.transcript import InvocationTranscript
 
 if TYPE_CHECKING:
@@ -66,13 +67,30 @@ def _upstream_stall_message(detail: str) -> str:
     )
 
 
+def _load_saved_gui_api_key() -> str | None:
+    """Read the API key persisted via the GUI settings dialog, if any."""
+    with contextlib.suppress(Exception):
+        saved = ConfigService().load_app_settings().api_key
+        if saved and saved.strip():
+            return saved.strip()
+    return None
+
+
 def resolve_api_key(explicit_key: str | None = None) -> str | None:
-    """Resolve OpenRouter API key from explicit arg, env vars, or auth file."""
+    """Resolve the OpenRouter API key.
+
+    Precedence: explicit argument, ``OPENROUTER_API_KEY``/``MVGEOS_API_KEY``
+    environment variables, the key saved through the GUI settings dialog
+    (``gui.json``/keyring), then the ``mvgeos setup`` auth file.
+    """
     if explicit_key and explicit_key.strip():
         return explicit_key.strip()
     env_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("MVGEOS_API_KEY")
     if env_key and env_key.strip():
         return env_key.strip()
+    saved_key = _load_saved_gui_api_key()
+    if saved_key:
+        return saved_key
     with contextlib.suppress(Exception):
         auth_key = load_api_key_from_auth()
         if auth_key and auth_key.strip():
@@ -209,6 +227,94 @@ class AgentService:
     def reset_agent(self) -> None:
         """Reset the cached agent instance so it will be recreated on next run."""
         self._agent = None
+
+    def set_api_key(self, api_key: str | None) -> None:
+        """Update the API key used for future agent instantiations.
+
+        The cached agent (if any) was built with the previous key, so it is
+        closed and dropped: the next turn constructs a fresh agent with the
+        new key. Closing runs as a background task when an event loop is
+        available; without one the reference is simply dropped.
+        """
+        key = api_key.strip() if api_key and api_key.strip() else None
+        if key == self._api_key:
+            return
+        self._api_key = key
+        self.close_agent_in_background()
+
+    def detach_agent(self) -> Any | None:
+        """Remove and return the cached agent without closing it."""
+        agent, self._agent = self._agent, None
+        return agent
+
+    def close_agent_in_background(self) -> None:
+        """Detach the cached agent and close it without blocking.
+
+        The agent instance is captured now, so a new agent created before
+        the background task runs is never closed by mistake. Uses the
+        public agent close protocol, which stops the agent's rune
+        watchers. Without a running event loop the reference is simply
+        dropped.
+        """
+        agent = self.detach_agent()
+        if agent is None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.warning(
+                "No running event loop; dropped cached agent without closing it"
+            )
+            return
+        loop.create_task(self._close_agent(agent))
+
+    async def close_agent(self) -> None:
+        """Close and drop the cached agent, stopping its rune watchers.
+
+        Uses the public agent close protocol, which shuts down the rune
+        lifecycle (all hot-reload watchers), aborts in-flight work, and
+        closes the realm client and tome handle. The reference is dropped
+        first so a concurrent send builds a fresh agent. Failures are
+        logged, never raised: teardown must be fail-closed.
+        """
+        await self._close_agent(self.detach_agent())
+
+    @staticmethod
+    async def _close_agent(agent: Any | None) -> None:
+        if agent is None:
+            return
+        close = getattr(agent, "close", None)
+        if not callable(close):
+            return
+        try:
+            result = close()
+            if inspect.isawaitable(result):
+                await result
+        except Exception:
+            logger.warning("Error closing cached agent", exc_info=True)
+
+    async def _ensure_runes_loaded(self, agent: Any) -> None:
+        """Load the agent's runes when its runner is not initialized yet.
+
+        A freshly constructed agent (e.g. on a new page load) has no rune
+        runner until ``load_runes()`` runs, so dynamic ``/<rune-command>``
+        slash commands would not be recognized. Loading here is a local
+        operation: it never starts a model turn.
+        """
+        runner = getattr(agent, "runner", None)
+        if runner is None:
+            runner = getattr(agent, "_runner", None)
+        if runner is not None:
+            return
+        load_runes = getattr(agent, "load_runes", None)
+        if not callable(load_runes):
+            return
+        try:
+            result = load_runes()
+            if inspect.isawaitable(result):
+                await result
+        except Exception:
+            logger.debug("Lazy rune loading failed; continuing unloaded", exc_info=True)
 
     def _ensure_listeners(self, agent: Any) -> None:
         """Attach event listeners to the agent instance only once."""
@@ -496,13 +602,20 @@ class AgentService:
             agent = self.get_or_create_agent(state)
         except Exception:
             return True
+        # A fresh agent has no rune runner until its runes load; ensure it
+        # here so dynamic /<rune-command> dispatches on first use.
+        await self._ensure_runes_loaded(agent)
         dispatcher = CommandDispatcher(agent, self._model_registry)
         return await dispatcher.is_command(stripped)
 
     async def dispatch_slash_command(
         self, prompt: str, state: AppState, message: ChatMessage
-    ) -> None:
-        """Execute a harness slash command locally and synchronize state."""
+    ) -> CommandOutcome | None:
+        """Execute a harness slash command locally and synchronize state.
+
+        Returns the structured outcome (``None`` when agent construction
+        failed before dispatching).
+        """
         self._is_running = True
         self._active_message = message
         self._active_transcript = InvocationTranscript.bind(message)
@@ -513,10 +626,12 @@ class AgentService:
         except Exception as e:
             message.is_error = True
             message.error_message = str(e)
-            self._active_transcript.set_text(f"**Error**: {e}")
             self._cleanup_slash_turn(state, message)
-            return
+            return None
 
+        # Same lazy guarantee as the dispatchability check: a fresh agent's
+        # dynamic rune commands must be visible before dispatching.
+        await self._ensure_runes_loaded(agent)
         dispatcher = CommandDispatcher(agent, self._model_registry)
         try:
             outcome = await dispatcher.dispatch(prompt)
@@ -532,10 +647,13 @@ class AgentService:
         if outcome.action == CommandAction.ERROR:
             message.is_error = True
             message.error_message = outcome.message
-
-        output_text = outcome.message
-        if not output_text and outcome.should_exit:
-            output_text = "*Session ended.*"
+            # The error card renders error_message; keep the transcript body
+            # empty so the same text is not shown twice.
+            output_text = ""
+        else:
+            output_text = outcome.message
+            if not output_text and outcome.should_exit:
+                output_text = "*Session ended.*"
 
         self._active_transcript.set_text(output_text)
 
@@ -565,6 +683,7 @@ class AgentService:
                 state.set_contemplation_level(new_level)
 
         self._cleanup_slash_turn(state, message)
+        return outcome
 
     def _cleanup_slash_turn(self, state: AppState, message: ChatMessage) -> None:
         message.is_streaming = False
@@ -759,7 +878,10 @@ class AgentService:
             message.is_error = True
             message.error_message = str(exc)
             if not message.content:
-                self._active_transcript.set_text(f"Execution error: {exc}")
+                # Code-span the exception: raw error text is not markdown and
+                # identifiers like OPENROUTER_API_KEY would otherwise be
+                # mangled by emphasis parsing.
+                self._active_transcript.set_text(f"Execution error: `{exc}`")
         finally:
             message.is_streaming = False
             state.is_channeling = False

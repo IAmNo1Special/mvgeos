@@ -10,6 +10,7 @@ from nicegui import ui
 from nicegui.testing import User
 
 from mvgeos_gui.components.packages_panel import (
+    _extract_rune_info,
     _parse_timestamp,
     open_folder_in_explorer,
     render_packages_panel,
@@ -982,3 +983,25 @@ async def test_packages_panel_empty_catalog_still_shows_empty_state(
     await user.open("/test_packages_catalog_empty_ok")
     await user.should_see("No packages found", retries=10)
     await user.should_not_see("Couldn't load the marketplace catalog")
+
+
+# ---------------------------------------------------------------------------
+# Rune enabled-state preservation
+# ---------------------------------------------------------------------------
+
+
+def test_extract_rune_info_preserves_enabled_flag() -> None:
+    """Disabled runes must stay disabled: the enabled flag must survive."""
+    manifest = {"name": "my-rune", "version": "1.0.0", "description": "d"}
+    installed = {
+        "name": "my-rune",
+        "version": "1.0.0",
+        "description": "d",
+        "enabled": False,
+    }
+    info = _extract_rune_info("my-rune", manifest, installed, True)
+    assert info["enabled"] is False
+
+    # A manifest without an explicit flag defaults to enabled.
+    info2 = _extract_rune_info("my-rune", manifest, {"name": "my-rune"}, True)
+    assert info2["enabled"] is True
