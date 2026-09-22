@@ -1513,12 +1513,16 @@ class Mvge:
             self._run_in_flight = False
             if self._reload_pending:
                 # Turn boundary: the in-flight turn kept its LoopContext;
-                # the queued reload applies now.
-                self._reload_pending = False
+                # the queued reload applies now. The flag clears only after
+                # reload() returns an audited outcome — if it raises, the
+                # request stays pending so the next boundary retries it
+                # instead of silently dropping it.
                 try:
                     await self.reload()
                 except Exception:
                     logger.exception("Queued reload failed at turn boundary")
+                else:
+                    self._reload_pending = False
 
     def _make_stream_fn(
         self,

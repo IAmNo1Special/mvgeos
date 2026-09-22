@@ -420,6 +420,34 @@ async def test_reload_queues_while_turn_in_flight(
 
 
 @pytest.mark.asyncio
+async def test_turn_boundary_reload_failure_keeps_request_pending(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If the drained reload raises unexpectedly at the turn boundary, the
+    pending flag is preserved: the request is not silently dropped."""
+    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    realm = _BlockingRealm()
+    agent = _make_agent(tmp_path, monkeypatch, realm=realm)
+    await agent.initialize()
+    try:
+
+        async def _boom() -> ReloadResult:
+            raise RuntimeError("reload exploded")
+
+        monkeypatch.setattr(agent, "reload", _boom)
+        turn = asyncio.create_task(agent.run("hello"))
+        await asyncio.wait_for(realm.entered.wait(), timeout=5)
+        agent._reload_pending = True
+        realm.release.set()
+        await asyncio.wait_for(turn, timeout=10)
+        # The reload blew up at the boundary; the request must survive so
+        # the next turn boundary retries it instead of losing it.
+        assert agent.reload_pending
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
 async def test_reload_requires_initialization(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
