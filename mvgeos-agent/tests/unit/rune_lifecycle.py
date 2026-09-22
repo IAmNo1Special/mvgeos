@@ -417,3 +417,43 @@ class TestStartAndShutdown:
         await lifecycle.shutdown()
 
         assert lifecycle.watchers == []
+
+    @pytest.mark.asyncio
+    async def test_shutdown_attempts_every_watcher_despite_failure(
+        self, tmp_path: Path
+    ) -> None:
+        """shutdown() is not fail-fast within an attempt: every watcher is
+        attempted, errors are collected and raised together, and the failed
+        watcher stays registered so a retry attempts it again."""
+        runes_a = tmp_path / "runes-a"
+        runes_b = tmp_path / "runes-b"
+        runes_a.mkdir()
+        runes_b.mkdir()
+        lifecycle = RuneLifecycle(
+            agent_name="tester", runes_paths=[str(runes_a), str(runes_b)]
+        )
+        with (
+            patch(
+                "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
+                return_value=([], []),
+            ),
+        ):
+            await lifecycle.load()
+
+        created: list[MagicMock] = []
+        with patch(
+            "mvgeos_agent.rune_lifecycle.RuneWatcher",
+            side_effect=_watcher_factory(created),
+        ):
+            await lifecycle.start()
+        assert len(created) == 2
+        # Poison the first watcher; the second must still be attempted.
+        created[0].stop = AsyncMock(side_effect=RuntimeError("watcher 0 wedged"))
+
+        with pytest.raises(RuntimeError, match="watcher 0 wedged"):
+            await lifecycle.shutdown()
+
+        for watcher in created:
+            watcher.stop.assert_awaited_once()
+        # The stopped watcher is dropped; the failed one stays for retry.
+        assert lifecycle.watchers == [created[0]]

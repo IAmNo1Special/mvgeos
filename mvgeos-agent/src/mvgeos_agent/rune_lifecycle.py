@@ -67,8 +67,10 @@ class RuneLifecycle:
         self._cwd = cwd if cwd is not None else str(Path.cwd())
         self._global_dir = global_dir
         self._runner = runner
-        self._watchers: list[RuneWatcher] = []
-        self._watched_paths: set[str] = set()
+        # Watchers keyed by their canonical (resolved absolute) path: one
+        # structure serves dedupe at start and per-watcher bookkeeping at
+        # shutdown.
+        self._watched: dict[str, RuneWatcher] = {}
         self._paths_with_scope: list[tuple[Path, RuneScope]] = []
         # Engine reload trigger: when set, watchers run in trigger mode and
         # call this (Mvge.reload) instead of reloading runes themselves.
@@ -87,7 +89,7 @@ class RuneLifecycle:
 
     @property
     def watchers(self) -> list[RuneWatcher]:
-        return list(self._watchers)
+        return list(self._watched.values())
 
     def resolve_paths(self) -> list[tuple[Path, RuneScope]]:
         """Resolve configured rune paths to (path, scope) pairs.
@@ -177,12 +179,18 @@ class RuneLifecycle:
         runner = self._ensure_runner()
         paths_with_scope = self._paths_with_scope or self.resolve_paths()
         for path, _scope in paths_with_scope:
-            if not path.exists() or str(path) in self._watched_paths:
+            # Canonicalize to the resolved absolute path: the exists gate,
+            # the watcher, and the dedupe key must all name the same
+            # directory (a CWD-relative entry keeps its anchor; resolve()
+            # only makes it absolute).
+            key = str(Path(path).expanduser().resolve())
+            if key in self._watched or not Path(key).exists():
                 continue
-            watcher = RuneWatcher(path, runner, reload_callback=self._reload_callback)
+            watcher = RuneWatcher(
+                Path(key), runner, reload_callback=self._reload_callback
+            )
             await watcher.start()
-            self._watchers.append(watcher)
-            self._watched_paths.add(str(path))
+            self._watched[key] = watcher
         await self.watch_dirs(self._extra_watch_dirs)
 
     async def watch_dirs(self, dirs: Sequence[str | Path]) -> None:
@@ -197,20 +205,37 @@ class RuneLifecycle:
             return
         runner = self._ensure_runner()
         for raw in dirs:
-            path = Path(raw).expanduser()
-            if not path.is_dir() or str(path) in self._watched_paths:
+            key = str(Path(raw).expanduser().resolve())
+            if key in self._watched or not Path(key).is_dir():
                 continue
-            watcher = RuneWatcher(path, runner, reload_callback=self._reload_callback)
+            watcher = RuneWatcher(
+                Path(key), runner, reload_callback=self._reload_callback
+            )
             await watcher.start()
-            self._watchers.append(watcher)
-            self._watched_paths.add(str(path))
+            self._watched[key] = watcher
 
     async def shutdown(self) -> None:
-        """Stop every watcher started by :meth:`start`."""
-        for watcher in self._watchers:
-            await watcher.stop()
-        self._watchers.clear()
-        self._watched_paths.clear()
+        """Stop every watcher started by :meth:`start`.
+
+        Not fail-fast: every watcher is attempted even when one raises.
+        Watchers that stopped are dropped; failures are collected and
+        raised together at the end. A watcher that failed to stop stays
+        registered so a retry (the engine's retired-shutdown loop)
+        attempts it again.
+        """
+        errors: list[str] = []
+        remaining: dict[str, RuneWatcher] = {}
+        for key, watcher in self._watched.items():
+            try:
+                await watcher.stop()
+            except Exception as exc:
+                errors.append(f"{key}: {exc}")
+                remaining[key] = watcher
+        self._watched = remaining
+        if errors:
+            raise RuntimeError(
+                "rune watcher shutdown failed: " + "; ".join(errors)
+            )
 
     def _ensure_runner(self) -> RuneRunner:
         if self._runner is None:

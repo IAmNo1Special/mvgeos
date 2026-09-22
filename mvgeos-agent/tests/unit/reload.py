@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -670,6 +671,36 @@ async def test_retired_shutdown_failure_surfaces_in_audit(
         assert "stuck observer" in records[0]["retired_shutdown_error"]
         assert any("stuck observer" in d.message for d in agent.diagnostics)
     finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
+async def test_retired_shutdown_retries_back_off_between_attempts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The retired-shutdown attempts are spaced by a backoff delay instead of
+    firing back-to-back, so a transient teardown race gets a beat to settle."""
+    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    original_shutdown = RuneLifecycle.shutdown
+    try:
+
+        async def _always_fails(self: Any) -> None:
+            raise OSError("stuck observer")
+
+        monkeypatch.setattr(RuneLifecycle, "shutdown", _always_fails)
+        start = time.monotonic()
+        result = await agent.reload()
+        elapsed = time.monotonic() - start
+        assert result.ok
+        # Two gaps between three attempts.
+        assert (
+            elapsed
+            >= 2 * mvge_module._RETIRED_SHUTDOWN_BACKOFF_SECONDS * 0.9
+        )
+    finally:
+        monkeypatch.setattr(RuneLifecycle, "shutdown", original_shutdown)
         await agent.close()
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import copy
 import dataclasses
@@ -193,6 +194,10 @@ _ProviderSnapshot = tuple[dict[str, dict[str, Any]], dict[str, RealmFactory]]
 
 _RETIRED_SHUTDOWN_ATTEMPTS = 3
 """How many times reload retries stopping the retired lifecycle's watchers."""
+
+_RETIRED_SHUTDOWN_BACKOFF_SECONDS = 0.25
+"""Delay between retired-shutdown attempts: a transient observer-teardown
+race may fail identically on immediate retry but succeed after a beat."""
 
 
 def _snapshot_provider_registrations(
@@ -732,6 +737,8 @@ class Mvge:
                             "Retired rune watchers did not shut down "
                             "cleanly after reload"
                         )
+                    else:
+                        await asyncio.sleep(_RETIRED_SHUTDOWN_BACKOFF_SECONDS)
         if watcher_error is not None:
             # The swap succeeded — the new state IS live — but the
             # post-swap watcher handover failed. Per the §4.6 audit
