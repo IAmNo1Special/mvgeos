@@ -747,10 +747,7 @@ async def test_retired_shutdown_retries_back_off_between_attempts(
         elapsed = time.monotonic() - start
         assert result.ok
         # Two gaps between three attempts.
-        assert (
-            elapsed
-            >= 2 * mvge_module._RETIRED_SHUTDOWN_BACKOFF_SECONDS * 0.9
-        )
+        assert elapsed >= 2 * mvge_module._RETIRED_SHUTDOWN_BACKOFF_SECONDS * 0.9
     finally:
         monkeypatch.setattr(RuneLifecycle, "shutdown", original_shutdown)
         await agent.close()
@@ -1110,3 +1107,47 @@ async def test_engine_reload_wins_over_rune_command_named_reload() -> None:
     outcome = await dispatcher.dispatch("/reload")
     assert outcome.action == CommandAction.RELOADED
     agent.reload.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_reloads_do_not_interleave(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two concurrent reload() calls serialize: the second waits for the
+    in-progress execution instead of interleaving its build over the
+    shared provider registry."""
+    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        calls = 0
+        original_build = Mvge._build_reload_state
+
+        async def _gated_build(self: Mvge) -> Any:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                entered.set()
+                await release.wait()
+            return await original_build(self)
+
+        monkeypatch.setattr(Mvge, "_build_reload_state", _gated_build)
+        first = asyncio.create_task(agent.reload())
+        await asyncio.wait_for(entered.wait(), timeout=5)
+        second = asyncio.create_task(agent.reload())
+        # Give the second call a chance to start its build while the
+        # first is still gated: serialized, it must not.
+        await asyncio.sleep(0.2)
+        assert calls == 1
+        release.set()
+        first_result, second_result = await asyncio.gather(first, second)
+        assert first_result.ok
+        assert second_result.ok
+        # The second caller ran its own execution afterwards and got its
+        # own truthful outcome — one execution per caller, never
+        # interleaved.
+        assert calls == 2
+    finally:
+        await agent.close()

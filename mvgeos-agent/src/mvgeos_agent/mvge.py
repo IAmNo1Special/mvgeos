@@ -47,7 +47,6 @@ from mvgeos_provider.model_registry import ModelRegistry
 from mvgeos_provider.registry import RealmRegistry, get_default_realm_registry
 from mvgeos_runes.codecs import load_session_codecs
 from mvgeos_runes.rune_audit import (
-    AuditError,
     RuneAuditLog,
     default_rune_ops_dir,
     utcnow,
@@ -451,6 +450,9 @@ class Mvge:
         # the in-flight turn keeps its LoopContext untouched.
         self._run_in_flight = False
         self._reload_pending = False
+        # Serializes reload() executions: concurrent callers must never
+        # interleave their builds over the shared provider registry.
+        self._reload_lock = asyncio.Lock()
         self._reload_diagnostics: list[Diagnostic | SkillDiagnostic] = []
         # Spell-gateway tracking: the rune name when the global spell
         # allowlist was engaged via a rune's ``spell_gateway`` manifest
@@ -659,6 +661,9 @@ class Mvge:
         else ``~/.agents/extensions/audit.jsonl``). A reload queued
         mid-turn is audited when it executes at the turn boundary, and
         concurrent queued requests coalesce into that single execution.
+        Concurrent direct calls serialize on a lock: the second caller
+        waits for the in-progress execution, then runs its own — builds
+        never interleave over the shared provider registry.
         A reload rejected before initialization performs no work and
         writes no record.
         """
@@ -676,6 +681,24 @@ class Mvge:
             return ReloadResult(
                 ok=False, message="Agent not initialized; nothing to reload."
             )
+        # Serialize executions: concurrent reload() calls must never
+        # interleave their builds over the shared provider registry —
+        # a failed build restores the registry snapshot, which would
+        # clobber a concurrent successful build. The mid-turn queue
+        # check and the pre-init rejection above stay outside the lock:
+        # they touch no shared build state. A second caller waits for
+        # the in-progress execution, then runs its own and receives
+        # its own truthful outcome.
+        async with self._reload_lock:
+            return await self._reload_locked()
+
+    async def _reload_locked(self) -> ReloadResult:
+        """Execute one reload; the caller holds ``self._reload_lock``.
+
+        Split out of :meth:`reload` so the lock wraps the whole
+        execution without re-indenting the body. Every return here is
+        an audited outcome of exactly one execution.
+        """
         # Provider registrations are the one shared-mutable step of the
         # build (rune factories re-execute against the shared registry):
         # snapshot first so any build failure rolls them back.
