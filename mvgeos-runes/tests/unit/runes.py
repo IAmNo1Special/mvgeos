@@ -1,5 +1,8 @@
+import concurrent.futures
+import py_compile
 import sys
 import tempfile
+from importlib.util import cache_from_source
 from pathlib import Path
 from unittest.mock import patch
 
@@ -740,6 +743,59 @@ def test_load_factory_exec_error_without_diagnostics() -> None:
         manifest = _basic_manifest()
 
         assert load_factory_from_manifest(manifest, rune_dir) is None
+
+
+def test_load_factory_survives_vanishing_stale_bytecode() -> None:
+    """A pyc that disappears between the stale check and the delete must not
+    kill the load: the bytecode cleanup is best-effort, not load-critical."""
+    real_unlink = Path.unlink
+
+    def _vanishing_unlink(self: Path, *args: object, **kwargs: object) -> None:
+        # Simulate the race: the file passed is_file() but is gone by the
+        # time unlink runs. Only a missing_ok delete tolerates that.
+        if kwargs.get("missing_ok", False):
+            real_unlink(self, *args, **kwargs)
+            return
+        raise FileNotFoundError(str(self))
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = Path(tmpdir) / "r"
+        _write_rune_entry(rune_dir, "rune.py", "def rune_factory(api):\n    pass\n")
+        manifest = _basic_manifest()
+        # Plant a stale pyc so the cleanup path actually runs.
+        entry = rune_dir / "rune.py"
+        py_compile.compile(
+            str(entry),
+            cfile=cache_from_source(str(entry)),
+            doraise=True,
+        )
+        with patch.object(Path, "unlink", _vanishing_unlink):
+            factory = load_factory_from_manifest(manifest, rune_dir)
+
+        assert factory is not None
+        assert callable(factory)
+
+
+def test_load_factory_concurrent_loads_do_not_race_bytecode_cleanup() -> None:
+    """Concurrent loads of the same rune entry point must all succeed."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = Path(tmpdir) / "r"
+        _write_rune_entry(rune_dir, "rune.py", "def rune_factory(api):\n    pass\n")
+        manifest = _basic_manifest()
+        errors: list[BaseException] = []
+
+        def _load() -> None:
+            try:
+                assert load_factory_from_manifest(manifest, rune_dir) is not None
+            except BaseException as exc:  # noqa: BLE001 - collected for the assertion
+                errors.append(exc)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(_load) for _ in range(16)]
+            for future in futures:
+                future.result()
+
+        assert errors == []
 
 
 def test_load_factory_missing_rune_factory_without_diagnostics() -> None:
