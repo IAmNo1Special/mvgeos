@@ -3,12 +3,14 @@ from __future__ import annotations
 import asyncio
 import tempfile
 import threading
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from watchdog.events import FileModifiedEvent, FileMovedEvent
 
+import mvgeos_runes.watcher as watcher_module
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.watcher import RuneWatcher, _RuneReloadHandler
 
@@ -606,3 +608,75 @@ class TestWatcherOnMoved:
             finally:
                 await watcher.stop()
         assert len(calls) == 1
+
+
+class _WedgedObserver:
+    """Observer stub whose thread never exits on its own.
+
+    ``join()`` without a timeout hangs forever (the pre-fix failure mode);
+    with a timeout it sleeps past it, so the watchdog can declare the
+    thread wedged. ``is_alive()`` stays True throughout.
+    """
+
+    def stop(self) -> None:
+        return None
+
+    def join(self, timeout: float | None = None) -> None:
+        if timeout is None:
+            threading.Event().wait()
+        else:
+            time.sleep(timeout + 0.2)
+
+    def is_alive(self) -> bool:
+        return True
+
+
+class TestRuneWatcherStopTimeout:
+    @pytest.mark.asyncio
+    async def test_stop_times_out_instead_of_hanging_on_wedged_observer(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A wedged observer thread must bound stop(): TimeoutError, loudly,
+        instead of hanging reload() forever."""
+        monkeypatch.setattr(
+            watcher_module, "_OBSERVER_STOP_TIMEOUT_SECONDS", 0.05, raising=False
+        )
+        runner = RuneRunner()
+        watcher = RuneWatcher(tmp_path, runner)
+        watcher._observer = _WedgedObserver()  # type: ignore[assignment]
+        with pytest.raises(TimeoutError, match="did not stop"):
+            await watcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_stop_keeps_observer_for_retry_after_timeout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """After a join timeout the watcher stays armed so the engine's
+        retry loop can attempt the stop again."""
+        monkeypatch.setattr(
+            watcher_module, "_OBSERVER_STOP_TIMEOUT_SECONDS", 0.05, raising=False
+        )
+        runner = RuneRunner()
+        watcher = RuneWatcher(tmp_path, runner)
+        watcher._observer = _WedgedObserver()  # type: ignore[assignment]
+        with pytest.raises(TimeoutError):
+            await watcher.stop()
+        assert watcher._observer is not None
+
+
+class TestRuneWatcherWatchPath:
+    def test_relative_dir_resolves_to_absolute(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A CWD-relative watch target keeps its anchor but is exposed and
+        logged as an absolute path — no deceptive relative strings."""
+        monkeypatch.chdir(tmp_path)
+        runner = RuneRunner()
+        watcher = RuneWatcher(Path("rel-ext"), runner)
+        assert watcher.watch_path.is_absolute()
+        assert watcher.watch_path == (tmp_path / "rel-ext").resolve()
+
+    def test_absolute_dir_is_kept(self, tmp_path: Path) -> None:
+        runner = RuneRunner()
+        watcher = RuneWatcher(tmp_path, runner)
+        assert watcher.watch_path == tmp_path.resolve()

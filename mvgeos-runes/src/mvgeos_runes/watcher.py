@@ -16,6 +16,16 @@ from mvgeos_runes.rune_runner import RuneRunner
 
 logger = logging.getLogger(__name__)
 
+_OBSERVER_STOP_TIMEOUT_SECONDS = 5.0
+"""Bound for the watchdog observer thread join in :meth:`RuneWatcher.stop`.
+
+A stopped observer normally joins in milliseconds; a thread that is still
+alive after this long is wedged, and ``stop()`` raises ``TimeoutError``
+instead of hanging the caller (e.g. ``Mvge.reload()``) forever. The
+watcher stays armed after the timeout so the engine's retry loop can
+attempt the stop again.
+"""
+
 
 class _RuneReloadHandler(FileSystemEventHandler):
     """Debounces file-system events into reload callbacks.
@@ -164,12 +174,22 @@ class RuneWatcher:
         runner: RuneRunner,
         reload_callback: Callable[[], Any] | None = None,
     ) -> None:
-        self._extensions_dir = extensions_dir
+        # Resolve to absolute at construction: a CWD-relative extensions
+        # dir (e.g. the ".agents/extensions" project entry) keeps its
+        # anchor, but every later use — the observer schedule, the event
+        # handler's base, the logs — sees the real directory instead of a
+        # deceptive relative string. This changes no anchoring semantics.
+        self._extensions_dir = Path(extensions_dir).expanduser().resolve()
         self._runner = runner
         self._reload_callback = reload_callback
         self._observer: Any = None
         self._handler: _RuneReloadHandler | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+
+    @property
+    def watch_path(self) -> Path:
+        """The absolute directory this watcher watches."""
+        return self._extensions_dir
 
     async def _reload_rune(self, rune_name: str) -> None:
         rune_dir = self._extensions_dir / rune_name
@@ -229,7 +249,15 @@ class RuneWatcher:
     async def stop(self) -> None:
         if self._observer is not None:
             self._observer.stop()
-            self._observer.join()
+            self._observer.join(timeout=_OBSERVER_STOP_TIMEOUT_SECONDS)
+            if self._observer.is_alive():
+                # Wedged thread: fail loudly and stay armed so a retry can
+                # attempt the stop again. Never hang the caller forever.
+                raise TimeoutError(
+                    f"Rune watcher for {self._extensions_dir} did not stop "
+                    f"within {_OBSERVER_STOP_TIMEOUT_SECONDS}s; "
+                    "observer thread still alive"
+                )
             self._observer = None
             self._handler = None
             logger.info("Rune watcher stopped")
