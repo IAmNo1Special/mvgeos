@@ -198,11 +198,10 @@ class RuneWatcher:
         runner: RuneRunner,
         reload_callback: Callable[[], Any] | None = None,
     ) -> None:
-        # Resolve to absolute at construction: a CWD-relative extensions
-        # dir (e.g. the ".agents/extensions" project entry) keeps its
-        # anchor, but every later use — the observer schedule, the event
-        # handler's base, the logs — sees the real directory instead of a
-        # deceptive relative string. This changes no anchoring semantics.
+        # Resolve to absolute at construction: every later use — the
+        # observer schedule, the event handler's base, the logs — sees
+        # the real directory instead of a deceptive relative string.
+        # This changes no anchoring semantics.
         self._extensions_dir = Path(extensions_dir).expanduser().resolve()
         self._runner = runner
         self._reload_callback = reload_callback

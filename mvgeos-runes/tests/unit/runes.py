@@ -849,18 +849,16 @@ def test_load_manifests_skips_unparseable_dir_without_diagnostics() -> None:
 def test_cross_home_does_not_load_cwd_project_runes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """REGRESSION (item 1) — UNRESOLVED, left red on purpose.
+    """REGRESSION (item 1) — project layer needs an explicit anchor.
 
     With HOME/USERPROFILE pointed at an isolated home and the CWD holding
     ``.agents/extensions/<marker rune>``, resolving the default rune paths
     and loading from them must not load the CWD-anchored rune.
 
-    Today ``resolve_rune_paths()`` emits a CWD-relative
-    ``.agents/extensions`` entry that ``load_runes_from_paths()`` resolves
-    against the process CWD regardless of HOME, so the marker rune loads.
-    The anchor choice — project-directory anchor, dropping the implicit
-    project entry, or a home anchor — is Malcom's decision; this test pins
-    the required behavior and stays red until he chooses.
+    Decided 2026-09-22 (Malcom): the project layer is anchored to an
+    explicit project directory, never to the ambient working directory.
+    ``resolve_rune_paths()`` without ``project_dir`` omits the project
+    layer entirely.
     """
     home = tmp_path / "home"
     home.mkdir()
