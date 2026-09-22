@@ -1047,15 +1047,29 @@ async def test_reload_command_failure_is_error_action() -> None:
 
 
 @pytest.mark.asyncio
-async def test_reload_command_queued_is_reloaded_action() -> None:
+async def test_reload_command_queued_is_reload_queued_action() -> None:
+    """A queued reload is reported as queued, not as completed."""
     agent = MagicMock(spec=MvgeAgent)
     agent.reload = AsyncMock(
         return_value=ReloadResult(ok=True, queued=True, message="queued")
     )
     dispatcher = CommandDispatcher(agent)
     outcome = await dispatcher.dispatch("/reload")
-    assert outcome.action == CommandAction.RELOADED
+    assert outcome.action == CommandAction.RELOAD_QUEUED
     assert outcome.data["queued"] is True
+
+
+@pytest.mark.asyncio
+async def test_reload_command_completed_is_reloaded_action() -> None:
+    """An executed reload is still reported as RELOADED."""
+    agent = MagicMock(spec=MvgeAgent)
+    agent.reload = AsyncMock(
+        return_value=ReloadResult(ok=True, queued=False, message="done")
+    )
+    dispatcher = CommandDispatcher(agent)
+    outcome = await dispatcher.dispatch("/reload")
+    assert outcome.action == CommandAction.RELOADED
+    assert outcome.data["queued"] is False
 
 
 @pytest.mark.asyncio
