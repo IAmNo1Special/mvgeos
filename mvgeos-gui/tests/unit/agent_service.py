@@ -1,6 +1,7 @@
 """Unit tests for AgentService event sink and channeling bridge."""
 
 import asyncio
+import faulthandler
 import logging
 from pathlib import Path
 from typing import Any
@@ -711,8 +712,12 @@ def test_background_tasks_cleared_on_new_conversation(
     agent_service: AgentService, app_state: AppState
 ) -> None:
     """Verify new_conversation clears tracked background tasks."""
+    # TEMPORARY DEBUG PROBE (revert before merge): dump tracebacks if the
+    # macOS CI hang reproduces here.
+    faulthandler.dump_traceback_later(60, exit=True)
     agent_service.register_subagent_task(app_state, "sub-x", "Worker")
     app_state.new_conversation()
+    faulthandler.cancel_dump_traceback_later()
     assert app_state.background_tasks == []
 
 
