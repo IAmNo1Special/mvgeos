@@ -49,7 +49,10 @@ class _RuneReloadHandler(FileSystemEventHandler):
         fire_once: bool = False,
     ) -> None:
         super().__init__()
-        self._extensions_dir = extensions_dir
+        # Resolve to match RuneWatcher and the normalized event paths:
+        # on Windows, resolve() may return 8.3 short names, and all
+        # comparisons must use the same form.
+        self._extensions_dir = Path(extensions_dir).expanduser().resolve()
         self._callback = reload_callback
         self._debounce_seconds = debounce_seconds
         self._pending: set[str] = set()
@@ -114,7 +117,11 @@ class _RuneReloadHandler(FileSystemEventHandler):
             future.cancel()
 
     def _find_rune_dir(self, path: str) -> str | None:
-        src_path = Path(path)
+        # Resolve the incoming path: the extensions dir is stored resolved,
+        # but watchdog may report a textually different form for the same
+        # location (e.g. Windows 8.3 short names like RUNNER~1 vs the long
+        # name). Without this, relative_to fails and the event is dropped.
+        src_path = Path(path).resolve()
         try:
             relative = src_path.relative_to(self._extensions_dir)
         except ValueError:
@@ -125,7 +132,9 @@ class _RuneReloadHandler(FileSystemEventHandler):
         return None
 
     def _is_ignored(self, path: str) -> bool:
-        src = Path(path)
+        # Resolve for the same reason as _find_rune_dir: the watched root
+        # is stored resolved, incoming event paths may not be.
+        src = Path(path).resolve()
         # Judge only the path *inside* the watched tree: the watched root
         # itself may legitimately live under a dot directory (e.g. the
         # agent config dir under ``~/.agents``).

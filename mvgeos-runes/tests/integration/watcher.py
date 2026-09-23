@@ -20,7 +20,9 @@ class TestRuneWatcher:
         runner = RuneRunner()
         with tempfile.TemporaryDirectory() as tmpdir:
             watcher = RuneWatcher(Path(tmpdir), runner)
-            assert watcher._extensions_dir == Path(tmpdir)
+            # The watcher resolves the directory at construction (e.g.
+            # Windows 8.3 short names), so compare against resolved.
+            assert watcher._extensions_dir == Path(tmpdir).resolve()
             assert watcher._runner is runner
 
     @pytest.mark.asyncio
@@ -154,6 +156,29 @@ class TestRuneReloadHandler:
             outside_file = Path(tmpdir).parent / "other.py"
             found = handler._find_rune_dir(str(outside_file))
             assert found is None
+
+    def test_find_rune_dir_resolves_symlinked_event_path(self) -> None:
+        """Event paths that differ textually but resolve identically match.
+
+        On Windows, ``Path.resolve()`` may return 8.3 short names
+        (``RUNNER~1``) while watchdog reports long names (``runneradmin``).
+        The handler must normalize incoming paths before comparing.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            real_dir = Path(tmpdir) / "real"
+            real_dir.mkdir()
+            link_dir = Path(tmpdir) / "link"
+            link_dir.symlink_to(real_dir, target_is_directory=True)
+            handler = _RuneReloadHandler(link_dir, AsyncMock())
+
+            rune_dir = real_dir / "my_rune"
+            rune_dir.mkdir()
+            test_file = rune_dir / "main.py"
+            test_file.write_text("test", encoding="utf-8")
+
+            # Event arrives via the unresolved symlink path.
+            found = handler._find_rune_dir(str(link_dir / "my_rune" / "main.py"))
+            assert found == "my_rune"
 
     @pytest.mark.asyncio
     async def test_on_modified(self) -> None:
