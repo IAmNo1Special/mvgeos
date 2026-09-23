@@ -2368,6 +2368,10 @@ async def test_missing_key_error_names_openrouter_api_key(
     fake_home = tmp_path / "home"
     fake_home.mkdir()
     monkeypatch.setenv("HOME", str(fake_home))
+    # Windows expanduser() uses USERPROFILE, not HOME: without this the
+    # GUI-saved key leaks in from the real profile and can_create_agent
+    # wrongly returns True.
+    monkeypatch.setenv("USERPROFILE", str(fake_home))
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("MVGEOS_API_KEY", raising=False)
     monkeypatch.setattr("mvgeos_agent.auth.AUTH_FILE_PATH", tmp_path / "auth.json")
