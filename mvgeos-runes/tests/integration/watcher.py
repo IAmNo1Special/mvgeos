@@ -169,9 +169,7 @@ class TestRuneReloadHandler:
             real_dir.mkdir()
             link_dir = Path(tmpdir) / "link"
             link_dir.symlink_to(real_dir, target_is_directory=True)
-            # The watcher resolves the extensions dir at construction;
-            # simulate that here.
-            handler = _RuneReloadHandler(link_dir.resolve(), AsyncMock())
+            handler = _RuneReloadHandler(link_dir, AsyncMock())
 
             rune_dir = real_dir / "my_rune"
             rune_dir.mkdir()

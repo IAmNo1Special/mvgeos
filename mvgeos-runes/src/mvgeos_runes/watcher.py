@@ -49,7 +49,10 @@ class _RuneReloadHandler(FileSystemEventHandler):
         fire_once: bool = False,
     ) -> None:
         super().__init__()
-        self._extensions_dir = extensions_dir
+        # Resolve to match RuneWatcher and the normalized event paths:
+        # on Windows, resolve() may return 8.3 short names, and all
+        # comparisons must use the same form.
+        self._extensions_dir = Path(extensions_dir).expanduser().resolve()
         self._callback = reload_callback
         self._debounce_seconds = debounce_seconds
         self._pending: set[str] = set()
