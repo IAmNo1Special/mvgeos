@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-09-23
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (810b2a3)
+
+- **deps:** bump click from 8.4.2 to 8.5.0 (#153) (604099c)
+
+- **deps:** bump nicegui from 3.16.0 to 3.17.1 (#151) (d6a3503)
+
+- **deps-dev:** bump git-cliff from 2.13.1 to 2.14.2 (#152) (05bd55e)
+
+- **deps:** bump packaging from 26.2 to 26.3 (#148) (ee3f18b)
+
+- **deps-dev:** bump ruff from 0.16.7 to 0.16.8 (#147) (d662647)
+
+- **release:** v0.6.0 (3e70a24)
+
+
 ## [0.5.8] - 2026-09-23
 
 
@@ -97,6 +117,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **gui:** center send/stop button and align attach with model picker (1335caa)
 
+- **runes:** align BEFORE_MVGE_START payload fields with approved spec **BREAKING CHANGE** (5b56cfb)
+
+- **runes:** never overwrite an existing audit archive on rotation (2028e17)
+
+- **agent:** declare python-dotenv and httpx dependencies (d7d1d5d)
+
+- **cli:** declare click dependency (5c1998d)
+
+- **runes:** judge watcher ignore rules against the watched subtree (bd8ef07)
+
+- **gui:** hide version-control internals in the file tree (407f2c1)
+
+- **gui:** distinct status bar toggles with tooltips (345aef7)
+
+- **gui:** diff/review empty states say what they track (2767b63)
+
+- **gui:** marketplace empty state explains how to get packages (a8e4945)
+
+- **gui:** skills empty states explain what skills are (8f730c4)
+
+- **gui:** inline validation for marketplace install-from-URL dialogs (f40c6c8)
+
+- **gui:** composer rune-missing badge names the rune (436dddd)
+
+- **gui:** make sidebar a mobile drawer below 768px (0df34d3)
+
+- **gui:** make settings dialog responsive with stronger backdrop (db7e02c)
+
+- **gui:** unify button voice, strengthen hover, equalize stat cards (958dd48)
+
+- **gui:** isolate UI state per client (91cca1c)
+
+- **gui:** harden settings and login dialogs (bf224cc)
+
+- **gui:** restore Ctrl+K palette chord and register keyboard handler once (d34048f)
+
+- **gui:** make sidebar_open the single source of truth for the toggle (55bb034)
+
+- **gui:** autofocus the Quick Switcher input on open (38a9fb4)
+
+- **gui:** refresh sidebar on login via current_user watcher key (f21e104)
+
+- **agent:** record project dir as tome cwd so sessions list correctly (5a0a989)
+
+- **gui:** refresh stale @-mention index; keep one server-shared index (7ec7013)
+
+- **gui:** refuse plan-mode toggle cleanly without API key (f481047)
+
+- **gui:** give New Session visible feedback (navigate + toast) (096ef41)
+
+- **gui:** distinct graceful error state for marketplace catalog failures (89f2a87)
+
+- **gui:** open workspace files in an in-browser preview (major #6) (bf2172e)
+
+- **gui:** apply placeholder token to all inputs and raise light contrast (714d49c)
+
+- **gui:** replace fixed grey-9 badge backgrounds with theme tokens (a34bfa3)
+
+- **gui:** persist settings reset to their default value (3e90211)
+
+- **gui:** drop stale test for removed open_in_editor() (576578b)
+
+- **cli:** skip PTY approval tests where pty is unavailable (d0c118e)
+
+- **ci:** make Windows suite green (5165419)
+
+- **gui:** detect @-mention index renames on Windows (4a96bae)
+
+- **gui,agent:** route dynamic slash commands through the GUI dispatcher (0ac5ab6)
+
 - **gui:** drop stale test for removed open_in_editor() (17e136d)
 
 - **cli:** skip PTY approval tests where pty is unavailable (0d2b49c)
@@ -113,12 +203,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **release:** v0.5.6 (6502a38)
 
 
+### Documentation
+
+- **runes:** pin audit log path semantics unambiguously (34a1d14)
+
+
 ### Features
 
 - **attachments:** send files as native OpenRouter content parts (429a245)
 
+- **runes:** extend BeforeMvgeStartData with rehydration fields **BREAKING CHANGE** (6455c29)
+
+- **mvge:** populate BEFORE_MVGE_START payload with rehydration fields **BREAKING CHANGE** (fc00388)
+
+- **runes:** engine-owned rune-op audit trail (bd0f477)
+
+- **runes:** watcher trigger mode, runner refresh + rehydrate (ed56e5c)
+
+- **provider:** add unregister_provider for reload rollback (dda59dd)
+
+- **agent:** transactional engine reload with /reload command (a9e2a6c)
+
+- **gui-logging:** harden crash and shutdown diagnostics (4d4e1bd)
+
+- **gui:** add light-theme token set and theme-aware inject_theme (3dca964)
+
+- **gui:** wire persisted theme through boot, settings, and native chrome (b681b64)
+
+
+### Refactoring
+
+- **environment:** remove engine self-mod prompt section **BREAKING CHANGE** (dcdc3fd)
+
+- **runes:** audit log lives at .agents/extensions/audit.jsonl (93218de)
+
+- **gui:** convert component colors to theme tokens (2c1d069)
+
+- **gui:** move inject_theme import to module scope in app (6876ae0)
+
 
 ### Tests
+
+- **agent:** cover tolerant and strict broken __init__.py discovery (04b064a)
+
+- **agent:** packaging contract — pyproject deps must cover imports (96b4754)
+
+- **cli:** packaging contract — pyproject deps must cover imports (714e2c8)
+
+- **gui:** patch load_api_key_from_auth via module object, not string path (74bf991)
+
+- **gui:** fix defective theme tests and pin native chrome theming (2cf8944)
+
+- **coverage:** cover auth, rune loader, skill installer, entry points, and settings dialog (28106d7)
 
 - **gui:** fix defective theme tests and pin native chrome theming (b7eb647)
 
@@ -131,6 +267,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Style
 
 - **agent:** apply ruff formatting to attachment content handling (eff48ef)
+
+- **tests:** apply ruff format to spec-alignment test edits (c99d1d2)
 
 
 ## [0.5.5] - 2026-09-20
