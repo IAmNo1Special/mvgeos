@@ -256,3 +256,25 @@ class TestConfigService:
 
         assert loaded.api_key == "keyring-key"
         assert loaded.mana_limit == 2048
+
+
+class TestKeyringHermeticity:
+    def test_saving_settings_never_touches_real_os_keyring(
+        self, tmp_path: Path
+    ) -> None:
+        """No GUI test may reach the real OS keyring.
+
+        Regression: test_resolve_api_key_reads_saved_gui_settings called
+        the real keyring backend, hanging macOS CI forever inside
+        SecItemAdd on a headless runner.
+        """
+        service = ConfigService(config_dir=tmp_path)
+        with (
+            patch("keyring.set_password") as mock_set,
+            patch("keyring.get_password", return_value=None),
+            patch("keyring.delete_password"),
+        ):
+            service.save_app_settings(AppSettings(api_key="sk-guard"))
+            service.load_app_settings()
+
+        mock_set.assert_not_called()
