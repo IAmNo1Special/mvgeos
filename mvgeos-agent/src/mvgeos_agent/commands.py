@@ -60,6 +60,7 @@ class CommandAction(StrEnum):
     LEAVES_LISTED = "leaves_listed"
     LEAF_CHECKED_OUT = "leaf_checked_out"
     RELOADED = "reloaded"
+    RELOAD_QUEUED = "reload_queued"
     INVOCATION_UNDONE = "invocation_undone"
     MANA_COMPACTED = "mana_compacted"
     SKILLS_LISTED = "skills_listed"
@@ -585,12 +586,19 @@ class CommandDispatcher:
                 )
             result = await reload_fn()
             ok = getattr(result, "ok", False)
+            queued = getattr(result, "queued", False)
+            # A queued reload has not executed: report it as queued, never
+            # as completed. RELOADED means the new state is live.
+            if ok and queued:
+                action = CommandAction.RELOAD_QUEUED
+            else:
+                action = CommandAction.RELOADED if ok else CommandAction.ERROR
             return CommandOutcome(
                 command=cmd,
-                action=(CommandAction.RELOADED if ok else CommandAction.ERROR),
+                action=action,
                 data={
                     "ok": ok,
-                    "queued": getattr(result, "queued", False),
+                    "queued": queued,
                     "prompt_changed": getattr(result, "prompt_changed", False),
                     "spells_changed": getattr(result, "spells_changed", False),
                 },

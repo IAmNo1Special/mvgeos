@@ -18,12 +18,17 @@ from mvgeos_core.approval import (
 )
 from mvgeos_tome.handle import TomeHandleFactory
 from mvgeos_tome.types import TomeEntry, TomeEntryType
+from nicegui import ui
+from nicegui.testing import User
 
+from mvgeos_gui import state as state_module
 from mvgeos_gui.approval.types import PermissionsView
 from mvgeos_gui.autocomplete import MentionChip
 from mvgeos_gui.models import ChangedFile, ChatMessage, DiffView
+from mvgeos_gui.services.agent_service import AgentService
+from mvgeos_gui.services.config_service import ConfigService, WorkspaceSettings
 from mvgeos_gui.services.tome_service import TomeService
-from mvgeos_gui.state import AppState, format_channeling_elapsed
+from mvgeos_gui.state import AppState, ServerState, format_channeling_elapsed
 from mvgeos_gui.transcript import InvocationTranscript
 
 
@@ -1647,10 +1652,11 @@ class TestRenameTome:
 
 
 def test_switch_to_tome_resets_cached_agent() -> None:
-    """Verify switching tomes drops the cached agent.
+    """Verify switching tomes closes the cached agent.
 
     Otherwise the next send would run against the previously attached tome
-    instead of the newly active one.
+    instead of the newly active one, and the old agent's rune watchers
+    would keep firing.
     """
     state, tome_dir = _make_state_with_tomes("/proj/a")
     tome_id = _create_tome(tome_dir, "/proj/a")
@@ -1658,21 +1664,21 @@ def test_switch_to_tome_resets_cached_agent() -> None:
 
     state.switch_to_tome(tome_id)
 
-    state.agent_service.reset_agent.assert_called_once_with()
+    state.agent_service.close_agent_in_background.assert_called_once_with()
 
 
 def test_new_conversation_resets_cached_agent() -> None:
-    """Verify starting a new session drops the cached agent.
+    """Verify starting a new session closes the cached agent.
 
     Otherwise the next send would resume the old tome instead of creating
-    a fresh one.
+    a fresh one, and the old agent's rune watchers would keep firing.
     """
     state, _tome_dir = _make_state_with_tomes("/proj/a")
     state.agent_service = MagicMock()
 
     state.new_conversation()
 
-    state.agent_service.reset_agent.assert_called_once_with()
+    state.agent_service.close_agent_in_background.assert_called_once_with()
 
 
 def test_fork_tome_preserves_custom_title() -> None:
@@ -1981,14 +1987,80 @@ class TestServerStateSplit:
         assert b.messages == []
 
     def test_drop_client_state_stops_channeling(self) -> None:
-        from mvgeos_gui.state import ServerState
-
         server = ServerState()
         a = server.new_client_state()
         a.is_channeling = True
         server.drop_client_state(a)
         assert server.client_states == []
         assert a.is_channeling is False
+
+    @pytest.mark.asyncio
+    async def test_server_ashutdown_awaits_every_client_agent_close(
+        self, tmp_path: Path
+    ) -> None:
+        """Server shutdown awaits each client's agent close (watchers stop).
+
+        NiceGUI awaits async app.on_shutdown handlers inside App.stop()
+        before uvicorn cancels pending tasks, so an awaited shutdown is the
+        only path that guarantees cached agents are closed. A sync
+        shutdown that merely schedules background closes would be
+        cancelled before the closes run.
+        """
+
+        class _ClosingAgent:
+            def __init__(self) -> None:
+                self.close_calls = 0
+
+            async def close(self) -> None:
+                self.close_calls += 1
+
+        server = ServerState()
+        agents: list[_ClosingAgent] = []
+        for _ in range(2):
+            state = server.new_client_state()
+            agent = _ClosingAgent()
+            agents.append(agent)
+
+            def _factory(_agent: _ClosingAgent = agent, **kwargs: Any) -> _ClosingAgent:
+                return _agent
+
+            service = AgentService(
+                project_path=tmp_path,
+                api_key="dummy-key",
+                agent_factory=_factory,
+            )
+            state.agent_service = service
+            service.get_or_create_agent(state)
+
+        await server.ashutdown()
+
+        assert [agent.close_calls for agent in agents] == [1, 1]
+        assert server.client_states == []
+
+    @pytest.mark.asyncio
+    async def test_server_ashutdown_still_fails_closed_on_close_error(
+        self, tmp_path: Path
+    ) -> None:
+        """A close() failure during shutdown must not break the shutdown."""
+
+        class _ExplodingAgent:
+            async def close(self) -> None:
+                raise RuntimeError("watcher shutdown blew up")
+
+        server = ServerState()
+        state = server.new_client_state()
+        agent = _ExplodingAgent()
+        service = AgentService(
+            project_path=tmp_path,
+            api_key="dummy-key",
+            agent_factory=lambda **kwargs: agent,
+        )
+        state.agent_service = service
+        service.get_or_create_agent(state)
+
+        await server.ashutdown()
+
+        assert server.client_states == []
 
     def test_standalone_app_state_keeps_working(self) -> None:
         """AppState() without a server behaves exactly like the old
@@ -2101,3 +2173,388 @@ class TestMentionIndexServerShared:
         labels = self._labels(new_service)
         assert "beta.py" in labels
         assert "alpha.py" not in labels
+
+
+# ---------------------------------------------------------------------------
+# Project display name, agent teardown, active-session persistence
+# ---------------------------------------------------------------------------
+
+
+def test_project_display_name_prefers_persisted_project_name(
+    tmp_path: Path,
+) -> None:
+    """Persisted workspace project_name wins over the directory name."""
+    service = ConfigService(config_dir=tmp_path / "cfg")
+    service.save_workspace_settings(
+        tmp_path, WorkspaceSettings(project_name="My Quest")
+    )
+    state = AppState(project_path=tmp_path)
+    state._config_service = service
+    assert state.project_display_name == "My Quest"
+
+
+def test_project_display_name_falls_back_to_directory_name(
+    tmp_path: Path,
+) -> None:
+    """Without a persisted name the workspace directory name is shown."""
+    state = AppState(project_path=tmp_path)
+    assert state.project_display_name == tmp_path.name
+
+
+def test_project_display_name_tolerates_settings_failure(
+    tmp_path: Path,
+) -> None:
+    """A workspace-settings read failure still shows the directory name."""
+
+    class _BrokenConfigService:
+        def load_workspace_settings(self, project_dir: Path) -> Any:
+            raise RuntimeError("settings unreadable")
+
+    state = AppState(project_path=tmp_path)
+    state._config_service = _BrokenConfigService()  # type: ignore[assignment]
+    assert state.project_display_name == tmp_path.name
+
+
+def test_restore_active_tome_tolerates_broken_storage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A storage failure restores nothing instead of breaking page load."""
+
+    class _BrokenUser(dict):  # type: ignore[type-arg]
+        def get(self, *args: Any, **kwargs: Any) -> Any:
+            raise RuntimeError("storage unavailable")
+
+    fake_app = _FakeNiceGUIApp()
+    fake_app.storage.user = _BrokenUser()
+    monkeypatch.setattr(state_module, "nicegui_app", fake_app)
+
+    state = AppState(project_path=tmp_path)
+    assert state.restore_active_tome() is False
+
+
+def test_restore_active_tome_tolerates_switch_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stored id that fails to switch restores nothing."""
+    store = _patch_browser_storage(monkeypatch)
+    store["active-tome-id"] = "tome-boom"
+
+    def _boom(tome_id: str) -> None:
+        raise RuntimeError("tome backend exploded")
+
+    state = AppState(project_path=tmp_path)
+    monkeypatch.setattr(state, "switch_to_tome", _boom)
+    assert state.restore_active_tome() is False
+
+
+@pytest.mark.asyncio
+async def test_reset_agent_closes_cached_agent(tmp_path: Path) -> None:
+    """reset_agent() must close the discarded agent (stops rune watchers)."""
+    closed: list[str] = []
+
+    class _Agent:
+        async def close(self) -> None:
+            closed.append("closed")
+
+    service = AgentService(
+        project_path=tmp_path,
+        api_key="sk-test",
+        agent_factory=lambda **kwargs: _Agent(),
+    )
+    state = AppState(project_path=tmp_path)
+    state.agent_service = service
+    agent = service.get_or_create_agent(state)
+
+    state.reset_agent()
+
+    for _ in range(100):
+        if closed:
+            break
+        await asyncio.sleep(0.01)
+    assert closed == ["closed"]
+    # The reference was dropped: the next turn builds a fresh agent.
+    assert service.get_or_create_agent(state) is not agent
+
+
+class _FakeUserStorage:
+    def __init__(self) -> None:
+        self.user: dict[str, Any] = {}
+
+
+class _FakeNiceGUIApp:
+    def __init__(self) -> None:
+        self.storage = _FakeUserStorage()
+
+
+def _patch_browser_storage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, Any]:
+    """Swap NiceGUI per-browser storage for a plain dict (no page needed)."""
+    store: dict[str, Any] = {}
+    fake_app = _FakeNiceGUIApp()
+    fake_app.storage.user = store
+    monkeypatch.setattr(state_module, "nicegui_app", fake_app)
+    return store
+
+
+def test_persist_and_restore_active_tome_roundtrip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """switch_to_tome persists the session; a new state restores it."""
+    store = _patch_browser_storage(monkeypatch)
+    tome_dir = tmp_path / "tomes"
+    tome_dir.mkdir(exist_ok=True)
+    tome_id = _create_tome(tome_dir, str(tmp_path))
+
+    state = AppState(project_path=tmp_path, tome_service=TomeService(tome_dir))
+    state.switch_to_tome(tome_id)
+    assert state.active_tome_id == tome_id
+    assert store.get("active-tome-id") == tome_id
+
+    fresh = AppState(project_path=tmp_path, tome_service=TomeService(tome_dir))
+    assert fresh.restore_active_tome() is True
+    assert fresh.active_tome_id == tome_id
+
+
+def test_new_conversation_clears_persisted_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Starting a new conversation must not resurrect the old session."""
+    store = _patch_browser_storage(monkeypatch)
+    tome_dir = tmp_path / "tomes"
+    tome_dir.mkdir(exist_ok=True)
+    tome_id = _create_tome(tome_dir, str(tmp_path))
+
+    state = AppState(project_path=tmp_path, tome_service=TomeService(tome_dir))
+    state.switch_to_tome(tome_id)
+    assert store.get("active-tome-id") == tome_id
+
+    state.new_conversation()
+    assert store.get("active-tome-id") is None
+
+    fresh = AppState(project_path=tmp_path, tome_service=TomeService(tome_dir))
+    assert fresh.restore_active_tome() is False
+    assert fresh.active_tome_id is None
+
+
+def test_restore_active_tome_ignores_unknown_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A persisted id that no longer resolves restores nothing."""
+    store = _patch_browser_storage(monkeypatch)
+    store["active-tome-id"] = "tome-that-does-not-exist"
+    tome_dir = tmp_path / "tomes"
+    tome_dir.mkdir(exist_ok=True)
+
+    state = AppState(project_path=tmp_path, tome_service=TomeService(tome_dir))
+    assert state.restore_active_tome() is False
+    assert state.active_tome_id is None
+
+
+def test_restore_active_tome_ignores_project_mismatched_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A persisted id naming a tome from another workspace restores nothing."""
+    store = _patch_browser_storage(monkeypatch)
+    tome_dir = tmp_path / "tomes"
+    tome_dir.mkdir(exist_ok=True)
+    other_project = tmp_path / "other-project"
+    other_project.mkdir(exist_ok=True)
+    foreign_tome_id = _create_tome(tome_dir, str(other_project))
+    store["active-tome-id"] = foreign_tome_id
+
+    state = AppState(project_path=tmp_path, tome_service=TomeService(tome_dir))
+    assert state.restore_active_tome() is False
+    assert state.active_tome_id is None
+
+
+@pytest.mark.asyncio
+async def test_active_session_restored_on_fresh_page_load(
+    user: User, tmp_path: Path
+) -> None:
+    """A real page reload re-selects the session from browser storage."""
+    tome_dir = tmp_path / "tomes"
+    tome_dir.mkdir(exist_ok=True)
+    tome_id = _create_tome(tome_dir, str(tmp_path))
+
+    state = AppState(project_path=tmp_path, tome_service=TomeService(tome_dir))
+
+    @ui.page("/test_session_restore_first")
+    def first_page() -> None:
+        state.switch_to_tome(tome_id)
+
+    await user.open("/test_session_restore_first")
+    assert state.active_tome_id == tome_id
+
+    fresh_state = AppState(project_path=tmp_path, tome_service=TomeService(tome_dir))
+
+    @ui.page("/test_session_restore_second")
+    def second_page() -> None:
+        fresh_state.load_tomes()
+        fresh_state.restore_active_tome()
+
+    await user.open("/test_session_restore_second")
+    assert fresh_state.active_tome_id == tome_id
+
+
+def _rune_dict(
+    name: str,
+    commands: list[str] | None = None,
+    enabled: bool = True,
+    description: str = "",
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "version": "0.1.0",
+        "description": description or f"{name} description",
+        "enabled": enabled,
+        "commands": commands or [],
+    }
+
+
+def _slash_names(state: AppState, query: str = "/") -> list[str]:
+    """Drive autocomplete the way the chat input does and read item names."""
+    service = state.get_autocomplete_service()
+    service.process_input(query, len(query))
+    return [str(getattr(item, "name", "")) for item in service.get_visible_items()]
+
+
+def test_autocomplete_suggests_installed_rune_commands() -> None:
+    state = AppState()
+    runes = [_rune_dict("selfmod-bridge", ["selfmod"])]
+    with patch.object(state_module, "list_installed_runes", return_value=runes):
+        names = _slash_names(state, "/self")
+    assert "/selfmod" in names
+    assert "/help" in _slash_names(state, "/help")
+
+
+def test_autocomplete_hides_disabled_rune_commands() -> None:
+    state = AppState()
+    runes = [_rune_dict("selfmod-bridge", ["selfmod"], enabled=False)]
+    with patch.object(state_module, "list_installed_runes", return_value=runes):
+        assert "/selfmod" not in _slash_names(state, "/self")
+
+
+def test_autocomplete_rune_command_cannot_shadow_cli_command() -> None:
+    state = AppState()
+    runes = [_rune_dict("evil-rune", ["reload", "selfmod"])]
+    with patch.object(state_module, "list_installed_runes", return_value=runes):
+        names = _slash_names(state, "/")
+    assert "/selfmod" in names
+    # /reload stays the single engine-owned entry
+    assert names.count("/reload") == 1
+
+
+def test_install_rune_refreshes_autocomplete_suggestions() -> None:
+    state = AppState()
+    installed: list[dict[str, Any]] = []
+    with patch.object(state_module, "list_installed_runes", return_value=installed):
+        assert "/selfmod" not in _slash_names(state, "/self")
+    installed.append(_rune_dict("selfmod-bridge", ["selfmod"]))
+    with (
+        patch.object(state_module, "install_rune", return_value=None),
+        patch.object(state_module, "list_installed_runes", return_value=installed),
+    ):
+        assert asyncio.run(state.install_rune_async("selfmod-bridge")) is True
+        assert "/selfmod" in _slash_names(state, "/self")
+
+
+def test_uninstall_rune_refreshes_autocomplete_suggestions() -> None:
+    state = AppState()
+    installed = [_rune_dict("selfmod-bridge", ["selfmod"])]
+    with patch.object(state_module, "list_installed_runes", return_value=installed):
+        assert "/selfmod" in _slash_names(state, "/self")
+    installed.clear()
+    with (
+        patch.object(state_module, "uninstall_rune", return_value=True),
+        patch.object(state_module, "list_installed_runes", return_value=installed),
+    ):
+        assert asyncio.run(state.uninstall_rune_async("selfmod-bridge")) is True
+        assert "/selfmod" not in _slash_names(state, "/self")
+
+
+def test_disable_rune_refreshes_autocomplete_suggestions() -> None:
+    state = AppState()
+    rune = _rune_dict("selfmod-bridge", ["selfmod"])
+    with patch.object(state_module, "list_installed_runes", return_value=[rune]):
+        assert "/selfmod" in _slash_names(state, "/self")
+    rune["enabled"] = False
+    with (
+        patch.object(state_module, "set_rune_enabled", return_value=True),
+        patch.object(state_module, "list_installed_runes", return_value=[rune]),
+    ):
+        assert (
+            asyncio.run(state.set_rune_enabled_async("selfmod-bridge", False)) is True
+        )
+        assert "/selfmod" not in _slash_names(state, "/self")
+
+
+def _make_skill_dir(parent: Path, name: str, filename: str = "SKILL.md") -> Path:
+    skill_dir = parent / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / filename).write_text(
+        f"---\nname: {name}\ndescription: Desc of {name}\n---\nBody",
+        encoding="utf-8",
+    )
+    return skill_dir
+
+
+def test_scan_skill_manifests_lowercase_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A skill with only lowercase skill.md is discovered (protocol casing)."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    project = tmp_path / "proj"
+    skills_dir = project / ".agents" / "skills"
+    _make_skill_dir(skills_dir, "lower-skill", "skill.md")
+
+    manifests = state_module._scan_skill_manifests(project)
+
+    assert [m.name for m in manifests] == ["lower-skill"]
+
+
+def test_scan_skill_manifests_uppercase_preferred(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SKILL.md wins when both casings exist."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    project = tmp_path / "proj"
+    skills_dir = project / ".agents" / "skills"
+    s_dir = _make_skill_dir(skills_dir, "both-skill", "SKILL.md")
+    (s_dir / "skill.md").write_text(
+        "---\nname: both-skill\ndescription: Lower\n---\nLower",
+        encoding="utf-8",
+    )
+
+    manifests = state_module._scan_skill_manifests(project)
+
+    assert [m.name for m in manifests] == ["both-skill"]
+    assert manifests[0].path == str(s_dir)
+
+
+def test_scan_skill_manifests_neither_casing_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No manifest file at all means not a skill: skipped."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    project = tmp_path / "proj"
+    skills_dir = project / ".agents" / "skills"
+    (skills_dir / "empty-dir").mkdir(parents=True)
+
+    manifests = state_module._scan_skill_manifests(project)
+
+    assert manifests == []
+
+
+def test_scan_skill_manifests_uppercase_still_works(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Uppercase SKILL.md skills keep being discovered (regression)."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    project = tmp_path / "proj"
+    skills_dir = project / ".agents" / "skills"
+    _make_skill_dir(skills_dir, "upper-skill", "SKILL.md")
+
+    manifests = state_module._scan_skill_manifests(project)
+
+    assert [m.name for m in manifests] == ["upper-skill"]

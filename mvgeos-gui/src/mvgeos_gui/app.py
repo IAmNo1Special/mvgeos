@@ -16,6 +16,9 @@ def build_page(state: AppState | None = None) -> None:
     """Construct the MvgeOS GUI layout on the current page."""
     current_state = state or AppState()
     current_state.load_tomes()
+    # A fresh page load re-selects the session the browser was in (when it
+    # still exists); otherwise the user starts with no active session.
+    current_state.restore_active_tome()
 
     saved_theme = current_state._config_service.load_app_settings().theme
     theme = saved_theme if saved_theme in ("dark", "light") else "dark"

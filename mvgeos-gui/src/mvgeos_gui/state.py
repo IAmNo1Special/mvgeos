@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import inspect
 import logging
+import os
 import shutil
 import time
 import uuid
@@ -54,8 +55,10 @@ from mvgeos_gui.approval.queue import ApprovalQueue
 from mvgeos_gui.approval.types import PermissionsView
 from mvgeos_gui.autocomplete import (
     AutocompleteService,
+    CommandKind,
     MentionChip,
     MentionIndex,
+    SlashCommandItem,
     SlashCommandRegistry,
 )
 from mvgeos_gui.git_workspace import ChangedFile, get_changed_files, get_diff_for_file
@@ -84,6 +87,21 @@ def format_channeling_elapsed(seconds: float) -> str:
     return f"{total // 60}m {total % 60:02d}s"
 
 
+def _resolve_skill_manifest_file(skill_dir: Path) -> Path | None:
+    """Locate the skill manifest file inside a skill directory.
+
+    Checks SKILL.md first, then falls back to lowercase skill.md per the
+    .agents protocol. Returns None when neither exists (not a skill).
+    """
+    upper = skill_dir / "SKILL.md"
+    if upper.is_file():
+        return upper
+    lower = skill_dir / "skill.md"
+    if lower.is_file():
+        return lower
+    return None
+
+
 def _scan_skill_manifests(project_path: Path) -> list[SkillManifest]:
     """Scan project and user skill directories for skill manifests.
 
@@ -99,7 +117,7 @@ def _scan_skill_manifests(project_path: Path) -> list[SkillManifest]:
         if not sdir.is_dir():
             continue
         for item in sorted(sdir.iterdir()):
-            if item.is_dir() and (item / "SKILL.md").is_file():
+            if item.is_dir() and _resolve_skill_manifest_file(item) is not None:
                 skills.append(
                     SkillManifest(
                         name=item.name,
@@ -127,6 +145,9 @@ _SHARED_FIELDS = frozenset(
         "_config_service",
     }
 )
+
+# Per-browser storage key for the active session id.
+_ACTIVE_TOME_STORAGE_KEY = "active-tome-id"
 
 
 @dataclass
@@ -227,9 +248,21 @@ class ServerState:
         """Detach a client session: fail closed and release its resources.
 
         Pending approval casts are denied (their decision surface is
-        gone), the agent task is cancelled, and UI listeners are dropped.
+        gone), the agent task is cancelled, UI listeners are dropped, and
+        the client's cached agent is closed in the background so its rune
+        watchers stop firing after disconnect. Background close is fine
+        here because the server keeps running.
         """
         self._clients = [s for s in self._clients if s is not state]
+        self._fail_closed_sync(state)
+        with contextlib.suppress(Exception):
+            service = state.agent_service
+            if service is not None:
+                service.close_agent_in_background()
+
+    @staticmethod
+    def _fail_closed_sync(state: AppState) -> None:
+        """Synchronous fail-closed steps shared by disconnect and shutdown."""
         with contextlib.suppress(Exception):
             state.stop_channeling()
         with contextlib.suppress(Exception):
@@ -237,10 +270,24 @@ class ServerState:
         with contextlib.suppress(Exception):
             unbind_approval_presenter(state)
 
-    def shutdown(self) -> None:
-        """Server shutdown: fail closed for every connected client."""
+    async def ashutdown(self) -> None:
+        """Awaited server shutdown: fail closed for every connected client.
+
+        Unlike :meth:`drop_client_state` (which must not block a live
+        server), shutdown awaits each cached agent's close, so rune
+        watchers are guaranteed stopped before the event loop tears down.
+        NiceGUI awaits async ``app.on_shutdown`` handlers inside
+        ``App.stop()`` before uvicorn cancels pending tasks; a shutdown
+        that merely scheduled background closes would be cancelled first.
+        Close failures are logged and suppressed: teardown must not raise.
+        """
         for client in list(self._clients):
-            self.drop_client_state(client)
+            self._fail_closed_sync(client)
+            with contextlib.suppress(Exception):
+                service = client.agent_service
+                if service is not None:
+                    await service.close_agent()
+            self._clients = [s for s in self._clients if s is not client]
 
 
 @dataclass
@@ -546,23 +593,86 @@ class AppState:
         return self.agent_service
 
     def reset_agent(self) -> None:
-        """Reset the cached agent in AgentService if one exists."""
+        """Reset the cached agent in AgentService if one exists.
+
+        The discarded agent is closed (stopping its rune watchers) rather
+        than merely dereferenced, so a replaced agent never keeps firing
+        reloads or holding its tome open.
+        """
         if self.agent_service is not None:
-            self.agent_service.reset_agent()
+            self.agent_service.close_agent_in_background()
 
     def get_autocomplete_service(self) -> AutocompleteService:
         """Retrieve or initialize the AutocompleteService for this session.
 
         The service (popup mode, selection) is per-client, but the
         MentionIndex it queries is server-shared: one index per server,
-        refreshed when the project tree changes.
+        refreshed when the project tree changes. Rune slash commands are
+        read from installed, enabled rune manifests so autocomplete and
+        the command dispatcher agree on what exists.
         """
         if self._autocomplete_service is None:
-            command_registry = SlashCommandRegistry()
+            command_registry = SlashCommandRegistry(
+                rune_commands=self._rune_slash_commands()
+            )
             self._autocomplete_service = AutocompleteService(
                 self._ensure_server().mention_index, command_registry
             )
         return self._autocomplete_service
+
+    @staticmethod
+    def _rune_slash_commands() -> list[SlashCommandItem]:
+        """Build autocomplete items from installed, enabled rune manifests.
+
+        Disabled runes contribute nothing. A rune command that collides
+        with an engine-owned CLI command is dropped so it can never
+        shadow it (mirrors the dispatcher: e.g. /reload stays engine).
+        First claimant wins across runes.
+        """
+        try:
+            installed = list_installed_runes()
+        except Exception:
+            return []
+        cli_names = set(SlashCommandRegistry.CLI_SLASH_COMMANDS)
+        seen: set[str] = set()
+        items: list[SlashCommandItem] = []
+        for rune in installed:
+            if not rune.get("enabled", True):
+                continue
+            description = str(rune.get("description", "") or "")
+            commands = rune.get("commands", [])
+            if not isinstance(commands, list):
+                continue
+            for command in commands:
+                if not isinstance(command, str) or not command:
+                    continue
+                name = f"/{command}"
+                if name in cli_names or name in seen:
+                    continue
+                seen.add(name)
+                items.append(
+                    SlashCommandItem(
+                        kind=CommandKind.RUNE,
+                        name=name,
+                        description=description or f"Run extension command {command}",
+                        value=name,
+                    )
+                )
+        return items
+
+    def _drop_autocomplete_cache(self) -> None:
+        """Drop cached autocomplete services so rune commands rebuild.
+
+        Rune install/uninstall/enable/disable changes what the registry
+        should offer; the next keystroke rebuilds it. Propagates to other
+        connected clients the same way project changes do.
+        """
+        self._autocomplete_service = None
+        server = self.__dict__.get("_server")
+        if server is not None:
+            for client in server.client_states:
+                if client is not self:
+                    client._autocomplete_service = None
 
     def load_skills(self) -> list[SkillManifest]:
         """Load skill manifests from project and user skill directories."""
@@ -847,6 +957,9 @@ class AppState:
         # otherwise resume it on the next send instead of starting fresh.
         self.reset_agent()
         self.load_tomes()
+        # No active session: clear the persisted id so a page reload does
+        # not resurrect the ended conversation.
+        self.persist_active_tome()
 
     def record_context_usage(self, input_tokens: int, output_tokens: int) -> None:
         """Record the latest provider-reported token usage for the gauge."""
@@ -916,6 +1029,14 @@ class AppState:
             return
         if meta is None:
             return
+        # A tome created in another workspace must never become the active
+        # session here. restore_active_tome() delegates to this method, and
+        # a stale browser-storage id can name a foreign tome. The same
+        # normalization as TomeService.list_tomes_for_project applies.
+        tome_cwd = os.path.normcase(os.path.normpath(meta.cwd))
+        project = os.path.normcase(os.path.normpath(str(self.project_path)))
+        if tome_cwd != project:
+            return
         # The tome is changing: deny pending approvals before the state
         # change completes.
         self._on_approval_context_change()
@@ -929,6 +1050,45 @@ class AppState:
         self.reset_agent()
         self.load_messages_for_tome(meta.id)
         self.load_tomes()
+        self.persist_active_tome()
+
+    @property
+    def project_display_name(self) -> str:
+        """Human name for the workspace: persisted name or directory name."""
+        try:
+            name = self._config_service.load_workspace_settings(
+                self.project_path
+            ).project_name
+        except Exception:
+            name = ""
+        return name.strip() or self.project_path.name or str(self.project_path)
+
+    def persist_active_tome(self) -> None:
+        """Remember the active session id in per-browser storage.
+
+        A fresh page load restores it via :meth:`restore_active_tome`.
+        Best-effort: storage failures are ignored.
+        """
+        with contextlib.suppress(Exception):
+            nicegui_app.storage.user[_ACTIVE_TOME_STORAGE_KEY] = self.active_tome_id
+
+    def restore_active_tome(self) -> bool:
+        """Re-select the session persisted by an earlier page load.
+
+        Returns True when a stored session id still resolves to a tome.
+        Best-effort: unknown ids and storage errors restore nothing.
+        """
+        try:
+            stored = nicegui_app.storage.user.get(_ACTIVE_TOME_STORAGE_KEY)
+        except Exception:
+            return False
+        if not isinstance(stored, str) or not stored:
+            return False
+        try:
+            self.switch_to_tome(stored)
+        except Exception:
+            return False
+        return self.active_tome_id == stored
 
     def get_realms(self) -> list[str]:
         """Return available realm identifiers."""
@@ -1571,6 +1731,7 @@ class AppState:
                     res = load_runes()
                     if inspect.isawaitable(res):
                         await res
+            self._drop_autocomplete_cache()
             self.notify()
             return True
         except Exception as exc:
@@ -1581,12 +1742,16 @@ class AppState:
         """Uninstall a rune and unregister its realm factory if registered."""
         result = bool(await asyncio.to_thread(uninstall_rune, rune_name))
         get_default_realm_registry().unregister_realm_factory(rune_name)
+        if result:
+            self._drop_autocomplete_cache()
         self.notify()
         return result
 
     async def set_rune_enabled_async(self, rune_name: str, enabled: bool) -> bool:
         """Enable or disable an installed rune by updating its manifest."""
         result = bool(await asyncio.to_thread(set_rune_enabled, rune_name, enabled))
+        if result:
+            self._drop_autocomplete_cache()
         self.notify()
         return result
 

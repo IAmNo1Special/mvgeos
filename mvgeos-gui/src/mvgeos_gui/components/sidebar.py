@@ -113,7 +113,7 @@ def render_sidebar(state: AppState) -> ui.column:
                     ui.tooltip("Collapse sidebar")
 
         # Workspace / Project display
-        project_name = state.project_path.name or str(state.project_path)
+        project_name = state.project_display_name
         if collapsed:
             with (
                 ui.row().classes("w-full justify-center py-2 shrink-0"),

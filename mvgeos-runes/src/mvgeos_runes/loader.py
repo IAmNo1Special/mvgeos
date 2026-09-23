@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import inspect
 import re
@@ -230,10 +231,12 @@ def load_factory_from_manifest(
     mod = importlib.util.module_from_spec(spec)
     # Force a fresh read of the entry point: a quick same-second rewrite
     # can leave a stale __pycache__ entry the loader would otherwise trust,
-    # silently re-executing old code on refresh.
+    # silently re-executing old code on refresh. Best-effort: on Windows,
+    # a concurrent load may hold the bytecode file open, so a locked file
+    # is left alone rather than failing the load.
     stale_bytecode = Path(importlib.util.cache_from_source(str(entry)))
-    if stale_bytecode.is_file():
-        stale_bytecode.unlink()
+    with contextlib.suppress(OSError):
+        stale_bytecode.unlink(missing_ok=True)
     try:
         spec.loader.exec_module(mod)
     except Exception as err:

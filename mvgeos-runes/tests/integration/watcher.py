@@ -3,12 +3,14 @@ from __future__ import annotations
 import asyncio
 import tempfile
 import threading
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from watchdog.events import FileModifiedEvent, FileMovedEvent
 
+import mvgeos_runes.watcher as watcher_module
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.watcher import RuneWatcher, _RuneReloadHandler
 
@@ -18,7 +20,9 @@ class TestRuneWatcher:
         runner = RuneRunner()
         with tempfile.TemporaryDirectory() as tmpdir:
             watcher = RuneWatcher(Path(tmpdir), runner)
-            assert watcher._extensions_dir == Path(tmpdir)
+            # The watcher resolves the directory at construction (e.g.
+            # Windows 8.3 short names), so compare against resolved.
+            assert watcher._extensions_dir == Path(tmpdir).resolve()
             assert watcher._runner is runner
 
     @pytest.mark.asyncio
@@ -152,6 +156,29 @@ class TestRuneReloadHandler:
             outside_file = Path(tmpdir).parent / "other.py"
             found = handler._find_rune_dir(str(outside_file))
             assert found is None
+
+    def test_find_rune_dir_resolves_symlinked_event_path(self) -> None:
+        """Event paths that differ textually but resolve identically match.
+
+        On Windows, ``Path.resolve()`` may return 8.3 short names
+        (``RUNNER~1``) while watchdog reports long names (``runneradmin``).
+        The handler must normalize incoming paths before comparing.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            real_dir = Path(tmpdir) / "real"
+            real_dir.mkdir()
+            link_dir = Path(tmpdir) / "link"
+            link_dir.symlink_to(real_dir, target_is_directory=True)
+            handler = _RuneReloadHandler(link_dir, AsyncMock())
+
+            rune_dir = real_dir / "my_rune"
+            rune_dir.mkdir()
+            test_file = rune_dir / "main.py"
+            test_file.write_text("test", encoding="utf-8")
+
+            # Event arrives via the unresolved symlink path.
+            found = handler._find_rune_dir(str(link_dir / "my_rune" / "main.py"))
+            assert found == "my_rune"
 
     @pytest.mark.asyncio
     async def test_on_modified(self) -> None:
@@ -606,3 +633,143 @@ class TestWatcherOnMoved:
             finally:
                 await watcher.stop()
         assert len(calls) == 1
+
+
+class _WedgedObserver:
+    """Observer stub whose thread never exits on its own.
+
+    ``join()`` without a timeout hangs forever (the pre-fix failure mode);
+    with a timeout it sleeps past it, so the watchdog can declare the
+    thread wedged. ``is_alive()`` stays True throughout.
+    """
+
+    def stop(self) -> None:
+        return None
+
+    def join(self, timeout: float | None = None) -> None:
+        if timeout is None:
+            threading.Event().wait()
+        else:
+            time.sleep(timeout + 0.2)
+
+    def is_alive(self) -> bool:
+        return True
+
+
+class TestRuneWatcherStopTimeout:
+    @pytest.mark.asyncio
+    async def test_stop_times_out_instead_of_hanging_on_wedged_observer(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A wedged observer thread must bound stop(): TimeoutError, loudly,
+        instead of hanging reload() forever."""
+        monkeypatch.setattr(
+            watcher_module, "_OBSERVER_STOP_TIMEOUT_SECONDS", 0.05, raising=False
+        )
+        runner = RuneRunner()
+        watcher = RuneWatcher(tmp_path, runner)
+        watcher._observer = _WedgedObserver()  # type: ignore[assignment]
+        with pytest.raises(TimeoutError, match="did not stop"):
+            await watcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_stop_keeps_observer_for_retry_after_timeout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """After a join timeout the watcher stays armed so the engine's
+        retry loop can attempt the stop again."""
+        monkeypatch.setattr(
+            watcher_module, "_OBSERVER_STOP_TIMEOUT_SECONDS", 0.05, raising=False
+        )
+        runner = RuneRunner()
+        watcher = RuneWatcher(tmp_path, runner)
+        watcher._observer = _WedgedObserver()  # type: ignore[assignment]
+        with pytest.raises(TimeoutError):
+            await watcher.stop()
+        assert watcher._observer is not None
+
+
+class TestRuneWatcherWatchPath:
+    def test_relative_dir_resolves_to_absolute(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A CWD-relative watch target keeps its anchor but is exposed and
+        logged as an absolute path — no deceptive relative strings."""
+        monkeypatch.chdir(tmp_path)
+        runner = RuneRunner()
+        watcher = RuneWatcher(Path("rel-ext"), runner)
+        assert watcher.watch_path.is_absolute()
+        assert watcher.watch_path == (tmp_path / "rel-ext").resolve()
+
+    def test_absolute_dir_is_kept(self, tmp_path: Path) -> None:
+        runner = RuneRunner()
+        watcher = RuneWatcher(tmp_path, runner)
+        assert watcher.watch_path == tmp_path.resolve()
+
+
+@pytest.mark.asyncio
+async def test_audit_appends_do_not_trigger_reload(tmp_path: Path) -> None:
+    """The engine audit log lives inside the watched extensions root; a real
+    RuneAuditLog.append_event() under that root must not fire the reload
+    trigger. Otherwise every reload's own audit record schedules another
+    reload — the audit storm (211 unsolicited reload_ok records in ~52s)."""
+    from mvgeos_runes.rune_audit import RuneAuditLog
+
+    ext_dir = tmp_path / "extensions"
+    ext_dir.mkdir()
+    audit = RuneAuditLog(ext_dir)
+
+    calls = 0
+
+    async def _callback() -> None:
+        nonlocal calls
+        calls += 1
+
+    watcher = RuneWatcher(ext_dir, RuneRunner(), reload_callback=_callback)
+    await watcher.start()
+    try:
+        audit.append_event({"op": "reload", "outcome": "ok"})
+        # Wait well past the debounce window for any scheduled callback.
+        await asyncio.sleep(1.2)
+        assert calls == 0
+    finally:
+        await watcher.stop()
+
+
+def test_is_ignored_covers_audit_files(tmp_path: Path) -> None:
+    """Root-level audit.jsonl and rotated audit-*.jsonl are ignored; a
+    nested audit.jsonl inside a rune dir still triggers that rune."""
+    handler = _RuneReloadHandler(tmp_path, lambda: None, fire_once=True)
+    assert handler._is_ignored(str(tmp_path / "audit.jsonl"))
+    assert handler._is_ignored(str(tmp_path / "audit-20260922-120000.jsonl"))
+    assert handler._is_ignored(str(tmp_path / "audit-20260922-120000-1.jsonl"))
+    assert not handler._is_ignored(str(tmp_path / "some_rune" / "audit.jsonl"))
+    assert not handler._is_ignored(str(tmp_path / "some_rune" / "rune.py"))
+
+
+@pytest.mark.asyncio
+async def test_stop_cancels_pending_debounce(tmp_path: Path) -> None:
+    """A file event debounced but not yet fired when stop() runs must not
+    reach the callback afterwards: otherwise a pre-teardown event fires
+    Mvge.reload() on the retired instance after close()."""
+    calls = 0
+
+    async def _callback() -> None:
+        nonlocal calls
+        calls += 1
+
+    watcher = RuneWatcher(tmp_path, RuneRunner(), reload_callback=_callback)
+    await watcher.start()
+    try:
+        assert watcher._handler is not None
+        # A file event arrives; the reload is debounced (0.5s), not fired.
+        watcher._handler.on_modified(
+            FileModifiedEvent(str(tmp_path / "some_rune" / "rune.py"))
+        )
+        await asyncio.sleep(0.1)
+        assert calls == 0
+    finally:
+        await watcher.stop()
+    # Past the debounce window: the cancelled burst must never fire.
+    await asyncio.sleep(0.7)
+    assert calls == 0

@@ -55,9 +55,7 @@ def render_chat_panel(state: AppState) -> ui.column:
                         ui.icon("folder_open", size="12px").classes(
                             "text-[var(--text-secondary)]"
                         )
-                        ui.label(
-                            state.project_path.name or str(state.project_path)
-                        ).classes(
+                        ui.label(state.project_display_name).classes(
                             "text-xs text-[var(--text-secondary)] max-w-[300px] "
                             "truncate"
                         )
@@ -376,6 +374,7 @@ def _render_user_message(msg: object) -> None:
     """Render a user message bubble."""
     content = getattr(msg, "content", "")
     timestamp = getattr(msg, "timestamp", "")
+    attachments = getattr(msg, "attachments", None) or []
     with (
         ui.column().classes("w-full max-w-3xl mx-auto px-6 py-3 items-end"),
         ui.card().classes(
@@ -399,9 +398,18 @@ def _render_user_message(msg: object) -> None:
                 ui.label(timestamp).classes(
                     "text-[10px] text-[var(--text-muted)] font-mono"
                 )
-        ui.label(content).classes(
-            "text-xs text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed"
-        )
+        if content:
+            ui.label(content).classes(
+                "text-xs text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed"
+            )
+        for name in attachments:
+            with ui.row().classes("items-center gap-1.5 mt-1"):
+                ui.icon("attach_file", size="14px").classes(
+                    "text-[var(--text-secondary)]"
+                )
+                ui.label(str(name)).classes(
+                    "text-xs text-[var(--text-secondary)] font-mono"
+                )
 
 
 def _toolbar_button(

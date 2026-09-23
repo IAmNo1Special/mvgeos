@@ -31,6 +31,7 @@ from mvgeos_core.constants import (
     DEFAULT_RUNE_PATHS,
     DEFAULT_SESSION_DIR,
     DEFAULT_TOME_DIR,
+    PROJECT_RUNE_PATH,
     resolve_extension_paths,
     resolve_rune_paths,
 )
@@ -133,6 +134,7 @@ __all__ = [
     "GEN_AI_AGENT_NAME",
     "GEN_AI_CONVERSATION_ID",
     "GEN_AI_OPERATION_NAME",
+    "PROJECT_RUNE_PATH",
     "GEN_AI_REQUEST_MAX_TOKENS",
     "GEN_AI_REQUEST_MODEL",
     "GEN_AI_REQUEST_TEMPERATURE",

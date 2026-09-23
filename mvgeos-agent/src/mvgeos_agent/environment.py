@@ -349,6 +349,7 @@ def coerce_agent_config(
     agent_name: str = DEFAULT_AGENT_NAME,
     extension_dir: str | None = None,
     runes_paths: Sequence[str] | None = None,
+    project_dir: Path | str | None = None,
 ) -> AgentConfig:
     """Coerces raw resolved config mapping into a validated AgentConfig."""
 
@@ -445,7 +446,9 @@ def coerce_agent_config(
         if rune_paths_config:
             coerced_runes_paths = [Path(str(p)).expanduser() for p in rune_paths_config]
         else:
-            coerced_runes_paths = resolve_rune_paths(agent_name, extension_dir)
+            coerced_runes_paths = resolve_rune_paths(
+                agent_name, extension_dir, project_dir=project_dir
+            )
 
     return AgentConfig(
         model_id=model_id,
@@ -536,6 +539,7 @@ class MvgeEnvironment:
             agent_name=agent_name,
             extension_dir=extension_dir,
             runes_paths=runes_paths,
+            project_dir=project_dir,
         )
 
         resolved_prompt_inputs: dict[str, Any] = {

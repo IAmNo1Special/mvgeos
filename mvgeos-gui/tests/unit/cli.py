@@ -1,5 +1,6 @@
 """Unit tests for mvgeos-gui CLI entry point and argument parsing."""
 
+import inspect
 import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -270,7 +271,8 @@ def test_shutdown_thread_excepthook() -> None:
 
 @patch("mvgeos_gui.main.ui.run")
 @patch("mvgeos_gui.main.app.on_shutdown")
-def test_main_registers_shutdown_cleanup(
+@pytest.mark.asyncio
+async def test_main_registers_shutdown_cleanup(
     mock_on_shutdown: MagicMock, mock_ui_run: MagicMock
 ) -> None:
     """Verify main registers cleanup on shutdown that clears listeners."""
@@ -278,8 +280,11 @@ def test_main_registers_shutdown_cleanup(
         main()
         mock_on_shutdown.assert_called_once()
         cleanup_cb = mock_on_shutdown.call_args[0][0]
+        # The cleanup is a coroutine: NiceGUI awaits async on_shutdown
+        # handlers in App.stop() before uvicorn cancels pending tasks.
+        assert inspect.iscoroutinefunction(cleanup_cb)
         # Calling cleanup callback shouldn't raise
-        cleanup_cb()
+        await cleanup_cb()
 
 
 @patch("mvgeos_gui.main.ui.run")

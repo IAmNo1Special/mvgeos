@@ -5,6 +5,134 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.8] - 2026-09-23
+
+
+### Bug Fixes
+
+- **runes:** tolerate vanishing stale bytecode with unlink(missing_ok=True) (adfbce9)
+
+- **runes:** bound RuneWatcher.stop() join; resolve watch target to absolute (819e01e)
+
+- **agent:** robust rune lifecycle shutdown; backoff between retired-shutdown retries (e600251)
+
+- **agent:** catch all audit-append failures in reload audit (af8a7fa)
+
+- **agent:** preserve pending reload when the turn-boundary drain fails (da1d09d)
+
+- **agent:** report queued reload as RELOAD_QUEUED, not RELOADED (6eb648f)
+
+- **runes:** ignore root-level audit files in the rune watcher (41bcdd9)
+
+- **runes:** cancel pending debounce on watcher stop (d4ab9ea)
+
+- **agent:** serialize concurrent reload() executions with a lock (5596add)
+
+- **agent:** replace (not merge) rune-owned providers on successful reload (c390619)
+
+- **gui:** close out GUI reload defects 1-7 and polish notes a-e (9646cd4)
+
+- **runes:** anchor project rune path to project directory (d4d21db)
+
+- **gui:** suggest installed rune slash commands in chat autocomplete (62f1570)
+
+- **gui:** scan lowercase skill.md manifests in skill discovery (f62faa7)
+
+- **windows:** normalize paths and isolate config in CI (4336c1e)
+
+- **windows:** resolve handler extensions dir at construction (ea4c518)
+
+- **runes:** tolerate locked bytecode file during concurrent loads (59085bc)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (2452915)
+
+- **ci:** re-trigger crossplatform tests (ec6b8ca)
+
+- **ci:** temporary faulthandler probe for macos hang (f52a7ee)
+
+- **release:** v0.5.8 (43be09a)
+
+
+### Tests
+
+- **runes:** red regression for cross-home rune loading (item 1, UNRESOLVED) (69c0c4b)
+
+- **gui:** isolate OS keyring behind in-memory fake in GUI tests (64078fc)
+
+
+### Style
+
+- **agent:** ruff format collapse in rune_lifecycle shutdown (6f02ea7)
+
+
+## [0.5.7] - 2026-09-22
+
+
+### Bug Fixes
+
+- **gui,agent:** route dynamic slash commands through the GUI dispatcher (5e28b7d)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (7ba00e9)
+
+- **release:** v0.5.7 (e57a3b4)
+
+
+### Tests
+
+- **coverage:** cover auth, rune loader, skill installer, entry points, and settings dialog (c342838)
+
+
+## [0.5.6] - 2026-09-21
+
+
+### Bug Fixes
+
+- **cli:** harden approval-mode help test against colored output (61c84ca)
+
+- **gui:** center send/stop button and align attach with model picker (1335caa)
+
+- **gui:** drop stale test for removed open_in_editor() (17e136d)
+
+- **cli:** skip PTY approval tests where pty is unavailable (0d2b49c)
+
+- **ci:** make Windows suite green (46bfe9d)
+
+- **gui:** detect @-mention index renames on Windows (825b1cf)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (3533b48)
+
+- **release:** v0.5.6 (6502a38)
+
+
+### Features
+
+- **attachments:** send files as native OpenRouter content parts (429a245)
+
+
+### Tests
+
+- **gui:** fix defective theme tests and pin native chrome theming (b7eb647)
+
+
+### Merge
+
+- approval gate, CLI and GUI presenters onto main (96b21ac)
+
+
+### Style
+
+- **agent:** apply ruff formatting to attachment content handling (eff48ef)
+
+
 ## [0.5.5] - 2026-09-20
 
 

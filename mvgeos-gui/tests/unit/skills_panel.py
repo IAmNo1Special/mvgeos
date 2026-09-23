@@ -5,10 +5,14 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from nicegui import ui
+from nicegui import context, ui
+from nicegui.elements.input import Input
 from nicegui.testing import User
 
-from mvgeos_gui.components.skills_panel import render_skills_panel
+from mvgeos_gui.components.skills_panel import (
+    _render_install_dialog,
+    render_skills_panel,
+)
 from mvgeos_gui.models import SkillInfo
 from mvgeos_gui.state import AppState
 
@@ -164,3 +168,46 @@ async def test_skills_panel_empty_states_guide_next_steps(user: User) -> None:
     await user.should_see("Install Skill")
     await user.should_see("No additional skills found")
     await user.should_see("Discovered skills appear here")
+
+
+# ---------------------------------------------------------------------------
+# Install Skill dialog: floating label / placeholder overlap
+# ---------------------------------------------------------------------------
+
+
+def _inputs_with_label_placeholder_overlap(client: object) -> list[str]:
+    """Names of inputs that set both a floating label and a placeholder.
+
+    Reads the element prop mapping directly: NiceGUI's public prop getter
+    (``get_computed_prop``) requires live browser JavaScript and is
+    unusable in the in-process test harness, so this is the narrowest
+    hook that detects the overlap regression.
+    """
+    elements = getattr(client, "elements", {})
+    bad: list[str] = []
+    for element in elements.values():
+        if isinstance(element, Input):
+            props = element._props  # noqa: SLF001 - no public sync accessor
+            if props.get("label") and props.get("placeholder"):
+                bad.append(str(props.get("label")))
+    return bad
+
+
+@pytest.mark.asyncio
+async def test_install_dialog_inputs_avoid_label_placeholder_overlap(
+    user: User,
+) -> None:
+    """Install Skill inputs must use caption labels, not floating+placeholder."""
+    state = AppState()
+    captured: dict[str, object] = {}
+
+    @ui.page("/test_install_dialog_no_overlap")
+    def page() -> None:
+        _render_install_dialog(state, MagicMock())
+        captured["client"] = context.client
+
+    await user.open("/test_install_dialog_no_overlap")
+    assert captured["client"] is not None
+    assert _inputs_with_label_placeholder_overlap(captured["client"]) == []
+    await user.should_see("Git URL or local path")
+    await user.should_see("Name (optional)")

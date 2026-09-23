@@ -4,7 +4,6 @@ import argparse
 import asyncio
 import contextlib
 import ctypes
-import importlib.metadata
 import importlib.util
 import logging
 import os
@@ -17,6 +16,7 @@ from types import ModuleType
 
 from nicegui import app, ui
 
+from mvgeos_gui import __version__
 from mvgeos_gui.app import init_app
 from mvgeos_gui.core.logging import install_crash_handlers, setup_logging
 from mvgeos_gui.services.config_service import ConfigService
@@ -242,14 +242,6 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
-def _gui_version() -> str:
-    """Return the installed mvgeos-gui version, or "unknown"."""
-    try:
-        return importlib.metadata.version("mvgeos-gui")
-    except importlib.metadata.PackageNotFoundError:
-        return "unknown"
-
-
 def main() -> None:
     """Main entry point function for mvgeos-gui console script."""
     args = parse_args()
@@ -262,7 +254,7 @@ def main() -> None:
     logger.info(
         "mvgeos-gui starting pid=%d version=%s mode=%s host=%s port=%d project=%s",
         os.getpid(),
-        _gui_version(),
+        __version__,
         "web" if args.web else "native",
         args.host,
         args.port,
@@ -307,11 +299,22 @@ def main() -> None:
 
             app.on_startup(_apply_dark_titlebar)
 
-    def _cleanup() -> None:
+    _cleanup_done = False
+
+    async def _cleanup() -> None:
+        nonlocal _cleanup_done
+        if _cleanup_done:
+            return
+        _cleanup_done = True
         logger.info("mvgeos-gui shutdown initiated")
         # Fail closed for every connected client: pending approval casts
-        # are denied, agent tasks cancelled, UI listeners dropped.
-        server.shutdown()
+        # are denied, agent tasks cancelled, UI listeners dropped, and
+        # each cached agent's close is awaited so rune watchers are
+        # guaranteed stopped. Async on_shutdown handlers are awaited by
+        # NiceGUI's App.stop() before uvicorn cancels pending tasks, so
+        # this must be a coroutine -- a sync handler that only scheduled
+        # background closes would be cancelled before they ran.
+        await server.ashutdown()
 
     app.on_shutdown(_cleanup)
 
@@ -339,7 +342,13 @@ def main() -> None:
             # sys.excepthook + atexit handlers then record the shutdown).
             logger.exception("mvgeos-gui server crashed with an uncaught exception")
             raise
-    _cleanup()
+    # Safety net: if the on_shutdown handlers never ran (ui.run raised
+    # before lifespan shutdown, or a non-lifespan exit path), close the
+    # cached agents on a fresh loop. Best-effort: failures are logged,
+    # never raised. The flag keeps this from running twice.
+    if not _cleanup_done:
+        with contextlib.suppress(Exception):
+            asyncio.run(_cleanup())
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -419,6 +420,34 @@ async def test_reload_queues_while_turn_in_flight(
 
 
 @pytest.mark.asyncio
+async def test_turn_boundary_reload_failure_keeps_request_pending(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If the drained reload raises unexpectedly at the turn boundary, the
+    pending flag is preserved: the request is not silently dropped."""
+    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    realm = _BlockingRealm()
+    agent = _make_agent(tmp_path, monkeypatch, realm=realm)
+    await agent.initialize()
+    try:
+
+        async def _boom() -> ReloadResult:
+            raise RuntimeError("reload exploded")
+
+        monkeypatch.setattr(agent, "reload", _boom)
+        turn = asyncio.create_task(agent.run("hello"))
+        await asyncio.wait_for(realm.entered.wait(), timeout=5)
+        agent._reload_pending = True
+        realm.release.set()
+        await asyncio.wait_for(turn, timeout=10)
+        # The reload blew up at the boundary; the request must survive so
+        # the next turn boundary retries it instead of losing it.
+        assert agent.reload_pending
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
 async def test_reload_requires_initialization(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -501,6 +530,30 @@ async def test_audit_write_failure_is_surfaced_not_silent(
         # §4.6 (normative): an audit append failure turns the result into
         # audit_failed (ok=False) — never a silent ok — and the message
         # states plainly that the reload IS live but unrecorded.
+        assert not result.ok
+        assert "audit_failed" in result.message
+        assert "IS live" in result.message
+        assert any("audit" in d.message.lower() for d in agent.diagnostics)
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
+async def test_audit_write_unexpected_error_is_surfaced_not_silent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A non-OSError audit failure (e.g. a serialization bug) is caught and
+    surfaced as an audit failure, not raised out of reload()."""
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        monkeypatch.setattr(
+            "mvgeos_runes.rune_audit.RuneAuditLog.append_event",
+            lambda self, record: (_ for _ in ()).throw(
+                ValueError("unserializable record")
+            ),
+        )
+        result = await agent.reload()
         assert not result.ok
         assert "audit_failed" in result.message
         assert "IS live" in result.message
@@ -670,6 +723,33 @@ async def test_retired_shutdown_failure_surfaces_in_audit(
         assert "stuck observer" in records[0]["retired_shutdown_error"]
         assert any("stuck observer" in d.message for d in agent.diagnostics)
     finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
+async def test_retired_shutdown_retries_back_off_between_attempts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The retired-shutdown attempts are spaced by a backoff delay instead of
+    firing back-to-back, so a transient teardown race gets a beat to settle."""
+    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    original_shutdown = RuneLifecycle.shutdown
+    try:
+
+        async def _always_fails(self: Any) -> None:
+            raise OSError("stuck observer")
+
+        monkeypatch.setattr(RuneLifecycle, "shutdown", _always_fails)
+        start = time.monotonic()
+        result = await agent.reload()
+        elapsed = time.monotonic() - start
+        assert result.ok
+        # Two gaps between three attempts.
+        assert elapsed >= 2 * mvge_module._RETIRED_SHUTDOWN_BACKOFF_SECONDS * 0.9
+    finally:
+        monkeypatch.setattr(RuneLifecycle, "shutdown", original_shutdown)
         await agent.close()
 
 
@@ -964,15 +1044,29 @@ async def test_reload_command_failure_is_error_action() -> None:
 
 
 @pytest.mark.asyncio
-async def test_reload_command_queued_is_reloaded_action() -> None:
+async def test_reload_command_queued_is_reload_queued_action() -> None:
+    """A queued reload is reported as queued, not as completed."""
     agent = MagicMock(spec=MvgeAgent)
     agent.reload = AsyncMock(
         return_value=ReloadResult(ok=True, queued=True, message="queued")
     )
     dispatcher = CommandDispatcher(agent)
     outcome = await dispatcher.dispatch("/reload")
-    assert outcome.action == CommandAction.RELOADED
+    assert outcome.action == CommandAction.RELOAD_QUEUED
     assert outcome.data["queued"] is True
+
+
+@pytest.mark.asyncio
+async def test_reload_command_completed_is_reloaded_action() -> None:
+    """An executed reload is still reported as RELOADED."""
+    agent = MagicMock(spec=MvgeAgent)
+    agent.reload = AsyncMock(
+        return_value=ReloadResult(ok=True, queued=False, message="done")
+    )
+    dispatcher = CommandDispatcher(agent)
+    outcome = await dispatcher.dispatch("/reload")
+    assert outcome.action == CommandAction.RELOADED
+    assert outcome.data["queued"] is False
 
 
 @pytest.mark.asyncio
@@ -1013,3 +1107,120 @@ async def test_engine_reload_wins_over_rune_command_named_reload() -> None:
     outcome = await dispatcher.dispatch("/reload")
     assert outcome.action == CommandAction.RELOADED
     agent.reload.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_reloads_do_not_interleave(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two concurrent reload() calls serialize: the second waits for the
+    in-progress execution instead of interleaving its build over the
+    shared provider registry."""
+    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        calls = 0
+        original_build = Mvge._build_reload_state
+
+        async def _gated_build(self: Mvge) -> Any:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                entered.set()
+                await release.wait()
+            return await original_build(self)
+
+        monkeypatch.setattr(Mvge, "_build_reload_state", _gated_build)
+        first = asyncio.create_task(agent.reload())
+        await asyncio.wait_for(entered.wait(), timeout=5)
+        second = asyncio.create_task(agent.reload())
+        # Give the second call a chance to start its build while the
+        # first is still gated: serialized, it must not.
+        await asyncio.sleep(0.2)
+        assert calls == 1
+        release.set()
+        first_result, second_result = await asyncio.gather(first, second)
+        assert first_result.ok
+        assert second_result.ok
+        # The second caller ran its own execution afterwards and got its
+        # own truthful outcome — one execution per caller, never
+        # interleaved.
+        assert calls == 2
+    finally:
+        await agent.close()
+
+
+_PROVIDER_KEYS_RUNE_PY = """\
+import json
+import os
+from pathlib import Path
+
+
+def _probe_factory(**kwargs):
+    raise AssertionError("probe factory must not be invoked in these tests")
+
+
+def rune_factory(api):
+    keys = json.loads(
+        Path(os.environ["PROBE_PROVIDER_KEYS"]).read_text(encoding="utf-8")
+    )
+    api.register_provider("probe-prov", keys)
+    api.register_realm_factory("probe:", _probe_factory)
+"""
+
+
+@pytest.mark.asyncio
+async def test_reload_replaces_provider_config_not_merges(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A successful reload replaces rune-owned provider configs: keys the
+    rune dropped must not survive through register_provider()'s
+    dict.update merge."""
+    keys_file = tmp_path / "provider_keys.json"
+    keys_file.write_text(json.dumps({"keep": "1", "drop": "2"}), encoding="utf-8")
+    monkeypatch.setenv("PROBE_PROVIDER_KEYS", str(keys_file))
+    _write_probe_rune(tmp_path, body=_PROVIDER_KEYS_RUNE_PY)
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        assert agent._provider_registry.get_provider_config("probe-prov") == {
+            "keep": "1",
+            "drop": "2",
+        }
+        keys_file.write_text(json.dumps({"keep": "1"}), encoding="utf-8")
+        result = await agent.reload()
+        assert result.ok
+        assert agent._provider_registry.get_provider_config("probe-prov") == {
+            "keep": "1"
+        }
+        # The rune's realm factory is re-registered from the candidate.
+        assert agent._provider_registry.get_realm_factory("probe:") is not None
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
+async def test_reload_removes_deleted_rune_providers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rune deleted from disk takes its provider registration and realm
+    factory with it on the next successful reload."""
+    keys_file = tmp_path / "provider_keys.json"
+    keys_file.write_text(json.dumps({"keep": "1"}), encoding="utf-8")
+    monkeypatch.setenv("PROBE_PROVIDER_KEYS", str(keys_file))
+    _write_probe_rune(tmp_path, body=_PROVIDER_KEYS_RUNE_PY)
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        assert "probe-prov" in agent.registered_providers
+        assert agent._provider_registry.get_realm_factory("probe:") is not None
+        shutil.rmtree(tmp_path / "runes" / "probe-rune")
+        result = await agent.reload()
+        assert result.ok
+        assert "probe-prov" not in agent.registered_providers
+        assert agent._provider_registry.get_realm_factory("probe:") is None
+    finally:
+        await agent.close()

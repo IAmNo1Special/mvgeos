@@ -37,7 +37,7 @@ def render_home_screen(state: AppState) -> None:
                 ui.icon("folder_open", size="18px").classes(
                     "text-[var(--accent-primary)] shrink-0"
                 )
-                project_name = state.project_path.name or str(state.project_path)
+                project_name = state.project_display_name
                 ui.label(project_name).classes(
                     "text-sm text-[var(--text-primary)] truncate font-medium"
                 )

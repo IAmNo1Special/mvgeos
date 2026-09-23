@@ -90,7 +90,7 @@ async def _assemble(
     from disk, and returns a serialisable RuntimeSnapshot. No API key
     or realm is required — this is a static introspection path.
     """
-    env = MvgeEnvironment.resolve(agent_name=agent_name)
+    env = MvgeEnvironment.resolve(agent_name=agent_name, project_dir=Path.cwd())
     agent: MvgeAgent | Mvge
     if agent_factory is not None:
         agent = agent_factory(

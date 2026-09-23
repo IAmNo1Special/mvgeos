@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import copy
 import dataclasses
@@ -46,7 +47,6 @@ from mvgeos_provider.model_registry import ModelRegistry
 from mvgeos_provider.registry import RealmRegistry, get_default_realm_registry
 from mvgeos_runes.codecs import load_session_codecs
 from mvgeos_runes.rune_audit import (
-    AuditError,
     RuneAuditLog,
     default_rune_ops_dir,
     utcnow,
@@ -193,6 +193,10 @@ _ProviderSnapshot = tuple[dict[str, dict[str, Any]], dict[str, RealmFactory]]
 
 _RETIRED_SHUTDOWN_ATTEMPTS = 3
 """How many times reload retries stopping the retired lifecycle's watchers."""
+
+_RETIRED_SHUTDOWN_BACKOFF_SECONDS = 0.25
+"""Delay between retired-shutdown attempts: a transient observer-teardown
+race may fail identically on immediate retry but succeed after a beat."""
 
 
 def _snapshot_provider_registrations(
@@ -446,6 +450,9 @@ class Mvge:
         # the in-flight turn keeps its LoopContext untouched.
         self._run_in_flight = False
         self._reload_pending = False
+        # Serializes reload() executions: concurrent callers must never
+        # interleave their builds over the shared provider registry.
+        self._reload_lock = asyncio.Lock()
         self._reload_diagnostics: list[Diagnostic | SkillDiagnostic] = []
         # Spell-gateway tracking: the rune name when the global spell
         # allowlist was engaged via a rune's ``spell_gateway`` manifest
@@ -654,6 +661,9 @@ class Mvge:
         else ``~/.agents/extensions/audit.jsonl``). A reload queued
         mid-turn is audited when it executes at the turn boundary, and
         concurrent queued requests coalesce into that single execution.
+        Concurrent direct calls serialize on a lock: the second caller
+        waits for the in-progress execution, then runs its own — builds
+        never interleave over the shared provider registry.
         A reload rejected before initialization performs no work and
         writes no record.
         """
@@ -671,6 +681,24 @@ class Mvge:
             return ReloadResult(
                 ok=False, message="Agent not initialized; nothing to reload."
             )
+        # Serialize executions: concurrent reload() calls must never
+        # interleave their builds over the shared provider registry —
+        # a failed build restores the registry snapshot, which would
+        # clobber a concurrent successful build. The mid-turn queue
+        # check and the pre-init rejection above stay outside the lock:
+        # they touch no shared build state. A second caller waits for
+        # the in-progress execution, then runs its own and receives
+        # its own truthful outcome.
+        async with self._reload_lock:
+            return await self._reload_locked()
+
+    async def _reload_locked(self) -> ReloadResult:
+        """Execute one reload; the caller holds ``self._reload_lock``.
+
+        Split out of :meth:`reload` so the lock wraps the whole
+        execution without re-indenting the body. Every return here is
+        an audited outcome of exactly one execution.
+        """
         # Provider registrations are the one shared-mutable step of the
         # build (rune factories re-execute against the shared registry):
         # snapshot first so any build failure rolls them back.
@@ -732,6 +760,8 @@ class Mvge:
                             "Retired rune watchers did not shut down "
                             "cleanly after reload"
                         )
+                    else:
+                        await asyncio.sleep(_RETIRED_SHUTDOWN_BACKOFF_SECONDS)
         if watcher_error is not None:
             # The swap succeeded — the new state IS live — but the
             # post-swap watcher handover failed. Per the §4.6 audit
@@ -1005,6 +1035,47 @@ class Mvge:
             gateway_rune=gateway_rune,
         )
 
+    def _commit_candidate_providers(
+        self,
+        live_runner: RuneRunner | None,
+        candidate_runner: RuneRunner,
+    ) -> None:
+        """Replace rune-owned provider registrations with the candidate's exact state.
+
+        ``RealmRegistry.register_provider()`` merges configs (``dict.update``),
+        so a successful reload must *replace* — not merge — the entries the
+        candidate build touched, and drop entries whose rune is gone.
+        Ownership is determined from the runners: names registered on the
+        live or candidate runner are rune-owned; anything else in the
+        registry is unrelated non-rune state and is left alone.
+        """
+        registry = self._provider_registry
+        candidate_providers = candidate_runner.get_registered_providers()
+        candidate_factories = candidate_runner.get_registered_realm_factories()
+        live_provider_names = (
+            set(live_runner.get_registered_providers())
+            if live_runner is not None
+            else set()
+        )
+        live_factory_prefixes = (
+            set(live_runner.get_registered_realm_factories())
+            if live_runner is not None
+            else set()
+        )
+        for name, config in candidate_providers.items():
+            # Replace, not merge: keys the rune dropped must not survive.
+            registry.unregister_provider(name)
+            registry.register_provider(name, dict(config))
+        for name in live_provider_names - set(candidate_providers):
+            # The providing rune is gone; its registration must not survive.
+            registry.unregister_provider(name)
+        for prefix, factory in candidate_factories.items():
+            # Realm factories already replace on register; re-register to
+            # make the candidate's factory the live one.
+            registry.register_realm_factory(prefix, factory)
+        for prefix in live_factory_prefixes - set(candidate_factories):
+            registry.unregister_realm_factory(prefix)
+
     def _apply_reload_state(self, rebuilt: _ReloadedState) -> RuneLifecycle | None:
         """Swap in validated reload state.
 
@@ -1026,6 +1097,7 @@ class Mvge:
             # A genuine candidate: swap the runner with its wiring and
             # retire the old lifecycle. (Without a candidate lifecycle the
             # live runner stays exactly as it was.)
+            self._commit_candidate_providers(self._runner, rebuilt.runner)
             self._runner = rebuilt.runner
             self._runner.on_event(
                 "mvge_event",
@@ -1070,8 +1142,12 @@ class Mvge:
         )
         try:
             RuneAuditLog(default_rune_ops_dir()).append_event(record)
-        except (AuditError, OSError) as exc:
-            return f"audit append failed: {exc}"
+        except Exception as exc:
+            # Audit failure is never silent and never fatal to the reload:
+            # log it loudly and return a description so the caller turns the
+            # result into a diagnosed audit_failed outcome.
+            logger.exception("Reload audit append failed")
+            return f"audit append failed: {type(exc).__name__}: {exc}"
         return None
 
     @property
@@ -1502,12 +1578,16 @@ class Mvge:
             self._run_in_flight = False
             if self._reload_pending:
                 # Turn boundary: the in-flight turn kept its LoopContext;
-                # the queued reload applies now.
-                self._reload_pending = False
+                # the queued reload applies now. The flag clears only after
+                # reload() returns an audited outcome — if it raises, the
+                # request stays pending so the next boundary retries it
+                # instead of silently dropping it.
                 try:
                     await self.reload()
                 except Exception:
                     logger.exception("Queued reload failed at turn boundary")
+                else:
+                    self._reload_pending = False
 
     def _make_stream_fn(
         self,
