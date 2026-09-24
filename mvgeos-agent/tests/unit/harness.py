@@ -340,6 +340,55 @@ class TestMvgeHarnessExecution:
         assert len(state.invocations) == 2
 
     @pytest.mark.asyncio
+    async def test_parts_prompt_reaches_realm_untouched(self, state: MvgeState) -> None:
+        """A content-parts user prompt rides the harness-to-realm path intact.
+
+        Regression: the native attachment blocks the GUI builds must arrive
+        at stream_fn as the same list of blocks, never coerced to a string.
+        """
+        parts = [
+            {"type": "text", "text": "describe this"},
+            {
+                "type": "image_url",
+                "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="},
+            },
+        ]
+        state.invocations = [SummonerRequest(role="user", content=parts)]
+
+        seen: list[list[Any]] = []
+
+        def stream_fn(
+            invocations: list[Any], signal: Any | None = None
+        ) -> AsyncIterator[RealmResponse]:
+            seen.append(invocations)
+
+            async def gen() -> AsyncIterator[RealmResponse]:
+                yield RealmResponse(
+                    model=Model(
+                        id="test-model",
+                        name="Test Model",
+                        realm="test",
+                        base_url="https://api.test.com",
+                        api_key="k",
+                    ),
+                    invocation=MvgeResponse(
+                        role="assistant",
+                        content=[{"type": "text", "text": "done"}],
+                        stop_reason=StopReason.STOP,
+                    ),
+                )
+
+            return gen()
+
+        harness = MvgeHarness(state=state)
+        await harness.run(stream_fn, {"id": "test-model"}, "none")
+
+        assert seen, "stream_fn was never called"
+        user_msgs = [inv for inv in seen[0] if isinstance(inv, SummonerRequest)]
+        assert user_msgs, "no user invocation reached the realm"
+        assert user_msgs[0].content == parts
+
+    @pytest.mark.asyncio
     async def test_loop_with_spell_cast(
         self, state: MvgeState, mock_spell: MvgeSpell
     ) -> None:
