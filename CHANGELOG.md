@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-09-24
+
+
+### Bug Fixes
+
+- fix(gui): slash-command autocomplete emits exactly one leading slash
+Command sources disagree on the slash convention: CLI keys carry it (/help), rune manifests declare bare names (adr). Any slash-prefixed name fed through the old f"/{name}" construction produced //command. Normalize with _single_leading_slash at the registry ingestion boundary, the rune-manifest boundary in state, and the get_insertion_text insertion choke point. (e490ed0)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (7d62135)
+
+- **release:** v0.6.1 (6d38750)
+
+
 ## [0.6.0] - 2026-09-23
 
 
