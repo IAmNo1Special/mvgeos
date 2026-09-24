@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from mvgeos_gui.core.logging import (
+    SafeTimedRotatingFileHandler,
     get_logger,
     install_crash_handlers,
     setup_logging,
@@ -153,3 +154,57 @@ def test_install_crash_handlers_enables_faulthandler(
     monkeypatch.setenv("MVGEOS_LOG_DIR", str(tmp_path))
     install_crash_handlers()
     assert faulthandler.is_enabled()
+
+
+def test_faulthandler_does_not_lock_main_log_file(tmp_path: Path) -> None:
+    """faulthandler must not hold an open handle to the main log file so that
+    log rotation can rename it on Windows without sharing violation."""
+    script = (
+        "import logging, os\n"
+        "from mvgeos_gui.core.logging import (\n"
+        "    setup_logging, install_crash_handlers, _log_file\n"
+        ")\n"
+        "log = setup_logging()\n"
+        "install_crash_handlers(log)\n"
+        "log.info('message-before-rotation')\n"
+        "for h in logging.getLogger().handlers:\n"
+        "    h.close()\n"
+        "target = _log_file()\n"
+        "rotated = target.with_suffix('.rotated')\n"
+        "os.rename(target, rotated)\n"
+        "assert rotated.exists()\n"
+    )
+    proc = _run_crash_child(tmp_path, script)
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_safe_timed_rotating_handler_survives_external_lock(tmp_path: Path) -> None:
+    """When a log file is externally locked during rollover on Windows,
+    SafeTimedRotatingFileHandler catches the error, reopens the stream,
+    advances rolloverAt, and continues logging without dropping records."""
+    log_file = tmp_path / "test_safe.log"
+    handler = SafeTimedRotatingFileHandler(
+        log_file,
+        when="s",
+        interval=1,
+        backupCount=1,
+        encoding="utf-8",
+    )
+    logger = logging.getLogger("test_safe_resilience")
+    logger.handlers.clear()
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+    logger.info("line-1")
+    # Hold the file open externally to simulate Windows sharing violation
+    with open(log_file, "a", encoding="utf-8"):
+        import time
+
+        time.sleep(1.2)
+        # Rollover should trigger but fail due to lock; must not raise or drop
+        logger.info("line-2")
+    handler.close()
+
+    content = log_file.read_text(encoding="utf-8")
+    assert "line-1" in content
+    assert "line-2" in content

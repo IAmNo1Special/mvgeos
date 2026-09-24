@@ -38,3 +38,5 @@ learning_proposal.md
 *.db-shm
 *.db-wal
 .nicegui/
+*.log
+*.log.*

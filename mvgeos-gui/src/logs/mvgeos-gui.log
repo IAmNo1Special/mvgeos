@@ -1,4 +1,0 @@
-2026-09-21 06:54:57 | INFO     | mvgeos_gui | mvgeos-gui starting pid=47256 version=0.5.5 mode=web host=127.0.0.1 port=8012 project=/tmp/gaptest-project
-2026-09-21 07:01:54 | INFO     | mvgeos_gui | mvgeos-gui shutdown initiated
-2026-09-21 07:01:54 | WARNING  | mvgeos_gui | Received SIGTERM; shutting down
-2026-09-21 07:02:01 | INFO     | mvgeos_gui | mvgeos-gui starting pid=50699 version=0.5.5 mode=web host=127.0.0.1 port=8012 project=/tmp/gaptest-project

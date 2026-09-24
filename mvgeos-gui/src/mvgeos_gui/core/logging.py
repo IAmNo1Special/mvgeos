@@ -8,13 +8,15 @@ import logging
 import os
 import signal
 import sys
+import time
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from types import FrameType, TracebackType
-from typing import Any, TextIO
+from typing import Any, TextIO, override
 
 _LOG_DIR = "logs"
 _LOG_FILE = "mvgeos-gui.log"
+_CRASH_LOG_FILE = "mvgeos-gui-crash.log"
 _DEFAULT_LEVEL = "INFO"
 _LEVEL_ENV = "MVGEOS_LOG_LEVEL"
 
@@ -40,9 +42,38 @@ def _log_file() -> Path:
     return _log_dir() / _LOG_FILE
 
 
+def _crash_log_file() -> Path:
+    return _log_dir() / _CRASH_LOG_FILE
+
+
 def _resolve_level() -> int:
     env_level = os.environ.get(_LEVEL_ENV, _DEFAULT_LEVEL).upper()
     return getattr(logging, env_level, logging.INFO)
+
+
+class SafeTimedRotatingFileHandler(TimedRotatingFileHandler):
+    """TimedRotatingFileHandler resilient to file locking on Windows.
+
+    Standard TimedRotatingFileHandler raises OSError/PermissionError if
+    the target file is locked by an external reader, viewer, or indexer
+    during rotation on Windows. When an unhandled error occurs in doRollover,
+    logging drops all subsequent records and repeatedly crashes.
+    This subclass catches rotation errors, keeps the stream open, and
+    defers the next rollover attempt to the subsequent interval.
+    """
+
+    @override
+    def doRollover(self) -> None:
+        try:
+            super().doRollover()
+        except (PermissionError, OSError):
+            if self.stream is None and not self.delay:
+                self.stream = self._open()
+            current_time = int(time.time())
+            new_rollover_at = self.computeRollover(current_time)
+            while new_rollover_at <= current_time:
+                new_rollover_at += self.interval
+            self.rolloverAt = new_rollover_at
 
 
 def setup_logging(level: int | None = None) -> logging.Logger:
@@ -74,7 +105,7 @@ def setup_logging(level: int | None = None) -> logging.Logger:
         datefmt="%H:%M:%S",
     )
 
-    file_handler = TimedRotatingFileHandler(
+    file_handler = SafeTimedRotatingFileHandler(
         _log_file(),
         when="midnight",
         interval=1,
@@ -105,7 +136,7 @@ def install_crash_handlers(logger: logging.Logger | None = None) -> None:
 
     Installs, in order:
 
-    - faulthandler, dumping all-thread tracebacks into the GUI log file on
+    - faulthandler, dumping all-thread tracebacks into the crash log file on
       fatal signals (SIGSEGV, SIGABRT, SIGFPE, ...).
     - a ``sys.excepthook`` that logs uncaught exceptions with their
       tracebacks at CRITICAL, then chains to the default hook so the
@@ -135,15 +166,17 @@ def install_crash_handlers(logger: logging.Logger | None = None) -> None:
 
 
 def _install_faulthandler(log: logging.Logger) -> None:
-    """Point faulthandler at the GUI log file (stderr fallback)."""
+    """Point faulthandler at the crash log file (stderr fallback)."""
     global _faulthandler_stream
     if _faulthandler_stream is None:
         try:
-            _log_file().parent.mkdir(parents=True, exist_ok=True)
+            _crash_log_file().parent.mkdir(parents=True, exist_ok=True)
             # Intentionally long-lived: faulthandler writes to this fd on
-            # fatal signals for the life of the process.
+            # fatal signals for the life of the process. Kept separate from
+            # the rotating log file so rotation on Windows (os.rename) is
+            # never blocked by an open handle.
             _faulthandler_stream = open(  # noqa: SIM115
-                _log_file(), "a", encoding="utf-8"
+                _crash_log_file(), "a", encoding="utf-8"
             )
         except OSError as exc:
             log.warning("faulthandler falling back to stderr: %s", exc)

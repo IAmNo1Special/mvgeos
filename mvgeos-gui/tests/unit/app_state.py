@@ -2503,7 +2503,9 @@ def test_scan_skill_manifests_lowercase_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A skill with only lowercase skill.md is discovered (protocol casing)."""
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
     project = tmp_path / "proj"
     skills_dir = project / ".agents" / "skills"
     _make_skill_dir(skills_dir, "lower-skill", "skill.md")
@@ -2517,7 +2519,9 @@ def test_scan_skill_manifests_uppercase_preferred(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """SKILL.md wins when both casings exist."""
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
     project = tmp_path / "proj"
     skills_dir = project / ".agents" / "skills"
     s_dir = _make_skill_dir(skills_dir, "both-skill", "SKILL.md")
@@ -2536,7 +2540,9 @@ def test_scan_skill_manifests_neither_casing_skipped(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """No manifest file at all means not a skill: skipped."""
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
     project = tmp_path / "proj"
     skills_dir = project / ".agents" / "skills"
     (skills_dir / "empty-dir").mkdir(parents=True)
@@ -2550,7 +2556,9 @@ def test_scan_skill_manifests_uppercase_still_works(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Uppercase SKILL.md skills keep being discovered (regression)."""
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
     project = tmp_path / "proj"
     skills_dir = project / ".agents" / "skills"
     _make_skill_dir(skills_dir, "upper-skill", "SKILL.md")
