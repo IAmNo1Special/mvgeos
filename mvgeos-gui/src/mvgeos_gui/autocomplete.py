@@ -189,24 +189,44 @@ def fuzzy_filter(
     return [item for _, item in scored]
 
 
+def _single_leading_slash(name: str) -> str:
+    """Return *name* with exactly one leading slash.
+
+    Command sources disagree on the convention — CLI keys carry the slash,
+    rune manifests declare bare names — so normalize at every boundary
+    rather than trusting the input. Autocomplete must never produce
+    ``//command``.
+    """
+    return "/" + name.lstrip("/")
+
+
 class SlashCommandRegistry:
     """Provides slash commands from CLI defaults and rune-registered commands."""
 
     CLI_SLASH_COMMANDS: dict[str, str] = dict(SLASH_COMMANDS)
 
     def __init__(self, rune_commands: list[SlashCommandItem] | None = None) -> None:
-        self._rune_commands = list(rune_commands or [])
+        self._rune_commands = [
+            SlashCommandItem(
+                kind=item.kind,
+                name=_single_leading_slash(item.name),
+                description=item.description,
+                value=_single_leading_slash(item.value),
+            )
+            for item in (rune_commands or [])
+        ]
 
     def get_commands(self) -> list[SlashCommandItem]:
         """Return all available slash commands (CLI + rune)."""
         items: list[SlashCommandItem] = []
         for name, desc in self.CLI_SLASH_COMMANDS.items():
+            clean = _single_leading_slash(name)
             items.append(
                 SlashCommandItem(
                     kind=CommandKind.SLASH,
-                    name=name,
+                    name=clean,
                     description=desc,
-                    value=name,
+                    value=clean,
                 )
             )
         items.extend(self._rune_commands)
@@ -595,10 +615,10 @@ class AutocompleteService:
             if item.kind == MentionKind.FILE:
                 return f"@{item.value}"
             if self.mode == AutocompleteMode.COMMAND:
-                return f"/{item.label}"
+                return _single_leading_slash(item.label)
             return item.value
         if isinstance(item, SlashCommandItem):
-            return item.name
+            return _single_leading_slash(item.name)
         return ""
 
     def create_chip(self, item: object) -> MentionChip | None:

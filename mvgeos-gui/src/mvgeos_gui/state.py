@@ -646,7 +646,7 @@ class AppState:
             for command in commands:
                 if not isinstance(command, str) or not command:
                     continue
-                name = f"/{command}"
+                name = "/" + command.lstrip("/")
                 if name in cli_names or name in seen:
                     continue
                 seen.add(name)

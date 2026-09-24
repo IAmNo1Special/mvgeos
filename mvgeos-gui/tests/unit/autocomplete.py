@@ -854,3 +854,34 @@ def test_resume_listed_in_slash_autocomplete() -> None:
             )
         ]
         assert "/resume" in filtered, f"/resume missing for query {query!r}"
+
+
+# ---------------------------------------------------------------------------
+# Single leading slash invariant
+# ---------------------------------------------------------------------------
+
+
+def test_autocomplete_get_insertion_text_command_strips_extra_slashes() -> None:
+    service = _make_service()
+    item = SlashCommandItem(kind=CommandKind.SLASH, name="//help", value="//help")
+    assert service.get_insertion_text(item) == "/help"
+
+
+def test_autocomplete_get_insertion_text_slash_skill_strips_extra_slashes() -> None:
+    service = _make_service()
+    item = MentionItem(
+        kind=MentionKind.SKILL, label="/debug-skill", value="@debug-skill"
+    )
+    service.mode = AutocompleteMode.COMMAND
+    assert service.get_insertion_text(item) == "/debug-skill"
+
+
+def test_slash_command_registry_normalizes_extra_leading_slashes() -> None:
+    registry = SlashCommandRegistry(
+        rune_commands=[
+            SlashCommandItem(kind=CommandKind.RUNE, name="//adr", value="//adr"),
+        ]
+    )
+    names = [command.name for command in registry.get_commands()]
+    assert "//adr" not in names
+    assert "/adr" in names
