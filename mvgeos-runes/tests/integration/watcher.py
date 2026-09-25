@@ -168,7 +168,10 @@ class TestRuneReloadHandler:
             real_dir = Path(tmpdir) / "real"
             real_dir.mkdir()
             link_dir = Path(tmpdir) / "link"
-            link_dir.symlink_to(real_dir, target_is_directory=True)
+            try:
+                link_dir.symlink_to(real_dir, target_is_directory=True)
+            except OSError:
+                pytest.skip("Symlink creation requires elevated privileges on Windows")
             handler = _RuneReloadHandler(link_dir, AsyncMock())
 
             rune_dir = real_dir / "my_rune"

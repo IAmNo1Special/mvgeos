@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import platform
 import signal
 import sys
 import threading
@@ -140,7 +141,7 @@ class CliApprovalPresenter:
             return False
         if threading.current_thread() is not threading.main_thread():
             return False
-        if sys.platform == "win32":
+        if platform.system() == "Windows":
             return False
         try:
             self._stdin.fileno()

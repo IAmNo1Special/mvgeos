@@ -104,7 +104,7 @@ class RuneAuditLog:
             line = json.dumps(record, ensure_ascii=True, sort_keys=True) + "\n"
             with open(self.audit_path, "a", encoding="utf-8") as handle:
                 if fcntl is not None:
-                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined]
                 handle.write(line)
                 handle.flush()
                 os.fsync(handle.fileno())
