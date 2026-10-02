@@ -62,10 +62,15 @@ _Storage.clear = _safe_storage_clear
 
 @pytest.fixture(autouse=True)
 def isolate_tome_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Isolate tome storage directory to ensure hermetic test execution."""
+    """Isolate tome storage directory to ensure hermetic test execution.
+
+    Patches the resolver symbol the service calls rather than the
+    environment, so only tome storage moves and the other global-layer
+    paths the GUI resolves are untouched.
+    """
     tome_dir = tmp_path / "tomes"
     tome_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(_tome_svc, "DEFAULT_TOME_DIR", tome_dir)
+    monkeypatch.setattr(_tome_svc, "sessions_dir", lambda: tome_dir)
 
 
 @pytest.fixture(autouse=True)

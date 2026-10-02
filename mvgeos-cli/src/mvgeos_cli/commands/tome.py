@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import typer
-from mvgeos_core.constants import DEFAULT_TOME_DIR
+from mvgeos_core.constants import sessions_dir
 from mvgeos_runes.codecs import load_session_codecs
 from mvgeos_tome.handle import TomeHandleFactory
 from mvgeos_tome.types import (
@@ -41,7 +41,7 @@ def tome_callback(ctx: typer.Context) -> None:
 
 
 def get_tome_dir() -> Path:
-    tome_dir = DEFAULT_TOME_DIR
+    tome_dir = sessions_dir()
     tome_dir.mkdir(parents=True, exist_ok=True)
     return tome_dir
 

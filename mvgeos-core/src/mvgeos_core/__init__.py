@@ -27,8 +27,6 @@ from mvgeos_core.channel import (
 from mvgeos_core.constants import (
     DEFAULT_AGENT_NAME,
     DEFAULT_MODEL,
-    DEFAULT_SESSION_DIR,
-    DEFAULT_TOME_DIR,
     GLOBAL_DIR_ENV,
     PROJECT_RUNE_PATH,
     default_rune_paths,
@@ -36,6 +34,7 @@ from mvgeos_core.constants import (
     global_agents_dir,
     resolve_extension_paths,
     resolve_rune_paths,
+    sessions_dir,
 )
 from mvgeos_core.dispatcher import BatchResult, SpellDispatcher
 from mvgeos_core.errors import (
@@ -126,8 +125,6 @@ __all__ = [
     "ContentType",
     "DEFAULT_AGENT_NAME",
     "DEFAULT_MODEL",
-    "DEFAULT_SESSION_DIR",
-    "DEFAULT_TOME_DIR",
     "GLOBAL_DIR_ENV",
     "EmitSink",
     "EventBus",
@@ -193,5 +190,6 @@ __all__ = [
     "generate_spell_schema",
     "resolve_extension_paths",
     "resolve_rune_paths",
+    "sessions_dir",
     "run_loop",
 ]

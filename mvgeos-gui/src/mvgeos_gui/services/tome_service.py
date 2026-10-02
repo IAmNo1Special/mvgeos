@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from mvgeos_core.constants import DEFAULT_TOME_DIR
+from mvgeos_core.constants import sessions_dir
 from mvgeos_tome.handle import TomeHandleFactory
 from mvgeos_tome.types import TomeEntryType, TomeVersionError
 
@@ -56,7 +56,7 @@ class TomeService:
     """Service for indexing and managing Tomes within the GUI."""
 
     def __init__(self, tome_dir: Path | None = None) -> None:
-        self._tome_dir = tome_dir or DEFAULT_TOME_DIR
+        self._tome_dir = tome_dir or sessions_dir()
         self._tome_dir.mkdir(parents=True, exist_ok=True)
         self._factory = TomeHandleFactory(self._tome_dir)
 

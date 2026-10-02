@@ -10,6 +10,7 @@ from mvgeos_core.constants import (
     extensions_dir,
     global_agents_dir,
     resolve_rune_paths,
+    sessions_dir,
 )
 
 
@@ -50,6 +51,49 @@ def test_global_dir_override_relocates_user_layers(
 
     assert paths[0] == relocated / "extensions"
     assert paths[1] == relocated / "agents" / "test-agent" / "extensions"
+
+
+def test_sessions_dir_follows_the_global_layer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Tome storage relocates with the global layer.
+
+    Regression: this was a module-level constant evaluated at import time
+    from a literal ``~/.agents``, so the override moved the extensions and
+    the audit log but left session storage on the real home -- and, because
+    the value was frozen at import, setting the variable after startup did
+    nothing at all.
+    """
+    relocated = tmp_path / "relocated_agents"
+    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(relocated))
+
+    assert sessions_dir() == relocated / "sessions"
+
+
+def test_sessions_dir_defaults_to_home_agents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
+
+    assert sessions_dir() == Path("~/.agents/sessions").expanduser()
+
+
+def test_sessions_dir_reads_the_environment_at_call_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The override is honoured even when set after import.
+
+    The old constant could not satisfy this: it was resolved once, when
+    ``mvgeos_core.constants`` was first imported.
+    """
+    monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
+    before = sessions_dir()
+
+    relocated = tmp_path / "late_agents"
+    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(relocated))
+
+    assert sessions_dir() == relocated / "sessions"
+    assert sessions_dir() != before
 
 
 def test_project_layer_omitted_without_project_dir(

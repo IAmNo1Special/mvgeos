@@ -12,8 +12,17 @@ DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 #: write, which is what makes isolated runs possible.
 GLOBAL_DIR_ENV = "MVGEOS_GLOBAL_DIR"
 
-DEFAULT_SESSION_DIR = Path("~/.agents/sessions").expanduser()
-DEFAULT_TOME_DIR = DEFAULT_SESSION_DIR
+
+def sessions_dir() -> Path:
+    """Tome storage: ``<global>/sessions``.
+
+    A function rather than a module constant so the override is read when
+    it is needed, not frozen at import. The previous
+    ``DEFAULT_SESSION_DIR`` was resolved once during import and could not
+    be redirected afterwards.
+    """
+    return global_agents_dir() / "sessions"
+
 
 #: Project-layer rune directory, anchored to an explicit project directory
 #: at resolve time. Never resolved against the ambient working directory.

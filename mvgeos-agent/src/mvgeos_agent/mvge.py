@@ -26,7 +26,7 @@ from mvgeos_core.channel import (
 )
 from mvgeos_core.constants import (
     DEFAULT_AGENT_NAME,
-    DEFAULT_TOME_DIR,
+    sessions_dir,
 )
 from mvgeos_core.errors import MissingApiKeyError, TomeResumeError
 from mvgeos_core.event_bus import EventBus
@@ -393,9 +393,9 @@ class Mvge:
         self._custom_system_prompt = custom_system_prompt
         self._extension_dir = extension_dir
         self._tome_factory = tome_factory or self._default_tome_factory(
-            tome_dir or DEFAULT_TOME_DIR, resolved_runes_paths
+            tome_dir or sessions_dir(), resolved_runes_paths
         )
-        self._tome_dir = tome_dir or DEFAULT_TOME_DIR
+        self._tome_dir = tome_dir or sessions_dir()
         self._tome_resume = tome_resume
         self._provider_name = provider_name
         self._compaction_settings = compaction
