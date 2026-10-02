@@ -60,7 +60,7 @@ MVGEOS IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https:/
 - After code changes, run the full suite with coverage (full output, no tail)
 - Never run `uv run build` or `uv run test` unless requested
 - If you create or modify a test file, run it and iterate until it passes
-- **Use `;` (semicolon) to chain commands in PowerShell, not `&&`** — PowerShell does not support `&&`
+- **Shell chaining follows the host**: `&&` on POSIX shells; on Windows use `;` (`&&` needs PowerShell 7+). `MvgeEnvironment` injects the correct rule per platform at runtime, so do not hardcode one shell's syntax in prompts or code.
 
 ## Dependency Management
 

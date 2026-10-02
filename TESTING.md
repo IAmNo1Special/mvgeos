@@ -106,7 +106,7 @@ semantics — the cross-package test-shadowing failure the importlib mode
 exists to prevent. (Ruff is exempt: subpackages inherit via
 `extend = "../pyproject.toml"`.)
 
-```powershell
+```bash
 # Full suite with the coverage floor (bare run)
 uv run python -m pytest --cov
 

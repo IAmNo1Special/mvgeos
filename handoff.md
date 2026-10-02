@@ -65,8 +65,8 @@ All five capability layers are decoupled or verified decoupled. Remaining option
 - **Rune Naming**: `steering-bridge`, `okf-bridge`, `mcp-bridge`, `skills-bridge`, `adr-bridge`.
 - **OKF Path**: Strictly `.okf/` at project root per OKF spec (never `.agents/.okf/`).
 - **Standard at Boundary, Persona Inside**: Use protocol names (`~/.agents/extensions/`, `~/.agents/skills/`, wire standard JSON schemas) at external boundaries.
+- **Shell Syntax**: Follow the host shell. `&&` on POSIX; on Windows PowerShell use `;` (`&&` needs 7+). Branch on `sys.platform`, never hardcode one shell.
 - **Strictly ASCII Console Output**: Avoid Unicode characters (no checkmarks, crosses, arrows) on Windows cp1252. Use `OK:`, `FAIL:`, `ACTIVE:`, `SHADOWED:`.
-- **PowerShell Syntax**: Always chain commands with `;` (semicolon), never `&&`.
 - **Hermetic Testing**: Never read or write host `~/.agents` in tests; pass `global_dir` or isolate via `tmp_path`.
 - **Uncommitted Changes Rule**: Always commit before handoff.
 
