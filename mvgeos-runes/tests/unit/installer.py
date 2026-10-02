@@ -178,23 +178,68 @@ def test_install_rune_missing_manifest_raises_error(tmp_path: Path) -> None:
         install_rune(str(source_dir), target_dir=target_dir)
 
 
-def test_install_rune_executes_python_deps(tmp_path: Path) -> None:
+def test_install_rune_declares_python_deps_in_the_extensions_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Declared deps are added to the extensions project, not the caller's.
+
+    Regression: the installer shelled out to a bare ``uv add``, which
+    resolves against the current working directory, so installing a rune
+    rewrote the pyproject.toml and uv.lock of whatever project the user
+    was standing in.
+    """
     source_dir = tmp_path / "rune_with_deps"
     _create_mock_rune_dir(
         source_dir, "rune_with_deps", python_deps=["fastapi>=0.100.0", "pydantic>=2.0"]
+    )
+
+    global_dir = tmp_path / "global_agents"
+    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(global_dir))
+
+    target_dir = tmp_path / "extensions"
+    with patch("subprocess.run") as mock_subproc:
+        dest = install_rune(
+            str(source_dir),
+            target_dir=target_dir,
+            confirm_python_deps=True,
+        )
+
+    assert dest == target_dir / "rune_with_deps"
+    mock_subproc.assert_called_once_with(
+        [
+            "uv",
+            "add",
+            "--project",
+            str(global_dir / "extensions"),
+            "fastapi>=0.100.0",
+            "pydantic>=2.0",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_install_rune_installs_the_rune_without_touching_deps_by_default(
+    tmp_path: Path,
+) -> None:
+    """With no confirmation, the rune installs and the deps are skipped.
+
+    The manifest is authored by whoever published the rune, so its
+    python_deps is an instruction to fetch packages from PyPI. Nothing
+    runs without a yes.
+    """
+    source_dir = tmp_path / "rune_with_deps"
+    _create_mock_rune_dir(
+        source_dir, "rune_with_deps", python_deps=["fastapi>=0.100.0"]
     )
 
     target_dir = tmp_path / "extensions"
     with patch("subprocess.run") as mock_subproc:
         dest = install_rune(str(source_dir), target_dir=target_dir)
 
-    assert dest == target_dir / "rune_with_deps"
-    mock_subproc.assert_called_once_with(
-        ["uv", "add", "fastapi>=0.100.0", "pydantic>=2.0"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    assert (dest / "manifest.json").is_file()
+    mock_subproc.assert_not_called()
 
 
 def test_fetch_marketplace_runes_success() -> None:
@@ -468,18 +513,36 @@ def test_install_rune_marketplace_overwrite(tmp_path: Path) -> None:
         assert not (dest / "old.txt").exists()
 
 
-def test_install_rune_uv_add_install_failure(tmp_path: Path) -> None:
+def test_install_rune_survives_a_dependency_install_failure(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A failed dependency install still leaves a usable rune, and is reported.
+
+    The rune itself is already on disk, so the install has succeeded as
+    far as the rune is concerned; the dependency failure is a warning,
+    not a rollback. It used to be discarded entirely, leaving a rune that
+    failed at load with a bare ImportError pointing nowhere near the cause.
+    """
     source_dir = tmp_path / "dep_rune"
     _create_mock_rune_dir(source_dir, "dep_rune", python_deps=["failing-dep"])
 
     def fake_run(cmd: list[str], **kwargs: object) -> MagicMock:
         if cmd[:2] == ["uv", "add"]:
-            raise subprocess.CalledProcessError(1, cmd, output="error")
+            raise subprocess.CalledProcessError(1, cmd, stderr="resolution failed")
         return MagicMock(returncode=0)
 
-    with patch("subprocess.run", side_effect=fake_run):
-        dest = install_rune(str(source_dir), target_dir=tmp_path / "extensions")
-        assert (dest / "manifest.json").is_file()
+    with (
+        patch("subprocess.run", side_effect=fake_run),
+        caplog.at_level("WARNING"),
+    ):
+        dest = install_rune(
+            str(source_dir),
+            target_dir=tmp_path / "extensions",
+            confirm_python_deps=True,
+        )
+
+    assert (dest / "manifest.json").is_file()
+    assert "failing-dep" in caplog.text
 
 
 def test_uninstall_rune_rejects_traversal_name(tmp_path: Path) -> None:

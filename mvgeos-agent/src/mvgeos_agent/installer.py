@@ -8,12 +8,12 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any
 
 import httpx
+from mvgeos_runes.deps import confirm_python_deps_install
 
 logger = logging.getLogger(__name__)
 
@@ -107,40 +107,6 @@ def _local_marketplace_candidate(subpath: str) -> Path | None:
             if cand.is_dir():
                 return cand
     return None
-
-
-def _confirm_python_deps_install(deps: list[str], *, confirm: bool | None) -> bool:
-    """Decide whether to run ``uv add`` for manifest-declared deps.
-
-    Args:
-        deps: The dependency specifiers from the manifest.
-        confirm: ``True`` installs without prompting, ``False`` skips,
-            ``None`` (default) prompts interactively and fails closed
-            (skips) when stdin is not a TTY.
-
-    Returns:
-        True when the dependencies should be installed.
-    """
-    if confirm is True:
-        return True
-    if confirm is False:
-        logger.info("Skipping python dependency install (confirm_python_deps=False).")
-        return False
-    if not sys.stdin.isatty():
-        logger.warning(
-            "Non-interactive session: skipping install of unreviewed python "
-            "dependencies %s. Re-run with confirm_python_deps=True to install.",
-            deps,
-        )
-        return False
-    print("The mvge manifest declares the following python dependencies:")  # noqa: T201
-    for dep in deps:
-        print(f"  - {dep}")  # noqa: T201
-    try:
-        answer = input("Install them with 'uv add'? [y/N] ").strip().lower()
-    except EOFError:
-        return False
-    return answer in ("y", "yes")
 
 
 def _fetch_marketplace_data(
@@ -436,7 +402,7 @@ def install_mvge(
         if python_deps and isinstance(python_deps, list):
             deps = [str(d) for d in python_deps if str(d).strip()]
             if deps:
-                if _confirm_python_deps_install(deps, confirm=confirm_python_deps):
+                if confirm_python_deps_install(deps, confirm=confirm_python_deps):
                     subprocess.run(
                         ["uv", "add", *deps],
                         check=True,

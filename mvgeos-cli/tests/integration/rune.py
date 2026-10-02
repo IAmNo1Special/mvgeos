@@ -27,7 +27,22 @@ def test_rune_install_success() -> None:
         result = runner.invoke(app, ["rune", "install", "sample-rune"])
         assert result.exit_code == 0
         assert "Successfully installed rune 'sample-rune'" in result.output
-        mock_install.assert_called_once_with("sample-rune")
+        # Declared deps are opt-in: the manifest is authored by whoever
+        # published the rune, so installing its packages is not implied by
+        # installing the rune.
+        mock_install.assert_called_once_with("sample-rune", confirm_python_deps=False)
+
+
+def test_rune_install_confirms_python_deps_when_asked() -> None:
+    with patch(
+        "mvgeos_cli.commands.rune.install_rune",
+        return_value=Path("/tmp/extensions/sample-rune"),
+    ) as mock_install:
+        result = runner.invoke(
+            app, ["rune", "install", "sample-rune", "--confirm-python-deps"]
+        )
+        assert result.exit_code == 0
+        mock_install.assert_called_once_with("sample-rune", confirm_python_deps=True)
 
 
 def test_rune_install_failure() -> None:

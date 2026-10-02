@@ -20,10 +20,19 @@ def rune_callback(ctx: typer.Context) -> None:
 @rune_app.command("install")
 def rune_install(
     spec: str = typer.Argument(..., help="Rune name from marketplace or Git URL"),
+    confirm_python_deps: bool = typer.Option(
+        False,
+        "--confirm-python-deps",
+        help=(
+            "Install the rune's declared python_deps without prompting. "
+            "A manifest is authored by whoever published the rune, so its "
+            "dependencies are an instruction to fetch packages from PyPI."
+        ),
+    ),
 ) -> None:
     """Install an extension rune from the marketplace or a Git URL."""
     try:
-        dest = install_rune(spec)
+        dest = install_rune(spec, confirm_python_deps=confirm_python_deps)
         console.print(f"[green]Successfully installed rune '{spec}' to {dest}[/green]")
     except Exception as exc:
         console.print(format_error(exc))

@@ -14,6 +14,8 @@ from typing import Any
 import httpx
 from mvgeos_core.constants import extensions_dir, global_agents_dir
 
+from mvgeos_runes.deps import install_python_deps
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_MARKETPLACE_URL = (
@@ -313,6 +315,7 @@ def install_rune(
     source: str,
     target_dir: Path | None = None,
     marketplace_url: str = DEFAULT_MARKETPLACE_URL,
+    confirm_python_deps: bool | None = None,
 ) -> Path:
     """Install an extension rune from local path, Git repository, or marketplace."""
     stripped_source = source.strip()
@@ -404,21 +407,11 @@ def install_rune(
 
     # The manifest was already validated from the staged source; dest carries
     # an identical copy.
-    manifest_path = dest / "manifest.json"
-    try:
-        with manifest_path.open("r", encoding="utf-8-sig") as f:
-            manifest_data = json.load(f)
-        python_deps = manifest_data.get("python_deps")
-        if python_deps and isinstance(python_deps, list):
-            deps = [str(d) for d in python_deps if str(d).strip()]
-            if deps:
-                subprocess.run(
-                    ["uv", "add", *deps],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
-        pass
+    install_python_deps(
+        [],
+        env_project=extensions_dir(),
+        manifest_path=dest / "manifest.json",
+        confirm=confirm_python_deps,
+    )
 
     return dest
