@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-10-02
+
+
+### Bug Fixes
+
+- **gui:** resolve log rotation PermissionError on Windows (096a2e3)
+
+- **typing:** satisfy Windows mypy strict checks and skip unprivileged symlink test (399e509)
+
+- make the strict typecheck and unit suite pass on POSIX hosts (73694e3)
+
+- **core:** resolve the global .agents layer through one canonical function (ca3ca33)
+
+- **gui:** stop the rollover skip guard from breaking Windows collection (6117db7)
+
+
+### Build System
+
+- **root:** pin the workspace interpreter to Python 3.13 (65efdba)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (b944d4b)
+
+- **deps:** bump python-dotenv from 1.2.2 to 1.2.3 (5e40829)
+
+- **deps:** bump portalocker from 4.3.2 to 4.4.0 (4798406)
+
+- **release:** v0.6.2 (836b7da)
+
+
+### Documentation
+
+- **root:** correct shell-chaining guidance for non-PowerShell hosts (68eb9fe)
+
+
+### Features
+
+- **runes:** install declared deps into a shared extensions environment (5d41f5b)
+
+- **cli:** add rune uninstall (03756b3)
+
+
+### Refactoring
+
+- **benchmarks:** remove live evaluation benchmarks and related files (c4c8d34)
+
+
+### Tests
+
+- **agent:** prove content-parts prompts reach the realm untouched (b452852)
+
+- **root:** stop the suite from inheriting real credentials (ff68c3c)
+
+
 ## [0.6.1] - 2026-09-24
 
 
