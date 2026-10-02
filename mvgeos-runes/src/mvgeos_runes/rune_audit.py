@@ -32,14 +32,32 @@ import os
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, cast
 
+
+class _Fcntl(Protocol):
+    """The slice of the POSIX ``fcntl`` module this log depends on."""
+
+    LOCK_EX: int
+
+    def flock(self, fd: int, operation: int) -> None: ...
+
+
+_fcntl_module: Any
 try:
-    import fcntl
+    import fcntl as _mod
 except ImportError:  # pragma: no cover - Windows
-    fcntl = None  # type: ignore[assignment]
+    _fcntl_module = None
+else:
+    _fcntl_module = _mod
+
+# Typed through a Protocol so the Windows None fallback and the real module
+# both satisfy mypy strict on either platform without a platform-conditional
+# ignore comment (which strict mode flags as unused on the other one).
+_FCNTL: _Fcntl | None = cast("_Fcntl | None", _fcntl_module)
 
 AUDIT_DIRNAME = "extensions"
+
 AUDIT_FILENAME = "audit.jsonl"
 DEFAULT_MAX_BYTES = 25 * 1024 * 1024
 DEFAULT_MAX_AGE_DAYS = 30
@@ -103,8 +121,8 @@ class RuneAuditLog:
             self._maybe_rotate()
             line = json.dumps(record, ensure_ascii=True, sort_keys=True) + "\n"
             with open(self.audit_path, "a", encoding="utf-8") as handle:
-                if fcntl is not None:
-                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined]
+                if _FCNTL is not None:
+                    _FCNTL.flock(handle.fileno(), _FCNTL.LOCK_EX)
                 handle.write(line)
                 handle.flush()
                 os.fsync(handle.fileno())

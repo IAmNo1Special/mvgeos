@@ -178,6 +178,10 @@ def test_faulthandler_does_not_lock_main_log_file(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
 
 
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="POSIX has no sharing violation; an open file does not block rename",
+)
 def test_safe_timed_rotating_handler_survives_external_lock(tmp_path: Path) -> None:
     """When a log file is externally locked during rollover on Windows,
     SafeTimedRotatingFileHandler catches the error, reopens the stream,
@@ -208,3 +212,46 @@ def test_safe_timed_rotating_handler_survives_external_lock(tmp_path: Path) -> N
     content = log_file.read_text(encoding="utf-8")
     assert "line-1" in content
     assert "line-2" in content
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits required")
+@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses directory permission bits")
+def test_safe_timed_rotating_handler_survives_failed_rollover(tmp_path: Path) -> None:
+    """When rollover cannot rename the log file, SafeTimedRotatingFileHandler
+    keeps both records in the active file instead of dropping them.
+
+    POSIX counterpart to the Windows sharing-violation case: a non-writable
+    parent directory makes rename() fail with PermissionError for a non-root
+    user, which is the same failure mode the handler exists to absorb.
+    """
+    log_file = tmp_path / "test_safe.log"
+    handler = SafeTimedRotatingFileHandler(
+        log_file,
+        when="s",
+        interval=1,
+        backupCount=1,
+        encoding="utf-8",
+    )
+    logger = logging.getLogger("test_safe_resilience_ro")
+    logger.handlers.clear()
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+    logger.info("line-1")
+    # Deny writes in the log directory so rollover's rename raises
+    os.chmod(tmp_path, 0o555)
+    try:
+        import time
+
+        time.sleep(1.2)
+        # Rollover should trigger but fail; must not raise or drop
+        logger.info("line-2")
+    finally:
+        handler.close()
+        os.chmod(tmp_path, 0o755)
+
+    content = log_file.read_text(encoding="utf-8")
+    assert "line-1" in content
+    assert "line-2" in content
+    # The deferred rollover must not leave a backup behind
+    assert not (tmp_path / "test_safe.log.1").exists()
