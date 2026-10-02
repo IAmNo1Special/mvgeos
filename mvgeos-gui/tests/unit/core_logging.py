@@ -214,8 +214,25 @@ def test_safe_timed_rotating_handler_survives_external_lock(tmp_path: Path) -> N
     assert "line-2" in content
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits required")
-@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses directory permission bits")
+def _permission_bits_unusable() -> bool:
+    """True where a non-writable directory will not make rename() fail.
+
+    The test needs permission bits that actually deny a write. Windows has
+    none -- ``os.geteuid`` does not exist there -- and a root process
+    bypasses them where they do. Written without a ``sys.platform`` branch
+    so the condition stays evaluable under ``mypy --platform win32``, where a
+    platform comparison is statically decidable and would trip
+    warn_unreachable. ``getattr`` also keeps this importable on Windows, where
+    decorators are evaluated at collection time.
+    """
+    geteuid = getattr(os, "geteuid", None)
+    return geteuid is None or geteuid() == 0
+
+
+@pytest.mark.skipif(
+    _permission_bits_unusable(),
+    reason="POSIX permission bits required; Windows has none and root bypasses them",
+)
 def test_safe_timed_rotating_handler_survives_failed_rollover(tmp_path: Path) -> None:
     """When rollover cannot rename the log file, SafeTimedRotatingFileHandler
     keeps both records in the active file instead of dropping them.
