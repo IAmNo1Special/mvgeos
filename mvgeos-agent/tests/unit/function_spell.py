@@ -157,12 +157,24 @@ class TestCoerceSpell:
 
 
 class TestMvgeApiKeyAndEnvLoading:
+    #: Every variable ``_resolve_api_key`` consults, in fallback order. A
+    #: test that wants no key must clear all of them: clearing only the
+    #: OpenRouter pair leaves a developer's exported ``GEMINI_API_KEY`` (or
+    #: a ``.env`` another test loaded) to satisfy the lookup, and the
+    #: missing-key path silently stops being exercised.
+    API_KEY_ENV_VARS = (
+        "OPENROUTER_API_KEY",
+        "MVGEOS_API_KEY",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+    )
+
     @pytest.mark.asyncio
     async def test_missing_api_key_raises_error_on_initialize(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-        monkeypatch.delenv("MVGEOS_API_KEY", raising=False)
+        for var in self.API_KEY_ENV_VARS:
+            monkeypatch.delenv(var, raising=False)
 
         agent = Mvge()
         agent._api_key = ""
