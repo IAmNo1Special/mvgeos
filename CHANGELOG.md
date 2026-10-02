@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-10-02
+
+
+### Bug Fixes
+
+- **core:** relocate tome storage with the global layer (c4743c5)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (d3549d8)
+
+- **release:** v0.6.3 (fbaf68e)
+
+
 ## [0.6.2] - 2026-10-02
 
 
