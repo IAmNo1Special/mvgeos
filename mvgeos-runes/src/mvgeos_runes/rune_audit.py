@@ -34,6 +34,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, cast
 
+from mvgeos_core.constants import extensions_dir
+
 
 class _Fcntl(Protocol):
     """The slice of the POSIX ``fcntl`` module this log depends on."""
@@ -56,8 +58,6 @@ else:
 # ignore comment (which strict mode flags as unused on the other one).
 _FCNTL: _Fcntl | None = cast("_Fcntl | None", _fcntl_module)
 
-AUDIT_DIRNAME = "extensions"
-
 AUDIT_FILENAME = "audit.jsonl"
 DEFAULT_MAX_BYTES = 25 * 1024 * 1024
 DEFAULT_MAX_AGE_DAYS = 30
@@ -79,12 +79,10 @@ def utcnow() -> str:
 def default_rune_ops_dir() -> Path:
     """User-scope ``.agents`` dir + ``extensions``.
 
-    ``$MVGEOS_GLOBAL_DIR`` wins when set (the skills-bridge scope
-    convention); otherwise ``~/.agents``.
+    Delegates to the shared resolver so the audit log cannot land in a
+    different global layer than the runes it is auditing.
     """
-    override = os.environ.get("MVGEOS_GLOBAL_DIR")
-    base = Path(override) if override else Path("~/.agents").expanduser()
-    return base / AUDIT_DIRNAME
+    return extensions_dir()
 
 
 class RuneAuditLog:

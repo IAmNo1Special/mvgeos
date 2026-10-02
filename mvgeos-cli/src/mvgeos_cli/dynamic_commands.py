@@ -9,6 +9,7 @@ from typing import Any, cast
 
 import click
 import typer
+from mvgeos_core.constants import global_agents_dir
 from mvgeos_runes.loader import _inject_rune_paths
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_api import RuneAPI
@@ -40,12 +41,8 @@ def get_extension_dirs(
     if proj_ext.is_dir() and proj_ext not in dirs:
         dirs.append(proj_ext)
 
-    # 3. User-level: ~/.agents/extensions/ (or MVGEOS_GLOBAL_DIR)
-    g_env = global_dir or (
-        Path(os.environ["MVGEOS_GLOBAL_DIR"])
-        if os.environ.get("MVGEOS_GLOBAL_DIR")
-        else Path("~/.agents").expanduser()
-    )
+    # 3. User-level: <global>/extensions (or MVGEOS_GLOBAL_DIR)
+    g_env = global_dir if global_dir is not None else global_agents_dir()
     user_ext = g_env / "extensions"
     if user_ext.is_dir() and user_ext not in dirs:
         dirs.append(user_ext)

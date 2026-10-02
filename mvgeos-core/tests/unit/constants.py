@@ -6,7 +6,50 @@ from pathlib import Path
 
 import pytest
 
-from mvgeos_core.constants import resolve_rune_paths
+from mvgeos_core.constants import (
+    extensions_dir,
+    global_agents_dir,
+    resolve_rune_paths,
+)
+
+
+def test_global_agents_dir_defaults_to_home_agents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without the override, the global layer is ``~/.agents``."""
+    monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
+
+    assert global_agents_dir() == Path("~/.agents").expanduser()
+
+
+def test_global_agents_dir_honours_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``$MVGEOS_GLOBAL_DIR`` relocates the whole global layer."""
+    relocated = tmp_path / "relocated_agents"
+    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(relocated))
+
+    assert global_agents_dir() == relocated
+    assert extensions_dir() == relocated / "extensions"
+
+
+def test_global_dir_override_relocates_user_layers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The user and agent search layers follow the override.
+
+    Regression: both layers were built from literal ``~/.agents``
+    components, so the override moved the audit log and the CLI's
+    discovery but left the install/uninstall targets on the real home.
+    A rune could then be installed successfully and load nowhere.
+    """
+    relocated = tmp_path / "relocated_agents"
+    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(relocated))
+
+    paths = resolve_rune_paths("test-agent")
+
+    assert paths[0] == relocated / "extensions"
+    assert paths[1] == relocated / "agents" / "test-agent" / "extensions"
 
 
 def test_project_layer_omitted_without_project_dir(

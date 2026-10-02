@@ -15,6 +15,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+from mvgeos_core.constants import global_agents_dir
 from mvgeos_core.sandbox import MvgeSandbox
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_runes.loader import (
@@ -95,12 +96,18 @@ class RuneLifecycle:
         """Resolve configured rune paths to (path, scope) pairs.
 
         Paths containing ``{agent_name}`` or pointing to
-        ``agents/{agent_name}/extensions`` are agent-scoped; user-level
-        ``~/.agents/extensions`` directories are user-scoped; everything else
-        is project-scoped.
+        ``agents/{agent_name}/extensions`` are agent-scoped; the global
+        layer's ``extensions`` directory is user-scoped; everything else
+        is project-scoped. The global layer is ``self._global_dir`` when
+        given, else ``$MVGEOS_GLOBAL_DIR``, else ``~/.agents``.
         """
         result: list[tuple[Path, RuneScope]] = []
-        user_ext_posix = Path("~/.agents/extensions").expanduser().as_posix()
+        global_root = (
+            Path(self._global_dir).expanduser()
+            if self._global_dir is not None
+            else global_agents_dir()
+        )
+        user_ext_posix = (global_root / "extensions").as_posix()
         for path in self._runes_paths:
             path_str = str(path)
             resolved = Path(
@@ -117,7 +124,7 @@ class RuneLifecycle:
                 scope = RuneScope.AGENT
             elif (
                 posix_path == user_ext_posix
-                or "~/.agents/extensions" in path_str
+                or f"{global_root.as_posix()}/extensions" in posix_path
                 or ".mvgeos/runes" in posix_path
             ):
                 scope = RuneScope.USER

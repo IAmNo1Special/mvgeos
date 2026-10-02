@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from mvgeos_core.constants import extensions_dir, global_agents_dir
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +34,12 @@ APPROVAL_RUNE_NAME = "approval-rune"
 
 
 def _approval_dir() -> Path:
-    """User-owned approval data directory (``~/.agents/approval``).
+    """User-owned approval data directory (``<global>/approval``).
 
     Separate from the rune's installed code directory on purpose: updates
     replace the code dir but never touch grants or history here.
     """
-    return Path("~/.agents/approval").expanduser()
+    return global_agents_dir() / "approval"
 
 
 def read_or_create_install_id(rune_dir: Path) -> str:
@@ -203,11 +204,7 @@ def list_installed_runes(
     target_dir: Path | None = None,
 ) -> list[dict[str, Any]]:
     """List installed extension runes from the target directory."""
-    target = (
-        target_dir.expanduser()
-        if target_dir is not None
-        else Path("~/.agents/extensions").expanduser()
-    )
+    target = target_dir.expanduser() if target_dir is not None else extensions_dir()
     if not target.is_dir():
         return []
 
@@ -266,13 +263,9 @@ def uninstall_rune(name: str, target_dir: Path | None = None) -> bool:
     """Uninstall an installed rune by name.
 
     Uninstalling the approval rune additionally purges its policy file
-    (``~/.agents/approval/policy.toml``); the audit log is never touched.
+    (``<global>/approval/policy.toml``); the audit log is never touched.
     """
-    target = (
-        target_dir.expanduser()
-        if target_dir is not None
-        else Path("~/.agents/extensions").expanduser()
-    )
+    target = target_dir.expanduser() if target_dir is not None else extensions_dir()
     path = _dest_within_target(target, _validate_install_name(name, kind="rune"))
     is_approval = (
         name == APPROVAL_RUNE_NAME or _manifest_name_or_none(path) == APPROVAL_RUNE_NAME
@@ -294,11 +287,7 @@ def set_rune_enabled(name: str, enabled: bool, target_dir: Path | None = None) -
     Returns True when the manifest was updated, False when the rune
     is not installed or its manifest cannot be read/written.
     """
-    target = (
-        target_dir.expanduser()
-        if target_dir is not None
-        else Path("~/.agents/extensions").expanduser()
-    )
+    target = target_dir.expanduser() if target_dir is not None else extensions_dir()
     rune_dir = _dest_within_target(target, _validate_install_name(name, kind="rune"))
     manifest_path = rune_dir / "manifest.json"
     if not manifest_path.is_file():
@@ -330,11 +319,7 @@ def install_rune(
     if not stripped_source:
         raise ValueError("Rune source cannot be empty.")
 
-    target = (
-        target_dir.expanduser()
-        if target_dir is not None
-        else Path("~/.agents/extensions").expanduser()
-    )
+    target = target_dir.expanduser() if target_dir is not None else extensions_dir()
     target.mkdir(parents=True, exist_ok=True)
 
     source_path = Path(stripped_source).expanduser()
