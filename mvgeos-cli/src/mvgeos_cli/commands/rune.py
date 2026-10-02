@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import typer
-from mvgeos_runes.installer import install_rune
+from mvgeos_runes.installer import install_rune, uninstall_rune
 
 from mvgeos_cli.console import format_error, get_console
 
@@ -34,6 +34,23 @@ def rune_install(
     try:
         dest = install_rune(spec, confirm_python_deps=confirm_python_deps)
         console.print(f"[green]Successfully installed rune '{spec}' to {dest}[/green]")
+    except Exception as exc:
+        console.print(format_error(exc))
+        raise typer.Exit(1) from exc
+
+
+@rune_app.command("uninstall")
+def rune_uninstall(
+    name: str = typer.Argument(..., help="Rune name to uninstall"),
+) -> None:
+    """Uninstall an installed extension rune."""
+    try:
+        success = uninstall_rune(name)
+        if success:
+            console.print(f"[green]Successfully uninstalled rune '{name}'[/green]")
+        else:
+            console.print(f"[yellow]Rune '{name}' is not installed[/yellow]")
+            raise typer.Exit(1)
     except Exception as exc:
         console.print(format_error(exc))
         raise typer.Exit(1) from exc
