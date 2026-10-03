@@ -12,6 +12,7 @@ from typing import Any
 
 import keyring
 from mvgeos_agent.config_manager import ConfigManager
+from mvgeos_core.constants import global_agents_dir
 
 _KEYRING_SERVICE = "mvgeos"
 _KEYRING_API_KEY_USERNAME = "openrouter_api_key"
@@ -117,10 +118,10 @@ def _set_config_file_permissions(path: Path) -> None:
 
 
 class ConfigService:
-    """Persist and load GUI settings from ~/.agents/."""
+    """Persist and load GUI settings from the global ``.agents`` layer."""
 
     def __init__(self, config_dir: Path | None = None) -> None:
-        base = config_dir or Path("~/.agents").expanduser()
+        base = config_dir or global_agents_dir()
         self._config_dir = base.resolve()
 
     @property

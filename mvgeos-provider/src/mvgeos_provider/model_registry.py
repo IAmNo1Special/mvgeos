@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 from mvgeos_core.channel import Model
+from mvgeos_core.constants import models_file
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,7 @@ def list_models() -> list[Model]:
 
 
 def _default_cache_path() -> Path:
-    return Path("~/.agents/models.json").expanduser()
+    return models_file()
 
 
 class ModelRegistry:

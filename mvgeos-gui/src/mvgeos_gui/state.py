@@ -28,6 +28,7 @@ from mvgeos_core.approval import (
     ApprovalRequest,
     ApprovalScope,
 )
+from mvgeos_core.constants import agents_dir, extensions_dir, skills_dir
 from mvgeos_core.invocations import Attachment, build_content_parts
 from mvgeos_provider import (
     get_default_realm_registry,
@@ -111,7 +112,7 @@ def _scan_skill_manifests(project_path: Path) -> list[SkillManifest]:
     skills: list[SkillManifest] = []
     search_dirs = [
         project_path / ".agents" / "skills",
-        Path("~/.agents/skills").expanduser(),
+        skills_dir(),
     ]
     for sdir in search_dirs:
         if not sdir.is_dir():
@@ -1709,8 +1710,8 @@ class AppState:
             self._expanded_cards.discard(card_id)
 
     def is_rune_installed(self, rune_name: str) -> bool:
-        """Check if a rune extension is installed in ~/.agents/extensions."""
-        target = Path("~/.agents/extensions").expanduser() / rune_name
+        """Check if a rune extension is installed in the global extensions layer."""
+        target = extensions_dir() / rune_name
         return target.is_dir()
 
     async def fetch_marketplace_runes_async(self) -> dict[str, Any]:
@@ -1771,9 +1772,9 @@ class AppState:
             return None
 
     def is_mvge_installed(self, mvge_name: str) -> bool:
-        """Check if an mvge agent is installed in ~/.agents/agents."""
+        """Check if an mvge agent is installed in the global agents layer."""
         normalized = mvge_name.replace("-", "_")
-        target = Path("~/.agents/agents").expanduser() / normalized
+        target = agents_dir() / normalized
         return target.is_dir()
 
     async def fetch_marketplace_mvges_async(self) -> dict[str, Any]:

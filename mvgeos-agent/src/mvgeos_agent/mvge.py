@@ -26,6 +26,7 @@ from mvgeos_core.channel import (
 )
 from mvgeos_core.constants import (
     DEFAULT_AGENT_NAME,
+    agents_dir,
     sessions_dir,
 )
 from mvgeos_core.errors import MissingApiKeyError, TomeResumeError
@@ -342,7 +343,7 @@ class Mvge:
         self._name = name
         self._caller_dir = caller_dir
 
-        agents_root = str(Path("~/.agents/agents").expanduser())
+        agents_root = str(agents_dir())
         if agents_root not in sys.path:
             sys.path.insert(0, agents_root)
 

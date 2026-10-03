@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from mvgeos_core.constants import agents_dir
 from mvgeos_runes.deps import confirm_python_deps_install
 
 logger = logging.getLogger(__name__)
@@ -201,11 +202,7 @@ def list_installed_mvges(
     target_dir: Path | None = None,
 ) -> list[dict[str, Any]]:
     """List installed mvges from the target directory."""
-    target = (
-        target_dir.expanduser()
-        if target_dir is not None
-        else Path("~/.agents/agents").expanduser()
-    )
+    target = target_dir.expanduser() if target_dir is not None else agents_dir()
     if not target.is_dir():
         return []
 
@@ -255,11 +252,7 @@ def list_installed_mvges(
 
 def uninstall_mvge(name: str, target_dir: Path | None = None) -> bool:
     """Uninstall an installed mvge by name."""
-    target = (
-        target_dir.expanduser()
-        if target_dir is not None
-        else Path("~/.agents/agents").expanduser()
-    )
+    target = target_dir.expanduser() if target_dir is not None else agents_dir()
     path = _dest_within_target(target, _validate_install_name(name, kind="mvge"))
     if path.exists():
         if path.is_dir():
@@ -291,11 +284,7 @@ def install_mvge(
     if not stripped_source:
         raise ValueError("Mvge source cannot be empty.")
 
-    target = (
-        target_dir.expanduser()
-        if target_dir is not None
-        else Path("~/.agents/agents").expanduser()
-    )
+    target = target_dir.expanduser() if target_dir is not None else agents_dir()
     target.mkdir(parents=True, exist_ok=True)
 
     source_path = Path(stripped_source).expanduser()

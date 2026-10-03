@@ -7,10 +7,21 @@ from pathlib import Path
 import pytest
 
 from mvgeos_core.constants import (
+    agent_dir,
+    agent_extensions_dir,
+    agent_skills_dir,
+    agents_dir,
+    approval_dir,
+    auth_dir,
+    auth_file,
     extensions_dir,
     global_agents_dir,
+    global_file,
+    history_file,
+    models_file,
     resolve_rune_paths,
     sessions_dir,
+    skills_dir,
 )
 
 
@@ -94,6 +105,39 @@ def test_sessions_dir_reads_the_environment_at_call_time(
 
     assert sessions_dir() == relocated / "sessions"
     assert sessions_dir() != before
+
+
+def test_every_layer_resolver_follows_the_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No global-layer path is left pinned to the real home.
+
+    Each of these was a literal ``~/.agents`` in some module, so a run with
+    the override set still read or wrote the developer's real agents,
+    credentials, skills, and session history.
+    """
+    relocated = tmp_path / "relocated_agents"
+    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(relocated))
+
+    assert extensions_dir() == relocated / "extensions"
+    assert sessions_dir() == relocated / "sessions"
+    assert agents_dir() == relocated / "agents"
+    assert agent_dir("coding_mvge") == relocated / "agents" / "coding_mvge"
+    assert (
+        agent_extensions_dir("coding_mvge")
+        == relocated / "agents" / "coding_mvge" / "extensions"
+    )
+    assert (
+        agent_skills_dir("coding_mvge")
+        == relocated / "agents" / "coding_mvge" / "skills"
+    )
+    assert skills_dir() == relocated / "skills"
+    assert auth_dir() == relocated / "auth"
+    assert auth_file("openrouter") == relocated / "auth" / "openrouter.json"
+    assert approval_dir() == relocated / "approval"
+    assert models_file() == relocated / "models.json"
+    assert history_file() == relocated / "history"
+    assert global_file("APPEND_SYSTEM.md") == relocated / "APPEND_SYSTEM.md"
 
 
 def test_project_layer_omitted_without_project_dir(

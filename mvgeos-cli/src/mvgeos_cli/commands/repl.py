@@ -17,7 +17,7 @@ from typing import Any, Protocol
 
 from mvgeos_agent.protocol import AgentFactory
 from mvgeos_core.channel import MvgeResponse
-from mvgeos_core.constants import DEFAULT_AGENT_NAME
+from mvgeos_core.constants import DEFAULT_AGENT_NAME, history_file
 from mvgeos_core.errors import RateLimitError
 from mvgeos_core.events import MvgeEvent
 from mvgeos_provider.model_registry import ModelRegistry
@@ -117,7 +117,7 @@ def _make_bindings() -> KeyBindings:
 
 
 def _get_history_path() -> Path:
-    path = Path(os.path.expanduser("~/.agents/history"))
+    path = history_file()
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 

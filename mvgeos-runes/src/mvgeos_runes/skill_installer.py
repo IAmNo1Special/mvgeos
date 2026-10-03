@@ -12,6 +12,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from mvgeos_core.constants import skills_dir
+
 
 def _is_git_url(source: str) -> bool:
     return source.startswith(
@@ -68,11 +70,7 @@ def install_skill(
         ValueError: When the source is invalid, has no SKILL.md,
             or a skill with the resolved name is already installed.
     """
-    target = (
-        target_dir.expanduser()
-        if target_dir is not None
-        else Path("~/.agents/skills").expanduser()
-    )
+    target = target_dir.expanduser() if target_dir is not None else skills_dir()
 
     if _is_git_url(source):
         skill_name = _validate_install_name(name or _name_from_git_url(source))

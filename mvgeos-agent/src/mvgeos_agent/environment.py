@@ -13,6 +13,8 @@ from typing import Any
 from mvgeos_core.constants import (
     DEFAULT_AGENT_NAME,
     DEFAULT_MODEL,
+    agent_dir,
+    global_agents_dir,
     resolve_rune_paths,
 )
 from mvgeos_core.events import PromptSource as PromptSource
@@ -185,7 +187,7 @@ def resolve_config_dir(name: str, config_dir: Path | None = None) -> Path:
     """
     if config_dir is not None:
         return config_dir
-    return Path(f"~/.agents/agents/{name}").expanduser()
+    return agent_dir(name)
 
 
 def ensure_config_files(name: str, config_dir: Path | None = None) -> Path:
@@ -221,7 +223,7 @@ def resolve_append_system_prompts(
     results: list[tuple[Path, str]] = []
 
     # 1. Global (~/.agents/APPEND_SYSTEM.md)
-    g_dir = global_dir if global_dir is not None else Path("~/.agents").expanduser()
+    g_dir = global_dir if global_dir is not None else global_agents_dir()
     global_file = g_dir / APPEND_SYSTEM_MD_FILENAME
     if global_file.is_file():
         content = _read_text(global_file)

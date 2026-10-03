@@ -7,7 +7,7 @@ from typing import Any
 from mvgeos_agent import Mvge
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.protocol import AgentFactory, MvgeAgent
-from mvgeos_core.constants import DEFAULT_AGENT_NAME
+from mvgeos_core.constants import DEFAULT_AGENT_NAME, agent_dir
 
 _global_default_factory: AgentFactory | None = None
 
@@ -44,10 +44,7 @@ def default_agent_factory(
 ) -> MvgeAgent:
     """Default agent factory using Mvge."""
     resolved_name = name
-    if (
-        resolved_name == DEFAULT_AGENT_NAME
-        and Path("~/.agents/agents/coding_mvge").expanduser().is_dir()
-    ):
+    if resolved_name == DEFAULT_AGENT_NAME and agent_dir("coding_mvge").is_dir():
         resolved_name = "coding_mvge"
 
     return Mvge(

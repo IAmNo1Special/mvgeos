@@ -1455,13 +1455,14 @@ class TestCascadingSelectorState:
 class TestRuneManagementState:
     """Unit tests for rune marketplace and extension management in AppState."""
 
-    def test_is_rune_installed(self, tmp_path: Path) -> None:
+    def test_is_rune_installed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         state = AppState()
-        target_dir = tmp_path / "test-rune"
-        target_dir.mkdir()
-        with patch("pathlib.Path.expanduser", return_value=tmp_path):
-            assert state.is_rune_installed("test-rune") is True
-            assert state.is_rune_installed("missing-rune") is False
+        monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path))
+        (tmp_path / "extensions" / "test-rune").mkdir(parents=True)
+        assert state.is_rune_installed("test-rune") is True
+        assert state.is_rune_installed("missing-rune") is False
 
     @pytest.mark.asyncio
     async def test_fetch_marketplace_runes_async(self) -> None:
@@ -1528,13 +1529,16 @@ class TestRuneManagementState:
             mock_registry.unregister_realm_factory.assert_called_once_with("my-rune")
             assert len(notified) > 0
 
-    def test_is_mvge_installed(self, tmp_path: Path) -> None:
+    def test_is_mvge_installed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         state = AppState()
-        with patch("pathlib.Path.expanduser", return_value=tmp_path):
-            agent_dir = tmp_path / "my_mvge"
-            assert state.is_mvge_installed("my_mvge") is False
-            agent_dir.mkdir(parents=True)
-            assert state.is_mvge_installed("my-mvge") is True
+        monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path))
+        # A hyphenated name resolves to the underscore spelling on disk.
+        agent_dir = tmp_path / "agents" / "my_mvge"
+        assert state.is_mvge_installed("my_mvge") is False
+        agent_dir.mkdir(parents=True)
+        assert state.is_mvge_installed("my-mvge") is True
 
     @pytest.mark.asyncio
     async def test_fetch_marketplace_mvges_async(self) -> None:

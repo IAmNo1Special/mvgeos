@@ -5,7 +5,9 @@ import json
 import os
 from pathlib import Path
 
-AUTH_FILE_PATH = Path("~/.agents/auth/openrouter.json").expanduser()
+from mvgeos_core.constants import auth_file
+
+AUTH_FILE_PATH = auth_file("openrouter")
 AUTH_FILE_PERMS = 0o600
 AUTH_DIR_PERMS = 0o700
 

@@ -24,6 +24,61 @@ def sessions_dir() -> Path:
     return global_agents_dir() / "sessions"
 
 
+def agents_dir() -> Path:
+    """Installed agent packages: ``<global>/agents``."""
+    return global_agents_dir() / "agents"
+
+
+def agent_dir(name: str) -> Path:
+    """One agent's directory: ``<global>/agents/<name>``."""
+    return agents_dir() / name
+
+
+def agent_extensions_dir(name: str) -> Path:
+    """Agent-scope rune directory: ``<global>/agents/<name>/extensions``."""
+    return agent_dir(name) / "extensions"
+
+
+def agent_skills_dir(name: str) -> Path:
+    """Agent-scope skills directory: ``<global>/agents/<name>/skills``."""
+    return agent_dir(name) / "skills"
+
+
+def skills_dir() -> Path:
+    """User-scope skills: ``<global>/skills``."""
+    return global_agents_dir() / "skills"
+
+
+def auth_dir() -> Path:
+    """Credential store: ``<global>/auth``."""
+    return global_agents_dir() / "auth"
+
+
+def auth_file(provider: str) -> Path:
+    """One provider's credential file: ``<global>/auth/<provider>.json``."""
+    return auth_dir() / f"{provider}.json"
+
+
+def approval_dir() -> Path:
+    """Approval policy and grants: ``<global>/approval``."""
+    return global_agents_dir() / "approval"
+
+
+def models_file() -> Path:
+    """Model cache: ``<global>/models.json``."""
+    return global_agents_dir() / "models.json"
+
+
+def history_file() -> Path:
+    """REPL history: ``<global>/history``."""
+    return global_agents_dir() / "history"
+
+
+def global_file(name: str) -> Path:
+    """A file directly in the global layer: ``<global>/<name>``."""
+    return global_agents_dir() / name
+
+
 #: Project-layer rune directory, anchored to an explicit project directory
 #: at resolve time. Never resolved against the ambient working directory.
 PROJECT_RUNE_PATH = ".agents/extensions"

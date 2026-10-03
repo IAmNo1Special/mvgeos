@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from mvgeos_core.constants import DEFAULT_AGENT_NAME, DEFAULT_MODEL
+from mvgeos_core.constants import DEFAULT_AGENT_NAME, DEFAULT_MODEL, agents_dir
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ def is_known_agent(
     base = (
         agent_config_base.expanduser()
         if agent_config_base is not None
-        else Path("~/.agents/agents").expanduser()
+        else agents_dir()
     )
     agent_dir = base / agent_name
     if agent_dir.exists():
@@ -79,7 +79,7 @@ def validate_agent_name(
     base = (
         agent_config_base.expanduser()
         if agent_config_base is not None
-        else Path("~/.agents/agents").expanduser()
+        else agents_dir()
     )
     agent_dir = base / agent_name
     raise ValueError(
@@ -143,7 +143,7 @@ class ConfigManager:
         self._agent_config_base = (
             agent_config_base.expanduser()
             if agent_config_base is not None
-            else Path("~/.agents/agents").expanduser()
+            else agents_dir()
         )
 
     @property

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 import time
 from pathlib import Path
@@ -81,7 +82,17 @@ def _make_agent(
 
 
 def _config_dir(tmp_path: Path) -> Path:
-    return tmp_path / ".agents" / "agents" / "reload-test"
+    """The agent's config directory under whichever global layer is in force.
+
+    Mirrors production resolution rather than restating it: the layer is
+    ``$MVGEOS_GLOBAL_DIR`` when set and ``~/.agents`` otherwise. Hardcoding
+    one of the two here silently diverged the moment ``resolve_config_dir``
+    started honouring the override, and the tests wrote a SYSTEM.md the
+    agent was not watching.
+    """
+    override = os.environ.get("MVGEOS_GLOBAL_DIR")
+    root = Path(override).expanduser() if override else tmp_path / ".agents"
+    return root / "agents" / "reload-test"
 
 
 def _boom(**kwargs: Any) -> Any:
