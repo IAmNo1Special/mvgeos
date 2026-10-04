@@ -26,6 +26,7 @@ from mvgeos_core.channel import (
 )
 from mvgeos_core.constants import (
     DEFAULT_AGENT_NAME,
+    agent_dir,
     agents_dir,
     sessions_dir,
 )
@@ -507,9 +508,7 @@ class Mvge:
                     discovered = _from_dir(config_spells)
                     active_dir = config_spells
                 elif name == DEFAULT_AGENT_NAME:
-                    fallback_dir = Path(
-                        "~/.agents/agents/coding_mvge/spells"
-                    ).expanduser()
+                    fallback_dir = agent_dir("coding_mvge") / "spells"
                     if fallback_dir.is_dir():
                         discovered = _from_dir(fallback_dir)
                         active_dir = fallback_dir
