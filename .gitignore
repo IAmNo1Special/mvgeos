@@ -27,6 +27,8 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 .kilo/
+# Scratch checkout of the marketplace, as the CI contract job makes.
+/marketplace/
 .opencode/
 .agents/
 .scratch/
