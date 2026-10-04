@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.5] - 2026-10-04
+
+
+### Bug Fixes
+
+- **runes:** register entry-point modules in sys.modules before executing (7b013e8)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (e130a56)
+
+- ignore the scratch marketplace checkout (0aabfe3)
+
+- **release:** v0.6.5 (697bdac)
+
+
+### Continuous Integration
+
+- block engine API removals that break the marketplace (a6f38e5)
+
+
+### Tests
+
+- isolate the global .agents layer from the developer's machine (3de39ae)
+
+
 ## [0.6.4] - 2026-10-04
 
 
