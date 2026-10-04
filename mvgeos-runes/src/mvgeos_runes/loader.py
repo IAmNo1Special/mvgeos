@@ -229,6 +229,13 @@ def load_factory_from_manifest(
     if spec is None or spec.loader is None:
         return None
     mod = importlib.util.module_from_spec(spec)
+    # Register before executing. This is a documented importlib requirement,
+    # not bookkeeping: a module that defines a @dataclass, a NamedTuple, or
+    # anything calling typing.get_type_hints() looks itself up in
+    # sys.modules while its own body is still running. Without this line the
+    # lookup returns None and the entry point dies with
+    # "'NoneType' object has no attribute '__dict__'".
+    sys.modules[spec.name] = mod
     # Force a fresh read of the entry point: a quick same-second rewrite
     # can leave a stale __pycache__ entry the loader would otherwise trust,
     # silently re-executing old code on refresh. Best-effort: on Windows,
@@ -240,6 +247,9 @@ def load_factory_from_manifest(
     try:
         spec.loader.exec_module(mod)
     except Exception as err:
+        # Do not leave a half-initialised module behind for the next import
+        # to trust.
+        sys.modules.pop(spec.name, None)
         if diagnostics is not None:
             msg = f"Failed to execute rune module {manifest.name}: {err}"
             if manifest.python_deps:

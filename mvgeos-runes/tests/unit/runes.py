@@ -18,6 +18,7 @@ from mvgeos_runes.loader import (
 )
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.types import (
+    Diagnostic,
     DiagnosticKind,
     RuneManifest,
     RuneScope,
@@ -520,6 +521,89 @@ class TestLoadRunesFromPaths:
             assert len(loads) == 2
             names = {load.manifest.name for load in loads}
             assert names == {"rune_a", "rune_b"}
+
+
+def test_load_factory_supports_module_level_dataclass() -> None:
+    """An entry point may define a ``@dataclass`` at module scope.
+
+    ``dataclasses`` resolves annotations through
+    ``sys.modules[cls.__module__].__dict__`` while the defining module is still
+    executing, so the loader has to register the module before running it. It
+    did not, and any entry point using a dataclass (or ``NamedTuple``, or
+    ``get_type_hints``) died with ``'NoneType' object has no attribute
+    '__dict__'`` -- a real rune, ``session-title``, was unloadable because of it.
+    """
+    orig_sys_path = list(sys.path)
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rune_dir = Path(tmpdir) / "dataclass_rune"
+            rune_dir.mkdir()
+            (rune_dir / "manifest.json").write_text(
+                '{"name": "dataclass_rune", "version": "1.0.0", '
+                '"description": "Test", "entry_point": "rune.py"}',
+                encoding="utf-8",
+            )
+            (rune_dir / "rune.py").write_text(
+                "from __future__ import annotations\n"
+                "\n"
+                "from dataclasses import dataclass\n"
+                "\n"
+                "@dataclass\n"
+                "class State:\n"
+                "    name: str | None = None\n"
+                "\n"
+                "def rune_factory(api):\n"
+                "    pass\n",
+                encoding="utf-8",
+            )
+
+            manifest = load_manifest(rune_dir)
+            assert manifest is not None
+            diagnostics: list[Diagnostic] = []
+            factory = load_factory_from_manifest(manifest, rune_dir, diagnostics)
+
+            assert not diagnostics, [d.message for d in diagnostics]
+            assert factory is not None
+            assert factory.__name__ == "rune_factory"
+    finally:
+        sys.modules.pop("mvgeos_rune_dataclass_rune", None)
+        sys.path.clear()
+        sys.path.extend(orig_sys_path)
+
+
+def test_failed_entry_point_does_not_leave_module_in_sys_modules() -> None:
+    """A half-initialised module must not be left behind for the next import.
+
+    Once a name is in ``sys.modules`` every later import trusts it, so a
+    failed load that leaves the entry behind would turn one clear error into a
+    permanently broken rune.
+    """
+    orig_sys_path = list(sys.path)
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rune_dir = Path(tmpdir) / "boom_rune"
+            rune_dir.mkdir()
+            (rune_dir / "manifest.json").write_text(
+                '{"name": "boom_rune", "version": "1.0.0", '
+                '"description": "Test", "entry_point": "rune.py"}',
+                encoding="utf-8",
+            )
+            (rune_dir / "rune.py").write_text(
+                "raise RuntimeError('boom')\n", encoding="utf-8"
+            )
+
+            manifest = load_manifest(rune_dir)
+            assert manifest is not None
+            diagnostics: list[Diagnostic] = []
+            factory = load_factory_from_manifest(manifest, rune_dir, diagnostics)
+
+            assert factory is None
+            assert diagnostics, "a failing entry point must report a diagnostic"
+            assert "mvgeos_rune_boom_rune" not in sys.modules
+    finally:
+        sys.modules.pop("mvgeos_rune_boom_rune", None)
+        sys.path.clear()
+        sys.path.extend(orig_sys_path)
 
 
 def test_load_factory_from_manifest_with_local_import() -> None:
