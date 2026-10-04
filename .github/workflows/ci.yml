@@ -55,6 +55,39 @@ jobs:
       - name: Enforce the combined coverage floor
         run: uv run python -m coverage report
 
+  # The marketplace clones this repository and imports its internals from
+  # main, so removing or renaming a public symbol here breaks it without any
+  # signal in this repository. DEFAULT_TOME_DIR -> sessions_dir() did exactly
+  # that and took ten import errors to surface, on the marketplace's main.
+  #
+  # Verifies every engine import in a marketplace checkout resolves and is
+  # declared in the relevant __all__. Keep it blocking: a silent API removal
+  # is the failure this exists to prevent. The cost is that this repository's
+  # CI now depends on the marketplace being reachable, which the scheduled
+  # marketplace run cannot compensate for if this is the only guard.
+  marketplace-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - run: uv sync --all-packages
+
+      - name: Check out the marketplace
+        uses: actions/checkout@v5
+        with:
+          repository: IAmNo1Special/mvgeos-marketplace
+          path: marketplace
+
+      - name: Verify the marketplace only imports declared engine API
+        run: >-
+          uv run python mvgeos-core/scripts/check_marketplace_contract.py
+          marketplace
+
   lint:
     uses: IAmNo1Special/actions/.github/workflows/python-ci.yml@v1
     with:

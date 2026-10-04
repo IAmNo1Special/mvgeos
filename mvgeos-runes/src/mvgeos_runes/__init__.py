@@ -47,13 +47,16 @@ from mvgeos_runes.watcher import RuneWatcher
 
 __all__ = [
     "DEFAULT_MARKETPLACE_URL",
+    "AuditError",
     "Diagnostic",
     "DiagnosticKind",
+    "default_rune_ops_dir",
     "ExecutionMode",
     "PluginManifest",
     "RegisteredCommand",
     "ResourcesDiscoverData",
     "RuneAPI",
+    "RuneAuditLog",
     "RuneContext",
     "RuneFactory",
     "RuneLoad",

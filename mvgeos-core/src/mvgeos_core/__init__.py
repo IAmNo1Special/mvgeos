@@ -214,4 +214,5 @@ __all__ = [
     "resolve_rune_paths",
     "sessions_dir",
     "run_loop",
+    "to_error",
 ]
