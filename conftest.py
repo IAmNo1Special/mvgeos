@@ -52,3 +52,36 @@ def _isolate_credential_env() -> Iterator[None]:
                 os.environ.pop(name, None)
             else:
                 os.environ[name] = value
+
+
+@pytest.fixture(autouse=True)
+def _isolate_global_agents_dir(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Iterator[None]:
+    """Point the global ``.agents`` layer at an empty directory.
+
+    ``Mvge`` loads global runes *in addition to* the ones it is handed, so a
+    test that sets up only a temporary rune directory still sees whatever the
+    developer happens to have installed in ``~/.agents``. That is not a
+    hypothetical: two integration tests assert an exact watcher count, and they
+    failed on this machine purely because ``openrouter-realm`` and
+    ``skill_evolution`` were installed globally. The suite was green or red
+    depending on what the developer had installed, which is the worst possible
+    property for a test to have.
+
+    A test that wants the real global layer, or wants to assert the default
+    resolution, sets or deletes ``MVGEOS_GLOBAL_DIR`` itself; this fixture only
+    supplies a harmless default and restores whatever was there before.
+
+    The resolvers read the variable on every call rather than caching it at
+    import, which is what makes this work without reimporting anything.
+    """
+    previous = os.environ.get("MVGEOS_GLOBAL_DIR")
+    os.environ["MVGEOS_GLOBAL_DIR"] = str(tmp_path_factory.mktemp("global-agents"))
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("MVGEOS_GLOBAL_DIR", None)
+        else:
+            os.environ["MVGEOS_GLOBAL_DIR"] = previous

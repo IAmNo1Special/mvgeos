@@ -54,7 +54,13 @@ class TestResolvePaths:
         expected = Path("~/.agents/agents/coder/extensions").expanduser()
         assert result == [(expected, RuneScope.AGENT)]
 
-    def test_global_mvgeos_dir_maps_to_user_scope(self) -> None:
+    def test_global_mvgeos_dir_maps_to_user_scope(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Asserting the *default* global layer, so the override must be off.
+        # The suite-wide hermeticity fixture points MVGEOS_GLOBAL_DIR at an
+        # empty directory; leaving it set would silently test that instead.
+        monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
         lifecycle = RuneLifecycle(
             agent_name="coder",
             runes_paths=["~/.agents/extensions"],
@@ -75,7 +81,8 @@ class TestResolvePaths:
 
         assert result == [(Path("extensions/runes"), RuneScope.PROJECT)]
 
-    def test_order_is_preserved(self) -> None:
+    def test_order_is_preserved(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
         paths = [
             "extensions/runes",
             "~/.agents/extensions",

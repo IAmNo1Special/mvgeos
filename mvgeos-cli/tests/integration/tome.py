@@ -52,7 +52,10 @@ class TestTomeCommands:
         assert tome_app is not None
         assert isinstance(tome_app, typer.Typer)
 
-    def test_get_tome_dir(self) -> None:
+    def test_get_tome_dir(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Asserts the default sessions directory, so clear the override the
+        # suite-wide hermeticity fixture installs.
+        monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
         result = get_tome_dir()
         assert result == Path.home() / ".agents" / "sessions"
 

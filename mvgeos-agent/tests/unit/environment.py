@@ -425,6 +425,8 @@ class TestConfigDirAndSeeding:
     ) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        # This asserts the default location, so no override may be in play.
+        monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
 
         resolved = resolve_config_dir("my-mvge")
         assert resolved == tmp_path / ".agents" / "agents" / "my-mvge"
