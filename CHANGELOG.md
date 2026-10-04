@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-10-04
+
+
+### Bug Fixes
+
+- **agent:** resolve the coding_mvge spell fallback through the resolver (613e3a5)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (443746f)
+
+- **release:** v0.6.4 (0696d5b)
+
+
+### Refactoring
+
+- **core:** route every global-layer path through the resolver (58ac1d0)
+
+
 ## [0.6.3] - 2026-10-02
 
 
