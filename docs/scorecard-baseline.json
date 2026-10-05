@@ -1,18 +1,18 @@
 {
   "schema": 1,
   "generated_by": "scripts/scorecard.py",
-  "measured_at": "2026-10-05T09:26:52+00:00",
+  "measured_at": "2026-10-05T09:34:43+00:00",
   "projects": {
     "mvgeos": {
-      "commit": "4bffc3c",
-      "source_loc": 40784,
-      "test_loc": 57545,
-      "source_files": 142,
-      "test_ratio": 1.41097,
+      "commit": "720ab17",
+      "source_loc": 41011,
+      "test_loc": 57592,
+      "source_files": 145,
+      "test_ratio": 1.404306,
       "language_split": {
         "Python": {
-          "source_loc": 40784,
-          "test_loc": 57545
+          "source_loc": 41011,
+          "test_loc": 57592
         }
       },
       "type_strictness": "true",
@@ -21,10 +21,10 @@
       "extension_count": 15,
       "cross_extension_imports": 0,
       "parse_failures": 0,
-      "annotation_files": 142,
-      "annotation_fully": 118,
+      "annotation_files": 145,
+      "annotation_fully": 119,
       "annotation_partial": 0,
-      "annotation_weighted": 0.830986,
+      "annotation_weighted": 0.82069,
       "install": {
         "pypi:mvgeos": "404",
         "pypi:mvgeos-core": "200",
