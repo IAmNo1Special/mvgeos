@@ -160,9 +160,10 @@ jobs:
 
   # Release automation: needs IS the wait-for-green. This job only starts
   # once test + coverage + lint + crossplatform all succeeded, so every tag sits on verified
-  # code by construction. Pushes a chore(release) commit + v* tag and
-  # dispatches release.yml (tag pushes via GITHUB_TOKEN don't trigger
-  # workflows due to GitHub's loop guard). PR runs and the bot's own
+  # code by construction. Pushes a chore(release) commit + v* tag, then
+  # dispatches release.yml AND publish.yml (tag pushes via GITHUB_TOKEN don't
+  # trigger workflows due to GitHub's loop guard, so the tag alone is not a
+  # trigger for either one). PR runs and the bot's own
   # release commits skip via the if guard below.
   bump:
     needs: [test, coverage, lint, test-crossplatform]
@@ -340,3 +341,22 @@ jobs:
           # Release's verify job re-checks the suite before publishing.
           gh workflow run Release --ref main -f version=v$NEW_VERSION -f dry_run=false
           echo "Dispatched Release for v$NEW_VERSION"
+
+      - name: Dispatch Publish workflow
+        if: steps.bump.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          # Same reason as the Release dispatch above: the tag push used
+          # GITHUB_TOKEN, so GitHub's loop guard stops it firing publish.yml.
+          #
+          # --ref is the tag, not main, and that is the point. A tag push gives
+          # publish.yml GITHUB_REF=refs/tags/vN, so its checkout builds exactly
+          # the tagged commit. Dispatching against main would check out whatever
+          # main holds when the runner starts, which can be a commit that landed
+          # after the tag: wheels built from later code, published and
+          # permanently labelled vN. The tag carries publish.yml, so this ref is
+          # always available.
+          gh workflow run Publish --ref "v$NEW_VERSION" -f tag="v$NEW_VERSION" -f dry_run=false
+          echo "Dispatched Publish for v$NEW_VERSION"

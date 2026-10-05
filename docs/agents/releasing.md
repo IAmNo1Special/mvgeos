@@ -131,23 +131,47 @@ there is no clone and no `uv sync`, uvx resolves the command from PyPI exactly
 as a stranger's machine would. That job is the acceptance test; `pip download`
 is not.
 
-## Running it by hand
+## The normal path
 
-Dry run first. It builds and validates everything and uploads nothing:
+The `bump` job in `ci.yml` creates and pushes the tag after a green `main`, then
+dispatches `Release` and `Publish` itself. Nothing has to be done by hand after a
+merge to `main`.
+
+The dispatch is explicit because the tag push alone is not a trigger. That push
+uses `GITHUB_TOKEN`, and GitHub's loop guard stops a `GITHUB_TOKEN` push from
+starting any workflow, so the `v*` tag trigger in `publish.yml` never fires from
+the `bump` job. The `bump` job calls both workflows instead:
 
 ```
-gh workflow run publish.yml -f tag=v0.6.5 -f dry_run=true
+gh workflow run Release --ref main -f version=v0.6.5 -f dry_run=false
+gh workflow run Publish --ref v0.6.5 -f tag=v0.6.5 -f dry_run=false
 ```
 
-Then the real thing, on the tag:
+`Publish` is dispatched against the tag rather than `main` on purpose. A tag push
+gives the workflow `GITHUB_REF=refs/tags/v0.6.5`, so `preflight` builds exactly
+the tagged commit. Dispatching against `main` would build whatever `main` holds
+when the runner starts, which can be a commit that landed after the tag, and
+those wheels would be published and permanently labelled `v0.6.5`.
+
+## When a publish run needs redoing by hand
+
+Re-run the same tag. `UV_PUBLISH_CHECK_URL` skips every package that already
+landed, so the run resumes rather than restarting:
 
 ```
-git tag v0.6.5 && git push origin v0.6.5
+gh workflow run publish.yml --ref v0.6.5 -f tag=v0.6.5 -f dry_run=true
+gh workflow run publish.yml --ref v0.6.5 -f tag=v0.6.5 -f dry_run=false
 ```
 
-The `bump` job in `ci.yml` already creates and pushes the tag after a green
-main, so in the normal path there is nothing to do — the release commit is the
-publish trigger.
+Dry run first. It builds and validates everything and uploads nothing.
+
+The most common reason for a red `Publish` run is PyPI's cap on new project
+creations, not a packaging fault. See "When PyPI refuses a project as new" above.
+
+A hand-pushed tag also fires `publish.yml` through its own `v*` tag trigger,
+because a push made with a person's token is not covered by the loop guard. That
+path builds the tag correctly too, but it is not needed and it skips the gates
+`bump` waits on.
 
 ## After a release
 
