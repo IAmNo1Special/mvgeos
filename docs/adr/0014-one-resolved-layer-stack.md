@@ -45,10 +45,16 @@ five places that disagree:
 | Site | Divergence |
 | --- | --- |
 | `RuneLifecycle.resolve_paths` (`rune_lifecycle.py:95-134`) | Infers `Scope` by substring-matching the path string; still recognises the dead `.mvgeos/{agent}/runes` and `.mvgeos/runes` forms. |
-| `Mvge.__init__` (`mvge.py:356-393`) | Appends colocated `runes/`, config `runes/`+`extensions/`, and package `runes/` — a second precedence pass with its own rules. |
-| `dynamic_commands.get_extension_dirs` (`dynamic_commands.py:20-50`) | Uses the ambient `Path.cwd()` and probes the non-standard `<cwd>/extensions`. |
-| `environment.resolve_system_prompt` (`environment.py:303,619,671`) | Falls back to `Path.cwd()` when no project directory is given. |
+| `Mvge.__init__` (`mvge.py:356-393`) | Appends colocated `runes/`, config `runes/`+`extensions/`, package `runes/` — a second precedence pass with its own rules. |
+| `dynamic_commands.get_extension_dirs` (`dynamic_commands.py:20-50`) | Uses the ambient `Path.cwd()` and probes the non-standard `<cwd>/extensions`. Rune *CLI command* discovery, so it is the same divergence class as Rune loading. |
 | `approval-rune/gate.py:71` | `DEFAULT_DATA_DIR = Path.home() / ".agents" / "approval"` — ignores `MVGEOS_GLOBAL_DIR` entirely. |
+
+`steering-bridge` is the reference implementation of this decision: it imports
+`global_agents_dir()` from `mvgeos_core.constants`
+(`mvgeos_runes_steering_bridge/resolver.py:6,94`) and honours
+`MVGEOS_GLOBAL_DIR` (`rune.py:29`). Every resolver below should look like that
+one.
+
 
 Seven of the thirty commits before this ADR were fixes to some variant of this.
 `Scope` exists as an enum but is metadata only: precedence is list order, and a
@@ -68,9 +74,17 @@ One module owns the layer stack and is the only place a path is derived.
    project. `$MVGEOS_GLOBAL_DIR` overrides the global layer for every read and
    every write, which is what makes an isolated run possible.
 
-3. **Project is anchored, never ambient.** The project layer is derived from an
-   explicit project directory and is *omitted entirely* when none is given, so
-   the ambient working directory can never leak into a search path.
+3. **Project is anchored, never ambient — for search paths.** The project layer
+   is derived from an explicit project directory and is *omitted entirely* when
+   none is given, so the ambient working directory can never leak into a search
+   path. This applies where a wrong answer loads the wrong *code*.
+
+   It deliberately does **not** apply to persona resolution. `resolve_system_prompt`
+   and `resolve_append_system_prompts` fall back to `Path.cwd()` when no project
+   directory is given, and that is correct: a wrong answer there costs a missing
+   project section of `SYSTEM.md`, not a wrong Rune. `AGENTS.md` steering is not
+   in scope at all — no first-party engine module reads it; `steering-bridge`
+   owns it through `BEFORE_MVGE_START` (see ADR-0009).
 
 4. **Standard names only.** `sessions/`, `agents/`, `agents/<name>/extensions/`,
    `agents/<name>/skills/`, `skills/`, `extensions/`, `auth/`, `approval/`,
