@@ -2,6 +2,7 @@
 
 | # | Title | Status | Date |
 | --- | ------- | -------- | ------ |
+| 0015 | [A Sandbox Allow-List Is a Privilege Budget, Not a Wish List](0015-sandbox-privilege-is-a-budget-not-a-list.md) | Accepted - implementation in progress | 2026-10-05 |
 | 0014 | [One Resolved Layer Stack for the `.agents` Protocol](0014-one-resolved-layer-stack.md) | Accepted | 2026-10-04 |
 | 0013 | [Cache-Free, Format-Agnostic Tome Persistence](0013-cache-free-format-agnostic-tome-persistence.md) | Accepted | 2026-10-04 |
 | 0012 | [Deepened Mvge Turn-Driving Module](0012-deepened-mvge-turn-driving-module.md) | Accepted — migration incomplete, see note | 2026-09-12 |
@@ -25,6 +26,7 @@
 | `Accepted (amended <date>: …)` | The decision stands; the note says which part moved. |
 | `Accepted — mechanism superseded by ADR NNNN` | The decision stands; its implementation was replaced. Read both. |
 | `Superseded by ADR …` | The decision is retired. Do not implement it. |
+| `Accepted - implementation in progress` | The decision stands; the code that carries it has not landed yet. |
 
 An ADR whose decision is retired but whose reasoning is still useful keeps both
 records: the status line points forward, the body keeps the *why*.
