@@ -56,6 +56,11 @@ from mvgeos_cli.dynamic_commands import (
     discover_installed_rune_commands,
     load_rune_cli_command,
 )
+from mvgeos_cli.formatting import (
+    format_partial_work,
+    landed_work_of,
+    transcript_length,
+)
 
 console = get_console()
 
@@ -70,13 +75,22 @@ def _default_spells_from_config(resolved: dict[str, Any]) -> str:
 
 
 async def _run_print_mode(agent: MvgeAgent, prompts: list[str]) -> int:
+    turn_start = 0
     try:
         for prompt in prompts:
+            turn_start = transcript_length(agent)
             result = await agent.run(prompt)
             _display_response(result)
         return 0
     except Exception as exc:
         console.print(format_error(exc))
+        # Spells write to disk as they go, so a failure here can follow a turn
+        # that already completed the Summoner's work. Report it, or they retry
+        # blind and duplicate work they already have.
+        landed = landed_work_of(agent, since=turn_start)
+        if landed is not None:
+            for line in format_partial_work(landed):
+                console.print(line)
         return 1
 
 

@@ -9,6 +9,7 @@ from typing import Any
 
 from mvgeos_agent.protocol import MvgeAgent
 from mvgeos_core.errors import AuthenticationError, RateLimitError
+from mvgeos_core.worklog import LandedWork, landed_work
 from rich.console import Console
 
 _console = Console()
@@ -62,6 +63,75 @@ def format_error(exc: Exception | str) -> str:
     if msg.startswith("Error: "):
         return f"[red]{msg}[/red]"
     return f"[red]Error: {msg}[/red]"
+
+
+def _count(value: int, noun: str) -> str:
+    return f"{value} {noun}" if value == 1 else f"{value} {noun}s"
+
+
+def format_partial_work(work: LandedWork) -> list[str]:
+    """Report the work a failed run already left behind, as Rich markup lines.
+
+    Printed only when a run exits non-zero. A clean run gets no summary, because
+    a Summoner who did not ask for one learns nothing new from it.
+
+    A run that cast nothing says so plainly. Silence there would leave the
+    Summoner guessing whether the work landed, which is the exact ambiguity
+    that makes a blind retry dangerous.
+    """
+    if work.spells_run == 0:
+        return ["[dim]No spells ran before the failure, so nothing was written.[/dim]"]
+
+    lines = ["[bold yellow]Work already done before the failure:[/bold yellow]"]
+    lines.append(
+        f"  [yellow]{_count(work.spells_succeeded, 'spell')} completed[/yellow]"
+    )
+    if work.spells_failed:
+        lines.append(f"  [yellow]{_count(work.spells_failed, 'spell')} failed[/yellow]")
+    if work.mutated_paths:
+        lines.append("  [yellow]Files already on disk:[/yellow]")
+        lines.extend(f"    [yellow]{path}[/yellow]" for path in work.mutated_paths)
+        lines.append(
+            "[dim]Check these before retrying; a retry can overwrite them.[/dim]"
+        )
+    else:
+        lines.append("[dim]None of them wrote a file the engine can name.[/dim]")
+    return lines
+
+
+def transcript_length(agent: MvgeAgent) -> int:
+    """How many invocations the agent's transcript holds, or 0 when unreadable.
+
+    Snapshot before a turn so the report after a failure covers that turn only.
+    """
+    invocations = getattr(getattr(agent, "_state", None), "invocations", None)
+    return len(invocations) if isinstance(invocations, list) else 0
+
+
+def landed_work_of(agent: MvgeAgent, since: int = 0) -> LandedWork | None:
+    """Read the landed work off an agent's transcript, from ``since`` onward.
+
+    The transcript survives the failure: the harness reduces every
+    ``MESSAGE_END`` into the state as the run goes, so what the spells wrote is
+    already recorded by the time an upstream error raises.
+
+    ``since`` scopes the read to the invocations one turn appended. A resumed
+    Tome starts with a full transcript, and reporting those casts as work the
+    failing turn just completed would be wrong.
+
+    Returns ``None`` when the agent exposes no readable transcript. A custom
+    ``agent_factory`` may return an agent without the engine's accessors, and
+    that is a missing slot to skip, not a crash on the error path.
+    """
+    state = getattr(agent, "_state", None)
+    invocations = getattr(state, "invocations", None)
+    if not isinstance(invocations, list):
+        return None
+    spells = getattr(state, "spells", None)
+    return landed_work(
+        invocations[since:],
+        spells if isinstance(spells, list) else [],
+    )
 
 
 def format_cwd() -> str:
