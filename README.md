@@ -42,6 +42,13 @@ uvx --from "git+https://github.com/IAmNo1Special/mvgeos#subdirectory=mvgeos-cli"
 
 ## Run one task
 
+This is the whole sequence, recorded start to finish on a machine with an empty
+`$HOME`. No cuts, no re-run, 23 seconds:
+
+![Terminal recording: installing mvgeos from git, installing the openrouter-realm Rune and the coding_mvge Mvge, writing the credential, then running one task that creates hello.txt and verifying it with od -c](docs/images/mvgeos-demo.gif)
+
+The same four commands to type yourself:
+
 ```bash
 # 1. the Realm — how MvgeOS reaches a model
 mvgeos rune install openrouter-realm --confirm-python-deps
@@ -55,6 +62,12 @@ export OPENROUTER_API_KEY="sk-or-..."
 # run a task
 mvgeos --agent-name coding_mvge "Create a file named hello.txt containing exactly the text: hello from mvgeos"
 ```
+
+> **Step 2 asks a question in a real terminal.** `mvge install` has no
+> `--confirm-python-deps` the way `rune install` does, so when stdin is a TTY it
+> prompts before fetching its dependencies. Answer `y`. Answering `n` skips them
+> and the Mvge installs without the Spells it needs. The recording above pipes
+> `yes` into that prompt so it can run unattended; you will be asked.
 
 Here is that task, actually run, with nothing edited. The Mvge cast `write`,
 checked its own work, and reported back:
@@ -107,19 +120,23 @@ $ mvgeos info --agent-name coding_mvge
 Agent: coding_mvge
 Model: nvidia/nemotron-3-ultra-550b-a55b:free
 
-                    Spells
-┏━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Name       ┃ Source  ┃ Source Rune ┃ Description                               ┃
-┡━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ bash       │ builtin │ -           │ Execute a shell command with working dir…  │
-│ read       │ builtin │ -           │ Read a file from the workspace…           │
-│ write      │ builtin │ -           │ Create or overwrite a file…               │
-│ edit       │ builtin │ -           │ Modify an existing file…                  │
-│ find       │ builtin │ -           │ Locate files by name…                     │
-│ list       │ builtin │ -           │ List directory contents…                  │
-│ grep       │ builtin │ -           │ Search file contents by pattern…          │
-└────────────┴─────────┴─────────────┴───────────────────────────────────────────┘
+Spells
+  bash        builtin
+  edit        builtin
+  find        builtin
+  grep        builtin
+  list_files  builtin
+  read        builtin
+  read_url    builtin
+  search_web  builtin
+  write       builtin
 ```
+
+The `info` table also prints a Description column, several paragraphs long per
+Spell, and then the Rune, Config, Prompt, Skills, and Diagnostics tables. Those
+are elided here for width. `mvgeos build --agent-name coding_mvge` prints the
+same nine Spells as JSON, with their full parameter schemas, if you want to read
+them.
 
 </details>
 
@@ -135,9 +152,8 @@ quickstart, concepts, troubleshooting with real errors, and FAQ.
 
 - **A coding Mvge you can read.** Nine built-in Spells — `bash`, `edit`, `find`,
   `grep`, `list_files`, `read`, `read_url`, `search_web`, `write` — installed as
-  a package, so you can see exactly what your agent is allowed to do. That list
-  is what `mvgeos info --agent-name coding_mvge` printed on a clean machine, not
-  an edit of it.
+  a package, so you can see exactly what your agent is allowed to do. That is the
+  list `mvgeos build --agent-name coding_mvge` resolves on a clean machine.
 - **Tomes, not a chat database.** Every conversation is an append-only JSONL
   file under `~/.agents/sessions/` that you can read, diff, fork, and export.
 - **Runes.** Mount MCP servers as Spells, trace with OpenTelemetry, wire in
@@ -156,16 +172,22 @@ quickstart, concepts, troubleshooting with real errors, and FAQ.
 - **No published distribution yet**, hence the long install line.
 - **The default free model is unreliable, so step "run one task" is.** Every
   install and inspect command here is re-verified on a clean machine on a
-  schedule. The model call is not: on a clean-machine re-check, three
-  consecutive runs of the task above ended in
+  schedule. The model call is not: across eight clean-machine runs of the task
+  above, four ended in
 
   ```text
   Error: Upstream error from Nvidia: Service temporarily overloaded
   ```
 
-  twice with the correct `hello.txt` already written and the process exiting
-  non-zero, once with no file, and an immediate retry did not clear it. Naming
-  a model made the same task succeed:
+  and four completed and wrote the correct file. A retry clears it; the engine's
+  own retry gives up before the provider does. Check before you run it again, so
+  you do not pay twice for one task:
+
+  ```console
+  $ ls -l hello.txt && cat hello.txt
+  ```
+
+  Naming a different model also clears it:
 
   ```bash
   mvgeos -m nvidia/nemotron-3-super-120b-a12b:free --agent-name coding_mvge \
@@ -173,8 +195,7 @@ quickstart, concepts, troubleshooting with real errors, and FAQ.
   ```
 
   `-m` accepts only ids from the model list shipped in the repository, and that
-  list is a drifting snapshot. Check your file before you retry:
-  `ls -l hello.txt && cat hello.txt`. Details in the
+  list is a drifting snapshot. Details in the
   [troubleshooting guide](https://iamno1special.github.io/mvgeos-marketplace/troubleshooting/).
 - **A known bug costs a wasted round-trip.** When a Mvge checks its own work with
   `read`, `grep`, `find`, or `list_files`, leaving the optional paging arguments
