@@ -228,20 +228,31 @@ class TestReplHelpers:
 
     def test_format_tome_info_reports_mana_used(
         self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
     ) -> None:
         from mvgeos_cli.formatting import format_tome_info
 
+        # Pin both ambient seams the footer reads: cwd and terminal width.
+        # fit_footer drops items from the right end, so a long ambient cwd
+        # evicts mana and the model before it evicts itself.
+        monkeypatch.chdir(tmp_path)
         agent = Mvge(api_key="test-key")
         # Test fallback when no state is initialized
-        info = format_tome_info(agent)
+        info = format_tome_info(agent, console_width=200)
         parts = " ".join(text for _, text in info)
         assert "mana ?" in parts
 
-    def test_format_tome_info_without_state(self) -> None:
+    def test_format_tome_info_without_state(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
         from mvgeos_cli.formatting import format_tome_info
 
+        monkeypatch.chdir(tmp_path)
         agent = Mvge(api_key="test-key")
-        info = format_tome_info(agent)
+        info = format_tome_info(agent, console_width=200)
         parts = " ".join(text for _, text in info)
         assert "mana ?" in parts
 
