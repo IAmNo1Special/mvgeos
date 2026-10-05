@@ -80,9 +80,11 @@ its resolver's global layer from `global_agents_dir()` and honours
 and the resolver needs to *rank* scopes.
 
 `constants.py` deliberately keeps no re-export facade. Two import paths to one
-path-derivation helper is the failure this ADR exists to end. One consequence
-is external: the marketplace's `steering-bridge` imports `global_agents_dir`
-from `mvgeos_core.constants`, and must now import it from `mvgeos_core.layers`.
+path-derivation helper is the failure this ADR exists to end. The supported
+import path for everything below is the package root, `from mvgeos_core
+import ...`, which is where the moved symbols are re-exported. That is also
+what the marketplace runes use, so moving the symbols out of `constants` did
+not reach them.
 
 
 Seven of the thirty commits before this ADR were fixes to some variant of this.
