@@ -10,6 +10,13 @@ Trust model (read this before relying on it):
 - For anything security-sensitive, pass an explicit ``allowed_modules``
   allowlist: when provided, *every* import not on the list is rejected, both
   at AST-validation time and at runtime.
+- ``allowed_modules`` is a constraint, not a grant. Listing a module from
+  ``FORBIDDEN_NAMES`` lets the ``import`` statement through but never makes
+  the module usable: attribute access rooted at one of those names is
+  rejected wherever it appears, so ``os.system`` is refused even when ``os``
+  is allow-listed. ``sys`` is refused outright and cannot be allow-listed,
+  because it hands back the interpreter that ``allowed_modules`` exists to
+  constrain.
 - Do not execute genuinely hostile code here. Treat this sandbox as a guard
   against accidents and casual misuse, not as isolation.
 """
@@ -37,6 +44,30 @@ FORBIDDEN_NAMES = {
     "builtins",
 }
 
+#: Modules no allowlist may re-grant. ``sys`` hands back the interpreter and
+#: defeats the restricted ``__builtins__`` this executor installs, so
+#: allow-listing it would silently reopen the whole boundary.
+ALWAYS_FORBIDDEN_MODULES = frozenset({"sys"})
+
+
+def _attribute_root(node: ast.expr) -> str | None:
+    """Resolves the root binding of a dotted expression.
+
+    ``os.system`` and ``os.environ`` both resolve to ``"os"``. Returns None
+    when the chain does not bottom out in a plain name (``factory().attr``),
+    which the visitor cannot attribute to a module.
+
+    Args:
+        node: Expression node to resolve.
+
+    Returns:
+        The root name, or None if the chain does not root at a Name node.
+    """
+    current: ast.expr = node
+    while isinstance(current, ast.Attribute):
+        current = current.value
+    return current.id if isinstance(current, ast.Name) else None
+
 
 class ASTSafetyVisitor(ast.NodeVisitor):
     """AST visitor to verify safe syntax before execution."""
@@ -47,9 +78,32 @@ class ASTSafetyVisitor(ast.NodeVisitor):
         Args:
             allowed_modules: Optional allowlist of importable top-level
                 module names. When provided, any import not on the list is
-                rejected. When omitted, the legacy denylist applies.
+                rejected. When omitted, the legacy denylist applies. A
+                forbidden module is never made usable by appearing here:
+                the allowlist narrows the import surface, it does not grant
+                access to the interpreter or the host.
         """
         self.allowed_modules = allowed_modules
+
+    def _check_importable(self, base_mod: str, source: str) -> None:
+        """Applies the import policy to one resolved base module.
+
+        Args:
+            base_mod: Top-level module name an import statement targets.
+            source: Human-readable form of the statement, for the message.
+
+        Raises:
+            ValueError: If the module may not be imported.
+        """
+        if base_mod in ALWAYS_FORBIDDEN_MODULES:
+            raise ValueError(f"Forbidden AST node: {source}")
+        if self.allowed_modules is not None:
+            if base_mod not in self.allowed_modules:
+                raise ValueError(
+                    f"Forbidden import: '{base_mod}' is not in allowed_modules."
+                )
+        elif base_mod in FORBIDDEN_NAMES:
+            raise ValueError(f"Forbidden AST node: {source}")
 
     def visit_Import(self, node: ast.Import) -> None:
         """Validates import statements against the module policy.
@@ -61,14 +115,7 @@ class ASTSafetyVisitor(ast.NodeVisitor):
             ValueError: If an import statement targets a forbidden module.
         """
         for alias in node.names:
-            base_mod = alias.name.split(".")[0]
-            if self.allowed_modules is not None:
-                if base_mod not in self.allowed_modules:
-                    raise ValueError(
-                        f"Forbidden import: '{alias.name}' is not in allowed_modules."
-                    )
-            elif base_mod == "sys" or base_mod in FORBIDDEN_NAMES:
-                raise ValueError(f"Forbidden AST node: import {alias.name}")
+            self._check_importable(alias.name.split(".")[0], f"import {alias.name}")
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
@@ -81,28 +128,32 @@ class ASTSafetyVisitor(ast.NodeVisitor):
             ValueError: If a from-import statement targets a forbidden module.
         """
         if node.module:
-            base_mod = node.module.split(".")[0]
-            if self.allowed_modules is not None:
-                if base_mod not in self.allowed_modules:
-                    raise ValueError(
-                        f"Forbidden import: 'from {node.module} import ...' "
-                        "is not in allowed_modules."
-                    )
-            elif base_mod == "sys" or base_mod in FORBIDDEN_NAMES:
-                raise ValueError(f"Forbidden AST node: from {node.module} import ...")
+            self._check_importable(
+                node.module.split(".")[0],
+                f"from {node.module} import ...",
+            )
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
-        """Blocks dunder attribute access (e.g. ``().__class__``).
+        """Blocks dunder access and attribute access on forbidden modules.
+
+        Reaching a capability through an attribute - ``os.system``,
+        ``subprocess.run``, ``os.environ`` - is the same capability as
+        calling it directly, so it is rejected here rather than in
+        ``visit_Call``. Reading ``os.environ[...]`` needs no call at all.
 
         Args:
             node: AST attribute node.
 
         Raises:
-            ValueError: If the attribute is a dunder name.
+            ValueError: If the attribute is a dunder or is reached through a
+                forbidden module.
         """
         if node.attr.startswith("__") and node.attr.endswith("__"):
             raise ValueError(f"Forbidden dunder attribute access: {node.attr}")
+        root = _attribute_root(node)
+        if root is not None and root in FORBIDDEN_NAMES:
+            raise ValueError(f"Forbidden attribute access: {root}.{node.attr}")
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
@@ -198,12 +249,14 @@ class MvgeSandbox:
 
         def safe_import(name: str, *args: Any, **kwargs: Any) -> Any:
             base_mod = name.split(".")[0]
+            if base_mod in ALWAYS_FORBIDDEN_MODULES:
+                raise ValueError(f"Import of module '{name}' is forbidden.")
             if allowed_modules is not None:
                 if base_mod not in allowed_modules:
                     raise ValueError(
                         f"Forbidden import: '{name}' is not in allowed_modules."
                     )
-            elif base_mod == "sys" or base_mod in FORBIDDEN_NAMES:
+            elif base_mod in FORBIDDEN_NAMES:
                 raise ValueError(f"Import of module '{name}' is forbidden.")
             return builtins.__import__(name, *args, **kwargs)
 
