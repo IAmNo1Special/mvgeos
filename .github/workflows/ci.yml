@@ -76,6 +76,34 @@ jobs:
       - name: Verify every ADR status and contracted symbol matches the source
         run: uv run --no-project python mvgeos-core/scripts/check_adr_contract.py
 
+  # The release tooling in `scripts/` gates every publish: `check_publish.py`
+  # is what refuses to ship a wheel whose `Requires-Dist` cannot resolve on
+  # another machine, and `pypi_new_project_window.py` is what tells a person
+  # holding a release that a 429 is a full account quota rather than a broken
+  # distribution. Neither is covered by the per-package legs above, because
+  # they are not a package.
+  #
+  # They landed with no tests at all, and the first consequence was a
+  # measurement regression rather than a bug: 181 untested source lines in
+  # `scripts/` moved `test_ratio` below its baseline and turned `main` red for
+  # a release nobody could ship. These tests are what make that class of change
+  # visible as a failing assertion instead.
+  release-tooling:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - run: uv sync --all-packages
+
+      # No coverage gate: `[tool.coverage.run] source` lists the eight
+      # `mvgeos_*` distributions, and these scripts ship in no wheel.
+      - run: uv run python -m pytest scripts/tests
+
   # Verifies every engine import in a marketplace checkout resolves and is
   # declared in the relevant __all__. Keep it blocking: a silent API removal
   # is the failure this exists to prevent. The cost is that this repository's

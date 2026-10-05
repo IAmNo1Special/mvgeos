@@ -77,6 +77,26 @@ THE SIX MEASURES AND THEIR EXACT DEFINITIONS
    `test_*`, `*_test.py`, `*.test.ts`, `*.test.tsx`, `*.spec.ts`,
    `*.spec.tsx`. Everything else is SOURCE code.
 
+   `scripts/` is counted as SOURCE and is deliberately NOT in
+   `EXCLUDED_DIRS`. It was a candidate: `scripts/pypi_new_project_window.py`
+   landed in v0.6.8 with 181 source lines and no tests, which put MvgeOS's
+   `test_ratio` below its baseline and turned the gate red, and adding
+   `scripts` to the list below would have turned it green at once.
+
+   It was not done, because the exclusion is far larger than the 181 lines
+   that provoked it. Measured with `measure_loc` on main at d31cbfc:
+
+       as measured       src=41321 test=57692 ratio=1.396191
+       `scripts/` source = 2,315 lines, of which this file is 1,929
+       excluded          src=39006 test=57692 ratio=1.479055   (+0.082864)
+
+   The gate would have been cleared by removing this file -- the thing doing
+   the measuring -- from its own denominator. A published number moved that
+   way is not a measurement, so the helper was tested instead, in
+   `scripts/tests/quota_window.py`, over the quota arithmetic rather than the
+   HTTP call. Re-derive either figure with `measure_loc`; neither is meant to
+   be taken on trust.
+
    Lines are `len(text.splitlines())` over the whole file: blank lines and
    comment lines included. This is the definition v1 used and it is what makes
    the mvgeos row reproduce exactly (38,971 / 57,545). A "physical lines"
