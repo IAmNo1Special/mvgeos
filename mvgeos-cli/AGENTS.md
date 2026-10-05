@@ -57,6 +57,7 @@ Test paths follow pattern: `mvgeos-cli/tests/unit/<module>.py` and `mvgeos-cli/t
 | `mvgeos config get <key>` | Get configuration value with provenance |
 | `mvgeos config reset` | Reset configuration to defaults |
 | `mvgeos config path` | Show configuration file path |
+| `mvgeos config refresh-models [--force]` | Re-fetch the model catalog from OpenRouter; reports ids added, removed, and every id that used to be free and no longer is |
 
 ## Dependencies
 

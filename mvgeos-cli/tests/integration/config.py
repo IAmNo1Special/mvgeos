@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from mvgeos_provider.model_registry import CatalogRefresh, RefreshStatus
 from typer.testing import CliRunner
 
 from mvgeos_cli.commands.config import config_app
@@ -129,3 +132,79 @@ class TestConfigCommands:
         assert result.exit_code == 0
         assert "test-agent" in result.stdout
         assert "config.json" in result.stdout
+
+
+class TestConfigRefreshModels:
+    @contextmanager
+    def _patched_refresh(self, refresh: CatalogRefresh) -> Iterator[AsyncMock]:
+        mock_refresh = AsyncMock(return_value=refresh)
+        with patch("mvgeos_cli.commands.config.refresh_catalog", new=mock_refresh):
+            yield mock_refresh
+
+    def test_reports_added_removed_and_no_longer_free(self) -> None:
+        refresh = CatalogRefresh(
+            status=RefreshStatus.REFRESHED,
+            total=412,
+            added=("new/free:free",),
+            removed=("old/withdrawn",),
+            no_longer_free=("nvidia/now-paid:free",),
+            cache_path=Path("/home/user/.agents/models.json"),
+        )
+        with self._patched_refresh(refresh) as mock_refresh:
+            result = runner.invoke(config_app, ["refresh-models"])
+
+        assert result.exit_code == 0
+        assert "412" in result.stdout
+        assert "new/free:free" in result.stdout
+        assert "old/withdrawn" in result.stdout
+        assert "nvidia/now-paid:free" in result.stdout
+        assert "/home/user/.agents/models.json" in result.stdout
+        mock_refresh.assert_awaited_once_with(force_refresh=False)
+
+    def test_network_failure_is_not_reported_as_zero_updates(self) -> None:
+        refresh = CatalogRefresh(
+            status=RefreshStatus.UNREACHABLE,
+            total=0,
+            added=(),
+            removed=(),
+            no_longer_free=(),
+            cache_path=Path("/home/user/.agents/models.json"),
+        )
+        with self._patched_refresh(refresh):
+            result = runner.invoke(config_app, ["refresh-models"])
+
+        assert result.exit_code == 1
+        assert "could not reach" in result.output.lower()
+        assert "shipped catalog" in result.output.lower()
+        assert "0 models" not in result.output
+
+    def test_fresh_cache_is_not_a_refresh(self) -> None:
+        refresh = CatalogRefresh(
+            status=RefreshStatus.CACHE_FRESH,
+            total=412,
+            added=(),
+            removed=(),
+            no_longer_free=(),
+            cache_path=Path("/home/user/.agents/models.json"),
+        )
+        with self._patched_refresh(refresh) as mock_refresh:
+            result = runner.invoke(config_app, ["refresh-models"])
+
+        assert result.exit_code == 0
+        assert "--force" in result.stdout
+        mock_refresh.assert_awaited_once_with(force_refresh=False)
+
+    def test_force_bypasses_the_cache_ttl(self) -> None:
+        refresh = CatalogRefresh(
+            status=RefreshStatus.REFRESHED,
+            total=412,
+            added=(),
+            removed=(),
+            no_longer_free=(),
+            cache_path=Path("/home/user/.agents/models.json"),
+        )
+        with self._patched_refresh(refresh) as mock_refresh:
+            result = runner.invoke(config_app, ["refresh-models", "--force"])
+
+        assert result.exit_code == 0
+        mock_refresh.assert_awaited_once_with(force_refresh=True)

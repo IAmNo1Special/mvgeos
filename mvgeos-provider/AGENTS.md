@@ -33,6 +33,7 @@ Test paths follow pattern: `mvgeos-provider/tests/unit/<module>.py` and `mvgeos-
 | `RealmResponse` | Stream chunk wrapper, canonical in `mvgeos-core` (`invocation`, `mana_used`, error fields) |
 | `RealmRegistry` | Factory for realms; dynamic factory registration; extension-provider configs |
 | `ModelRegistry` | Model catalog with disk cache + OpenRouter refresh |
+| `CatalogRefresh` / `RefreshStatus` | Result of a reporting refresh: ids added, removed, and no longer free (retired or repriced), plus whether the Realm was reachable |
 
 ## Field Naming
 

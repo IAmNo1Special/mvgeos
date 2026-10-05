@@ -6,7 +6,9 @@ from mvgeos_core.channel import (
 
 from mvgeos_provider.base import NoRealmRegisteredError, Realm, RealmFactory
 from mvgeos_provider.model_registry import (
+    CatalogRefresh,
     ModelRegistry,
+    RefreshStatus,
     list_models,
     serving_realm_for_model,
 )
@@ -30,11 +32,13 @@ from mvgeos_provider.registry import (
     get_registry,
     get_supported_contemplation_levels,
     is_realm_router,
+    refresh_catalog,
     refresh_models,
 )
 from mvgeos_provider.sse import SSEChunk, SSEStreamingRealm
 
 __all__ = [
+    "CatalogRefresh",
     "ChannelConfig",
     "DEFAULT_REALM",
     "Model",
@@ -48,6 +52,7 @@ __all__ = [
     "RealmFactory",
     "RealmRegistry",
     "RealmResponse",
+    "RefreshStatus",
     "SSEChunk",
     "SSEStreamingRealm",
     "api_key_env_for_realm",
@@ -61,6 +66,7 @@ __all__ = [
     "is_realm_router",
     "list_models",
     "realm_for_model_id",
+    "refresh_catalog",
     "refresh_models",
     "rune_for_realm",
     "serving_realm_for_model",
