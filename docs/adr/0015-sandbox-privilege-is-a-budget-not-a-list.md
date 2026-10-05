@@ -43,6 +43,8 @@ Bare `open(...)` is refused, so the write path is `pathlib` specifically.
 
 ### 1. `allowed_modules` may not name a forbidden module
 
+**Landed.** Engine commit `3db0e23`.
+
 The allow-list constrains the import surface. It has never been a grant, and
 after this decision it cannot be read as one. Naming a `FORBIDDEN_NAMES` member
 is refused at the import, not tolerated until first use.
