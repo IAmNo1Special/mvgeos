@@ -35,7 +35,8 @@
         "pypi:mvgeos-runes": "200",
         "pypi:mvgeos-cli": "404",
         "pypi:mvgeos-gui": "404"
-      }
+      },
+      "workflow_files": 4
     },
     "adk-python": {
       "commit": "6be386d",
@@ -62,7 +63,8 @@
       "annotation_weighted": 0.530949,
       "install": {
         "pypi:google-adk": "200"
-      }
+      },
+      "workflow_files": 14
     },
     "smolagents": {
       "commit": "c30b115",
@@ -89,7 +91,8 @@
       "annotation_weighted": 0.395833,
       "install": {
         "pypi:smolagents": "200"
-      }
+      },
+      "workflow_files": 6
     },
     "hermes-agent": {
       "commit": "71574220",
@@ -120,7 +123,8 @@
       "annotation_weighted": 0.625574,
       "install": {
         "pypi:hermes-agent": "200"
-      }
+      },
+      "workflow_files": 51
     },
     "openclaw": {
       "commit": "1b7d11db",
@@ -151,7 +155,8 @@
       "annotation_weighted": null,
       "install": {
         "npm:openclaw": "200"
-      }
+      },
+      "workflow_files": 111
     },
     "deepseek-harness": {
       "commit": "5badb15",
@@ -182,7 +187,8 @@
       "annotation_weighted": null,
       "install": {
         "npm:@deepseek-ai/dsh": "200"
-      }
+      },
+      "workflow_files": 20
     },
     "pi": {
       "commit": "5b6c792",
@@ -209,7 +215,8 @@
       "annotation_weighted": null,
       "install": {
         "npm:@earendil-works/pi-coding-agent": "200"
-      }
+      },
+      "workflow_files": 12
     }
   }
 }
