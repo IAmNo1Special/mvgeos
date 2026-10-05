@@ -23,10 +23,21 @@ def mvge_install(
     spec: str = typer.Argument(
         ..., help="Mvge name from marketplace, Git URL, or local path"
     ),
+    confirm_python_deps: bool | None = typer.Option(
+        None,
+        "--confirm-python-deps/--no-confirm-python-deps",
+        help=(
+            "Install the mvge's declared python_deps without prompting. "
+            "A manifest is authored by whoever published the mvge, so its "
+            "dependencies are an instruction to fetch packages from PyPI. "
+            "Left unset, this prompts when stdin is a terminal and skips "
+            "otherwise."
+        ),
+    ),
 ) -> None:
     """Install an agent mvge from the marketplace, Git URL, or local path."""
     try:
-        dest = install_mvge(spec)
+        dest = install_mvge(spec, confirm_python_deps=confirm_python_deps)
         console.print(
             f"[green]Successfully installed mvge '{dest.name}' to {dest}[/green]"
         )
