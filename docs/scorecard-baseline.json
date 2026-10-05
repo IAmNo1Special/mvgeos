@@ -3,10 +3,16 @@
   "generated_by": "scripts/scorecard.py",
   "projects": {
     "mvgeos": {
-      "source_loc": 40656,
+      "source_loc": 40760,
       "test_loc": 57545,
       "source_files": 142,
-      "test_ratio": 1.415412,
+      "test_ratio": 1.411801,
+      "language_split": {
+        "Python": {
+          "source_loc": 40760,
+          "test_loc": 57545
+        }
+      },
       "type_strictness": "true",
       "coverage_fail_under": 90.0,
       "coverage_job": "ci.yml:coverage",
@@ -33,6 +39,12 @@
       "test_loc": 416835,
       "source_files": 1244,
       "test_ratio": 1.714855,
+      "language_split": {
+        "Python": {
+          "source_loc": 243073,
+          "test_loc": 416835
+        }
+      },
       "type_strictness": "true",
       "coverage_fail_under": null,
       "coverage_job": null,
@@ -52,6 +64,12 @@
       "test_loc": 12935,
       "source_files": 48,
       "test_ratio": 0.731907,
+      "language_split": {
+        "Python": {
+          "source_loc": 17673,
+          "test_loc": 12935
+        }
+      },
       "type_strictness": "unset",
       "coverage_fail_under": null,
       "coverage_job": null,
@@ -67,29 +85,49 @@
       }
     },
     "hermes-agent": {
-      "source_loc": 900030,
-      "test_loc": 1286802,
-      "source_files": 2393,
-      "test_ratio": 1.429732,
+      "source_loc": 1525231,
+      "test_loc": 1636028,
+      "source_files": 4797,
+      "test_ratio": 1.072643,
+      "language_split": {
+        "Python": {
+          "source_loc": 900282,
+          "test_loc": 1287273
+        },
+        "TypeScript": {
+          "source_loc": 624949,
+          "test_loc": 348755
+        }
+      },
       "type_strictness": "unset",
       "coverage_fail_under": null,
       "coverage_job": null,
       "extension_count": 18,
       "cross_extension_imports": 1,
       "parse_failures": 0,
-      "annotation_files": 2393,
-      "annotation_fully": 858,
-      "annotation_partial": 1277,
-      "annotation_weighted": 0.625366,
+      "annotation_files": 2396,
+      "annotation_fully": 859,
+      "annotation_partial": 1279,
+      "annotation_weighted": 0.625417,
       "install": {
         "pypi:hermes-agent": "200"
       }
     },
     "openclaw": {
-      "source_loc": 4460895,
-      "test_loc": 6717657,
-      "source_files": 23651,
-      "test_ratio": 1.505899,
+      "source_loc": 4471119,
+      "test_loc": 6730351,
+      "source_files": 23688,
+      "test_ratio": 1.505295,
+      "language_split": {
+        "Python": {
+          "source_loc": 10639,
+          "test_loc": 22288
+        },
+        "TypeScript": {
+          "source_loc": 4460480,
+          "test_loc": 6708063
+        }
+      },
       "type_strictness": "true",
       "coverage_fail_under": null,
       "coverage_job": null,
@@ -105,10 +143,20 @@
       }
     },
     "deepseek-harness": {
-      "source_loc": 478874,
-      "test_loc": 656790,
-      "source_files": 2871,
-      "test_ratio": 1.37153,
+      "source_loc": 487118,
+      "test_loc": 660571,
+      "source_files": 2889,
+      "test_ratio": 1.35608,
+      "language_split": {
+        "Python": {
+          "source_loc": 8244,
+          "test_loc": 3781
+        },
+        "TypeScript": {
+          "source_loc": 478874,
+          "test_loc": 656790
+        }
+      },
       "type_strictness": "true",
       "coverage_fail_under": null,
       "coverage_job": null,
@@ -124,10 +172,16 @@
       }
     },
     "pi": {
-      "source_loc": 196899,
-      "test_loc": 180452,
+      "source_loc": 196905,
+      "test_loc": 180469,
       "source_files": 860,
-      "test_ratio": 0.91647,
+      "test_ratio": 0.916528,
+      "language_split": {
+        "TypeScript": {
+          "source_loc": 196905,
+          "test_loc": 180469
+        }
+      },
       "type_strictness": "true",
       "coverage_fail_under": null,
       "coverage_job": null,

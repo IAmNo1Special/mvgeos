@@ -22,11 +22,38 @@ THE SIX MEASURES AND THEIR EXACT DEFINITIONS
 =============================================
 
 1. Source and test LOC
-   A counted file is a `.py` file for a Python project, or a `.ts`/`.tsx`
-   file for a TypeScript project. One language per project, as scorecard v1
-   did: hermes-agent's 654k lines of TypeScript and deepseek-harness's 12k
-   lines of Python were not counted, because counting them is what made v1's
-   ratios unreproducible from v1's own stated definition.
+   A counted file is any `.py`, `.ts` or `.tsx` file in the checkout. Every
+   language is counted, for every project, and the two totals are summed.
+
+   THIS CHANGES THE MEASURE, AND IT CHANGES IT IN OUR FAVOUR, SO READ THIS.
+
+   Scorecard v1 counted one language per project. v1's hermes-agent row is its
+   900,282 Python lines and ignores its 624,949 lines of TypeScript; v1's
+   deepseek-harness row is its 478,874 TypeScript lines and ignores its 8,244
+   lines of Python. Counting all languages therefore moves hermes-agent's ratio
+   from 1.43 to 1.07, and with hermes-agent below 1.07 rather than above 1.43,
+   MvgeOS moves from fifth to third of seven on test density.
+
+   We count all languages anyway, for two reasons, and the reader should hold
+   both against the paragraph above:
+
+   a) It is the stated definition. The measure is specified as "any `.py`,
+      `.ts` or `.tsx` file". Narrowing it to one language so the numbers match
+      a hand-measured document makes the script a rubber stamp for that
+      document, which is the opposite of what a reproducible benchmark is for.
+      The correction goes in the document, not in the script.
+   b) The one-language rule has no stated basis and is not self-consistent. It
+      counts hermes-agent's Python and deepseek-harness's TypeScript, which is
+      "whatever language the project's own tooling is written in", an inference
+      a reader cannot check from the output. It also silently drops a third of
+      hermes-agent's source lines from a measure about source lines.
+
+   A reader who thinks the mixed ratio is the wrong measure should still have
+   the information to disagree: the per-language breakdown of both totals is in
+   the baseline snapshot, and a project that is not single-language has its
+   split printed under the table. MvgeOS's own row is single-language, so this
+   decision does not move our own ratio in either direction -- it moves our
+   RANK, by pushing hermes-agent below us.
 
    A counted file is EXCLUDED when any directory component is one of
    `node_modules`, `dist`, `build`, `vendor`, `out`, `coverage`, `.next`,
@@ -153,12 +180,23 @@ from typing import Any, NamedTuple
 # in --help. Change one and you must change the other.
 # --------------------------------------------------------------------------
 
-#: Extensions counted per project language. Scorecard v1 counted one language
-#: per project; so does this script, for the reason given in measure 1.
+#: File extensions counted by measure 1, per project language.
+#:
+#: Measure 1 counts every extension in this table for every project. The
+#: per-language grouping is still needed by measures 2 and 6, which are
+#: language-specific by nature: a tsconfig says nothing about Python, and an
+#: annotation count over a `.tsx` file is not a thing.
 LANGUAGE_SUFFIXES: dict[str, tuple[str, ...]] = {
     "Python": (".py",),
     "TypeScript": (".ts", ".tsx"),
 }
+
+#: Measure 1 counts all of these, for every project, in one pass. See the
+#: measure 1 section of the docstring for why a project is not narrowed to
+#: one language, and for the disclosure of what that choice costs us.
+COUNTED_SUFFIXES: tuple[str, ...] = tuple(
+    sorted({suffix for suffixes in LANGUAGE_SUFFIXES.values() for suffix in suffixes})
+)
 
 #: A counted file under any of these directories is not counted at all.
 #:
@@ -362,6 +400,10 @@ class Result:
     source_loc: int | None = None
     test_loc: int | None = None
     source_files: int | None = None
+    #: Per-language ``(source_loc, test_loc)`` breakdown of the two totals above.
+    #: Measure 1 counts every language; this says what was in each one, so a
+    #: reader is never asked to take a blended ratio on trust.
+    language_split: dict[str, tuple[int, int]] = field(default_factory=dict)
     type_strictness: str | None = None
     type_strictness_detail: str | None = None
     coverage_fail_under: float | None = None
@@ -408,10 +450,15 @@ def is_excluded(relative: Path) -> bool:
     return bool(EXCLUDED_DIRS.intersection(relative.parts))
 
 
-def iter_counted_files(root: Path, language: str) -> list[Path]:
-    """Every countable source file under ``root``, sorted for reproducibility."""
+def iter_counted_files(root: Path, language: str | None = None) -> list[Path]:
+    """Every countable source file under ``root``, sorted for reproducibility.
+
+    ``language`` restricts the walk to one language's extensions. ``None`` means
+    every extension measure 1 counts, which is what measure 1 asks for.
+    """
+    suffixes = COUNTED_SUFFIXES if language is None else LANGUAGE_SUFFIXES[language]
     found: list[Path] = []
-    for suffix in LANGUAGE_SUFFIXES[language]:
+    for suffix in suffixes:
         for path in root.rglob(f"*{suffix}"):
             relative = path.relative_to(root)
             if is_excluded(relative):
@@ -457,18 +504,42 @@ def physical_lines(path: Path) -> int:
     return len(path.read_text(encoding="utf-8", errors="replace").splitlines())
 
 
-def measure_loc(root: Path, language: str) -> tuple[int, int, int, int]:
-    """Return ``(source_loc, test_loc, source_files, test_files)``."""
+def measure_loc(root: Path) -> tuple[int, int, int, int, dict[str, tuple[int, int]]]:
+    """Return ``(source_loc, test_loc, source_files, test_files, per_language)``.
+
+    ``per_language`` maps each language that contributed lines to its own
+    ``(source_loc, test_loc)`` pair. Measure 1 counts every language, so the
+    pair is a breakdown of the total rather than a filter on it. It is carried
+    into the baseline and printed for any project that is not single-language,
+    because a ratio over two languages is only interpretable if the reader can
+    see what was in the other one.
+    """
     source_loc = test_loc = source_files = test_files = 0
-    for path in iter_counted_files(root, language):
+    per_language: dict[str, tuple[int, int]] = {}
+    for path in iter_counted_files(root):
+        language = _language_of(path)
         lines = physical_lines(path)
-        if is_test_file(path.relative_to(root)):
+        is_test = is_test_file(path.relative_to(root))
+        if is_test:
             test_loc += lines
             test_files += 1
         else:
             source_loc += lines
             source_files += 1
-    return source_loc, test_loc, source_files, test_files
+        lang_source, lang_test = per_language.get(language, (0, 0))
+        if is_test:
+            lang_test += lines
+        else:
+            lang_source += lines
+        per_language[language] = (lang_source, lang_test)
+    return source_loc, test_loc, source_files, test_files, per_language
+
+
+def _language_of(path: Path) -> str:
+    """The project language a file belongs to, by its extension."""
+    if path.suffix == ".py":
+        return "Python"
+    return "TypeScript"
 
 
 # --------------------------------------------------------------------------
@@ -1020,10 +1091,17 @@ def measure_project(
 ) -> Result:
     """Run every measure for one project."""
     result = Result(key=project.key, source=project.slug)
-    source_loc, test_loc, source_files, _ = measure_loc(checkout, project.language)
+    (
+        source_loc,
+        test_loc,
+        source_files,
+        _,
+        language_split,
+    ) = measure_loc(checkout)
     result.source_loc = source_loc
     result.test_loc = test_loc
     result.source_files = source_files
+    result.language_split = language_split
 
     state, detail = measure_type_strictness(checkout, project.language)
     result.type_strictness = state
@@ -1112,6 +1190,10 @@ def baseline_document(results: list[Result]) -> dict[str, Any]:
             "test_ratio": (
                 round(result.test_ratio, 6) if result.test_ratio is not None else None
             ),
+            "language_split": {
+                language: {"source_loc": source, "test_loc": test}
+                for language, (source, test) in sorted(result.language_split.items())
+            },
             "type_strictness": result.type_strictness,
             "coverage_fail_under": result.coverage_fail_under,
             "coverage_job": result.coverage_job,
@@ -1252,6 +1334,28 @@ def render_table(results: list[Result], online: bool) -> str:
             + _cell(result.coverage_text)
             + _cell(annotation)
         )
+    lines.append("")
+    lines.append("Language split of the LOC columns (measure 1 counts all of them)")
+    lines.append("-" * len(header))
+    lines.append(
+        _cell("Project", 18)
+        + _cell("Language")
+        + _cell("Source LOC")
+        + _cell("Test LOC")
+        + _cell("Share of source")
+    )
+    lines.append("-" * len(header))
+    for result in results:
+        if result.error or not result.language_split or not result.source_loc:
+            continue
+        for language, (source, test) in sorted(result.language_split.items()):
+            lines.append(
+                _cell(result.key, 18)
+                + _cell(language, 14)
+                + _cell(f"{source:,}")
+                + _cell(f"{test:,}")
+                + _cell(f"{source / result.source_loc:.0%}")
+            )
     lines.append("")
     lines.append("Extension isolation (measure 4, the gate)")
     lines.append("-" * len(header))
