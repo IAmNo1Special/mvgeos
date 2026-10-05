@@ -151,7 +151,11 @@ jobs:
   # command from PyPI exactly as a stranger's machine would.
   verify:
     needs: publish
-    if: ${{ inputs.dry_run != 'true' }}
+    # dry_run is declared type: boolean, so it arrives as a boolean. Comparing
+    # it to the string 'true' is never equal, which sent verify out to assert
+    # that eight packages were on PyPI after a dry run uploaded none of them.
+    # A tag push has no inputs at all, and null != true is what runs verify.
+    if: ${{ inputs.dry_run != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
