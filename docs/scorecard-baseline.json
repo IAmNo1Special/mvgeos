@@ -1,0 +1,146 @@
+{
+  "schema": 1,
+  "generated_by": "scripts/scorecard.py",
+  "projects": {
+    "mvgeos": {
+      "source_loc": 40591,
+      "test_loc": 57545,
+      "source_files": 142,
+      "test_ratio": 1.417679,
+      "type_strictness": "true",
+      "coverage_fail_under": 90.0,
+      "coverage_job": "ci.yml:coverage",
+      "extension_count": 15,
+      "cross_extension_imports": 0,
+      "parse_failures": 0,
+      "annotation_files": 142,
+      "annotation_fully": 118,
+      "annotation_partial": 0,
+      "annotation_weighted": 0.830986,
+      "install": {
+        "pypi:mvgeos": "404",
+        "pypi:mvgeos-core": "404",
+        "pypi:mvgeos-agent": "404",
+        "pypi:mvgeos-provider": "404",
+        "pypi:mvgeos-tome": "404",
+        "pypi:mvgeos-runes": "404",
+        "pypi:mvgeos-cli": "404",
+        "pypi:mvgeos-gui": "404"
+      }
+    },
+    "adk-python": {
+      "source_loc": 243073,
+      "test_loc": 416835,
+      "source_files": 1244,
+      "test_ratio": 1.714855,
+      "type_strictness": "true",
+      "coverage_fail_under": null,
+      "coverage_job": null,
+      "extension_count": null,
+      "cross_extension_imports": null,
+      "parse_failures": 0,
+      "annotation_files": 1244,
+      "annotation_fully": 517,
+      "annotation_partial": 287,
+      "annotation_weighted": 0.530949,
+      "install": {
+        "pypi:google-adk": "200"
+      }
+    },
+    "smolagents": {
+      "source_loc": 17673,
+      "test_loc": 12935,
+      "source_files": 48,
+      "test_ratio": 0.731907,
+      "type_strictness": "unset",
+      "coverage_fail_under": null,
+      "coverage_job": null,
+      "extension_count": null,
+      "cross_extension_imports": null,
+      "parse_failures": 0,
+      "annotation_files": 48,
+      "annotation_fully": 5,
+      "annotation_partial": 28,
+      "annotation_weighted": 0.395833,
+      "install": {
+        "pypi:smolagents": "200"
+      }
+    },
+    "hermes-agent": {
+      "source_loc": 900030,
+      "test_loc": 1286802,
+      "source_files": 2393,
+      "test_ratio": 1.429732,
+      "type_strictness": "unset",
+      "coverage_fail_under": null,
+      "coverage_job": null,
+      "extension_count": 18,
+      "cross_extension_imports": 1,
+      "parse_failures": 0,
+      "annotation_files": 2393,
+      "annotation_fully": 858,
+      "annotation_partial": 1277,
+      "annotation_weighted": 0.625366,
+      "install": {
+        "pypi:hermes-agent": "200"
+      }
+    },
+    "openclaw": {
+      "source_loc": 4460895,
+      "test_loc": 6717657,
+      "source_files": 23651,
+      "test_ratio": 1.505899,
+      "type_strictness": "true",
+      "coverage_fail_under": null,
+      "coverage_job": null,
+      "extension_count": null,
+      "cross_extension_imports": null,
+      "parse_failures": 0,
+      "annotation_files": 0,
+      "annotation_fully": 0,
+      "annotation_partial": 0,
+      "annotation_weighted": null,
+      "install": {
+        "npm:openclaw": "200"
+      }
+    },
+    "deepseek-harness": {
+      "source_loc": 478874,
+      "test_loc": 656790,
+      "source_files": 2871,
+      "test_ratio": 1.37153,
+      "type_strictness": "true",
+      "coverage_fail_under": null,
+      "coverage_job": null,
+      "extension_count": null,
+      "cross_extension_imports": null,
+      "parse_failures": 0,
+      "annotation_files": 0,
+      "annotation_fully": 0,
+      "annotation_partial": 0,
+      "annotation_weighted": null,
+      "install": {
+        "npm:@deepseek-ai/dsh": "200"
+      }
+    },
+    "pi": {
+      "source_loc": 196899,
+      "test_loc": 180452,
+      "source_files": 860,
+      "test_ratio": 0.91647,
+      "type_strictness": "true",
+      "coverage_fail_under": null,
+      "coverage_job": null,
+      "extension_count": null,
+      "cross_extension_imports": null,
+      "parse_failures": 0,
+      "annotation_files": 0,
+      "annotation_fully": 0,
+      "annotation_partial": 0,
+      "annotation_weighted": null,
+      "install": {
+        "npm:@earendil-works/pi-coding-agent": "200"
+      }
+    }
+  }
+}
