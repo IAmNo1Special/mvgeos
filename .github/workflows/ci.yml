@@ -130,12 +130,47 @@ jobs:
       - uses: astral-sh/setup-uv@v7
 
       - name: Measure the scorecard
+        id: measure
         # --online enables measure 5, one HTTP GET per package name. That is
         # the axis we currently lose outright, so it is the one most worth
         # watching; it is also the only check here that touches the network.
-        run: >-
-          uv run --no-project python scripts/scorecard.py
-          --online --markdown >> "$GITHUB_STEP_SUMMARY"
+        #
+        # The gate reason belongs in the log, not only in the step summary.
+        # Piping stdout into $GITHUB_STEP_SUMMARY left the log saying only
+        # "exit code 1" and named nothing, which is why a real regression read
+        # as unexplained for weeks. The exit code still propagates, so the job
+        # can still go red and the promotion criterion above stays reachable.
+        run: |
+          set +e
+          uv run --no-project python scripts/scorecard.py \
+            --online --markdown --json scorecard.json > report.md 2>&1
+          code=$?
+          set -e
+          cat report.md
+          {
+            echo "## Scorecard (script exit \`$code\`)"
+            echo
+            cat report.md
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
+
+      - name: Upload the report
+        # `always()` because the step above can legitimately fail, and a failed
+        # measurement is still the measurement someone needs to read.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scorecard-pr-${{ github.run_number }}
+          path: |
+            scorecard.json
+            report.md
+          # `warn` rather than `error`, unlike the scheduled scorecard.yml:
+          # that job always exits 0, so a missing file there means the script
+          # crashed. Here the step can fail legitimately, and a hard error on
+          # the upload would add a second confusing red on top of the real one.
+          if-no-files-found: warn
+          retention-days: 30
 
   lint:
     uses: IAmNo1Special/actions/.github/workflows/python-ci.yml@v1
