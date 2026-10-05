@@ -1,18 +1,19 @@
 {
   "schema": 1,
   "generated_by": "scripts/scorecard.py",
-  "measured_at": "2026-10-05T09:34:43+00:00",
+  "measured_at": "2026-10-05T13:06:45+00:00",
   "projects": {
     "mvgeos": {
-      "commit": "720ab17",
-      "source_loc": 41011,
-      "test_loc": 57592,
-      "source_files": 145,
-      "test_ratio": 1.404306,
+      "commit": "f946644",
+      "commit_published": true,
+      "source_loc": 41321,
+      "test_loc": 57692,
+      "source_files": 146,
+      "test_ratio": 1.396191,
       "language_split": {
         "Python": {
-          "source_loc": 41011,
-          "test_loc": 57592
+          "source_loc": 41321,
+          "test_loc": 57692
         }
       },
       "type_strictness": "true",
@@ -21,10 +22,10 @@
       "extension_count": 15,
       "cross_extension_imports": 0,
       "parse_failures": 0,
-      "annotation_files": 145,
-      "annotation_fully": 119,
+      "annotation_files": 146,
+      "annotation_fully": 120,
       "annotation_partial": 0,
-      "annotation_weighted": 0.82069,
+      "annotation_weighted": 0.821918,
       "install": {
         "pypi:mvgeos": "404",
         "pypi:mvgeos-core": "200",
@@ -38,6 +39,7 @@
     },
     "adk-python": {
       "commit": "6be386d",
+      "commit_published": true,
       "source_loc": 243084,
       "test_loc": 416879,
       "source_files": 1244,
@@ -64,6 +66,7 @@
     },
     "smolagents": {
       "commit": "c30b115",
+      "commit_published": true,
       "source_loc": 17673,
       "test_loc": 12935,
       "source_files": 48,
@@ -89,15 +92,16 @@
       }
     },
     "hermes-agent": {
-      "commit": "e1fdf003",
-      "source_loc": 1525231,
-      "test_loc": 1636028,
-      "source_files": 4797,
-      "test_ratio": 1.072643,
+      "commit": "71574220",
+      "commit_published": true,
+      "source_loc": 1525619,
+      "test_loc": 1636233,
+      "source_files": 4798,
+      "test_ratio": 1.072504,
       "language_split": {
         "Python": {
-          "source_loc": 900282,
-          "test_loc": 1287273
+          "source_loc": 900670,
+          "test_loc": 1287478
         },
         "TypeScript": {
           "source_loc": 624949,
@@ -110,28 +114,29 @@
       "extension_count": 18,
       "cross_extension_imports": 1,
       "parse_failures": 0,
-      "annotation_files": 2396,
-      "annotation_fully": 859,
+      "annotation_files": 2397,
+      "annotation_fully": 860,
       "annotation_partial": 1279,
-      "annotation_weighted": 0.625417,
+      "annotation_weighted": 0.625574,
       "install": {
         "pypi:hermes-agent": "200"
       }
     },
     "openclaw": {
-      "commit": "7dc1b2b2",
-      "source_loc": 4470600,
-      "test_loc": 6731164,
-      "source_files": 23687,
-      "test_ratio": 1.505651,
+      "commit": "1b7d11db",
+      "commit_published": true,
+      "source_loc": 4471523,
+      "test_loc": 6734671,
+      "source_files": 23700,
+      "test_ratio": 1.506125,
       "language_split": {
         "Python": {
           "source_loc": 10639,
           "test_loc": 22288
         },
         "TypeScript": {
-          "source_loc": 4459961,
-          "test_loc": 6708876
+          "source_loc": 4460884,
+          "test_loc": 6712383
         }
       },
       "type_strictness": "true",
@@ -150,6 +155,7 @@
     },
     "deepseek-harness": {
       "commit": "5badb15",
+      "commit_published": true,
       "source_loc": 487118,
       "test_loc": 660571,
       "source_files": 2889,
@@ -179,15 +185,16 @@
       }
     },
     "pi": {
-      "commit": "b9ab918",
-      "source_loc": 196905,
-      "test_loc": 180469,
-      "source_files": 860,
-      "test_ratio": 0.916528,
+      "commit": "5b6c792",
+      "commit_published": true,
+      "source_loc": 198498,
+      "test_loc": 180969,
+      "source_files": 866,
+      "test_ratio": 0.911692,
       "language_split": {
         "TypeScript": {
-          "source_loc": 196905,
-          "test_loc": 180469
+          "source_loc": 198498,
+          "test_loc": 180969
         }
       },
       "type_strictness": "true",
