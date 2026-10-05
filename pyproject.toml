@@ -102,8 +102,14 @@ testpaths = [
     "mvgeos-cli/tests",
     "mvgeos-core/tests",
     "mvgeos-gui/tests",
+    "scripts/tests",
 ]
-pythonpath = "."
+# `scripts` is on the path so a test can import the module it exercises.
+# These are flat scripts, not a package: `check_publish` is imported by name
+# from `pypi_new_project_window`, which is how both are run from the command
+# line, and a test that had to install a package to reach them would be
+# testing an import arrangement nobody uses in production.
+pythonpath = [".", "scripts"]
 python_files = "*.py"
 python_classes = "Test*"
 python_functions = "test_*"
