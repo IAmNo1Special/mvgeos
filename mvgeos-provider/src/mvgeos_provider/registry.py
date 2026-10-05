@@ -12,6 +12,44 @@ from mvgeos_provider.base import (
     RealmFactory,
 )
 from mvgeos_provider.model_registry import ModelRegistry
+from mvgeos_provider.realms import (
+    REALM_RUNES,
+    realm_for_model_id,
+    rune_for_realm,
+)
+
+
+def no_realm_registered(
+    model: Model | str, provider_name: str | None = None
+) -> NoRealmRegisteredError:
+    """Build the error for a model whose Realm has no registered factory.
+
+    The Rune to install is derived from the model's own Realm rather than
+    hardcoded. That is the whole reason this is a function: the message is the
+    only remedy a Summoner gets when the engine cannot resolve a model, and a
+    hardcoded string in it is a string that goes stale the moment a second Realm
+    exists -- which is how a model that needs ``opencode-realm`` gets told to
+    install ``openrouter-realm``.
+
+    The exception carries ``realm`` and ``rune_name`` as attributes so callers
+    can act on them. Both the CLI prompt and the GUI badge used to recover the
+    name by splitting the message on ``"install "``, which breaks the moment the
+    wording changes.
+    """
+    model_id = model if isinstance(model, str) else model.id
+    realm = (
+        provider_name
+        or ("" if isinstance(model, str) else model.realm)
+        or realm_for_model_id(model_id)
+    )
+    rune_name = rune_for_realm(realm)
+    return NoRealmRegisteredError(
+        f"No Realm factory registered for model '{model_id}'. "
+        f"Run 'mvgeos rune install {rune_name}' to install it from "
+        "the central marketplace.",
+        realm=realm,
+        rune_name=rune_name,
+    )
 
 
 class RealmRegistry:
@@ -216,11 +254,7 @@ class RealmRegistry:
         if factory is not None:
             return factory(api_key=key, base_url=base_url)
 
-        raise NoRealmRegisteredError(
-            f"No Realm factory registered for model '{model.id}'. "
-            "Run 'mvgeos rune install openrouter-realm' to install it from "
-            "the central marketplace."
-        )
+        raise no_realm_registered(model, provider_name)
 
     def compose_model(
         self,
@@ -289,9 +323,37 @@ class RealmRegistry:
         """
         model = self.compose_model(model_id, api_key, provider_name)
         if model is None:
-            raise ValueError(f"Unknown model: {model_id}")
+            raise self._unknown_model_error(model_id, provider_name)
         realm = self.create_realm(model, api_key, provider_name)
         return model, realm
+
+    def _unknown_model_error(
+        self, model_id: str, provider_name: str | None
+    ) -> Exception:
+        """The error for a slug that is neither catalogued nor servable.
+
+        Two failures look identical from here -- a model that does not exist,
+        and a model whose Realm is simply not installed -- and they need
+        opposite answers. A slug under a Realm we ship is the second: the model
+        is real, the Rune is missing, and the remedy is one command. Reporting
+        it as an unknown model would send a Summoner looking for a typo when the
+        actual fix is `mvgeos rune install`.
+
+        Only the membership test is needed. An earlier draft also required the
+        prefix to be unregistered, which cannot be true here: `compose_model`
+        accepts any slug whose prefix has a registered provider and only returns
+        None when it does not. So that clause was unreachable, and worse, it read
+        as if it were doing a safety job it never did.
+
+        Note the flip side, which is deliberate and pre-existing: once a Realm
+        *is* registered, any slug under it resolves, typo included. A
+        Rune-provided Realm serves models no catalog knows about, so refusing
+        unknown ids there would refuse the feature.
+        """
+        prefix = provider_name or realm_for_model_id(model_id)
+        if prefix in REALM_RUNES:
+            return no_realm_registered(model_id, prefix)
+        return ValueError(f"Unknown model: {model_id}")
 
 
 _DEFAULT_REGISTRY: RealmRegistry | None = None

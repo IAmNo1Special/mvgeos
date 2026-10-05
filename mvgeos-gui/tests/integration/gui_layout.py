@@ -5,6 +5,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from mvgeos_core.constants import DEFAULT_MODEL
+from mvgeos_provider.realms import realm_for_model_id
 from mvgeos_runes.types import (
     SkillManifest,
     SkillScope,
@@ -95,8 +97,9 @@ async def test_full_shell_layout_rendering(user: User) -> None:
     await user.should_see("Skills")
     await user.should_see("Settings")
 
-    # Status bar and model info
-    await user.should_see("nemotron")
+    # Status bar and model info. The status bar shows a prefix of the selected
+    # slug, so assert on the default's prefix rather than any one model's name.
+    await user.should_see(realm_for_model_id(DEFAULT_MODEL))
 
 
 @pytest.mark.asyncio

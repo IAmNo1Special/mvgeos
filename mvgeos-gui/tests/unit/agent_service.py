@@ -48,53 +48,72 @@ def test_resolve_api_key_variants() -> None:
     assert resolve_api_key("sk-explicit") == "sk-explicit"
 
     # 2. OPENROUTER_API_KEY env var
-    with patch.dict("os.environ", {"OPENROUTER_API_KEY": "sk-or-env"}):
-        assert resolve_api_key() == "sk-or-env"
+    # The realm's own variable is consulted first, so it is blanked here --
+    # otherwise an ambient value on the developer's machine would win over the
+    # one under test and the test would pass for the wrong reason.
+    with patch.dict(
+        "os.environ", {"OPENROUTER_API_KEY": "sk-or-env", "OPENCODE_API_KEY": ""}
+    ):
+        assert resolve_api_key(None, "openrouter") == "sk-or-env"
 
     # 3. MVGEOS_API_KEY fallback env var
     with patch.dict(
-        "os.environ", {"OPENROUTER_API_KEY": "", "MVGEOS_API_KEY": "sk-mvgeos-env"}
+        "os.environ",
+        {
+            "OPENROUTER_API_KEY": "",
+            "OPENCODE_API_KEY": "",
+            "MVGEOS_API_KEY": "sk-mvgeos-env",
+        },
     ):
-        assert resolve_api_key() == "sk-mvgeos-env"
+        assert resolve_api_key(None, "openrouter") == "sk-mvgeos-env"
 
-    # 4. load_api_key_from_auth fallback
+    # 4. load_api_key_for_realm fallback
     with (
-        patch.dict("os.environ", {"OPENROUTER_API_KEY": "", "MVGEOS_API_KEY": ""}),
+        patch.dict(
+            "os.environ",
+            {"OPENROUTER_API_KEY": "", "OPENCODE_API_KEY": "", "MVGEOS_API_KEY": ""},
+        ),
         patch(
-            "mvgeos_gui.services.agent_service.load_api_key_from_auth",
+            "mvgeos_gui.services.agent_service.load_api_key_for_realm",
             return_value="sk-auth-file",
         ),
     ):
-        assert resolve_api_key() == "sk-auth-file"
+        assert resolve_api_key(None, "openrouter") == "sk-auth-file"
 
     # 5. None when no source is available
     with (
-        patch.dict("os.environ", {"OPENROUTER_API_KEY": "", "MVGEOS_API_KEY": ""}),
+        patch.dict(
+            "os.environ",
+            {"OPENROUTER_API_KEY": "", "OPENCODE_API_KEY": "", "MVGEOS_API_KEY": ""},
+        ),
         patch(
-            "mvgeos_gui.services.agent_service.load_api_key_from_auth",
+            "mvgeos_gui.services.agent_service.load_api_key_for_realm",
             return_value=None,
         ),
     ):
-        assert resolve_api_key() is None
+        assert resolve_api_key(None, "openrouter") is None
 
 
 def test_agent_service_loads_env_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Verify AgentService loads .env from the project directory."""
+    # The default realm's variable, because what is under test is that the
+    # project .env is loaded at all -- not which realm is selected.
     (tmp_path / ".env").write_text(
-        "OPENROUTER_API_KEY=sk-or-from-dotenv\n", encoding="utf-8"
+        "OPENCODE_API_KEY=sk-zen-from-dotenv\n", encoding="utf-8"
     )
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
     monkeypatch.delenv("MVGEOS_API_KEY", raising=False)
 
     with patch(
-        "mvgeos_gui.services.agent_service.load_api_key_from_auth",
+        "mvgeos_gui.services.agent_service.load_api_key_for_realm",
         return_value=None,
     ):
         service = AgentService(project_path=tmp_path, api_key=None)
 
-    assert service._api_key == "sk-or-from-dotenv"
+    assert service._api_key == "sk-zen-from-dotenv"
 
 
 def test_get_or_create_agent_with_factory(app_state: AppState) -> None:
@@ -1808,16 +1827,26 @@ async def test_run_prompt_mid_prompt_skill_runs_agent(
 async def test_run_prompt_handles_no_realm_registered_error(
     agent_service: AgentService, app_state: AppState
 ) -> None:
-    """Verify NoRealmRegisteredError sets missing_rune and helpful transcript."""
-    from mvgeos_provider import NoRealmRegisteredError
+    """Verify NoRealmRegisteredError sets missing_rune and helpful transcript.
 
-    mock_agent = MagicMock()
-    mock_agent.run = AsyncMock(
-        side_effect=NoRealmRegisteredError(
-            "No realm for provider 'openrouter'. "
-            "Please install openrouter-realm extension"
-        )
+    Built through ``no_realm_registered`` rather than by hand, because that is
+    the only thing that raises it and it is what fills in ``rune_name``. The GUI
+    reads that attribute instead of parsing the message, which is the point of
+    the change -- so a hand-built error with no realm is now a blank badge, and
+    this test would not have caught it.
+    """
+    from mvgeos_core.channel import Model
+    from mvgeos_provider.registry import no_realm_registered
+
+    model = Model(
+        id="openrouter/free",
+        name="Free Models Router",
+        realm="openrouter",
+        base_url="",
+        api_key="",
     )
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(side_effect=no_realm_registered(model))
     mock_agent.switch_model = AsyncMock()
     mock_agent.on = MagicMock()
     agent_service._agent = mock_agent
@@ -2089,6 +2118,7 @@ def test_resolve_api_key_reads_saved_gui_settings(
     fake_home.mkdir()
     monkeypatch.setenv("HOME", str(fake_home))
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
     monkeypatch.delenv("MVGEOS_API_KEY", raising=False)
     # AUTH_FILE_PATH is expanded at import time: point it at tmp too.
     monkeypatch.setattr("mvgeos_agent.auth.AUTH_FILE_PATH", tmp_path / "auth.json")
@@ -2104,11 +2134,14 @@ def test_resolve_api_key_env_beats_saved_gui_settings(
     fake_home = tmp_path / "home"
     fake_home.mkdir()
     monkeypatch.setenv("HOME", str(fake_home))
+    # Asked for by realm: the default realm reads its own variable first, so an
+    # OPENROUTER_API_KEY would not be consulted for it.
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-env")
+    monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
     monkeypatch.setattr("mvgeos_agent.auth.AUTH_FILE_PATH", tmp_path / "auth.json")
     ConfigService().save_app_settings(AppSettings(api_key="sk-saved-gui"))
 
-    assert resolve_api_key() == "sk-env"
+    assert resolve_api_key(None, "openrouter") == "sk-env"
 
 
 @pytest.mark.asyncio
@@ -2373,6 +2406,7 @@ async def test_missing_key_error_names_openrouter_api_key(
     # wrongly returns True.
     monkeypatch.setenv("USERPROFILE", str(fake_home))
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
     monkeypatch.delenv("MVGEOS_API_KEY", raising=False)
     monkeypatch.setattr("mvgeos_agent.auth.AUTH_FILE_PATH", tmp_path / "auth.json")
 

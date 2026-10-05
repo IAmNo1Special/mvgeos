@@ -35,7 +35,8 @@ mvgeos/
 | mvgeos-agent | `types.py` | `MvgeState` session state container |
 | mvgeos-agent | `harness/harness.py` | MvgeHarness - operational turn driver, compaction, and lifecycle |
 | mvgeos-provider | `base.py` | Realm protocol (abstract base) |
-| mvgeos-marketplace | `runes/openrouter-realm/openrouter.py` | OpenRouterRealm implementation (marketplace rune) |
+| mvgeos-marketplace | `runes/openrouter-realm/` | OpenRouterRealm implementation (marketplace rune) |
+| mvgeos-marketplace | `runes/opencode-realm/` | OpenCode Zen realm, the default (marketplace rune) |
 | mvgeos-provider | `types.py` | Model, ChannelConfig, RealmResponse |
 | mvgeos-tome | `ledger.py` | TomeLedger - session management |
 | mvgeos-tome | `locking.py` | FileLock - cross-process locking |
@@ -423,7 +424,7 @@ Config at `.agents/.mvgeos/`:
 
 ```json
 {
-  "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "model": "opencode/space-bunny-free",
   "max_tokens": 4096,
   "temperature": 0.7,
   "contemplation_level": "medium",

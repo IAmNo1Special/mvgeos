@@ -16,6 +16,9 @@ from mvgeos_core.approval import (
     ApprovalRequest,
     ApprovalScope,
 )
+from mvgeos_core.constants import DEFAULT_MODEL
+from mvgeos_provider import get_model_options
+from mvgeos_provider.realms import DEFAULT_REALM, realm_for_model_id
 from mvgeos_tome.handle import TomeHandleFactory
 from mvgeos_tome.types import TomeEntry, TomeEntryType
 from nicegui import ui
@@ -39,7 +42,7 @@ def test_app_state_defaults() -> None:
     assert state.active_tome_id is None
     assert state.tome_title == "New Conversation"
     assert state.inspector_expanded is True
-    assert state.selected_model == "nvidia/nemotron-3-ultra-550b-a55b:free"
+    assert state.selected_model == DEFAULT_MODEL
     assert state.is_channeling is False
     assert isinstance(state.recent_projects, list)
     assert state.tome_service is not None
@@ -1373,11 +1376,29 @@ class TestViewListeners:
 class TestCascadingSelectorState:
     def test_default_cascading_state(self) -> None:
         state = AppState()
-        assert state.selected_realm == "openrouter"
-        assert state.selected_provider == "nvidia"
-        assert state.selected_model == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        assert state.selected_realm == DEFAULT_REALM
+        assert state.selected_provider == DEFAULT_REALM
+        assert state.selected_model == DEFAULT_MODEL
         assert state.contemplation_level == "medium"
-        assert state.is_router_realm() is True
+        # The Realm must be selectable on a fresh install, which is the state
+        # this default has to work in.
+        assert state.selected_realm in state.get_realms()
+
+    def test_default_selector_state_matches_the_default_model(self) -> None:
+        """Realm, provider and model must agree on the first screen.
+
+        They were three separate literals, so the model could be changed and the
+        selector would still open on a Realm that cannot serve it -- and its own
+        options would not contain the value it was set to.
+        """
+        state = AppState()
+        assert state.selected_model == DEFAULT_MODEL
+        assert state.selected_realm == realm_for_model_id(DEFAULT_MODEL) or (
+            state.selected_realm == DEFAULT_REALM
+        )
+        assert state.selected_realm in state.get_realms()
+        # A directly-served slug has no provider tier of its own.
+        assert state.selected_provider == DEFAULT_REALM
 
     def test_get_realms(self) -> None:
         state = AppState()
@@ -1385,7 +1406,11 @@ class TestCascadingSelectorState:
         assert "openrouter" in realms
 
     def test_get_providers_for_router_and_direct(self) -> None:
+        # Router-realm behaviour, so it is asked of the router Realm explicitly.
+        # Asserting it of whatever the default happens to be makes the test a
+        # question about the default model.
         state = AppState()
+        state.selected_realm = "openrouter"
         providers = state.get_providers_for_selected_realm()
         assert isinstance(providers, list)
         assert len(providers) > 0
@@ -1408,7 +1433,10 @@ class TestCascadingSelectorState:
         assert state.selected_provider == "anthropic"
 
     def test_switch_model_syncs_provider_prefix(self) -> None:
+        # Only a router Realm has providers to sync against, so the Realm is
+        # selected explicitly rather than inherited from the default model.
         state = AppState()
+        state.selected_realm = "openrouter"
         state.switch_model("anthropic/claude-3-5-sonnet")
         assert state.selected_model == "anthropic/claude-3-5-sonnet"
         assert state.selected_provider == "anthropic"
@@ -1422,7 +1450,12 @@ class TestCascadingSelectorState:
         assert called == [True]
 
     def test_supports_contemplation_and_levels(self) -> None:
+        # Pinned to a reasoning-capable model rather than left on the default.
+        # The default is a free tier with no contemplation parameter, so asking
+        # "does the selector offer Contemplation" about whatever it happens to be
+        # would be a question about the default model wearing a selector test.
         state = AppState()
+        state.selected_model = "nvidia/nemotron-3-ultra-550b-a55b:free"
         levels = state.get_contemplation_levels_for_selected_model()
         assert isinstance(levels, list)
         assert state.supports_contemplation_for_selected_model() is True
@@ -1432,11 +1465,11 @@ class TestCascadingSelectorState:
     ) -> None:
         state = AppState()
         options = state.get_model_options_for_selection()
-        assert "nvidia/nemotron-3-ultra-550b-a55b:free" in options
-        assert (
-            options["nvidia/nemotron-3-ultra-550b-a55b:free"]
-            == "Nemotron 3 Ultra (free)"
-        )
+        assert DEFAULT_MODEL in options
+        # The label is whatever the catalog says, not a literal: the display name
+        # is catalog data and a copy of it here would fail on a rename that was
+        # never a behaviour change.
+        assert options[DEFAULT_MODEL] == get_model_options()[DEFAULT_MODEL]
 
     def test_get_model_options_for_selection_direct_preserves_names(self) -> None:
         state = AppState()
@@ -1940,7 +1973,7 @@ class TestServerStateSplit:
 
         server = ServerState()
         assert server.project_path == Path.cwd()
-        assert server.selected_model == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        assert server.selected_model == DEFAULT_MODEL
         assert server.recent_projects == [Path.cwd()]
         assert server.api_key is None
         assert server.client_states == []

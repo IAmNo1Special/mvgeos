@@ -12,10 +12,19 @@ from mvgeos_core.errors import MvgeError
 
 
 class NoRealmRegisteredError(MvgeError):
-    """Raised when no Realm factory is registered for a requested model."""
+    """Raised when no Realm factory is registered for a requested model.
 
-    def __init__(self, message: str) -> None:
+    ``realm`` and ``rune_name`` are carried as attributes rather than left for
+    the caller to recover from the message. Both of the surfaces that act on this
+    -- the CLI install prompt and the GUI badge -- used to split the message on
+    ``"install "`` to find the Rune name, which couples them to the wording and
+    fails quietly if it changes.
+    """
+
+    def __init__(self, message: str, realm: str = "", rune_name: str = "") -> None:
         super().__init__("no_realm_registered", message)
+        self.realm = realm
+        self.rune_name = rune_name
 
 
 class Realm:

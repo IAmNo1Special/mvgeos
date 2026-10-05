@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 from typing import Any
 
+from mvgeos_provider.realms import REALM_RUNES
 from nicegui import ui
 from nicegui.elements.label import Label
 
@@ -15,12 +16,15 @@ from mvgeos_gui.state import AppState, format_channeling_elapsed
 def _render_missing_rune_badge(state: AppState) -> None:
     """Render the amber badge for a missing realm rune, if applicable.
 
-    Shown when the OpenRouter realm is selected but its rune is not
-    installed. The badge names the missing rune and points at the
-    Marketplace as the resolution path.
+    Shown when the selected Realm has a Rune we ship but it is not installed. The
+    badge names that Rune, derived from the Realm rather than hardcoded.
+
+    Only Realms we actually publish a Rune for get a badge. Offering to install
+    ``<realm>-realm`` for a Realm nothing provides would send a Summoner to a
+    Rune that does not exist, which is worse than showing no badge at all.
     """
-    missing_rune = "openrouter-realm"
-    if state.selected_realm != "openrouter":
+    missing_rune = REALM_RUNES.get(state.selected_realm)
+    if missing_rune is None:
         return
     if state.is_rune_installed(missing_rune):
         return
@@ -485,7 +489,7 @@ def render_composer(state: AppState) -> None:
                             state.selected_provider,
                             state.selected_model,
                             state.contemplation_level,
-                            state.is_rune_installed("openrouter-realm"),
+                            state.is_selected_realm_rune_installed(),
                         )
                     ]
 
@@ -495,7 +499,7 @@ def render_composer(state: AppState) -> None:
                             state.selected_provider,
                             state.selected_model,
                             state.contemplation_level,
-                            state.is_rune_installed("openrouter-realm"),
+                            state.is_selected_realm_rune_installed(),
                         )
                         if current_sel != last_selector_state[0]:
                             last_selector_state[0] = current_sel

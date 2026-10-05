@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+from mvgeos_core.constants import DEFAULT_MODEL
+
 from mvgeos_gui.services.config_service import (
     AppSettings,
     ConfigService,
@@ -17,7 +19,7 @@ class TestAppSettings:
     def test_defaults(self) -> None:
         settings = AppSettings()
         assert settings.api_key == ""
-        assert settings.default_model == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        assert settings.default_model == DEFAULT_MODEL
         assert settings.mana_limit == 4096
         assert settings.temperature == 0.7
         assert settings.theme == "dark"
@@ -77,7 +79,7 @@ class TestConfigService:
         service = ConfigService(config_dir=tmp_path)
         settings = service.load_app_settings()
         assert settings.api_key == ""
-        assert settings.default_model == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        assert settings.default_model == DEFAULT_MODEL
         assert settings.mana_limit == 4096
 
     def test_save_and_load_app_settings(self, tmp_path: Path) -> None:

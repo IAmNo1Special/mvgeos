@@ -1,0 +1,95 @@
+# ADR 0015: OpenCode Zen as the Default Realm
+
+## Status
+
+Accepted
+
+## Context
+
+The default model was `nvidia/nemotron-3-ultra-550b-a55b:free`, an OpenRouter
+free endpoint. It returned `Upstream error from Nvidia: Service temporarily
+overloaded` on three of three clean-machine runs of the task the quickstart
+documents (SOM-29). The documented five-minute first run was false, and the
+failure was not fixable in prose: it is an engine default pointing at an endpoint
+that is at capacity.
+
+Two properties of the default decide how a first run behaves, and they are
+worth separating because the fix for one is not the fix for the other:
+
+1. **The endpoint has capacity.** Not something the engine can influence.
+2. **The model is free.** A paid default means the documented first run asks for
+   a card.
+
+OpenCode Zen serves a free tier — `space-bunny-free` among thirteen — on the
+standard Chat Completions endpoint, reachable with one key. Its catalog
+(`/zen/v1/models`) publishes slash-free bare ids, so a model is addressed
+directly with no provider tier to choose.
+
+Three engine facts made adopting it more than a constant change:
+
+- **The engine ships no Realm implementations.** `RealmRegistry` starts empty and
+  only a Rune factory ever fills it, so no model resolves on a clean machine until
+  a Rune is installed. That was already true; the change makes the default depend
+  on it rather than sit beside it.
+- **The Rune name in the remedy was hardcoded.** `NoRealmRegisteredError` always
+  told the Summoner to install `openrouter-realm`, so a default needing
+  `opencode-realm` would have named the wrong Rune — a message that reads as
+  actionable and is not.
+- **The API key was read from one variable.** `OPENROUTER_API_KEY` alone. Sending
+  that to Zen authenticates at the wrong host and then fails every call with a
+  message naming the model, so the Summoner is sent to look at the wrong thing.
+
+## Decision
+
+`DEFAULT_MODEL` becomes `opencode/space-bunny-free`. The opencode Realm ships as
+the `opencode-realm` Rune in `mvgeos-marketplace` (PR #17), and the CLI offers to
+install it when resolution fails — the same bargain the previous default made
+with `openrouter-realm`.
+
+Facts about Realms move to `mvgeos-provider/realms.py`, and three consumers read
+them from there instead of carrying their own:
+
+- `NoRealmRegisteredError` carries `realm` and `rune_name`, and the CLI prompt and
+  the GUI badge read the attribute. The GUI previously recovered the name by
+  splitting the message on `"install "`.
+- The CLI reads `<REALM>_API_KEY` for the selected model's Realm before falling
+  back to `OPENROUTER_API_KEY`.
+- The baseline catalog carries a per-entry Realm, so an entry can name a base URL
+  other than OpenRouter's.
+
+The alternative considered was putting the Realm in `mvgeos-provider` rather than
+in a Rune, so the default resolves with zero installs. Rejected: it keeps the
+charter line that concrete Realms ship as Runes, and the install prompt already
+handles the first run. See the decision document on SOM-58 for that trade in
+full.
+
+## Contract
+
+Symbols this decision commits to. The Realm tables are the single place the
+registry, the CLI and the GUI agree on a Rune name, a base URL and a credential
+variable; the derivations must keep producing a usable answer for a Realm that is
+not in a table, because they run on the failure path.
+
+<!-- adr-contract: DEFAULT_MODEL, REALM_RUNES, REALM_BASE_URLS, REALM_API_KEY_ENV, REALM_FREE_SUFFIXES, DEFAULT_REALM, realm_for_model_id, rune_for_realm, api_key_env_for_realm, free_suffix_for_realm, no_realm_registered, NoRealmRegisteredError, Model.free -->
+
+## Consequences
+
+- The documented first run depends on a marketplace fetch to install the Rune. A
+  fetch failure trades "provider is saturated" for "could not reach the
+  marketplace". Both are first-run failures; this one is at least visible.
+- `opencode/space-bunny-free`'s context window in the baseline catalog is
+  **unverified**. Zen publishes no context length — all 86 entries carry only
+  `id`, `object`, `created`, `owned_by` — so the catalog states 128000 and should
+  be corrected once the provider publishes one. A wrong-low value causes silent
+  compaction; a wrong-high value causes a hard provider error.
+- `DEFAULT_REALM` is a copy of what the catalog says about `DEFAULT_MODEL`, since
+  the two are not the same question: for a routed slug the id prefix is the
+  *provider*, not the Realm. `test_default_realm_agrees_with_the_shipped_catalog`
+  holds the copy honest, and fails if `DEFAULT_MODEL` moves without it.
+- `Model.free` now reads a `-free` suffix, scoped to the Realms that use it.
+  Scoping is the point: reading it globally would let a model id call a paid model
+  free, which is the one mistake a cost guard must not make.
+- Contemplation is unavailable on the default. Zen publishes no reasoning
+  parameter for this tier, and the standard has no field for it, so the Realm caps
+  output tokens instead. Contemplation deltas are still read, so an upstream model
+  that thinks out loud lands in the transcript rather than being dropped.
