@@ -120,6 +120,7 @@ from mvgeos_core.telemetry import (
     create_genai_tool_attributes,
     derive_provider_from_model,
 )
+from mvgeos_core.worklog import LandedWork, landed_work
 
 __all__ = [
     "AbortController",
@@ -180,6 +181,7 @@ __all__ = [
     "GEN_AI_USAGE_TOTAL_TOKENS",
     "LoopCallbacks",
     "LoopContext",
+    "LandedWork",
     "MaxTurnsExceededError",
     "MissingApiKeyError",
     "Model",
@@ -219,6 +221,7 @@ __all__ = [
     "create_genai_tool_attributes",
     "derive_provider_from_model",
     "generate_spell_schema",
+    "landed_work",
     "resolve_rune_layers",
     "resolve_rune_paths",
     "scope_rank",
