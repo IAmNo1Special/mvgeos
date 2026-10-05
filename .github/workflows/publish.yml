@@ -81,6 +81,17 @@ jobs:
             echo "| \`$package\` | $files |" >> "$GITHUB_STEP_SUMMARY"
           done
 
+      # Each job gets its own runner, so the publish job starts with a clean
+      # workspace and no dist/. The built distributions have to cross the job
+      # boundary as an artifact or uv publish finds nothing to upload.
+      - name: Hand the built distributions to the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 1
+          if-no-files-found: error
+
   publish:
     needs: preflight
     runs-on: ubuntu-latest
@@ -96,6 +107,15 @@ jobs:
 
       - uses: astral-sh/setup-uv@v7
 
+      # The exact files preflight validated. Re-downloading them is what makes
+      # the gate mean something: if upload-artifact ever hands back different
+      # bytes, the validated set is not the uploaded set.
+      - name: Fetch the validated distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
       - name: Upload in dependency order
         env:
           # A PyPI API token scoped to upload on all projects. "__token__" is
@@ -107,9 +127,15 @@ jobs:
           UV_PUBLISH_CHECK_URL: https://pypi.org/simple
         run: |
           set -euo pipefail
-          if [ "${{ inputs.dry_run }}" != "true" ] && [ -z "${UV_PUBLISH_PASSWORD:-}" ]; then
-            echo "::error::PYPI_API_TOKEN is missing from the pypi environment"
-            exit 1
+          if [ "${{ inputs.dry_run }}" != "true" ]; then
+            if [ -z "${UV_PUBLISH_PASSWORD:-}" ]; then
+              echo "::error::PYPI_API_TOKEN is missing from the pypi environment"
+              exit 1
+            fi
+            if [ ! -d "dist" ]; then
+              echo "::error::dist/ did not arrive from preflight"
+              exit 1
+            fi
           fi
           for package in ${{ needs.preflight.outputs.order }}; do
             echo "::group::upload $package"
