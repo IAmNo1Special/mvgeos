@@ -10,13 +10,12 @@ Trust model (read this before relying on it):
 - For anything security-sensitive, pass an explicit ``allowed_modules``
   allowlist: when provided, *every* import not on the list is rejected, both
   at AST-validation time and at runtime.
-- ``allowed_modules`` is a constraint, not a grant. Listing a module from
-  ``FORBIDDEN_NAMES`` lets the ``import`` statement through but never makes
-  the module usable: attribute access rooted at one of those names is
-  rejected wherever it appears, so ``os.system`` is refused even when ``os``
-  is allow-listed. ``sys`` is refused outright and cannot be allow-listed,
-  because it hands back the interpreter that ``allowed_modules`` exists to
-  constrain.
+- ``allowed_modules`` narrows the import surface; it never grants access to the
+  interpreter or the host. Naming a module in ``FORBIDDEN_NAMES`` is refused at
+  the import rather than tolerated until first use, so a permissive-looking
+  allowlist cannot pass review and fail later on code the caller did not write.
+  Attribute access rooted at one of those names is refused wherever it appears,
+  so ``os.system`` is unreachable even if the import were.
 - Do not execute genuinely hostile code here. Treat this sandbox as a guard
   against accidents and casual misuse, not as isolation.
 """
@@ -33,6 +32,9 @@ class SandboxTimeoutError(Exception):
     """Raised when sandbox code execution exceeds the timeout threshold."""
 
 
+#: Modules no allowlist may re-grant. ``sys`` hands back the interpreter and
+#: defeats the restricted ``__builtins__`` this executor installs, so it is
+#: refused like the rest: one rule, no special case.
 FORBIDDEN_NAMES = {
     "os",
     "sys",
@@ -43,11 +45,6 @@ FORBIDDEN_NAMES = {
     "__import__",
     "builtins",
 }
-
-#: Modules no allowlist may re-grant. ``sys`` hands back the interpreter and
-#: defeats the restricted ``__builtins__`` this executor installs, so
-#: allow-listing it would silently reopen the whole boundary.
-ALWAYS_FORBIDDEN_MODULES = frozenset({"sys"})
 
 
 def _attribute_root(node: ast.expr) -> str | None:
@@ -79,8 +76,8 @@ class ASTSafetyVisitor(ast.NodeVisitor):
             allowed_modules: Optional allowlist of importable top-level
                 module names. When provided, any import not on the list is
                 rejected. When omitted, the legacy denylist applies. A
-                forbidden module is never made usable by appearing here:
-                the allowlist narrows the import surface, it does not grant
+                forbidden module is refused even when listed here: the
+                allowlist narrows the import surface, it does not grant
                 access to the interpreter or the host.
         """
         self.allowed_modules = allowed_modules
@@ -95,15 +92,12 @@ class ASTSafetyVisitor(ast.NodeVisitor):
         Raises:
             ValueError: If the module may not be imported.
         """
-        if base_mod in ALWAYS_FORBIDDEN_MODULES:
+        if base_mod in FORBIDDEN_NAMES:
             raise ValueError(f"Forbidden AST node: {source}")
-        if self.allowed_modules is not None:
-            if base_mod not in self.allowed_modules:
-                raise ValueError(
-                    f"Forbidden import: '{base_mod}' is not in allowed_modules."
-                )
-        elif base_mod in FORBIDDEN_NAMES:
-            raise ValueError(f"Forbidden AST node: {source}")
+        if self.allowed_modules is not None and base_mod not in self.allowed_modules:
+            raise ValueError(
+                f"Forbidden import: '{base_mod}' is not in allowed_modules."
+            )
 
     def visit_Import(self, node: ast.Import) -> None:
         """Validates import statements against the module policy.
@@ -249,15 +243,12 @@ class MvgeSandbox:
 
         def safe_import(name: str, *args: Any, **kwargs: Any) -> Any:
             base_mod = name.split(".")[0]
-            if base_mod in ALWAYS_FORBIDDEN_MODULES:
+            if base_mod in FORBIDDEN_NAMES:
                 raise ValueError(f"Import of module '{name}' is forbidden.")
-            if allowed_modules is not None:
-                if base_mod not in allowed_modules:
-                    raise ValueError(
-                        f"Forbidden import: '{name}' is not in allowed_modules."
-                    )
-            elif base_mod in FORBIDDEN_NAMES:
-                raise ValueError(f"Import of module '{name}' is forbidden.")
+            if allowed_modules is not None and base_mod not in allowed_modules:
+                raise ValueError(
+                    f"Forbidden import: '{name}' is not in allowed_modules."
+                )
             return builtins.__import__(name, *args, **kwargs)
 
         safe_builtins = {

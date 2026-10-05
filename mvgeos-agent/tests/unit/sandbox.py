@@ -19,9 +19,23 @@ def test_validate_ast_forbids_from_import() -> None:
         s.validate_ast("from os import path")
 
 
-def test_validate_ast_allows_allowed_module() -> None:
+def test_validate_ast_refuses_forbidden_module_in_allowlist() -> None:
+    """An allowlist may not name a forbidden module at all.
+
+    Naming one used to let the import parse and fail only at every use, which
+    made a permissive-looking configuration look valid until synthesised code
+    hit it much later. One rule now covers both halves: the import is refused,
+    and so is any attribute reached through the module.
+    """
     s = MvgeSandbox()
-    s.validate_ast("import os", allowed_modules={"os"})
+    with pytest.raises(ValueError, match="Forbidden"):
+        s.validate_ast("import os", allowed_modules={"os"})
+    for code in (
+        "import os\nos.system('echo x')",
+        "import os\nleaked = os.environ['OPENROUTER_API_KEY']",
+    ):
+        with pytest.raises(ValueError, match="Forbidden"):
+            s.validate_ast(code, allowed_modules={"os"})
 
 
 def test_validate_ast_forbids_call_eval() -> None:
@@ -175,22 +189,17 @@ def test_execute_code_rejects_attribute_form_escape() -> None:
         )
 
 
-def test_validate_ast_allows_import_of_allowlisted_forbidden_module() -> None:
-    """The documented guarantee: the import passes, no use of it ever does.
-
-    ``allowed_modules`` narrows the import surface. Listing ``os`` lets
-    ``import os`` parse, but the module is unusable: attribute access rooted
-    at ``os`` is refused at every site. Asserting both halves keeps the
-    contract honest instead of implying the allow-list is a grant.
-    """
+def test_validate_ast_refuses_from_import_of_forbidden_module_in_allowlist() -> None:
+    """The from-import form must agree with the plain import form."""
     s = MvgeSandbox()
-    s.validate_ast("import os", allowed_modules={"os"})
-    for code in (
-        "import os\nos.system('echo x')",
-        "import os\nleaked = os.environ['OPENROUTER_API_KEY']",
-    ):
-        with pytest.raises(ValueError, match="Forbidden"):
-            s.validate_ast(code, allowed_modules={"os"})
+    with pytest.raises(ValueError, match="Forbidden"):
+        s.validate_ast("from os import path", allowed_modules={"os"})
+
+
+def test_validate_ast_permits_listed_non_forbidden_module() -> None:
+    """The allowlist still grants what it is allowed to grant."""
+    s = MvgeSandbox()
+    s.validate_ast("import json", allowed_modules={"json", "re"})
 
 
 def test_validate_ast_hard_bans_sys_even_when_allowlisted() -> None:
@@ -200,11 +209,15 @@ def test_validate_ast_hard_bans_sys_even_when_allowlisted() -> None:
         s.validate_ast("import sys", allowed_modules={"sys", "json"})
 
 
-def test_execute_sync_hard_bans_sys_even_when_allowlisted() -> None:
-    """The runtime import hook must agree with AST validation."""
+def test_execute_sync_refuses_forbidden_module_in_allowlist() -> None:
+    """The runtime import hook must agree with AST validation.
+
+    ``safe_import`` is the second seam. A rule enforced in only one of the two
+    leaves a bypass that the other half of the fix already had to cover.
+    """
     s = MvgeSandbox()
     with pytest.raises(ValueError, match="Forbidden"):
-        s._execute_sync("import sys", None, allowed_modules={"sys", "json"})
+        s._execute_sync("import os", None, allowed_modules={"os", "json"})
 
 
 def test_validate_ast_still_permits_allowed_non_forbidden_attribute_calls() -> None:
