@@ -18,6 +18,12 @@ row has to describe the code the reader is standing in. Pass `--clone-self` to
 measure our published clone instead. Point any row at a local checkout with
 `--project KEY=PATH`; every check except measure 5 runs without network.
 
+Every row is stamped with the commit it was measured at, and every stamp carries
+whether a remote ref contains that commit. `--update-baseline` refuses to write
+when it does not: the snapshot is a permanent reference point, so a sha that
+resolves only in the clone that measured it would make the published number
+uncheckable for good. Run the re-record from a tree that is on a pushed ref.
+
 THE SIX MEASURES AND THEIR EXACT DEFINITIONS
 =============================================
 
@@ -398,6 +404,12 @@ class Result:
     #: checkout. A number without the commit it was measured at cannot be
     #: checked, and a shallow clone of a moving peer is only as good as its age.
     commit: str | None = None
+    #: Whether ``commit`` is reachable from a ref fetched from the remote, so
+    #: that a reader can resolve it in their own clone. ``False`` means the sha
+    #: exists but is not published, which is worse than ``None``: ``None`` says
+    #: "no commit", ``False`` says "here is a commit you cannot check". See
+    #: ``commit_is_published``.
+    commit_published: bool | None = None
     #: Set when the project could not be obtained or read at all. The row is
     #: still printed. A missing row that looks like a low score is worse than
     #: an error.
@@ -488,6 +500,38 @@ def short_commit(checkout: Path) -> str | None:
         return None
     sha = completed.stdout.strip()
     return sha if completed.returncode == 0 and sha else None
+
+
+def commit_is_published(checkout: Path, sha: str) -> bool:
+    """True when ``sha`` is reachable from a ref fetched from the remote.
+
+    A baseline is a permanent reference point, so a sha that resolves only in
+    the clone that measured it is not provenance, it is a rumour. ``short_commit``
+    cannot tell the difference: it reports whatever ``HEAD`` happens to be, which
+    includes a local merge nobody pushed and which ``git gc`` is free to delete.
+    A stamp like that looks exactly like a checkable one until the day somebody
+    tries to check it and it is gone.
+
+    Reachability is asked of the remote-tracking refs, so this answers "would a
+    fresh clone of this checkout contain this commit", which is the only
+    question a reader of the published baseline can act on. A checkout with no
+    remote cannot vouch for anything: ``branch --remotes`` prints nothing, which
+    is a false here rather than an error, because an unverifiable stamp must
+    never be mistaken for a verified one.
+    """
+    if not (checkout / ".git").exists():
+        return False
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(checkout), "branch", "--remotes", "--contains", sha],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0 and bool(completed.stdout.strip())
 
 
 def parse_python(path: Path) -> ast.Module:
@@ -1178,8 +1222,9 @@ _SPECIAL_MEASURES = frozenset({"type_strictness", "coverage_fail_under"})
 #: Recorded in the snapshot but never diffed. `install` is present or absent
 #: depending on whether `--online` was passed, so diffing it reports the flag
 #: rather than the project. `commit` changes every time a peer lands anything,
-#: which is not a regression in any measure.
-_NEVER_DIFFED = frozenset({"install", "commit"})
+#: which is not a regression in any measure, and `commit_published` is a
+#: property of the clone rather than of the project.
+_NEVER_DIFFED = frozenset({"install", "commit", "commit_published"})
 
 #: Ordering used when a string measure gets worse. Lower index is worse.
 _STRICTNESS_ORDER: dict[str, int] = {"true": 0, "false": 1, "unset": 2}
@@ -1195,6 +1240,13 @@ def baseline_document(
     date" is checkable against the snapshot instead of being an assertion in a
     commit message. Nothing here is ever diffed: a peer's commit moving is not a
     regression, and today's date is never worse than the baseline's.
+
+    ``commit_published`` is recorded beside the sha it qualifies, because a
+    snapshot that stores a bare sha cannot distinguish a commit a reader can
+    resolve from one that only ever existed in the clone that measured it. The
+    refusal lives in ``main`` where the snapshot is written, so this stays the
+    one place that decides what a row looks like: the row says whether its stamp
+    is checkable, and the writer refuses to publish one that is not.
     """
     if measured_at is None:
         measured_at = datetime.now(UTC).replace(microsecond=0).isoformat()
@@ -1202,6 +1254,7 @@ def baseline_document(
     for result in results:
         projects[result.key] = {
             "commit": result.commit,
+            "commit_published": result.commit_published,
             "source_loc": result.source_loc,
             "test_loc": result.test_loc,
             "source_files": result.source_files,
@@ -1419,9 +1472,20 @@ def render_table(results: list[Result], online: bool) -> str:
     lines.append("-" * len(header))
     for result in results:
         commit = result.commit or "not a git checkout"
+        if result.commit and result.commit_published is False:
+            commit = f"{commit}!"
         lines.append(
             f"{_cell(result.key, 18)}{_cell(commit, 10)}{_clip(result.source)}"
         )
+    unverifiable = [result for result in results if result.commit_published is False]
+    if unverifiable:
+        lines.append("")
+        lines.append(
+            "! marks a commit that no remote ref contains, so it cannot be "
+            "resolved in a fresh clone:"
+        )
+        for result in unverifiable:
+            lines.append(f"  {result.key}: {result.commit} is only in {result.source}")
     return "\n".join(lines)
 
 
@@ -1478,13 +1542,25 @@ def render_markdown(results: list[Result], online: bool) -> str:
         "",
         "A number without the commit it was measured at cannot be checked.",
         "",
-        "| Project | Commit | Source |",
-        "| --- | --- | --- |",
+        "| Project | Commit | Published | Source |",
+        "| --- | --- | --- | --- |",
     ]
     for result in results:
         commit = result.commit or "n/a"
-        lines.append(f"| {result.key} | `{commit}` | {result.source} |")
+        published = _published_text(result)
+        lines.append(f"| {result.key} | `{commit}` | {published} | {result.source} |")
     return "\n".join(lines)
+
+
+def _published_text(result: Result) -> str:
+    """How a row's stamp reads in the published-provenance column.
+
+    ``no`` is spelled out rather than shown as a flag because this column is the
+    one a reader skims, and "no" next to a sha is the whole warning.
+    """
+    if result.commit is None:
+        return "n/a"
+    return "yes" if result.commit_published else "**no**"
 
 
 def render_failures(results: list[Result]) -> str:
@@ -1614,7 +1690,9 @@ def build_parser() -> argparse.ArgumentParser:
             "write the current measurements to PATH as the new snapshot, "
             "stamped with the UTC time of the run and each row's commit. "
             "Those two are provenance, never diffed: a peer's commit moving "
-            "is not a regression, and a date is not a measure."
+            "is not a regression, and a date is not a measure. Refuses to "
+            "write when any row's commit is not reachable from a remote ref, "
+            "because an unresolvable sha is not a reference point."
         ),
     )
     parser.add_argument(
@@ -1723,6 +1801,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         result.source = note
         result.commit = short_commit(checkout)
+        result.commit_published = (
+            commit_is_published(checkout, result.commit) if result.commit else None
+        )
         results.append(result)
 
     printer = render_markdown if args.markdown else render_table
@@ -1739,6 +1820,41 @@ def main(argv: list[str] | None = None) -> int:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     if args.update_baseline:
+        # The baseline is the permanent reference point, so a row stamped with a
+        # commit nobody can resolve is not a rough draft of a number, it is a
+        # permanent unfalsifiable claim. Refuse the whole write rather than
+        # downgrade the row: a baseline with one unverifiable row is a baseline
+        # whose reader cannot tell which rows are real, and the whole table is
+        # then cited on trust.
+        #
+        # --json is not gated the same way on purpose. That file is the dated
+        # measurement artifact from a CI run on a detached checkout, it carries
+        # `commit_published` so the false is visible in the record, and
+        # refusing it would throw away a measurement that was otherwise sound.
+        unverifiable = [
+            result for result in results if result.commit_published is False
+        ]
+        if unverifiable:
+            print(  # noqa: T201
+                "\nerror: refusing to write a baseline stamped with a commit no "
+                "remote ref contains.",
+                file=sys.stderr,
+            )
+            for result in unverifiable:
+                print(  # noqa: T201
+                    f"  {result.key}: {result.commit} ({result.source})",
+                    file=sys.stderr,
+                )
+            print(  # noqa: T201
+                "  A sha that resolves only in this clone is not provenance: it "
+                "is queued for `git gc`, and once it is gone the published "
+                "number cannot be checked by anybody, ever.\n"
+                "  Push the commit, fetch the remote refs, and re-run; or "
+                "measure from a checkout that is already on a remote ref "
+                "(`git fetch --all` first).",
+                file=sys.stderr,
+            )
+            return 2
         args.update_baseline.parent.mkdir(parents=True, exist_ok=True)
         args.update_baseline.write_text(
             json.dumps(document, indent=2) + "\n", encoding="utf-8"
