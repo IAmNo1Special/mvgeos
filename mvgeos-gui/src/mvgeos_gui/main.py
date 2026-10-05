@@ -16,13 +16,14 @@ from types import ModuleType
 
 from nicegui import app, ui
 
+from mvgeos_core.constants import DEFAULT_MODEL
+
 from mvgeos_gui import __version__
 from mvgeos_gui.app import init_app
 from mvgeos_gui.core.logging import install_crash_handlers, setup_logging
 from mvgeos_gui.services.config_service import ConfigService
 from mvgeos_gui.state import ServerState
 
-DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 APP_TITLE = "MvgeOS"
 _STORAGE_SECRET_FILE = Path.home() / ".mvgeos" / ".storage_secret"
 
