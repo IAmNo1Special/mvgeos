@@ -102,10 +102,12 @@ The synthesised-action allow-list is reduced to `{"json", "re"}`.
 
 An allow-list is a budget, and a speculative entry spends it. `os` and
 `subprocess` were speculative too, and that speculation was the vulnerability.
-Nothing shipped uses the other two: no synthesised payload in
-`heal-my-goap` references `pathlib` or `urllib`, and the planner's actual output
-is preconditions and effects, not code. Keeping them was headroom granted to
-model-written code in exchange for a use nobody has made.
+Nothing shipped uses the other two: the synthesiser's own prompt instructs the
+model to emit `"code_payload": null`, so the executed-code path is the exception
+rather than the routine one, and no synthesised payload in `heal-my-goap`
+references `pathlib` or `urllib`. The planner's actual output is preconditions
+and effects. Keeping them was headroom granted to model-written code in
+exchange for a use nobody has made.
 
 The write and egress grants are not merely unnecessary, they are the two
 irreversible ones. A written file outlives the run. An exfiltration leaves no
