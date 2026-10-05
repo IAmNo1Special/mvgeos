@@ -101,6 +101,31 @@ success.
 failure skip whatever already landed. PyPI versions are immutable, so without
 this a retry after uploading four of eight packages would fail on the first.
 
+### When PyPI refuses a project as new
+
+PyPI caps how many *new projects* one account may create in a rolling 24-hour
+window, and answers `429 Too many new projects created` at the cap. The cap is
+on project creation, not on uploads to existing projects, so a refusal means
+"come back later", not "this distribution is broken".
+
+That is why the first release is the one most likely to hit it: eight names,
+eight creations. When it happens, the `publish` job retries the refused
+distribution with a backoff, and the run goes red only if the window has not
+freed a slot in time. Two things to know:
+
+- A retry inside the job only covers a short window. A full 24 hours still ends
+  in a red run, and the fix is to re-run the same tag later. Re-running is safe
+  and is the normal path, not an exception.
+- PyPI frees the quota one slot at a time as the window rolls, so a re-run may
+  publish some of the remainder and be refused again on the next one. Expect to
+  re-run more than once for a first release, and expect the number of runs to
+  fall as fewer names remain unpublished.
+
+To ask PyPI for a one-time lift, open a request at
+`https://github.com/pypi/support/issues/new`, choosing "Limit Request". Note in
+it that this is a coordinated first release of eight distributions in dependency
+order, that four already landed, and that the account is not being recreated.
+
 **`verify`** checks out nothing at all and runs `uvx mvgeos --help`. Because
 there is no clone and no `uv sync`, uvx resolves the command from PyPI exactly
 as a stranger's machine would. That job is the acceptance test; `pip download`
@@ -130,3 +155,16 @@ The `mvgeos-gui` upload is last because it is the largest and the least likely
 to be the reason someone ran `uvx mvgeos`. If one upload in the middle fails,
 the run stops there. Re-run the same tag: `--check-url` skips the packages
 that already landed and continues with the rest.
+
+## When the bump job cannot land
+
+The `bump` job commits, rebases onto whatever `main` is at that moment, tags,
+and pushes. It holds a concurrency group, so a second push to `main` queues
+behind a bump already in flight rather than racing it.
+
+If a hand push lands on `main` in the middle of a bump and the rebase
+conflicts, the job aborts the rebase and exits green with a warning instead of
+red. Nothing is tagged and nothing is released, which is deliberate: the next
+push to `main` re-runs the whole bump against content that already contains the
+conflict resolution. Read the warning on the run rather than assuming a release
+happened.

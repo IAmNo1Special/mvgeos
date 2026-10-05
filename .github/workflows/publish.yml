@@ -95,7 +95,15 @@ jobs:
   publish:
     needs: preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Long enough to ride out the new-project rate limit. PyPI's cap frees one
+    # slot at a time across a rolling 24h window, so the wait between the first
+    # refusal and the first free slot is measured in hours, not seconds. The
+    # six attempts below sleep 10 minutes apart, which covers a short window;
+    # a full-window wait still ends in a red run and a re-run, which is the
+    # honest outcome. This number has to exceed
+    # PUBLISH_MAX_ATTEMPTS * PUBLISH_BACKOFF_SECONDS or the job is killed
+    # mid-wait instead of reporting the result.
+    timeout-minutes: 70
     # The upload credential is an environment secret, so only a job that
     # declares this environment can read it. Nothing else in the repo can.
     # See docs/agents/releasing.md.
@@ -125,6 +133,12 @@ jobs:
           # PyPI versions are immutable. Checking the index first makes a
           # re-run after a partial failure skip what already landed.
           UV_PUBLISH_CHECK_URL: https://pypi.org/simple
+          # PyPI caps how many *new projects* one account may create in a
+          # rolling 24h window, and answers 429 when the cap is hit. That cap
+          # is on project creation, not on uploads to existing projects, so a
+          # refusal is a "come back later", not a broken distribution.
+          PUBLISH_MAX_ATTEMPTS: "6"
+          PUBLISH_BACKOFF_SECONDS: "600"
         run: |
           set -euo pipefail
           if [ "${{ inputs.dry_run }}" != "true" ]; then
@@ -137,12 +151,45 @@ jobs:
               exit 1
             fi
           fi
+
+          # Runs the same publish, retrying only when the server refused it for
+          # rate limiting. Any other failure -- bad metadata, a rejected
+          # filename, no permission -- is a real defect and must surface
+          # immediately rather than be retried into a timeout.
+          upload() {
+            local package="$1"
+            local attempt=1
+            while [ "$attempt" -le "$PUBLISH_MAX_ATTEMPTS" ]; do
+              local output status
+              set +e
+              output="$(uv publish "dist/$package/*" 2>&1)"
+              status=$?
+              set -e
+              echo "$output"
+              if [ "$status" -eq 0 ]; then
+                return 0
+              fi
+              if ! printf '%s' "$output" | grep -qi '429\|too many new projects'; then
+                echo "::error::$package failed for a reason other than rate limiting"
+                return "$status"
+              fi
+              if [ "$attempt" -eq "$PUBLISH_MAX_ATTEMPTS" ]; then
+                echo "::error::$package is still rate limited after $attempt attempts"
+                return 1
+              fi
+              echo "::warning::PyPI refused $package (new-project rate limit). Attempt $attempt of $PUBLISH_MAX_ATTEMPTS; retrying in ${PUBLISH_BACKOFF_SECONDS}s."
+              attempt=$((attempt + 1))
+              sleep "$PUBLISH_BACKOFF_SECONDS"
+            done
+            return 1
+          }
+
           for package in ${{ needs.preflight.outputs.order }}; do
             echo "::group::upload $package"
             if [ "${{ inputs.dry_run }}" = "true" ]; then
               uv publish --dry-run "dist/$package/*"
             else
-              uv publish "dist/$package/*"
+              upload "$package"
             fi
             echo "::endgroup::"
           done
