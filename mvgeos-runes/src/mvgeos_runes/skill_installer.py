@@ -12,7 +12,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from mvgeos_core.constants import skills_dir
+from mvgeos_core.layers import skills_dir
 
 
 def _is_git_url(source: str) -> bool:

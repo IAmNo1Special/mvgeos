@@ -27,39 +27,68 @@ the opposite — a proprietary `.mvgeos/` subdirectory:
 .agents/.mvgeos/models.json
 ```
 
-No `.mvgeos/` directory exists in any `src/` today. The only two surviving
-`.mvgeos` matches in first-party code are legacy compatibility string tests
+No `.mvgeos/` directory exists in any `src/`. The last two `.mvgeos` matches in
+first-party Rune code were legacy compatibility string tests
 (`mvgeos-agent/src/mvgeos_agent/rune_lifecycle.py:121,128`), which the repo's own
-**Zero Backward Compatibility Burden** rule says to delete.
+**Zero Backward Compatibility Burden** rule says to delete; they are deleted.
+The one surviving `.mvgeos` path is `mvgeos-gui/src/mvgeos_gui/main.py:27`,
+which writes NiceGUI's signed-cookie secret to `~/.mvgeos/.storage_secret`.
+That is outside the `.agents` layer entirely and out of scope here.
 
-`mvgeos_core.constants` became the resolver of record — `global_agents_dir()` and
-`GLOBAL_DIR_ENV` (`mvgeos-core/src/mvgeos_core/constants.py:87-98`) — and its own
-docstring names the failure this decision exists to prevent:
+Resolution had become the resolver of record — `global_agents_dir()` and
+`GLOBAL_DIR_ENV` — and its own docstring named the failure this decision
+exists to prevent:
 
 > *"the install path and the discovery path resolving differently is what allows
 > a rune to install successfully and then load nowhere."*
 
-That failure has not been prevented, because resolution is still duplicated in
-five places that disagree:
+That failure was not prevented, because resolution was duplicated in three
+in-repo sites that disagreed:
 
 | Site | Divergence |
 | --- | --- |
-| `RuneLifecycle.resolve_paths` (`rune_lifecycle.py:95-134`) | Infers `Scope` by substring-matching the path string; still recognises the dead `.mvgeos/{agent}/runes` and `.mvgeos/runes` forms. |
-| `Mvge.__init__` (`mvge.py:356-393`) | Appends colocated `runes/`, config `runes/`+`extensions/`, package `runes/` — a second precedence pass with its own rules. |
-| `dynamic_commands.get_extension_dirs` (`dynamic_commands.py:20-50`) | Uses the ambient `Path.cwd()` and probes the non-standard `<cwd>/extensions`. Rune *CLI command* discovery, so it is the same divergence class as Rune loading. |
-| `approval-rune/gate.py:71` | `DEFAULT_DATA_DIR = Path.home() / ".agents" / "approval"` — ignores `MVGEOS_GLOBAL_DIR` entirely. |
+| `RuneLifecycle.resolve_paths` | Infers `Scope` by substring-matching the path string; still recognised the dead `.mvgeos/{agent}/runes` and `.mvgeos/runes` forms. |
+| `Mvge.__init__` | Appended colocated `runes/`, config `runes/`+`extensions/`, package `runes/` — a second precedence pass with its own rules. |
+| `dynamic_commands.get_extension_dirs` | Used the ambient `Path.cwd()` and probed the non-standard `<cwd>/extensions`. Rune *CLI command* discovery, so the same divergence class as Rune loading. |
 
-`steering-bridge` is the reference implementation of this decision: it imports
-`global_agents_dir()` from `mvgeos_core.constants`
-(`mvgeos_runes_steering_bridge/resolver.py:6,94`) and honours
-`MVGEOS_GLOBAL_DIR` (`rune.py:29`). Every resolver below should look like that
-one.
+A fourth site, `approval-rune/gate.py:71`
+(`DEFAULT_DATA_DIR = Path.home() / ".agents" / "approval"`), ignores
+`MVGEOS_GLOBAL_DIR` entirely. That code lives in the marketplace repository and
+is tracked there.
+
+Persona and prompt resolution is deliberately **not** in this set.
+`environment.py`'s working-directory fallbacks serve unrelated purposes —
+rendering the working directory as an environment fact, resolving the
+`SYSTEM.md` / `APPEND_SYSTEM.md` chains, and handing `cwd` to a Rune — and the
+difference is in kind. Rune discovery is a search path, where a wrong cwd
+loads the wrong *code*. Persona resolution is content, where a wrong cwd costs
+a missing project paragraph and nothing else. No first-party engine module
+reads `AGENTS.md`; `steering-bridge` owns it through `BEFORE_MVGE_START`.
+
+`steering-bridge` was the reference implementation of this decision: it derives
+its resolver's global layer from `global_agents_dir()` and honours
+`MVGEOS_GLOBAL_DIR`. Every resolver here is now one call into
+`mvgeos_core.layers`, which is that shape.
+
+### Implementation note
+
+`Scope` and every path function moved to `mvgeos_core.layers`;
+`mvgeos_core.constants` retains only the four protocol-facing names
+(`DEFAULT_AGENT_NAME`, `DEFAULT_MODEL`, `GLOBAL_DIR_ENV`, `PROJECT_RUNE_PATH`).
+`Scope` had to move down regardless of module layout, because
+`mvgeos-core/tests/unit/dependency_direction.py` forbids core importing runes
+and the resolver needs to *rank* scopes.
+
+`constants.py` deliberately keeps no re-export facade. Two import paths to one
+path-derivation helper is the failure this ADR exists to end. One consequence
+is external: the marketplace's `steering-bridge` imports `global_agents_dir`
+from `mvgeos_core.constants`, and must now import it from `mvgeos_core.layers`.
 
 
 Seven of the thirty commits before this ADR were fixes to some variant of this.
-`Scope` exists as an enum but is metadata only: precedence is list order, and a
-user-supplied `rune_paths` config silently replaces the whole layering as a side
-effect (`environment.py:444-453`).
+`Scope` existed as an enum but was metadata only: precedence was list order, and
+a user-supplied `rune_paths` config silently replaced the whole layering as a
+side effect. Both are now decisions 5 and 6.
 
 ## Decision
 

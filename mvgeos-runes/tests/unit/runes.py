@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from mvgeos_core.constants import resolve_rune_paths
+from mvgeos_core.layers import resolve_rune_paths
 from mvgeos_core.spells import ExecutionMode
 
 from mvgeos_runes.loader import (

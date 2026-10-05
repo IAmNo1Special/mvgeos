@@ -6,12 +6,9 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mvgeos_core.constants import (
-    DEFAULT_AGENT_NAME,
-    DEFAULT_MODEL,
-    resolve_rune_paths,
-)
+from mvgeos_core.constants import DEFAULT_AGENT_NAME, DEFAULT_MODEL
 from mvgeos_core.events import QueueMode
+from mvgeos_core.layers import resolve_rune_paths
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     BeforeMvgeStartData,
@@ -186,19 +183,55 @@ class TestAgentConfigCoercion:
         assert cfg.spell_names is None
 
     def test_rune_paths_constructor_wins_over_config(self) -> None:
+        """A constructor ``rune_paths`` replaces the *configured* one only.
+
+        It never replaces the layering. The user and agent layers are the
+        stack, not a default to be swapped out: ADR-0014 decision 6 is that
+        naming a directory extends the stack, and does not narrow it away as
+        a side effect of being set.
+        """
         cfg = coerce_agent_config(
             _cfg(rune_paths=["/from/config"]),
             runes_paths=["/from/ctor"],
         )
-        assert cfg.runes_paths == [Path("/from/ctor")]
+
+        assert cfg.runes_paths == [
+            *resolve_rune_paths(DEFAULT_AGENT_NAME),
+            Path("/from/ctor"),
+        ]
+        assert Path("/from/config") not in cfg.runes_paths
 
     def test_rune_paths_config_used_without_constructor(self) -> None:
+        """A configured ``rune_paths`` extends the stack.
+
+        Regression: this used to yield exactly ``["/from/config"]``. Naming
+        one directory silently dropped the user and agent layers, so the
+        layering was replaced as a side effect of being configured at all.
+        """
         cfg = coerce_agent_config(_cfg(rune_paths=["/from/config"]))
-        assert cfg.runes_paths == [Path("/from/config")]
+
+        assert cfg.runes_paths == [
+            *resolve_rune_paths(DEFAULT_AGENT_NAME),
+            Path("/from/config"),
+        ]
+
+    def test_rune_paths_config_extends_rather_than_replaces(self) -> None:
+        """The stack survives a configured ``rune_paths`` intact.
+
+        Stated directly, because the whole point is what is *still* there
+        rather than what was added.
+        """
+        stack = resolve_rune_paths(DEFAULT_AGENT_NAME)
+
+        cfg = coerce_agent_config(_cfg(rune_paths=["/from/config"]))
+
+        assert cfg.runes_paths[: len(stack)] == stack
+        assert cfg.runes_paths[len(stack) :] == [Path("/from/config")]
 
     def test_rune_paths_tilde_expanded(self) -> None:
         cfg = coerce_agent_config(_cfg(rune_paths=["~/runes"]))
-        assert cfg.runes_paths == [Path("~/runes").expanduser()]
+
+        assert cfg.runes_paths[-1] == Path("~/runes").expanduser()
 
     def test_rune_paths_default_resolves_agent_name_and_extension_dir(self) -> None:
         cfg = coerce_agent_config({}, agent_name="my-agent", extension_dir="/ext")

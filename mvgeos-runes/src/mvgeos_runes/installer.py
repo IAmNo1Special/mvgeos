@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from mvgeos_core.constants import extensions_dir, global_agents_dir
+from mvgeos_core.layers import extensions_dir, global_agents_dir
 
 from mvgeos_runes.deps import install_python_deps
 

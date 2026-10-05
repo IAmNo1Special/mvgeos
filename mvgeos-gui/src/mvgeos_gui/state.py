@@ -28,8 +28,8 @@ from mvgeos_core.approval import (
     ApprovalRequest,
     ApprovalScope,
 )
-from mvgeos_core.constants import agents_dir, extensions_dir, skills_dir
 from mvgeos_core.invocations import Attachment, build_content_parts
+from mvgeos_core.layers import agents_dir, extensions_dir, skills_dir
 from mvgeos_provider import (
     get_default_realm_registry,
     get_model_options,

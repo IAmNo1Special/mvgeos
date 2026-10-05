@@ -8,6 +8,8 @@ from typing import Any, Protocol, cast, runtime_checkable
 
 from mvgeos_core.abort import AbortSignal
 from mvgeos_core.invocations import MvgeInvocation
+from mvgeos_core.layers import RuneScope as RuneScope
+from mvgeos_core.layers import Scope as Scope
 from mvgeos_core.spells import ExecutionMode
 
 
@@ -307,13 +309,12 @@ def create_sigil_data(hook: SigilHook, data: dict[str, Any] | Any) -> Any:
     return data
 
 
-class Scope(StrEnum):
-    PROJECT = "project"
-    USER = "user"
-    AGENT = "agent"
-
-
-RuneScope = Scope
+#: ``Scope`` is defined in core because the resolver that ranks layers owns
+#: it: a scope is the name of a layer of the ``.agents`` stack, and core is
+#: the only package that may derive one. Re-exported here because Runes and
+#: Skills both address their origin through it, and this is the module that
+#: already speaks for both vocabularies. A type moving down the dependency
+#: direction -- not a path-derivation shim.
 SkillScope = Scope
 
 

@@ -52,7 +52,7 @@ async def test_build_callbacks_without_runner_has_no_gate() -> None:
 
 @pytest.mark.asyncio
 async def test_lifecycle_binds_canonical_project_root() -> None:
-    lifecycle = RuneLifecycle(agent_name="coder", runes_paths=[], cwd="/tmp")
+    lifecycle = RuneLifecycle(agent_name="coder", cwd="/tmp")
     runner = await lifecycle.load()
     assert runner.context.project_root == str(Path("/tmp").resolve())
     assert runner.context.agent_name == "coder"

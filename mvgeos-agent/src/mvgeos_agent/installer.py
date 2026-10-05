@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from mvgeos_core.constants import agents_dir
+from mvgeos_core.layers import agents_dir
 from mvgeos_runes.deps import confirm_python_deps_install
 
 logger = logging.getLogger(__name__)

@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mvgeos_core.layers import ResolvedLayer, Scope
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
@@ -20,6 +21,19 @@ from mvgeos_runes.types import (
 
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.rune_lifecycle import RuneLifecycle
+
+
+def _layer(path: Path | str, scope: Scope = Scope.PROJECT) -> ResolvedLayer:
+    """A declared layer for a test that is not about layer resolution."""
+    return ResolvedLayer(scope, Path(path))
+
+
+async def _load(lifecycle: RuneLifecycle) -> RuneRunner:
+    with patch(
+        "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
+        return_value=([], []),
+    ):
+        return await lifecycle.load()
 
 
 def _manifest(name: str = "acme", **kwargs: Any) -> RuneManifest:
@@ -42,67 +56,84 @@ def _diag(name: str = "broken") -> Diagnostic:
     )
 
 
-class TestResolvePaths:
-    def test_agent_placeholder_maps_to_agent_scope(self) -> None:
-        lifecycle = RuneLifecycle(
-            agent_name="coder",
-            runes_paths=["~/.agents/agents/{agent_name}/extensions"],
-        )
+class TestRuneLayers:
+    """The lifecycle resolves nothing; layers arrive resolved and scoped.
 
-        result = lifecycle.resolve_paths()
+    Regression: scope used to be inferred by substring-matching each path, so
+    a bespoke directory whose name happened to contain a standard layer's
+    shape was reported as the agent or user layer, and the retired
+    ``.mvgeos/{agent}/runes`` form was still recognised. Scope now comes from
+    the layer the resolver placed the directory in.
+    """
 
-        expected = Path("~/.agents/agents/coder/extensions").expanduser()
-        assert result == [(expected, RuneScope.AGENT)]
-
-    def test_global_mvgeos_dir_maps_to_user_scope(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # Asserting the *default* global layer, so the override must be off.
-        # The suite-wide hermeticity fixture points MVGEOS_GLOBAL_DIR at an
-        # empty directory; leaving it set would silently test that instead.
-        monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
-        lifecycle = RuneLifecycle(
-            agent_name="coder",
-            runes_paths=["~/.agents/extensions"],
-        )
-
-        result = lifecycle.resolve_paths()
-
-        expected = Path("~/.agents/extensions").expanduser()
-        assert result == [(expected, RuneScope.USER)]
-
-    def test_custom_dir_maps_to_project_scope(self) -> None:
-        lifecycle = RuneLifecycle(
-            agent_name="coder",
-            runes_paths=["extensions/runes"],
-        )
-
-        result = lifecycle.resolve_paths()
-
-        assert result == [(Path("extensions/runes"), RuneScope.PROJECT)]
-
-    def test_order_is_preserved(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
-        paths = [
-            "extensions/runes",
-            "~/.agents/extensions",
-            "~/.agents/agents/{agent_name}/extensions",
+    @pytest.mark.asyncio
+    async def test_load_hands_the_resolver_layers_to_the_loader(self, tmp_path) -> None:
+        layers = [
+            ResolvedLayer(Scope.USER, tmp_path / "user"),
+            ResolvedLayer(Scope.AGENT, tmp_path / "agent"),
         ]
-        lifecycle = RuneLifecycle(agent_name="coder", runes_paths=paths)
+        lifecycle = RuneLifecycle(agent_name="coder", rune_layers=layers)
 
-        result = lifecycle.resolve_paths()
-        scopes = [scope for _, scope in result]
+        with patch(
+            "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
+            return_value=([], []),
+        ) as mock_load:
+            await lifecycle.load()
 
-        assert scopes == [RuneScope.PROJECT, RuneScope.USER, RuneScope.AGENT]
+        mock_load.assert_called_once_with(
+            [(tmp_path / "user", Scope.USER), (tmp_path / "agent", Scope.AGENT)],
+            "coder",
+        )
 
-    def test_already_resolved_agent_path_maps_to_agent_scope(self) -> None:
+    @pytest.mark.asyncio
+    async def test_a_declared_scope_reaches_the_loader_unchanged(
+        self, tmp_path: Path
+    ) -> None:
+        """The loader is told which layer each directory is.
+
+        Asserted at the loader seam, not on a dataclass, because the
+        observable consequence is what the loader does with the pair. The
+        decoy sits at exactly the shape the old matcher keyed on -- it
+        contains ``agents/<name>/extensions`` -- so had scope been re-derived
+        from the path text it would have arrived as the agent layer.
+        """
+        decoy = tmp_path / "agents" / "coder" / "extensions"
         lifecycle = RuneLifecycle(
             agent_name="coder",
-            runes_paths=["~/.agents/agents/coder/extensions"],
+            rune_layers=[ResolvedLayer(Scope.PROJECT, decoy)],
         )
-        result = lifecycle.resolve_paths()
-        expected = Path("~/.agents/agents/coder/extensions").expanduser()
-        assert result == [(expected, RuneScope.AGENT)]
+
+        with patch(
+            "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
+            return_value=([], []),
+        ) as mock_load:
+            await lifecycle.load()
+
+        mock_load.assert_called_once_with([(decoy, Scope.PROJECT)], "coder")
+
+    @pytest.mark.asyncio
+    async def test_retired_mvgeos_layout_is_not_upgraded_to_the_agent_layer(
+        self, tmp_path: Path
+    ) -> None:
+        """``.mvgeos`` was a proprietary scheme ADR-0014 retired.
+
+        It used to be substring-matched into the agent and user scopes. No
+        legacy upgrade is left, so a directory under it is whatever the
+        caller declared -- here, project-scoped -- with nothing added.
+        """
+        retired = tmp_path / ".mvgeos" / "coder" / "runes"
+        lifecycle = RuneLifecycle(
+            agent_name="coder",
+            rune_layers=[ResolvedLayer(Scope.PROJECT, retired)],
+        )
+
+        with patch(
+            "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
+            return_value=([], []),
+        ) as mock_load:
+            await lifecycle.load()
+
+        mock_load.assert_called_once_with([(retired, Scope.PROJECT)], "coder")
 
 
 class TestLoad:
@@ -175,7 +206,7 @@ class TestLoad:
         ):
             runner = await lifecycle.load()
 
-        mock_load.assert_called_once_with(lifecycle.resolve_paths(), "tester")
+        mock_load.assert_called_once_with([], "tester")
         assert [m.name for m in runner.loaded_manifests] == ["acme"]
         assert [sc.key for sc in runner.get_shortcuts()] == ["ctrl+a"]
 
@@ -280,7 +311,7 @@ class TestStartAndShutdown:
         missing = tmp_path / "missing"
         lifecycle = RuneLifecycle(
             agent_name="tester",
-            runes_paths=[str(runes_dir), str(missing)],
+            rune_layers=[_layer(runes_dir), _layer(missing)],
         )
         with (
             patch(
@@ -305,7 +336,7 @@ class TestStartAndShutdown:
     async def test_start_passes_resolved_path_and_runner(self, tmp_path: Path) -> None:
         runes_dir = tmp_path / "runes"
         runes_dir.mkdir()
-        lifecycle = RuneLifecycle(agent_name="tester", runes_paths=[str(runes_dir)])
+        lifecycle = RuneLifecycle(agent_name="tester", rune_layers=[_layer(runes_dir)])
         with (
             patch(
                 "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
@@ -327,7 +358,7 @@ class TestStartAndShutdown:
     async def test_start_skips_already_watched_paths(self, tmp_path: Path) -> None:
         runes_dir = tmp_path / "runes"
         runes_dir.mkdir()
-        lifecycle = RuneLifecycle(agent_name="tester", runes_paths=[str(runes_dir)])
+        lifecycle = RuneLifecycle(agent_name="tester", rune_layers=[_layer(runes_dir)])
         with (
             patch(
                 "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
@@ -348,12 +379,12 @@ class TestStartAndShutdown:
         assert len(lifecycle.watchers) == 1
 
     @pytest.mark.asyncio
-    async def test_start_before_load_resolves_configured_paths(
+    async def test_start_before_load_still_starts_watchers(
         self, tmp_path: Path
     ) -> None:
         runes_dir = tmp_path / "runes"
         runes_dir.mkdir()
-        lifecycle = RuneLifecycle(agent_name="tester", runes_paths=[str(runes_dir)])
+        lifecycle = RuneLifecycle(agent_name="tester", rune_layers=[_layer(runes_dir)])
 
         created: list[MagicMock] = []
         with patch(
@@ -371,7 +402,7 @@ class TestStartAndShutdown:
     async def test_shutdown_stops_all_watchers_and_clears(self, tmp_path: Path) -> None:
         runes_dir = tmp_path / "runes"
         runes_dir.mkdir()
-        lifecycle = RuneLifecycle(agent_name="tester", runes_paths=[str(runes_dir)])
+        lifecycle = RuneLifecycle(agent_name="tester", rune_layers=[_layer(runes_dir)])
         with (
             patch(
                 "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
@@ -396,7 +427,7 @@ class TestStartAndShutdown:
     async def test_restart_after_shutdown(self, tmp_path: Path) -> None:
         runes_dir = tmp_path / "runes"
         runes_dir.mkdir()
-        lifecycle = RuneLifecycle(agent_name="tester", runes_paths=[str(runes_dir)])
+        lifecycle = RuneLifecycle(agent_name="tester", rune_layers=[_layer(runes_dir)])
         with (
             patch(
                 "mvgeos_agent.rune_lifecycle.load_runes_from_paths",
@@ -437,7 +468,7 @@ class TestStartAndShutdown:
         runes_a.mkdir()
         runes_b.mkdir()
         lifecycle = RuneLifecycle(
-            agent_name="tester", runes_paths=[str(runes_a), str(runes_b)]
+            agent_name="tester", rune_layers=[_layer(runes_a), _layer(runes_b)]
         )
         with (
             patch(

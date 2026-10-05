@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 from mvgeos_core.channel import Model
-from mvgeos_core.constants import models_file
+from mvgeos_core.layers import models_file
 
 logger = logging.getLogger(__name__)
 

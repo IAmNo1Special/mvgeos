@@ -24,12 +24,7 @@ from mvgeos_core.channel import (
     Model,
     RealmResponse,
 )
-from mvgeos_core.constants import (
-    DEFAULT_AGENT_NAME,
-    agent_dir,
-    agents_dir,
-    sessions_dir,
-)
+from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_core.errors import MissingApiKeyError, TomeResumeError
 from mvgeos_core.event_bus import EventBus
 from mvgeos_core.events import (
@@ -41,6 +36,13 @@ from mvgeos_core.events import (
 from mvgeos_core.invocations import (
     MvgeInvocation,
     SummonerRequest,
+)
+from mvgeos_core.layers import (
+    ResolvedLayer,
+    Scope,
+    agent_dir,
+    agents_dir,
+    sessions_dir,
 )
 from mvgeos_core.loop import StreamFn
 from mvgeos_core.spells import MvgeSpell
@@ -278,6 +280,65 @@ class _ReloadedState:
     """Spell-gateway rune engaged on the candidate runner, if any."""
 
 
+def discover_agent_rune_extras(
+    name: str, caller_dir: Path | None = None
+) -> list[ResolvedLayer]:
+    """Rune directories this agent ships, beyond the standard stack.
+
+    The colocated ``runes/`` beside the caller's code, the agent
+    configuration directory's ``runes/`` and ``extensions/``, and the
+    ``runes/`` shipped inside an importable agent package. None of these are
+    standard protocol names, so each is a *declared* extra that states its
+    own scope -- agent-scoped, because these ship with the agent -- rather
+    than a layer the resolver infers from a path string.
+
+    Ranking places them with the agent layer: ahead of a project directory,
+    behind the agent's own standard layer. That is the same rule every other
+    declared extra follows. The layer decides precedence; the caller only
+    says what layer a directory is.
+
+    Shared with the CLI's Rune command discovery. A Rune the agent loads but
+    the CLI cannot see is installed successfully and then loads nowhere,
+    which is the failure this whole resolver exists to prevent.
+    """
+    if not name or name == DEFAULT_AGENT_NAME:
+        return []
+
+    extras: list[ResolvedLayer] = []
+
+    def _declare(path: Path) -> None:
+        if path.is_dir() and not any(layer.path == path for layer in extras):
+            extras.append(ResolvedLayer(Scope.AGENT, path))
+
+    if caller_dir is not None:
+        _declare(caller_dir / "runes")
+
+    agent_dir = resolve_config_dir(name)
+    for sub_name in ("runes", "extensions"):
+        _declare(agent_dir / sub_name)
+
+    # Built-in runes shipped inside an importable agent package.
+    for try_name in (name, name.replace("-", "_"), name.replace("_", "-")):
+        try:
+            spec = importlib.util.find_spec(try_name)
+            if spec is None:
+                continue
+            pkg_path = None
+            if spec.origin and spec.origin not in (None, "namespace"):
+                pkg_path = Path(spec.origin).parent
+            elif spec.submodule_search_locations:
+                for loc in spec.submodule_search_locations:
+                    pkg_path = Path(loc)
+                    break
+            if pkg_path is not None:
+                _declare(pkg_path / "runes")
+                break
+        except Exception:
+            continue
+
+    return extras
+
+
 class Mvge:
     """Core concrete agent implementation in MvgeOS.
 
@@ -286,7 +347,7 @@ class Mvge:
 
     @staticmethod
     def _default_tome_factory(
-        tome_dir: Path, runes_paths: Sequence[str]
+        tome_dir: Path, rune_dirs: Sequence[Path]
     ) -> TomeHandleFactory:
         """Build the default session factory with rune-provided codecs.
 
@@ -294,7 +355,7 @@ class Mvge:
         runes are never imported here. The built-in Tome v1 codec always
         stays first regardless of rune codecs.
         """
-        codecs, diagnostics = load_session_codecs(runes_paths)
+        codecs, diagnostics = load_session_codecs(rune_dirs)
         for diag in diagnostics:
             logger.warning(
                 "Session codec issue in rune %s: %s",
@@ -353,50 +414,10 @@ class Mvge:
 
         self._plan_mode = False
 
-        resolved_runes_paths = list(runes_paths) if runes_paths is not None else []
-        if caller_dir is not None and (caller_dir / "runes").is_dir():
-            colocated_runes = str(caller_dir / "runes")
-            if colocated_runes not in resolved_runes_paths:
-                resolved_runes_paths.append(colocated_runes)
-
-        if name and name != DEFAULT_AGENT_NAME:
-            agent_dir = resolve_config_dir(name)
-            for sub_name in ("runes", "extensions"):
-                candidate = agent_dir / sub_name
-                if candidate.is_dir():
-                    cand_str = str(candidate)
-                    if cand_str not in resolved_runes_paths:
-                        resolved_runes_paths.append(cand_str)
-
-        # Discover built-in runes for named agent package
-        if name and name != DEFAULT_AGENT_NAME:
-            for try_name in (name, name.replace("-", "_"), name.replace("_", "-")):
-                try:
-                    spec = importlib.util.find_spec(try_name)
-                    if spec is None:
-                        continue
-                    pkg_path = None
-                    if spec.origin and spec.origin not in (None, "namespace"):
-                        pkg_path = Path(spec.origin).parent
-                    elif spec.submodule_search_locations:
-                        for loc in spec.submodule_search_locations:
-                            pkg_path = Path(loc)
-                            break
-                    if pkg_path is not None:
-                        candidate = pkg_path / "runes"
-                        if candidate.is_dir():
-                            cand_str = str(candidate)
-                            if cand_str not in resolved_runes_paths:
-                                resolved_runes_paths.append(cand_str)
-                            break
-                except Exception:
-                    continue
+        agent_rune_extras = discover_agent_rune_extras(name, caller_dir)
 
         self._custom_system_prompt = custom_system_prompt
         self._extension_dir = extension_dir
-        self._tome_factory = tome_factory or self._default_tome_factory(
-            tome_dir or sessions_dir(), resolved_runes_paths
-        )
         self._tome_dir = tome_dir or sessions_dir()
         self._tome_resume = tome_resume
         self._provider_name = provider_name
@@ -411,7 +432,8 @@ class Mvge:
                 config_dir=resolve_config_dir(name),
                 caller_dir=caller_dir,
                 extension_dir=extension_dir,
-                runes_paths=resolved_runes_paths if resolved_runes_paths else None,
+                runes_paths=list(runes_paths) if runes_paths is not None else None,
+                rune_extras=agent_rune_extras,
                 active_spells_dir=self._active_spells_dir,
             )
 
@@ -426,12 +448,20 @@ class Mvge:
         self._exclude_contemplation = environment.exclude_contemplation
         self._queue_mode: QueueMode = environment.queue_mode
         self._spell_names = environment.spell_names
-        combined_runes = [Path(p) for p in environment.runes_paths]
-        for rp in resolved_runes_paths:
-            p = Path(rp).expanduser()
-            if p not in combined_runes:
-                combined_runes.append(p)
-        self._runes_paths = combined_runes
+        # The environment resolved the full stack exactly once, layers and
+        # all. Nothing is concatenated here: a second precedence pass is how
+        # installation and discovery came to disagree about where a Rune
+        # lives.
+        self._rune_layers: list[ResolvedLayer] = list(environment.rune_layers)
+        self._runes_paths = [layer.path for layer in self._rune_layers]
+
+        # Built after the environment, because a Rune-provided session codec
+        # may ship in *any* layer -- not just the directories this agent
+        # discovered for itself. Scanning only the agent's own extras would
+        # silently stop loading a user's codec.
+        self._tome_factory = tome_factory or self._default_tome_factory(
+            self._tome_dir, self._runes_paths
+        )
 
         self._provider_registry = (
             provider_registry
@@ -908,7 +938,7 @@ class Mvge:
             candidate_lifecycle = RuneLifecycle(
                 agent_name=self._name,
                 api_key=self._api_key,
-                runes_paths=self._runes_paths,
+                rune_layers=self._rune_layers,
                 environment=new_environment,
                 provider_registry=self._provider_registry,
                 reload_callback=self.reload,
@@ -1280,7 +1310,7 @@ class Mvge:
             self._rune_lifecycle = RuneLifecycle(
                 agent_name=self._name,
                 api_key=self._api_key,
-                runes_paths=self._runes_paths,
+                rune_layers=self._rune_layers,
                 environment=self._environment,
                 provider_registry=self._provider_registry,
                 runner=self._runner,

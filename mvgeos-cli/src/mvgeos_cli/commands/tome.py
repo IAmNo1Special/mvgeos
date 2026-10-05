@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Any
 
 import typer
-from mvgeos_core.constants import sessions_dir
+from mvgeos_core.constants import DEFAULT_AGENT_NAME
+from mvgeos_core.layers import sessions_dir
 from mvgeos_runes.codecs import load_session_codecs
 from mvgeos_tome.handle import TomeHandleFactory
 from mvgeos_tome.types import (
@@ -23,7 +24,11 @@ from rich.console import Console
 from rich.table import Table
 
 from mvgeos_cli.console import clip_text, format_error, get_console, is_utf8_stream
-from mvgeos_cli.dynamic_commands import get_extension_dirs
+from mvgeos_cli.dynamic_commands import (
+    cli_project_dir,
+    configured_rune_layers,
+    get_extension_dirs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,13 +51,40 @@ def get_tome_dir() -> Path:
     return tome_dir
 
 
-def get_factory() -> TomeHandleFactory:
+def get_factory(
+    agent_name: str = DEFAULT_AGENT_NAME,
+    *,
+    project_dir: Path | None = None,
+    global_dir: Path | None = None,
+    extension_dir: str | None = None,
+) -> TomeHandleFactory:
+    """Defaults are the loader's defaults, not an empty resolution.
+
+    ``project_dir`` defaults to ``None`` but is replaced with the CLI's own
+    project anchor below, because every caller here is running *in* a project
+    and Rune loading already resolves with that anchor. A bare ``get_factory()``
+    that omitted it would resolve a smaller stack than the session that wrote
+    the tome.
+    """
     """Tome factory with rune-provided session codecs discovered.
 
     Codecs are opt-in through ``session_codecs`` in rune manifests; the
     built-in Tome v1 codec always stays first.
+
+    A codec is a Rune capability, so this asks the same resolver Rune
+    loading asks. Resolving with fewer inputs than loading would mean a codec
+    that loads in a session is missing when the same tome is inspected from
+    the CLI -- the file would then read as empty rather than fail loudly.
     """
-    codecs, diagnostics = load_session_codecs(get_extension_dirs())
+    codecs, diagnostics = load_session_codecs(
+        get_extension_dirs(
+            agent_name,
+            project_dir=project_dir if project_dir is not None else cli_project_dir(),
+            extras=configured_rune_layers(agent_name),
+            global_dir=global_dir,
+            extension_dir=extension_dir,
+        )
+    )
     for diag in diagnostics:
         logger.warning(
             "Session codec issue in rune %s: %s", diag.rune_name, diag.message

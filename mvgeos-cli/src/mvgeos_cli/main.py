@@ -51,6 +51,8 @@ from mvgeos_cli.console import (
     prompt_api_key,
 )
 from mvgeos_cli.dynamic_commands import (
+    cli_project_dir,
+    configured_rune_layers,
     discover_installed_rune_commands,
     load_rune_cli_command,
 )
@@ -117,7 +119,7 @@ async def _run_agent(
             agent_name=agent_name,
             extension_dir=extension_dir,
             overrides=overrides,
-            project_dir=Path.cwd(),
+            project_dir=cli_project_dir(),
         )
         resolved = env.config
         model_id = model_id or str(resolved["model"].value)
@@ -302,18 +304,46 @@ async def _run_agent(
 
 
 class MvgeosGroup(TyperGroup):
+    """Rune-provided CLI commands, resolved the same way Rune loading does.
+
+    Discovery goes through the one layer-stack resolver, so a command that
+    mounts is a Rune that would load. The inputs come from the group's own
+    parsed options via Click's public ``ctx.params``, which is what the Rune
+    loading path already honours -- a second source of truth here is how the
+    two came to disagree.
+    """
+
+    def _rune_discovery(self, ctx: _click.Context) -> dict[str, Any]:
+        """The inputs Rune CLI command discovery resolves with.
+
+        Taken from the group's own parsed options where Click has them, and
+        from the same sources Rune loading reads otherwise: the agent name,
+        the project the CLI is running in, ``--extension-dir``, and any
+        configured ``rune_paths``. Discovery that resolved with fewer inputs
+        than loading is exactly the divergence this ADR ends.
+        """
+        params = getattr(ctx, "params", None) or {}
+        agent_name = params.get("agent_name") or DEFAULT_AGENT_NAME
+        project_dir = params.get("project_dir") or cli_project_dir()
+        return {
+            "agent_name": agent_name,
+            "project_dir": Path(project_dir),
+            "extension_dir": params.get("extension_dir"),
+            "extras": configured_rune_layers(agent_name, project_dir),
+        }
+
     def get_command(self, ctx: _click.Context, cmd_name: str) -> _click.Command | None:
         cmd = super().get_command(ctx, cmd_name)
         if cmd is not None:
             return cmd
-        res = load_rune_cli_command(cmd_name)
+        res = load_rune_cli_command(cmd_name, **self._rune_discovery(ctx))
         if res is not None:
             return cast(_click.Command, res)
         return None
 
     def list_commands(self, ctx: _click.Context) -> list[str]:
         base_cmds = super().list_commands(ctx)
-        rune_cmds = list(discover_installed_rune_commands().keys())
+        rune_cmds = list(discover_installed_rune_commands(**self._rune_discovery(ctx)))
         return sorted(set(base_cmds + rune_cmds))
 
     def invoke(self, ctx: _click.Context) -> Any:

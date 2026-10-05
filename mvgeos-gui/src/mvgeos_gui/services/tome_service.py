@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from mvgeos_core.constants import sessions_dir
+from mvgeos_core.layers import sessions_dir
 from mvgeos_tome.handle import TomeHandleFactory
 from mvgeos_tome.types import TomeEntryType, TomeVersionError
 

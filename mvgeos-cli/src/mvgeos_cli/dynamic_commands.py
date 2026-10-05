@@ -4,60 +4,139 @@ import asyncio
 import importlib.util
 import inspect
 import os
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
 
 import click
 import typer
-from mvgeos_core.constants import global_agents_dir
+from mvgeos_agent.config_manager import ConfigManager
+from mvgeos_agent.mvge import discover_agent_rune_extras
+from mvgeos_core.constants import DEFAULT_AGENT_NAME
+from mvgeos_core.layers import ResolvedLayer, Scope, resolve_rune_layers
 from mvgeos_runes.loader import _inject_rune_paths
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_api import RuneAPI
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import RuneManifest
 
+#: Environment variable naming one extra Rune directory for CLI command
+#: discovery. Resolves last, like every other "extra directory" in the
+#: engine: it is the caller's most specific declaration, so it is the last
+#: resort rather than a layer that outranks the stack.
+EXTENSION_DIR_ENV = "MVGEOS_EXTENSION_DIR"
+
 
 def get_extension_dirs(
-    cwd: Path | None = None,
+    agent_name: str = DEFAULT_AGENT_NAME,
+    *,
+    project_dir: Path | None = None,
     global_dir: Path | None = None,
+    extension_dir: str | None = None,
+    extras: Sequence[ResolvedLayer] = (),
 ) -> list[Path]:
-    """Return all existing extension search directories in precedence order."""
-    dirs: list[Path] = []
+    """Rune directories to scan for CLI commands, in precedence order.
 
-    # 1. Custom env var
-    env_ext = os.environ.get("MVGEOS_EXTENSION_DIR")
-    if env_ext:
-        p = Path(env_ext).expanduser()
-        if p.is_dir():
-            dirs.append(p)
+    The same resolver Rune loading uses, asked the same question with the
+    same inputs -- that equality is the point, and it is what makes a Rune
+    installable and then discoverable. A directory that Rune loading would
+    not read is not scanned here either.
 
-    # 2. Project-level: <cwd>/.agents/extensions/ and <cwd>/extensions/
-    c_dir = cwd or Path.cwd()
-    proj_dot_agents = c_dir / ".agents" / "extensions"
-    if proj_dot_agents.is_dir():
-        dirs.append(proj_dot_agents)
+    Args:
+        agent_name: Names the agent layer.
+        project_dir: Anchors the project layer. ``None`` omits it entirely.
+        global_dir: Overrides the global layer for this call.
+        extension_dir: An extra directory, or ``$MVGEOS_EXTENSION_DIR`` when
+            not given.
+        extras: Further caller-declared layers -- configured ``rune_paths``
+            arrives this way, so a directory named in config is discovered
+            exactly as Rune loading discovers it.
 
-    proj_ext = c_dir / "extensions"
-    if proj_ext.is_dir() and proj_ext not in dirs:
-        dirs.append(proj_ext)
+    Non-existent layers are dropped: CLI command discovery lists what is
+    installed, so it has nothing to say about a layer that is not there. The
+    resolver itself does no filtering -- installation needs the whole stack.
+    """
+    declared_extras: list[ResolvedLayer] = list(extras)
+    declared = extension_dir or os.environ.get(EXTENSION_DIR_ENV)
+    if declared:
+        declared_extras.append(
+            ResolvedLayer(Scope.PROJECT, Path(declared).expanduser())
+        )
 
-    # 3. User-level: <global>/extensions (or MVGEOS_GLOBAL_DIR)
-    g_env = global_dir if global_dir is not None else global_agents_dir()
-    user_ext = g_env / "extensions"
-    if user_ext.is_dir() and user_ext not in dirs:
-        dirs.append(user_ext)
+    layers = resolve_rune_layers(
+        agent_name,
+        project_dir=project_dir,
+        global_dir=global_dir,
+        extras=declared_extras,
+    )
+    return [layer.path for layer in layers if layer.path.expanduser().is_dir()]
 
-    return dirs
+
+def cli_project_dir() -> Path:
+    """The project the CLI is operating on.
+
+    The CLI runs *inside* a project directory, so that directory is its
+    anchor -- a deliberate choice, not an ambient leak. Rune loading already
+    resolves with it (``main.py`` passes ``Path.cwd()`` into
+    ``MvgeEnvironment.resolve``), and CLI discovery has to resolve with the
+    same anchor or the two disagree about which layer is the project layer.
+
+    A library embedder has no such anchor, which is why the resolver takes
+    ``project_dir=None`` and omits the layer entirely rather than guessing.
+    """
+    return Path.cwd()
+
+
+def configured_rune_layers(
+    agent_name: str = DEFAULT_AGENT_NAME,
+    project_dir: Path | str | None = None,
+) -> list[ResolvedLayer]:
+    """Layers declared by a configured ``rune_paths``, as the loader sees them.
+
+    Read through the same coercion the loader uses, so a directory named in
+    config is discovered here under the same scope it loads under. A config
+    that names one directory extends the layering rather than replacing it, so
+    this returns extras and never a replacement stack.
+
+    The agent's own shipped Rune directories are folded in too, from the same
+    function ``Mvge`` calls. Omitting them made a Rune that loads in a session
+    undiscoverable from the CLI, which is the same divergence this function
+    exists to remove.
+    """
+    resolved = ConfigManager(
+        agent_name=agent_name,
+        project_dir=Path(project_dir) if project_dir is not None else Path.cwd(),
+    ).load()
+    raw = resolved.get("rune_paths")
+    declared = raw.value if raw is not None else None
+    return [
+        *discover_agent_rune_extras(agent_name),
+        *(
+            ResolvedLayer(Scope.PROJECT, Path(str(p)).expanduser())
+            for p in (declared or [])
+        ),
+    ]
 
 
 def discover_installed_rune_commands(
-    cwd: Path | None = None,
+    agent_name: str = DEFAULT_AGENT_NAME,
+    *,
+    project_dir: Path | None = None,
     global_dir: Path | None = None,
+    extension_dir: str | None = None,
+    extras: Sequence[ResolvedLayer] = (),
 ) -> dict[str, tuple[Path, RuneManifest]]:
     """Scan extension directories and map command names to their parent rune."""
     cmd_map: dict[str, tuple[Path, RuneManifest]] = {}
 
-    for ext_dir in get_extension_dirs(cwd=cwd, global_dir=global_dir):
+    dirs = get_extension_dirs(
+        agent_name,
+        project_dir=project_dir,
+        global_dir=global_dir,
+        extension_dir=extension_dir,
+        extras=extras,
+    )
+    for ext_dir in dirs:
         try:
             for child in ext_dir.iterdir():
                 if not child.is_dir():
@@ -76,11 +155,21 @@ def discover_installed_rune_commands(
 
 def load_rune_cli_command(
     cmd_name: str,
-    cwd: Path | None = None,
+    agent_name: str = DEFAULT_AGENT_NAME,
+    *,
+    project_dir: Path | None = None,
     global_dir: Path | None = None,
+    extension_dir: str | None = None,
+    extras: Sequence[ResolvedLayer] = (),
 ) -> click.Command | None:
     """Dynamically mount a Click command from an installed rune."""
-    cmd_map = discover_installed_rune_commands(cwd=cwd, global_dir=global_dir)
+    cmd_map = discover_installed_rune_commands(
+        agent_name,
+        project_dir=project_dir,
+        global_dir=global_dir,
+        extension_dir=extension_dir,
+        extras=extras,
+    )
     if cmd_name not in cmd_map:
         return None
 

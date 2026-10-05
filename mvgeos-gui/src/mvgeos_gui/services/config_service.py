@@ -12,7 +12,7 @@ from typing import Any
 
 import keyring
 from mvgeos_agent.config_manager import ConfigManager
-from mvgeos_core.constants import global_agents_dir
+from mvgeos_core.layers import global_agents_dir
 
 _KEYRING_SERVICE = "mvgeos"
 _KEYRING_API_KEY_USERNAME = "openrouter_api_key"

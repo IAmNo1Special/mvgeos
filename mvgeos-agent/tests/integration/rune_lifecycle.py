@@ -5,14 +5,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from mvgeos_runes.loader import (
-    load_runes_from_paths,
-)
+from mvgeos_core.layers import ResolvedLayer, Scope
 from mvgeos_runes.rune_runner import RuneRunner
-from mvgeos_runes.types import (
-    RuneContext,
-    RuneScope,
-)
 
 from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.rune_lifecycle import RuneLifecycle
@@ -50,49 +44,6 @@ def runes_dir(tmp_path: Path) -> Path:
     return root
 
 
-async def _reference_inline_load(
-    agent_name: str,
-    api_key: str,
-    runes_paths: list[Path],
-    registry: Any,
-) -> RuneRunner:
-    """The pre-extraction inline BaseMvge._load_runes() logic, verbatim."""
-    paths_with_scope: list[tuple[Path, RuneScope]] = []
-    for path in runes_paths:
-        resolved = Path(str(path).replace("{agent_name}", agent_name)).expanduser()
-        if (
-            "~/.agents/extensions" in str(path) or ".mvgeos/runes" in str(path)
-        ) and "{agent_name}" not in str(path):
-            scope = RuneScope.USER
-        elif "{agent_name}" in str(path):
-            scope = RuneScope.AGENT
-        else:
-            scope = RuneScope.PROJECT
-        paths_with_scope.append((resolved, scope))
-
-    loads, diagnostics = load_runes_from_paths(paths_with_scope, agent_name)
-
-    runner = RuneRunner()
-    runner.bind_context(
-        RuneContext(
-            cwd=str(Path.cwd()),
-            project_root=str(Path.cwd().resolve()),
-            mode="cli",
-            agent_name=agent_name,
-            api_key=api_key,
-        )
-    )
-
-    if loads:
-        await runner.load_rune_loads(loads, diagnostics)
-        for pname, pconfig in runner.get_registered_providers().items():
-            registry.register_provider(pname, pconfig)
-    elif diagnostics:
-        runner.extend_diagnostics(diagnostics)
-
-    return runner
-
-
 def _runner_state(runner: RuneRunner) -> dict[str, Any]:
     return {
         "manifests": sorted(m.name for m in runner.loaded_manifests),
@@ -125,7 +76,7 @@ async def test_standalone_load_builds_full_runner(runes_dir: Path) -> None:
     lifecycle = RuneLifecycle(
         agent_name="tester",
         api_key="key-1",
-        runes_paths=[runes_dir],
+        rune_layers=[ResolvedLayer(Scope.PROJECT, runes_dir)],
         provider_registry=registry,
     )
     runner = await lifecycle.load()
@@ -143,23 +94,30 @@ async def test_standalone_load_builds_full_runner(runes_dir: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_lifecycle_matches_reference_inline_semantics(runes_dir: Path) -> None:
-    class _Registry:
-        def register_provider(self, name: str, config: dict) -> None:
-            pass
+async def test_lifecycle_loads_exactly_the_layers_it_was_given(
+    runes_dir: Path,
+) -> None:
+    """Loading reads the declared stack and nothing else.
 
-    reference = await _reference_inline_load(
-        "tester", "key-1", [runes_dir], _Registry()
-    )
+    This replaces a comparison against a verbatim copy of the old inline
+    loader. That copy was the duplication ADR-0014 removes: two derivations
+    of the same search paths, which is how a Rune came to install
+    successfully and then load nowhere. There is now one derivation, so
+    there is nothing to compare against -- the property worth asserting is
+    that the layers handed in are the layers loaded from.
+    """
+    empty_root = runes_dir.parent / "empty_other"
+    empty_root.mkdir()
+    layers = [
+        ResolvedLayer(Scope.USER, empty_root),
+        ResolvedLayer(Scope.PROJECT, runes_dir),
+    ]
+    lifecycle = RuneLifecycle(agent_name="tester", api_key="key-1", rune_layers=layers)
 
-    lifecycle = RuneLifecycle(
-        agent_name="tester",
-        api_key="key-1",
-        runes_paths=[runes_dir],
-    )
     loaded = await lifecycle.load()
 
-    assert _runner_state(loaded) == _runner_state(reference)
+    assert _runner_state(loaded)["manifests"] == ["echo-rune"]
+    assert lifecycle.runner is loaded
 
 
 @pytest.mark.asyncio
@@ -168,7 +126,7 @@ async def test_base_mvge_load_matches_standalone_lifecycle(runes_dir: Path) -> N
     lifecycle = RuneLifecycle(
         agent_name=agent.environment.agent_name,
         api_key="key-2",
-        runes_paths=[runes_dir],
+        rune_layers=[ResolvedLayer(Scope.PROJECT, runes_dir)],
     )
     standalone = await lifecycle.load()
     try:
@@ -210,7 +168,10 @@ async def test_standalone_watchers_start_and_stop(runes_dir: Path) -> None:
 
     lifecycle = RuneLifecycle(
         agent_name="watcher-agent",
-        runes_paths=[str(runes_dir), str(missing)],
+        rune_layers=[
+            ResolvedLayer(Scope.PROJECT, runes_dir),
+            ResolvedLayer(Scope.PROJECT, missing),
+        ],
     )
     await lifecycle.load()
     await lifecycle.start()
@@ -258,7 +219,7 @@ def rune_factory(api):
 
     lifecycle = RuneLifecycle(
         agent_name="disc-agent",
-        runes_paths=[str(runes_root)],
+        rune_layers=[ResolvedLayer(Scope.PROJECT, runes_root)],
         cwd=str(tmp_path),
     )
     runner = await lifecycle.load()

@@ -15,7 +15,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from mvgeos_core.constants import global_agents_dir
+from mvgeos_core.layers import ResolvedLayer
 from mvgeos_core.sandbox import MvgeSandbox
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_runes.loader import (
@@ -25,7 +25,6 @@ from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     ResourcesDiscoverData,
     RuneContext,
-    RuneScope,
     SigilHook,
 )
 from mvgeos_runes.watcher import RuneWatcher
@@ -38,10 +37,16 @@ logger = logging.getLogger(__name__)
 class RuneLifecycle:
     """Loads runes into a runner, starts watchers, and stops them again.
 
-    Callers hand this module the agent name, API key, configured rune
-    paths, the current environment, and the provider registry; they get
+    Callers hand this module the agent name, API key, the resolved Rune
+    layer stack, the current environment, and the provider registry; they get
     back a fully loaded RuneRunner from :meth:`load`, hot-reload watchers
     from :meth:`start`, and a clean stop via :meth:`shutdown`.
+
+    This module resolves nothing. The layers arrive already resolved and
+    already scoped, because a second derivation here is how installation and
+    discovery came to disagree about where a Rune lives. Each layer says
+    which layer of the ``.agents`` stack it is; nothing is inferred from its
+    path string.
     """
 
     def __init__(
@@ -49,30 +54,27 @@ class RuneLifecycle:
         *,
         agent_name: str,
         api_key: str = "",
-        runes_paths: Sequence[str | Path] = (),
+        rune_layers: Sequence[ResolvedLayer] = (),
         environment: MvgeEnvironment | None = None,
         provider_registry: RealmRegistry | None = None,
         runner: RuneRunner | None = None,
         cwd: str | None = None,
         mode: str = "cli",
-        global_dir: Path | None = None,
         reload_callback: Callable[[], Any] | None = None,
         extra_watch_dirs: Sequence[str | Path] = (),
     ) -> None:
         self._agent_name = agent_name
         self._api_key = api_key
-        self._runes_paths: list[str | Path] = list(runes_paths)
+        self._rune_layers: list[ResolvedLayer] = list(rune_layers)
         self._environment = environment
         self._provider_registry = provider_registry
         self._mode = mode
         self._cwd = cwd if cwd is not None else str(Path.cwd())
-        self._global_dir = global_dir
         self._runner = runner
         # Watchers keyed by their canonical (resolved absolute) path: one
         # structure serves dedupe at start and per-watcher bookkeeping at
         # shutdown.
         self._watched: dict[str, RuneWatcher] = {}
-        self._paths_with_scope: list[tuple[Path, RuneScope]] = []
         # Engine reload trigger: when set, watchers run in trigger mode and
         # call this (Mvge.reload) instead of reloading runes themselves.
         self._reload_callback = reload_callback
@@ -92,47 +94,6 @@ class RuneLifecycle:
     def watchers(self) -> list[RuneWatcher]:
         return list(self._watched.values())
 
-    def resolve_paths(self) -> list[tuple[Path, RuneScope]]:
-        """Resolve configured rune paths to (path, scope) pairs.
-
-        Paths containing ``{agent_name}`` or pointing to
-        ``agents/{agent_name}/extensions`` are agent-scoped; the global
-        layer's ``extensions`` directory is user-scoped; everything else
-        is project-scoped. The global layer is ``self._global_dir`` when
-        given, else ``$MVGEOS_GLOBAL_DIR``, else ``~/.agents``.
-        """
-        result: list[tuple[Path, RuneScope]] = []
-        global_root = (
-            Path(self._global_dir).expanduser()
-            if self._global_dir is not None
-            else global_agents_dir()
-        )
-        user_ext_posix = (global_root / "extensions").as_posix()
-        for path in self._runes_paths:
-            path_str = str(path)
-            resolved = Path(
-                path_str.replace("{agent_name}", self._agent_name)
-            ).expanduser()
-            posix_path = resolved.as_posix()
-            if "{agent_name}" in path_str or (
-                self._agent_name
-                and (
-                    f"agents/{self._agent_name}/extensions" in posix_path
-                    or f".mvgeos/{self._agent_name}/runes" in posix_path
-                )
-            ):
-                scope = RuneScope.AGENT
-            elif (
-                posix_path == user_ext_posix
-                or f"{global_root.as_posix()}/extensions" in posix_path
-                or ".mvgeos/runes" in posix_path
-            ):
-                scope = RuneScope.USER
-            else:
-                scope = RuneScope.PROJECT
-            result.append((resolved, scope))
-        return result
-
     async def load(self) -> RuneRunner:
         """Load runes and skills from all scopes into the runner.
 
@@ -142,9 +103,10 @@ class RuneLifecycle:
         the injected environment with the combined diagnostics and the
         active runner.
         """
-        paths_with_scope = self.resolve_paths()
         loads, diagnostics = await asyncio.to_thread(
-            load_runes_from_paths, paths_with_scope, self._agent_name
+            load_runes_from_paths,
+            [(layer.path, layer.scope) for layer in self._rune_layers],
+            self._agent_name,
         )
         runner = self._ensure_runner()
 
@@ -163,8 +125,6 @@ class RuneLifecycle:
         res_data = ResourcesDiscoverData(cwd=self._cwd, reason="startup")
         await runner.emit_chain(SigilHook.RESOURCES_DISCOVER, res_data)
 
-        self._paths_with_scope = paths_with_scope
-
         if self._environment is not None:
             self._environment = dataclasses.replace(
                 self._environment,
@@ -174,23 +134,20 @@ class RuneLifecycle:
         return runner
 
     async def start(self) -> None:
-        """Start hot-reload watchers for every existing rune path.
+        """Start hot-reload watchers for every existing layer of the stack.
 
-        May be called before :meth:`load`, in which case the configured
-        rune paths are resolved on demand. Paths already being watched
-        are skipped so repeated start calls never spawn duplicate
-        observers. When a reload callback is set, every watcher runs in
-        trigger mode: file events fire ``Mvge.reload()`` instead of
-        reloading runes directly.
+        May be called before :meth:`load`. Layers already being watched are
+        skipped so repeated start calls never spawn duplicate observers. When
+        a reload callback is set, every watcher runs in trigger mode: file
+        events fire ``Mvge.reload()`` instead of reloading runes directly.
         """
         runner = self._ensure_runner()
-        paths_with_scope = self._paths_with_scope or self.resolve_paths()
-        for path, _scope in paths_with_scope:
+        for layer in self._rune_layers:
             # Canonicalize to the resolved absolute path: the exists gate,
             # the watcher, and the dedupe key must all name the same
-            # directory (a CWD-relative entry keeps its anchor; resolve()
-            # only makes it absolute).
-            key = str(Path(path).expanduser().resolve())
+            # directory (a relative entry keeps its anchor; resolve() only
+            # makes it absolute).
+            key = str(layer.path.expanduser().resolve())
             if key in self._watched or not Path(key).exists():
                 continue
             watcher = RuneWatcher(

@@ -10,15 +10,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from mvgeos_core.constants import (
-    DEFAULT_AGENT_NAME,
-    DEFAULT_MODEL,
-    agent_dir,
-    global_agents_dir,
-    resolve_rune_paths,
-)
+from mvgeos_core.constants import DEFAULT_AGENT_NAME, DEFAULT_MODEL
 from mvgeos_core.events import PromptSource as PromptSource
 from mvgeos_core.events import QueueMode
+from mvgeos_core.layers import (
+    ResolvedLayer,
+    Scope,
+    agent_dir,
+    global_agents_dir,
+    resolve_rune_layers,
+)
 from mvgeos_core.spells import MvgeSpell
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
@@ -71,6 +72,7 @@ class AgentConfig:
     queue_mode: QueueMode
     spell_names: list[str] | None
     runes_paths: list[Path]
+    rune_layers: list[ResolvedLayer]
 
 
 _SYSTEM_PROMPT_BODY = (
@@ -352,6 +354,7 @@ def coerce_agent_config(
     extension_dir: str | None = None,
     runes_paths: Sequence[str] | None = None,
     project_dir: Path | str | None = None,
+    rune_extras: Sequence[ResolvedLayer] = (),
 ) -> AgentConfig:
     """Coerces raw resolved config mapping into a validated AgentConfig."""
 
@@ -440,17 +443,25 @@ def coerce_agent_config(
     spells_enabled = _get("spells_enabled", [])
     spell_names = list(spells_enabled) if spells_enabled else None
 
-    # Rune paths
+    # Rune layers. The standard stack always comes first; every declared
+    # extra is appended to it, so configuring ``rune_paths`` narrows nothing
+    # away -- it extends the layering rather than replacing it as a side
+    # effect of being set. That inversion is the whole point: a config that
+    # named one directory used to silently drop the user and agent layers.
+    extras: list[ResolvedLayer] = list(rune_extras)
+    if extension_dir:
+        extras.append(ResolvedLayer(Scope.PROJECT, Path(extension_dir).expanduser()))
     if runes_paths is not None:
-        coerced_runes_paths = [Path(str(p)).expanduser() for p in runes_paths]
+        declared: Any = runes_paths
     else:
-        rune_paths_config = _get("rune_paths", None)
-        if rune_paths_config:
-            coerced_runes_paths = [Path(str(p)).expanduser() for p in rune_paths_config]
-        else:
-            coerced_runes_paths = resolve_rune_paths(
-                agent_name, extension_dir, project_dir=project_dir
-            )
+        declared = _get("rune_paths", None) or []
+    extras.extend(
+        ResolvedLayer(Scope.PROJECT, Path(str(p)).expanduser()) for p in declared
+    )
+
+    rune_layers = resolve_rune_layers(
+        agent_name, project_dir=project_dir, extras=extras
+    )
 
     return AgentConfig(
         model_id=model_id,
@@ -461,7 +472,8 @@ def coerce_agent_config(
         exclude_contemplation=exclude_contemplation,
         queue_mode=queue_mode,
         spell_names=spell_names,
-        runes_paths=coerced_runes_paths,
+        runes_paths=[layer.path for layer in rune_layers],
+        rune_layers=rune_layers,
     )
 
 
@@ -491,14 +503,17 @@ class MvgeEnvironment:
     agent_config: AgentConfig | None = None
     global_dir: Path | None = None
     active_spells_dir: Path | None = None
+    #: Inputs used to resolve the base SYSTEM.md chain. Recorded by
+    #: :meth:`resolve` so engine reload can re-run the identical discovery
+    #: (custom -> caller -> project -> agent-scope -> default) even when the
+    #: environment was built by an external caller (CLI/GUI) with different
+    #: inputs.
     prompt_resolve_kwargs: dict[str, Any] = field(default_factory=dict)
-    """Inputs used to resolve the base SYSTEM.md chain.
-
-    Recorded by :meth:`resolve` so engine reload can re-run the identical
-    discovery (custom -> caller -> project -> agent-scope -> default) even
-    when the environment was built by an external caller (CLI/GUI) with
-    different inputs.
-    """
+    #: The resolved Rune layer stack, each layer carrying its own scope.
+    #: ``runes_paths`` is this list's path projection: consumers that need to
+    #: know *which layer* a directory is read this, consumers that only scan
+    #: for Runes take the paths.
+    rune_layers: list[ResolvedLayer] = field(default_factory=list)
 
     @classmethod
     def resolve(
@@ -518,6 +533,7 @@ class MvgeEnvironment:
         caller_dir: Path | None = None,
         extension_dir: str | None = None,
         runes_paths: Sequence[str] | None = None,
+        rune_extras: Sequence[ResolvedLayer] = (),
         active_spells_dir: Path | None = None,
     ) -> MvgeEnvironment:
         """Resolve all environment resources and configuration layers."""
@@ -542,6 +558,7 @@ class MvgeEnvironment:
             extension_dir=extension_dir,
             runes_paths=runes_paths,
             project_dir=project_dir,
+            rune_extras=rune_extras,
         )
 
         resolved_prompt_inputs: dict[str, Any] = {
@@ -571,6 +588,7 @@ class MvgeEnvironment:
             queue_mode=coerced.queue_mode,
             spell_names=coerced.spell_names,
             runes_paths=coerced.runes_paths,
+            rune_layers=coerced.rune_layers,
             config=resolved_config,
             resolved_prompt=resolved_prompt,
             diagnostics=diags,

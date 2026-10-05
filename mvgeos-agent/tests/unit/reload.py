@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from mvgeos_core.channel import MvgeResponse, RealmResponse, StopReason
+from mvgeos_core.layers import ResolvedLayer, Scope
 from mvgeos_provider.base import Realm
 from mvgeos_provider.registry import RealmRegistry
 
@@ -1023,7 +1024,7 @@ async def test_lifecycle_watches_reload_trigger_set(
     lifecycle = RuneLifecycle(
         agent_name="reload-test",
         api_key="test-key",
-        runes_paths=[str(runes_dir)],
+        rune_layers=[ResolvedLayer(Scope.PROJECT, runes_dir)],
         reload_callback=trigger,
         extra_watch_dirs=[str(spells_dir), str(config_dir)],
     )

@@ -34,7 +34,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, cast
 
-from mvgeos_core.constants import extensions_dir
+from mvgeos_core.layers import extensions_dir
 
 
 class _Fcntl(Protocol):

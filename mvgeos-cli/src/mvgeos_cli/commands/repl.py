@@ -17,9 +17,10 @@ from typing import Any, Protocol
 
 from mvgeos_agent.protocol import AgentFactory
 from mvgeos_core.channel import MvgeResponse
-from mvgeos_core.constants import DEFAULT_AGENT_NAME, history_file
+from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_core.errors import RateLimitError
 from mvgeos_core.events import MvgeEvent
+from mvgeos_core.layers import history_file
 from mvgeos_provider.model_registry import ModelRegistry
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion

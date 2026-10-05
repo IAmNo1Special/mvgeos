@@ -15,9 +15,15 @@ from mvgeos_cli.dynamic_commands import (
 )
 
 
-def test_get_extension_dirs_env_and_project(
+def test_get_extension_dirs_covers_every_layer_and_puts_the_env_var_last(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The precedence order, asserted as an order.
+
+    ``MVGEOS_EXTENSION_DIR`` moved from first to last: it is an extra, and
+    every extra in the engine resolves after the stack. It used to outrank
+    everything, which is the opposite of ``--extension-dir``.
+    """
     custom_ext = tmp_path / "custom_ext"
     custom_ext.mkdir()
     monkeypatch.setenv("MVGEOS_EXTENSION_DIR", str(custom_ext))
@@ -25,18 +31,16 @@ def test_get_extension_dirs_env_and_project(
     proj_dir = tmp_path / "project"
     dot_agents_ext = proj_dir / ".agents" / "extensions"
     dot_agents_ext.mkdir(parents=True)
-    plain_ext = proj_dir / "extensions"
-    plain_ext.mkdir(parents=True)
 
     global_dir = tmp_path / "global"
     global_ext = global_dir / "extensions"
     global_ext.mkdir(parents=True)
+    agent_ext = global_dir / "agents" / "coder" / "extensions"
+    agent_ext.mkdir(parents=True)
 
-    dirs = get_extension_dirs(cwd=proj_dir, global_dir=global_dir)
-    assert custom_ext in dirs
-    assert dot_agents_ext in dirs
-    assert plain_ext in dirs
-    assert global_ext in dirs
+    dirs = get_extension_dirs("coder", project_dir=proj_dir, global_dir=global_dir)
+
+    assert dirs == [global_ext, agent_ext, dot_agents_ext, custom_ext]
 
 
 def test_get_extension_dirs_nonexistent(
@@ -44,9 +48,30 @@ def test_get_extension_dirs_nonexistent(
 ) -> None:
     monkeypatch.setenv("MVGEOS_EXTENSION_DIR", str(tmp_path / "nonexistent"))
     dirs = get_extension_dirs(
-        cwd=tmp_path / "empty", global_dir=tmp_path / "empty_global"
+        "coder", project_dir=tmp_path / "empty", global_dir=tmp_path / "empty_global"
     )
     assert dirs == []
+
+
+def test_get_extension_dirs_drops_layers_that_are_not_there(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Discovery filters to what exists; the resolver does not.
+
+    Installation needs the whole stack whether or not it is on disk, so the
+    filtering lives in the discovery helper rather than in resolution.
+    Stated here so the two do not quietly merge again.
+    """
+    monkeypatch.delenv("MVGEOS_EXTENSION_DIR", raising=False)
+    global_dir = tmp_path / "global"
+
+    assert get_extension_dirs("coder", global_dir=global_dir) == []
+
+    (global_dir / "extensions").mkdir(parents=True)
+
+    assert get_extension_dirs("coder", global_dir=global_dir) == [
+        global_dir / "extensions"
+    ]
 
 
 def test_discover_installed_rune_commands(tmp_path: Path) -> None:
