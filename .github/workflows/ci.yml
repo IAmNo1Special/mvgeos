@@ -60,6 +60,22 @@ jobs:
   # signal in this repository. DEFAULT_TOME_DIR -> sessions_dir() did exactly
   # that and took ten import errors to surface, on the marketplace's main.
   #
+  # Blocks an ADR from describing code that no longer exists. This index drifted
+  # silently for 227 commits: ADR-0007 named TomeLedger, an in-memory Index and
+  # filelock, none of which existed in any src/, and nothing noticed. Keep it
+  # blocking and dependency-free -- the check reads source as text, so it runs in
+  # about a second with no sync, no install and no marketplace checkout.
+  adr-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Verify every ADR status and contracted symbol matches the source
+        run: uv run --no-project python mvgeos-core/scripts/check_adr_contract.py
+
   # Verifies every engine import in a marketplace checkout resolves and is
   # declared in the relevant __all__. Keep it blocking: a silent API removal
   # is the failure this exists to prevent. The cost is that this repository's
