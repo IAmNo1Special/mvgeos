@@ -104,6 +104,39 @@ jobs:
           uv run python mvgeos-core/scripts/check_marketplace_contract.py
           marketplace
 
+  # Reproduces the published scorecard: the same numbers `uv run python
+  # scripts/scorecard.py` prints locally, measured against fresh shallow
+  # clones of all seven projects.
+  #
+  # NON-BLOCKING, deliberately. Six of the seven repositories are not ours and
+  # move under us daily; a peer renaming a directory, or going unreachable,
+  # must not be able to fail our build. `continue-on-error` on the job is what
+  # makes it non-blocking -- the job still runs and still posts its table, and
+  # only its conclusion is discarded.
+  #
+  # Promote to blocking once this job has been green for three consecutive
+  # runs on main, at which point delete the `continue-on-error` line.
+  #
+  # Costs roughly 2 GB of shallow clones and a few minutes per run, which is
+  # also why there is no cache here: the job is the measurement, and a cached
+  # clone would quietly measure a stale commit.
+  scorecard:
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Measure the scorecard
+        # --online enables measure 5, one HTTP GET per package name. That is
+        # the axis we currently lose outright, so it is the one most worth
+        # watching; it is also the only check here that touches the network.
+        run: >-
+          uv run --no-project python scripts/scorecard.py
+          --online --markdown >> "$GITHUB_STEP_SUMMARY"
+
   lint:
     uses: IAmNo1Special/actions/.github/workflows/python-ci.yml@v1
     with:
