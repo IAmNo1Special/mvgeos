@@ -81,6 +81,9 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["T20", "PT001"]
 "*/__init__.py" = ["E402", "F401"]
+# Release tooling reports to a terminal; printing is its interface, not a slip.
+# mypy already excludes /scripts/ for the same reason.
+"scripts/**" = ["T20"]
 
 [tool.mypy]
 python_version = "3.13"
