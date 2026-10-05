@@ -978,7 +978,10 @@ wheels = [
 [[package]]
 name = "mvgeos"
 version = "0.6.5"
-source = { virtual = "." }
+source = { editable = "." }
+dependencies = [
+    { name = "mvgeos-cli" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -1000,6 +1003,7 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [{ name = "mvgeos-cli", editable = "mvgeos-cli" }]
 
 [package.metadata.requires-dev]
 dev = [

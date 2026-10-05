@@ -4,7 +4,16 @@ version = "0.6.5"
 description = "MvgeOS — a Python-based AI coding agent"
 requires-python = ">=3.13"
 license = "MIT"
-dependencies = []
+dependencies = [
+    "mvgeos-cli>=0.6.5",
+]
+
+[project.scripts]
+mvgeos = "mvgeos:main"
+
+[build-system]
+requires = ["uv_build>=0.11.2,<0.13"]
+build-backend = "uv_build"
 
 [dependency-groups]
 dev = [

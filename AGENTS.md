@@ -103,6 +103,7 @@ MvgeOS is a monorepo with uv workspaces:
 
 | Package | Purpose |
 | --- | --- |
+| mvgeos | Root distribution; owns the published name and its `mvgeos` console script so `uvx mvgeos` resolves directly |
 | mvgeos-core | Canonical loop vocabulary: abort, invocations, spells, events, pure turn loop (zero first-party deps) |
 | mvgeos-agent | Mvge class, session lifecycle (MvgeHarness, MvgeState), environment, spell coercion, installer |
 | mvgeos-provider | Realm protocol + model registry (depends on core); the OpenRouter realm ships as a marketplace rune |
