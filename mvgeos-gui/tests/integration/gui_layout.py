@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from mvgeos_core.constants import DEFAULT_MODEL
 from mvgeos_runes.types import (
     SkillManifest,
     SkillScope,
@@ -95,8 +96,8 @@ async def test_full_shell_layout_rendering(user: User) -> None:
     await user.should_see("Skills")
     await user.should_see("Settings")
 
-    # Status bar and model info
-    await user.should_see("nemotron")
+    # Status bar and model info: the selected model, which nobody picked here
+    await user.should_see(DEFAULT_MODEL.split("/")[-1])
 
 
 @pytest.mark.asyncio

@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from mvgeos_core.channel import MvgeResponse, RealmResponse, StopReason
+from mvgeos_core.constants import DEFAULT_MODEL
 from mvgeos_core.layers import ResolvedLayer, Scope
 from mvgeos_provider.base import Realm
 from mvgeos_provider.registry import RealmRegistry
@@ -43,7 +44,10 @@ def _make_registry(realm: Realm | None = None) -> RealmRegistry:
     """A hermetic realm registry: no network, no global state touched."""
     registry = RealmRegistry()
     stub = realm if realm is not None else MagicMock(spec=Realm)
-    registry.register_realm_factory("nvidia", lambda **kwargs: stub)
+    # Register under the default model's own prefix, which is what
+    # RealmRegistry.create_realm looks up. Naming a literal here made the
+    # fixture track the default model's provider, not its behaviour.
+    registry.register_realm_factory(DEFAULT_MODEL.split("/")[0], lambda **kwargs: stub)
     return registry
 
 

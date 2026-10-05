@@ -18,7 +18,12 @@ from __future__ import annotations
 
 DEFAULT_AGENT_NAME = "default-mvge"
 
-DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
+#: System-wide default Realm model. ``openrouter/free`` is OpenRouter's Free
+#: Models Router: it only ever routes to a free endpoint and picks a different
+#: one when one saturates. A concrete free slug cannot do that -- it just moves
+#: the outage to whichever endpoint is saturated next. Kept free by
+#: construction; never point this at a paid id.
+DEFAULT_MODEL = "openrouter/free"
 
 #: Environment variable that relocates the global ``.agents`` layer. The
 #: default is ``~/.agents``; setting this moves every global-layer read and

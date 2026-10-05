@@ -9,6 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from mvgeos_core.constants import DEFAULT_MODEL
+from mvgeos_provider import list_models
 from mvgeos_runes.types import (
     SkillManifest,
     SkillScope,
@@ -359,7 +361,11 @@ class TestComposerComponents:
 
         await user.open("/test_model_select")
 
-        await user.should_see("Nemotron 3 Ultra (free)")
+        # The default model must appear in the selector: its display name
+        # comes from the shipped catalog, so this tracks the constant
+        # rather than re-naming a slug.
+        default_model = next(m for m in list_models() if m.id == DEFAULT_MODEL)
+        await user.should_see(default_model.name)
 
     def test_get_word_range_returns_correct_range(
         self, state_with_project: AppState

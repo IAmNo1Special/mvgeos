@@ -157,7 +157,7 @@ Both accept a `signal` that is currently ignored, reserved so the abort work doe
 
 ## Default Model
 
-The system-wide default model across all MvgeOS packages and test suites is `nvidia/nemotron-3-ultra-550b-a55b:free` (`DEFAULT_MODEL` in `mvgeos_agent.constants`).
+The system-wide default model across all MvgeOS packages and test suites is `openrouter/free` (`DEFAULT_MODEL` in `mvgeos_core.constants`). It is OpenRouter's Free Models Router: free by construction, and it routes around a saturated free endpoint instead of failing on it. Every consumer — including `mvgeos-gui` — reads that one constant; a package that re-derives the slug is a bug, not a convenience.
 
 ## Operational Capabilities
 
