@@ -2,7 +2,17 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR 0014](0014-one-resolved-layer-stack.md)
+
+> **Superseded 2026-10-04.** The `.agents` directory decision below still holds
+> and is still correct. The *directory scheme* does not: no `.agents/.mvgeos/`
+> subdirectory exists in any `src/` today, and ADR-0014 replaces it with standard
+> protocol names (`sessions/`, `agents/`, `extensions/`, `auth/`,
+> `models.json`) resolved through a single module. This ADR also predates
+> `MVGEOS_GLOBAL_DIR`, which relocates the whole global layer.
+>
+> Read this ADR for the *why* of adopting `.agents/`. Read
+> [ADR 0014](0014-one-resolved-layer-stack.md) for the *what* and *where*.
 
 ## Context
 

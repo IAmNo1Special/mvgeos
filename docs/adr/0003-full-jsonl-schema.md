@@ -2,7 +2,21 @@
 
 ## Status
 
-Accepted
+Mechanism superseded by [ADR 0013](0013-cache-free-format-agnostic-tome-persistence.md)
+
+> **Mechanism superseded 2026-10-04.** The decision to store one Tome per JSONL
+> file survives. Three mechanisms named below do not exist:
+>
+> | Named here | Reality |
+> | --- | --- |
+> | "the exact same JSONL session schema as Pi (all 12 entry types)" | Six types: `MESSAGE`, `LABEL`, `COMPACTION`, `CUSTOM`, `LEAF`, `TOME_INFO`. `TomeV1Codec` explicitly disclaims byte-compatibility with Pi. |
+> | "an in-memory index accelerates querying and is rebuilt on startup" | No index. `TomeHandleFactory` holds no caches; every query rescans or revalidates against a `Revision` token. |
+> | "cross-platform via `filelock`" | `portalocker` (`mvgeos-tome/src/mvgeos_tome/handle.py:16`). Zero `filelock` hits in any `src/`. |
+>
+> Committing to Pi's exact schema is what made native Pi interoperability
+> impossible. [ADR 0013](0013-cache-free-format-agnostic-tome-persistence.md)
+> replaces byte-compatibility with a `SessionCodec` seam, so Pi sessions are
+> supported by an installed Rune rather than by a build-time assumption.
 
 ## Context
 
