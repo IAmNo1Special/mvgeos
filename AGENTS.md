@@ -103,6 +103,7 @@ MvgeOS is a monorepo with uv workspaces:
 
 | Package | Purpose |
 | --- | --- |
+| mvgeos | Root distribution; owns the published name and its `mvgeos` console script so `uvx mvgeos` resolves directly |
 | mvgeos-core | Canonical loop vocabulary: abort, invocations, spells, events, pure turn loop (zero first-party deps) |
 | mvgeos-agent | Mvge class, session lifecycle (MvgeHarness, MvgeState), environment, spell coercion, installer |
 | mvgeos-provider | Realm protocol + model registry (depends on core); the OpenRouter realm ships as a marketplace rune |
@@ -145,6 +146,7 @@ Agents use zero-config auto-discovery: `root_mvge = Mvge(name="coding_mvge")` au
 - **git-cliff** configured at `cliff.toml` — generates CHANGELOG.md from conventional commits
 - **Automated version bumps**: `bump` job in `.github/workflows/ci.yml` — runs after `test`/`coverage`/`lint` pass on pushes to `main`, scans commits since last tag (`feat`→minor, `fix`/`perf`→patch, `!`/`BREAKING CHANGE`→major; `docs`/`test`/`ci`/etc. produce no bump), bumps all workspace packages in lockstep via `uv version --bump --package` + `uv.lock`, and pushes `chore(release): vX.Y.Z` + `v*` tag that triggers `release.yml`
 - **Release workflow**: `.github/workflows/release.yml` — triggers on `v*` tags or manual dispatch
+- **Publish workflow**: `.github/workflows/publish.yml` — also triggers on `v*` tags; uploads all eight distributions to PyPI in dependency order using the `PYPI_API_TOKEN` secret on the `pypi` environment, then proves `uvx mvgeos --help` from a checkout-free runner. `scripts/check_publish.py` is the gate: it derives the publish order from the dependency graph and fails the release if any first-party `Requires-Dist` lacks a version constraint. Full procedure, secret setup, and the trusted-publisher migration path: `docs/agents/releasing.md`
 - **Conventional commits required**: `feat(scope):`, `fix(scope):`, `perf(scope):`, `refactor(scope):`, `docs(scope):`, `test(scope):`, `build(scope):`, `ci(scope):`, `chore(scope):`, `revert(scope):`
 - **Breaking changes**: include `BREAKING CHANGE:` in commit body
 - **Commands**:

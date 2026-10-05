@@ -211,6 +211,45 @@ jobs:
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
           echo "New version: $NEW_VERSION"
 
+      # uv version rewrites project.version only. Internal dependencies carry an
+      # explicit >= floor so published wheels record a resolvable Requires-Dist
+      # rather than an unbounded name, and those floors must move with the
+      # lockstep bump or they silently rot back into the bug they prevent.
+      - name: Refresh internal dependency floors
+        if: steps.bump_type.outputs.type != 'none'
+        run: |
+          NEW_VERSION="$(uv version --short)"
+          python3 - "$NEW_VERSION" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          new = sys.argv[1]
+          pattern = re.compile(
+              r'^(?P<prefix>\s*")(?P<name>mvgeos(?:-[a-z]+)?)>=\d[^"]*(?P<suffix>",?\s*)$',
+              re.MULTILINE,
+          )
+          for path in [Path("pyproject.toml"), *sorted(Path(".").glob("*/pyproject.toml"))]:
+              text = path.read_text()
+              updated, count = pattern.subn(rf'\g<prefix>\g<name>>={new}\g<suffix>', text)
+              if count:
+                  path.write_text(updated)
+                  print(f"{path}: refreshed {count} internal dep floor(s)")
+          PY
+          uv lock
+
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add pyproject.toml uv.lock \
+              mvgeos-core/pyproject.toml \
+              mvgeos-agent/pyproject.toml mvgeos-provider/pyproject.toml \
+              mvgeos-tome/pyproject.toml mvgeos-runes/pyproject.toml \
+              mvgeos-cli/pyproject.toml mvgeos-gui/pyproject.toml
+            git commit --amend --no-edit
+            echo "Amended internal dependency floors into the release commit."
+          fi
+
       - name: Commit, tag, and push
         if: steps.bump_type.outputs.type != 'none'
         env:

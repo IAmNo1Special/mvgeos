@@ -1,0 +1,150 @@
+name: Publish
+
+# Publishing to PyPI is separate from release.yml on purpose. That workflow
+# generates the changelog and creates the GitHub Release; this one owns the
+# package index. A failure to upload must not block the changelog, and a tag
+# must never produce a GitHub Release without the upload having been attempted.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g., v0.6.5)"
+        required: true
+        type: string
+      dry_run:
+        description: "Build and validate, but upload nothing"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Refuse to upload wheels that cannot install on another machine. This is the
+  # gate that keeps a release from making things worse than publishing nothing.
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      order: ${{ steps.order.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Resolve the release version from the tag
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            tag="${{ github.event.inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Derive the publish order from the dependency graph
+        id: order
+        run: |
+          packages="$(python3 scripts/check_publish.py --list | paste -sd' ' -)"
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
+          echo "Publish order: $packages"
+
+      # --no-sources: a published wheel must not depend on this workspace
+      # resolving its own siblings. See scripts/check_publish.py.
+      - name: Build every distribution
+        run: |
+          for package in $(python3 scripts/check_publish.py --list); do
+            echo "::group::build $package"
+            uv build --no-sources --package "$package" --out-dir "dist/$package"
+            echo "::endgroup::"
+          done
+
+      - name: Validate wheel metadata and lockstep versions
+        run: |
+          python3 scripts/check_publish.py \
+            --dist-dir dist \
+            --version "${{ steps.version.outputs.version }}"
+
+      - name: Report what would be uploaded
+        run: |
+          echo "### Release ${{ steps.version.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Package | Files |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          for package in $(python3 scripts/check_publish.py --list); do
+            files="$(ls "dist/$package" | paste -sd' ' -)"
+            echo "| \`$package\` | $files |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+  publish:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The upload credential is an environment secret, so only a job that
+    # declares this environment can read it. Nothing else in the repo can.
+    # See docs/agents/releasing.md.
+    environment: pypi
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Upload in dependency order
+        env:
+          # A PyPI API token scoped to upload on all projects. "__token__" is
+          # the fixed username PyPI requires when authenticating with a token.
+          UV_PUBLISH_USERNAME: __token__
+          UV_PUBLISH_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+          # PyPI versions are immutable. Checking the index first makes a
+          # re-run after a partial failure skip what already landed.
+          UV_PUBLISH_CHECK_URL: https://pypi.org/simple
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.dry_run }}" != "true" ] && [ -z "${UV_PUBLISH_PASSWORD:-}" ]; then
+            echo "::error::PYPI_API_TOKEN is missing from the pypi environment"
+            exit 1
+          fi
+          for package in ${{ needs.preflight.outputs.order }}; do
+            echo "::group::upload $package"
+            if [ "${{ inputs.dry_run }}" = "true" ]; then
+              uv publish --dry-run "dist/$package/*"
+            else
+              uv publish "dist/$package/*"
+            fi
+            echo "::endgroup::"
+          done
+
+  # The acceptance test. This job checks out nothing, so uvx resolves the
+  # command from PyPI exactly as a stranger's machine would.
+  verify:
+    needs: publish
+    if: ${{ inputs.dry_run != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: false
+
+      - name: Confirm every distribution is on PyPI
+        run: |
+          set -euo pipefail
+          for package in mvgeos mvgeos-core mvgeos-provider mvgeos-tome \
+                         mvgeos-runes mvgeos-agent mvgeos-cli mvgeos-gui; do
+            status="$(curl -sS -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/$package/json")"
+            echo "$package: HTTP $status"
+            if [ "$status" != "200" ]; then
+              echo "::error::$package is not on PyPI"
+              exit 1
+            fi
+          done
+
+      - name: Run the command a stranger types
+        run: uvx mvgeos --help
