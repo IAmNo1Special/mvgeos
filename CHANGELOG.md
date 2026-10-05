@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+
+### Continuous Integration
+
+- **release:** pass built distributions from preflight to the publish job (bc33229)
+
+
+## [0.6.6] - 2026-10-05
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (2d4340c)
+
+- **release:** v0.6.6 (ef9c063)
+
+
+### Continuous Integration
+
+- block an ADR from describing code that no longer exists (ea28c64)
+
+- **release:** publish the eight distributions to PyPI (#170) (47c4ebc)
+
+
+### Documentation
+
+- **adr:** record cache-free format-agnostic Tome persistence (accf23d)
+
+- **adr:** record one resolved layer stack for the .agents protocol (877704b)
+
+- **adr:** mark the superseded storage and layer-scheme ADRs (496245a)
+
+- **adr:** amend Two-Layer Scaffolding and refresh the ADR index (d0e049b)
+
+- **adr:** give every ADR a canonical status section (b4ff3c8)
+
+- **adr:** contract the symbols each live ADR commits to (fe060ee)
+
+- **adr:** narrow ADR-0014 to rune search paths, not persona resolution (8a7ea26)
+
+- record the post-audit issue set and the lesson behind it (fc2ce87)
+
+- **adr:** correct the ADR-0014 implementation note (18203eb)
+
+- **root:** record the cross-repo check rule and retire the audit snapshot (6dbed41)
+
+- **root:** relocate the completed capability-layer decoupling record (afbcc91)
+
+
+### Refactoring
+
+- **core:** resolve the .agents layer stack from one module (e75d4f5)
+
+
 ## [0.6.5] - 2026-10-04
 
 
