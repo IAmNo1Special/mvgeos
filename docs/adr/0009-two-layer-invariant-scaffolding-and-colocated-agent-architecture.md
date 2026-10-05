@@ -2,7 +2,40 @@
 
 ## Status
 
-Accepted
+Accepted (amended 2026-10-04: Layer-2 content list relocated to Runes)
+
+> **Amended 2026-10-04.** The *decision* — separate the persona from
+> engine-rendered scaffolding, and make agent creation zero-boilerplate — is the
+> most load-bearing thing in this repo and is not in question. What drifted is the
+> Layer-2 content list, and it drifted by **relocation, not deletion**:
+>
+> `render_prompt` (`mvgeos-agent/src/mvgeos_agent/environment.py:139-179`) now
+> renders only two Layer-2 sections itself:
+>
+> - `Active spells:` (dynamically populated from coerced callables and Rune spells)
+> - `Environment:` (OS, architecture, PowerShell syntax and cmdlet guidance on
+>   Windows, CWD, current UTC timestamp)
+>
+> The other three moved to marketplace Runes, which contribute their sections
+> dynamically through the `BEFORE_MVGE_START` Sigil:
+>
+> | Listed below | Owner now |
+> | --- | --- |
+> | `Self-Modification & Customization:` pointers | `selfmod-bridge` |
+> | `<project_context>` (workspace `AGENTS.md` injection) | `steering-bridge` |
+> | `<skills>` (indexed skill catalog) | `skills-bridge` |
+>
+> This is the Protocol Boundary Pattern applied to prompts: the engine owns what
+> is invariant across every Mvge; a Rune owns what is situational. Two further
+> corrections: `GUIDELINES.md` is named below but exists in no Mvge
+> (`coding_mvge` has a single `system_prompt/SYSTEM.md`), and the Tier-1 anchor
+> text quoted below is stale — the current default is `_SYSTEM_PROMPT_BODY` at
+> `environment.py:76-80`.
+>
+> A consequence worth stating: because Layer 2 is now assembled from a base plus
+> Rune contributions, `assemble_system_prompt` short-circuits when
+> `"Active spells:"` already appears in the base (`environment.py:702`). That
+> guard only makes sense under the amended model.
 
 ## Date
 
