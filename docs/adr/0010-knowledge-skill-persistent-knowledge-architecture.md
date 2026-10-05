@@ -1,7 +1,19 @@
 # ADR 0010: knowledge_skill — MvgeOS Implementation of WikiSkill with Persistent Knowledge
 
-**Status**: Superseded by [ADR 0011](0011-skill-evolution-rune-architecture.md)  
-**Date**: 2026-09-06  
+## Status
+
+Superseded by [ADR 0011](0011-skill-evolution-rune-architecture.md)
+
+## Date
+
+2026-09-06
+
+> **Retired 2026-10-04.** Kept for the reasoning. `knowledge_skill` became
+> `skill_evolution`; `Raw Knowledge` became `Raw Experience`; and the
+> `.mvgeos/` paths named below are dead — see
+> [ADR 0014](0014-one-resolved-layer-stack.md). This ADR had no `## Status`
+> section while the index listed it as superseded, which is exactly the drift
+> `mvgeos-core/scripts/check_adr_contract.py` now fails on.
 
 MvgeOS needs compounding skill evolution per `WikiSkill: Compiling Agent Experience into Persistent Knowledge for Skill Evolution` (`arxiv:2608.27454` `§3`) but `wiki` is overloaded in AI tooling, the paper's `sqlite`/`wiki.db` diverges from `§3.2.2` incremental markdown patches, and naïve skill writes break 3-scope precedence (`SKILL_SCOPES` `mvgeos-runes/src/mvgeos_runes/loader.py:281`).
 

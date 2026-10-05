@@ -1,7 +1,17 @@
 # ADR 0011: skill_evolution — MvgeOS Architecture for Autonomous Skill Evolution
 
-**Status**: Accepted (supersedes [ADR 0010](0010-knowledge-skill-persistent-knowledge-architecture.md))  
-**Date**: 2026-09-08  
+## Status
+
+Accepted (supersedes [ADR 0010](0010-knowledge-skill-persistent-knowledge-architecture.md))
+
+## Date
+
+2026-09-08
+
+> **Status normalised 2026-10-04.** This ADR carried its status as an inline
+> `**Status**:` line rather than a `## Status` section, so
+> `mvgeos-core/scripts/check_adr_contract.py` could not read it and reported it
+> as having no status at all. One canonical form, so the check can be trusted.
 
 ## Context
 
