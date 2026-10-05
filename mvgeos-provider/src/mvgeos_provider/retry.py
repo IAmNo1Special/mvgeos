@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import random
 import re
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -77,6 +78,15 @@ _RETRYABLE_PATTERNS = (
 
 # Account limits and billing failures. Deterministic, so never retried, even
 # when the wording also matches a transient pattern.
+#
+# "quota exhausted" and "free-models-per-day" are here because a drained
+# daily allowance is the failure we actually spent days mistaking for capacity
+# saturation. The wording that reaches this module is OpenRouter's own,
+# `Rate limit exceeded: free-models-per-day`, and it carries no transient
+# signal at all -- but the 429 status alone is enough for the caller to retry
+# it three times and then tell the Summoner to wait hours for a window this
+# engine will never sit out. "quota exhausted" additionally covers the
+# rendered shape the CLI produces from the same allowance.
 _NON_RETRYABLE_PATTERNS = (
     "GoUsageLimitError",
     "FreeUsageLimitError",
@@ -85,6 +95,8 @@ _NON_RETRYABLE_PATTERNS = (
     "insufficient_quota",
     "out of budget",
     "quota exceeded",
+    "quota exhausted",
+    "free-models-per-day",
     "billing",
 )
 
@@ -197,6 +209,30 @@ CAPACITY_RETRY_BUDGET = RetryBudget(
     max_backoff_ms=15_000.0,
 )
 
+#: A window that reopens later than this cannot be waited out, so retrying it is
+#: not merely slow -- it cannot succeed inside any budget this engine will
+#: spend. The threshold is the largest wait we ever plan to make (the capacity
+#: ceiling) or the largest single server-requested delay we will accept,
+#: whichever is greater. Below it a drained window measured in seconds stays
+#: retryable, because waiting out a per-minute rate limit is exactly what
+#: retrying is for.
+_MAX_RETRYABLE_WINDOW_MS = max(
+    CAPACITY_RETRY_BUDGET.max_total_wait_ms, DEFAULT_MAX_RETRY_DELAY_MS
+)
+
+
+def _is_unreachable_window(reset_at: float | None) -> bool:
+    """Whether a reported window reopens too late for a retry to help.
+
+    Structured, so it holds for any Realm that reports one, and for a drained
+    allowance whose wording this module has never seen. `reset_at` is epoch
+    seconds as parsed by the Realm layer; an absent or already-elapsed window
+    imposes no bound.
+    """
+    if reset_at is None:
+        return False
+    return (reset_at - time.time()) * 1000 > _MAX_RETRYABLE_WINDOW_MS
+
 
 @dataclass
 class RetryCallbacks:
@@ -211,47 +247,76 @@ class _HeaderLike(Protocol):
     def get(self, key: str, default: Any = None) -> Any: ...
 
 
+def _deterministic_reason(response: RealmResponse) -> str | None:
+    """Why a failure is a known permanent refusal, or None when it is not known.
+
+    One source of truth for the precedence, shared by every classifier below.
+    Deliberately one-sided: it returns a reason only when we are *certain* the
+    failure will not clear on its own. Wording that merely fails to look
+    transient is not certainty -- a Realm may report a retryable status with an
+    uninformative message -- so that leaves the caller free to keep retrying on
+    the strength of the status alone.
+    """
+    if not response.error_message:
+        return "no error message"
+    message = response.error_message
+    if response.error_code in _NON_RETRYABLE_CODES:
+        return f"explicit non-retryable code {response.error_code!r}"
+    if _is_unreachable_window(response.reset_at):
+        return f"window reopens in more than {_MAX_RETRYABLE_WINDOW_MS / 1000:.0f}s"
+    if _NON_RETRYABLE_RE.search(message):
+        return "account limit or billing wording"
+    return None
+
+
+def is_deterministic_realm_failure(response: RealmResponse) -> bool:
+    """Whether a failure should veto a retry the caller already justified.
+
+    This is the veto a caller needs when it has other evidence for retrying --
+    typically a retryable HTTP status -- and needs to know the failure will not
+    clear. `is_retryable_realm_response` answers "does this look transient?",
+    which is a different and stricter question: it also says no to a message
+    carrying no transient signal at all. Use this one when the absence of a
+    signal must not be enough to stop a retry; only a positive claim is.
+    """
+    return _deterministic_reason(response) is not None
+
+
 def is_retryable_realm_response(response: RealmResponse) -> bool:
     """Whether a failed Realm response looks transient enough to retry.
 
-    A Realm-supplied `error_code` is authoritative. Otherwise the error prose is
-    matched against known-deterministic patterns first, then transient ones.
+    Precedence, most specific first: a known permanent refusal, then an explicit
+    retryable `error_code`, then transient wording.
+
+    Account wording outranks a retryable code on purpose. Every 429 is stamped
+    `rate_limited` (`sse.py::_build_parsed_error`), so with the code checked
+    first the deterministic patterns could never fire for a rate-limit refusal
+    -- which is exactly the shape a drained daily allowance arrives in.
+    `rate_limited` is a claim about the transport; an account refusal is a claim
+    about the account, and the latter is the more specific one.
     """
-    if not response.error_message:
+    if _deterministic_reason(response) is not None:
         return False
-
-    code = response.error_code
-    if code in _NON_RETRYABLE_CODES:
-        return False
-    if code in _RETRYABLE_CODES:
+    if response.error_code in _RETRYABLE_CODES:
         return True
-
-    if _NON_RETRYABLE_RE.search(response.error_message):
-        return False
-    return bool(_RETRYABLE_RE.search(response.error_message))
+    return bool(_RETRYABLE_RE.search(response.error_message or ""))
 
 
 def is_capacity_saturated_realm_response(response: RealmResponse) -> bool:
     """Whether a failure says the Realm is at capacity, not merely flaky.
 
     Capacity saturation and a transient blip get separate retry budgets
-    (`retry_budget_for`), so this must be the narrower claim of the two. A
-    wording that is also a billing or quota limit is deterministic and stays
-    non-retryable -- "429 insufficient quota" is a permanent refusal, not a
-    window that closes.
+    (`retry_budget_for`), so this must be the narrower claim of the two. It
+    shares `is_retryable_realm_response`'s precedence: an account, quota, or
+    spent-allowance refusal is deterministic however it is phrased, and so is a
+    window that reopens after every budget this engine will spend. Neither is
+    capacity, and a capacity code does not override either.
     """
-    if not response.error_message:
+    if _deterministic_reason(response) is not None:
         return False
-
-    code = response.error_code
-    if code in _NON_RETRYABLE_CODES:
-        return False
-    if code in _CAPACITY_CODES:
+    if response.error_code in _CAPACITY_CODES:
         return True
-
-    if _NON_RETRYABLE_RE.search(response.error_message):
-        return False
-    return bool(_CAPACITY_RE.search(response.error_message))
+    return bool(_CAPACITY_RE.search(response.error_message or ""))
 
 
 def transient_retry_budget(max_attempts: int) -> RetryBudget:
@@ -475,6 +540,7 @@ __all__ = [
     "RetryPolicy",
     "ServerRetryDelayTooLongError",
     "is_capacity_saturated_realm_response",
+    "is_deterministic_realm_failure",
     "is_retryable_realm_response",
     "is_retryable_status",
     "realm_request_delay_ms",

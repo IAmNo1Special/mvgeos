@@ -26,6 +26,7 @@ from mvgeos_provider.retry import (
     RetryBudget,
     ServerRetryDelayTooLongError,
     _sleep_ms,
+    is_deterministic_realm_failure,
     is_retryable_realm_response,
     is_retryable_status,
     realm_request_delay_ms,
@@ -360,6 +361,14 @@ class SSEStreamingRealm(Realm, ABC):
                             yield parsed_err.to_response(model)
                             return
                         failure = parsed_err.to_response(model)
+                        # A retryable status is not on its own a reason to retry:
+                        # every 429 is a retryable status, including a drained
+                        # allowance that reopens in hours. Only a failure we know
+                        # is permanent vetoes the loop; an uninformative message
+                        # does not, so status-driven retries keep working.
+                        if is_deterministic_realm_failure(failure):
+                            yield failure
+                            return
                         budget = retry_budget_for(failure, budget.max_attempts)
                     assert failure is not None
                 finally:

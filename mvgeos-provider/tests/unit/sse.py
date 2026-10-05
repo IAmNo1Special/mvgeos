@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -840,6 +841,87 @@ async def test_stream_capacity_retry_recovers_once_the_window_clears() -> None:
         and any(c.get("text") == "recovered" for c in r.invocation.content)
         for r in responses
     )
+
+
+# 2100-01-01T00:00:00Z, far enough out that no retry budget can wait it out.
+_FAR_FUTURE_RESET_MS = "4102444800000"
+
+#: The exact 429 a drained OpenRouter free-tier daily allowance produces.
+_SPENT_DAILY_ALLOWANCE = (
+    429,
+    {
+        "x-ratelimit-limit": "50",
+        "x-ratelimit-remaining": "0",
+        "x-ratelimit-reset": _FAR_FUTURE_RESET_MS,
+    },
+    [],
+    b'{"error":{"message":"Rate limit exceeded: free-models-per-day. Add 10 '
+    b'credits to unlock 1000 free model requests per day"}}',
+)
+
+
+@pytest.mark.asyncio
+async def test_stream_spent_daily_allowance_is_not_retried() -> None:
+    # The failure this change exists for. A Summoner waiting 3s to be told to
+    # come back in 14 hours is the bug; one request and no waits is the fix.
+    sink: dict[str, Any] = {}
+    realm = DummySSERealm(client=_make_sequence_client([_SPENT_DAILY_ALLOWANCE], sink))
+    model = _test_model()
+    config = ChannelConfig(model=model)
+    sleep = _SleepRecorder()
+
+    with patch("mvgeos_provider.sse._sleep_ms", sleep):
+        responses = await _collect(realm.stream(model, [], config))
+
+    assert sink["calls"] == 1
+    assert sleep.requested_ms == []
+    assert len(responses) == 1
+    assert "free-models-per-day" in (responses[0].error_message or "")
+    assert responses[0].error_code == "rate_limited"
+
+
+@pytest.mark.asyncio
+async def test_stream_spent_daily_allowance_still_reports_its_reset_time() -> None:
+    # Not retrying must not cost the Summoner the reset time. The loop turns
+    # this response into a RateLimitError and the renderer names the window
+    # from these fields, so they have to survive the no-retry path intact.
+    realm = DummySSERealm(client=_make_sequence_client([_SPENT_DAILY_ALLOWANCE]))
+    model = _test_model()
+    config = ChannelConfig(model=model)
+
+    with patch("mvgeos_provider.sse._sleep_ms", _SleepRecorder()):
+        responses = await _collect(realm.stream(model, [], config))
+
+    assert responses[0].reset_at == 4102444800.0
+    assert responses[0].quota_limit == 50
+    assert responses[0].quota_remaining == 0
+
+
+@pytest.mark.asyncio
+async def test_stream_short_rate_limit_window_is_still_retried() -> None:
+    # The structured rule keys off how far out the window is, not off the fact
+    # that one was reported. A per-minute window reopens well inside the
+    # budget, so waiting it out is still the right move.
+    sink: dict[str, Any] = {}
+    soon_ms = str(int((time.time() + 2) * 1000))
+    entries = [
+        (
+            429,
+            {"x-ratelimit-reset": soon_ms},
+            [],
+            b'{"error":{"message":"Rate limit exceeded"}}',
+        )
+    ]
+    realm = DummySSERealm(client=_make_sequence_client(entries, sink))
+    model = _test_model()
+    config = ChannelConfig(model=model)
+    sleep = _SleepRecorder()
+
+    with patch("mvgeos_provider.sse._sleep_ms", sleep):
+        await _collect(realm.stream(model, [], config))
+
+    assert sink["calls"] == 3
+    assert len(sleep.requested_ms) == 2
 
 
 def test_error_from_response_parses_openrouter_rate_limit_metadata() -> None:

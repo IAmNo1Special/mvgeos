@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import pytest
@@ -44,6 +45,21 @@ def _error(message: str, code: str | None = None) -> RealmResponse:
         error_message=message,
         error_code=code,
         stop_reason="error",
+    )
+
+
+def _window(
+    message: str,
+    seconds_from_now: float,
+    code: str | None = None,
+) -> RealmResponse:
+    """A failure carrying the Realm's reported window reopening time."""
+    return RealmResponse(
+        model=_model(),
+        error_message=message,
+        error_code=code,
+        stop_reason="error",
+        reset_at=time.time() + seconds_from_now,
     )
 
 
@@ -185,6 +201,71 @@ class TestCapacityClassifier:
 
     def test_success_is_not_capacity(self) -> None:
         assert is_capacity_saturated_realm_response(_ok()) is False
+
+
+class TestSpentAllowanceIsNotRetried:
+    """A drained daily allowance is deterministic for hours, not milliseconds.
+
+    These are the exact strings the engine emits, not paraphrases. The first is
+    OpenRouter's own wording on a 429 and carries no transient signal at all --
+    the retry came from the status code alone.
+    """
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "Rate limit exceeded: free-models-per-day. Add 10 credits to unlock "
+            "1000 free model requests per day",
+            "Daily free-model quota exhausted (50/50 requests). Resets at 00:00 UTC.",
+            "quota exhausted",
+        ],
+    )
+    def test_real_quota_exhaustion_message_is_not_retryable(self, message: str) -> None:
+        assert is_retryable_realm_response(_error(message)) is False
+        assert is_capacity_saturated_realm_response(_error(message)) is False
+
+    def test_free_models_per_day_wins_over_rate_limit_wording(self) -> None:
+        # "Rate limit exceeded" reads as transient, but this is a daily
+        # allowance that will not change for hours.
+        response = _error("Rate limit exceeded: free-models-per-day.", "rate_limited")
+        assert is_retryable_realm_response(response) is False
+
+    def test_quota_exhaustion_is_not_promoted_to_capacity(self) -> None:
+        # Otherwise a spent allowance would inherit the 90-second budget, which
+        # is the exact failure this change exists to remove.
+        assert is_capacity_saturated_realm_response(_error("quota exhausted")) is False
+
+    def test_window_beyond_any_budget_is_not_retryable(self) -> None:
+        # The measured live case: a drained window reopening in 14 hours, with
+        # wording that otherwise looks like an upstream error.
+        response = _window("Provider returned error", 14 * 3600, "rate_limited")
+        assert is_retryable_realm_response(response) is False
+        assert is_capacity_saturated_realm_response(response) is False
+
+    def test_window_beyond_any_budget_beats_the_retryable_code(self) -> None:
+        # A Realm may assert `rate_limited` and still report a window we can
+        # never sit out; the structured window is the more specific claim.
+        response = _window("Rate limit exceeded", 30 * 24 * 3600, "rate_limited")
+        assert is_retryable_realm_response(response) is False
+
+    @pytest.mark.parametrize("seconds", [5, 30, 60])
+    def test_window_inside_the_budget_stays_retryable(self, seconds: int) -> None:
+        # A drained per-minute window is measured in seconds, and waiting it
+        # out is precisely what retrying is for.
+        response = _window("Rate limit exceeded", seconds, "rate_limited")
+        assert is_retryable_realm_response(response) is True
+
+    def test_absent_window_leaves_the_prose_decision_untouched(self) -> None:
+        response = _error("overloaded", "rate_limited")
+        assert is_retryable_realm_response(response) is True
+        assert is_capacity_saturated_realm_response(response) is True
+
+    def test_window_beats_capacity_wording(self) -> None:
+        # An "overloaded" message with a 14-hour window is a spent allowance
+        # wearing upstream's wording, not a capacity blip.
+        response = _window("Service temporarily overloaded", 14 * 3600)
+        assert is_retryable_realm_response(response) is False
+        assert is_capacity_saturated_realm_response(response) is False
 
 
 class TestRetryBudget:
