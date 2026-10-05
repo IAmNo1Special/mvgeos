@@ -1,10 +1,18 @@
-"""Packaging contract: every third-party import is a declared dependency.
+"""Packaging contract: every third-party import is a declared dependency, and
+every internal dependency is version-bounded.
 
-Regression test for clean-install breakage: ``mvge`` failed on a fresh
-install with ``ModuleNotFoundError: No module named 'dotenv'`` because
-``mvgeos_agent`` imported it without declaring ``python-dotenv`` (and the
-same for ``click`` in ``mvgeos_cli``). If the code imports it, ``pyproject``
+The first test is a regression test for clean-install breakage: ``mvge`` failed
+on a fresh install with ``ModuleNotFoundError: No module named 'dotenv'``
+because ``mvgeos_agent`` imported it without declaring ``python-dotenv`` (and
+the same for ``click`` in ``mvgeos_cli``). If the code imports it, ``pyproject``
 must declare it.
+
+The second test guards the published-wheel contract. ``[tool.uv.sources]
+workspace = true`` never reaches wheel metadata -- ``uv_build`` copies
+``[project.dependencies]`` verbatim -- so a bare internal name ships as an
+unbounded ``Requires-Dist`` and floats to whatever sibling is newest on the
+index. Nothing local fails when that happens; it only surfaces when a stranger
+installs, which is exactly how these packages reached their first release.
 """
 
 import ast
@@ -73,3 +81,42 @@ def _is_covered(module: str, declared: set[str], provided: dict[str, set[str]]) 
     # module actually resolves in this environment.
     normalized = module.lower().replace("-", "_")
     return normalized in declared and find_spec(module) is not None
+
+
+def _workspace_root() -> Path:
+    # mvgeos-cli/tests/unit/packaging.py -> mvgeos-cli/ -> workspace root
+    return _package_root().parent
+
+
+def _member_directories(root: Path) -> list[Path]:
+    data = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    members = data["tool"]["uv"]["workspace"]["members"]
+    return [root / member for member in members]
+
+
+def _distribution_name(requirement: str) -> str:
+    name = requirement.strip()
+    for sep in ("[", ";", "=", ">", "<", "!", "~"):
+        name = name.split(sep)[0]
+    return name.strip().lower().replace("-", "_")
+
+
+def test_internal_dependencies_are_version_bounded() -> None:
+    root = _workspace_root()
+    internal = {_distribution_name(p.name) for p in _member_directories(root)}
+    internal.add(_distribution_name("mvgeos"))
+
+    unbounded: list[str] = []
+    for member in [*_member_directories(root), root]:
+        data = tomllib.loads((member / "pyproject.toml").read_text(encoding="utf-8"))
+        for requirement in data["project"]["dependencies"]:
+            if _distribution_name(requirement) not in internal:
+                continue
+            if not any(op in requirement for op in ("=", ">", "<", "~", "!")):
+                unbounded.append(f"{data['project']['name']}: {requirement.strip()}")
+
+    assert not unbounded, (
+        "internal dependencies without a version floor ship as an unbounded "
+        "Requires-Dist and float to the newest sibling on the index: "
+        + ", ".join(sorted(unbounded))
+    )
