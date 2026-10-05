@@ -160,12 +160,11 @@ def agent_spells_dir(name: str) -> Path:
     """Agent-scope Spells directory: ``<global>/agents/<name>/spells``.
 
     Added because a Rune reached for its own Spells root and there was
-    nothing to reach for: ``mvgeos_agent.installer.list_installed_mvges`` and
-    ``mvgeos_agent.mvge.Mvge._discover_spells_impl`` both spell this path out,
-    and the Rune that searches it spelled out a different one. A Rune may not
-    import ``mvgeos_agent`` -- the package direction is ``agent -> runes ->
-    core`` -- so without this resolver the only options were a wrong literal or
-    an inverted host dependency.
+    nothing to reach for: the host package spells this path out in both its
+    installer and its spell discovery, and the Rune that searches it spelled
+    out a different one. A Rune may not import the host package -- the
+    direction is ``agent -> runes -> core`` -- so without this resolver the
+    only options were a wrong literal or an inverted host dependency.
     """
     return agent_dir(name) / "spells"
 

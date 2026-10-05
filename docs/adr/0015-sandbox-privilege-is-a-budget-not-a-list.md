@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted - implementation in progress
+Accepted
 
 ## Date
 
@@ -82,7 +82,8 @@ Where the rule is enforced is split by ownership:
   through `RuneLifecycle`.
 - **The policy is the marketplace's.** A Rune's `allowed_modules` is Rune
   configuration, so the gate that polices it belongs in the repository that owns
-  Rune configuration: a new test in `mvgeos-marketplace/tests/`, which is
+  Rune configuration: `mvgeos-marketplace/tests/test_sandbox_privilege_contract.py`,
+  which is
   already collected by that repository's existing pytest run and needs no new
   CI wiring. Neither existing gate can host it, and neither should:
   `mvgeos-core/scripts/check_marketplace_contract.py` asserts that imports
@@ -99,6 +100,8 @@ a new Rune that allow-lists a forbidden module fails the marketplace suite
 without anyone needing to remember to look.
 
 ### 4. `pathlib` and `urllib` come out of the action privilege set
+
+**Landed.** Marketplace commit `a4f02bf`.
 
 The synthesised-action allow-list is reduced to `{"json", "re"}`.
 
@@ -122,6 +125,8 @@ import on a list. That is a larger piece of work and it is not authorised here.
 Reversing this decision is a one-line change to one constant.
 
 ### 5. The vendored executor copy is deleted
+
+**Landed.** Marketplace commit `5222531`.
 
 `runes/heal-my-goap/mvgeos_runes_heal_my_goap/sandbox.py` is a near-duplicate of
 the engine's module. It has already drifted once and had to be patched in
