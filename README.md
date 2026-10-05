@@ -133,9 +133,11 @@ quickstart, concepts, troubleshooting with real errors, and FAQ.
 
 ## What you get
 
-- **A coding Mvge you can read.** `bash`, `read`, `write`, `edit`, `find`,
-  `list`, `grep` — installed as a package, so you can see exactly what your
-  agent is allowed to do.
+- **A coding Mvge you can read.** Nine built-in Spells — `bash`, `edit`, `find`,
+  `grep`, `list_files`, `read`, `read_url`, `search_web`, `write` — installed as
+  a package, so you can see exactly what your agent is allowed to do. That list
+  is what `mvgeos info --agent-name coding_mvge` printed on a clean machine, not
+  an edit of it.
 - **Tomes, not a chat database.** Every conversation is an append-only JSONL
   file under `~/.agents/sessions/` that you can read, diff, fork, and export.
 - **Runes.** Mount MCP servers as Spells, trace with OpenTelemetry, wire in
@@ -152,6 +154,28 @@ quickstart, concepts, troubleshooting with real errors, and FAQ.
 - **`v0.6.5`, pre-1.0.** Internals are held to a high bar — mypy strict, ruff,
   ~2,200 tests. The command surface still moves.
 - **No published distribution yet**, hence the long install line.
+- **The default free model is unreliable, so step "run one task" is.** Every
+  install and inspect command here is re-verified on a clean machine on a
+  schedule. The model call is not: on a clean-machine re-check, three
+  consecutive runs of the task above ended in
+
+  ```text
+  Error: Upstream error from Nvidia: Service temporarily overloaded
+  ```
+
+  twice with the correct `hello.txt` already written and the process exiting
+  non-zero, once with no file, and an immediate retry did not clear it. Naming
+  a model made the same task succeed:
+
+  ```bash
+  mvgeos -m nvidia/nemotron-3-super-120b-a12b:free --agent-name coding_mvge \
+    "Create a file named hello.txt containing exactly the text: hello from mvgeos"
+  ```
+
+  `-m` accepts only ids from the model list shipped in the repository, and that
+  list is a drifting snapshot. Check your file before you retry:
+  `ls -l hello.txt && cat hello.txt`. Details in the
+  [troubleshooting guide](https://iamno1special.github.io/mvgeos-marketplace/troubleshooting/).
 - **A known bug costs a wasted round-trip.** When a Mvge checks its own work with
   `read`, `grep`, `find`, or `list_files`, leaving the optional paging arguments
   out, the cast is rejected once and retried: a nullable optional Spell argument
