@@ -170,7 +170,7 @@ quickstart, concepts, troubleshooting with real errors, and FAQ.
 
 ## Honest status
 
-- **`v0.6.6`, pre-1.0.** Internals are held to a high bar — mypy strict, ruff,
+- **`v0.6.8`, pre-1.0.** Internals are held to a high bar — mypy strict, ruff,
   ~2,200 tests. The command surface still moves.
 - **No published distribution yet**, hence the long install line.
 - **The default free model is unreliable, so step "run one task" is.** Every
