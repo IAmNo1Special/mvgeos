@@ -3,10 +3,10 @@
   "generated_by": "scripts/scorecard.py",
   "projects": {
     "mvgeos": {
-      "source_loc": 40591,
+      "source_loc": 40656,
       "test_loc": 57545,
       "source_files": 142,
-      "test_ratio": 1.417679,
+      "test_ratio": 1.415412,
       "type_strictness": "true",
       "coverage_fail_under": 90.0,
       "coverage_job": "ci.yml:coverage",

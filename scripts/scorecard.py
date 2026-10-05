@@ -351,6 +351,10 @@ class Result:
 
     key: str
     source: str
+    #: Short commit SHA the row was measured at, when the source is a git
+    #: checkout. A number without the commit it was measured at cannot be
+    #: checked, and a shallow clone of a moving peer is only as good as its age.
+    commit: str | None = None
     #: Set when the project could not be obtained or read at all. The row is
     #: still printed. A missing row that looks like a low score is worse than
     #: an error.
@@ -414,6 +418,24 @@ def iter_counted_files(root: Path, language: str) -> list[Path]:
                 continue
             found.append(path)
     return sorted(found)
+
+
+def short_commit(checkout: Path) -> str | None:
+    """Short SHA of a checkout, or None when it is not a git working tree."""
+    if not (checkout / ".git").exists():
+        return None
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(checkout), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    sha = completed.stdout.strip()
+    return sha if completed.returncode == 0 and sha else None
 
 
 def parse_python(path: Path) -> ast.Module:
@@ -1070,6 +1092,11 @@ REGRESSION_DIRECTION: dict[str, bool | None] = {
 #: Measures compared by a rule of their own rather than by direction.
 _SPECIAL_MEASURES = frozenset({"type_strictness", "coverage_fail_under"})
 
+#: Recorded in the snapshot but never diffed. `install` is present or absent
+#: depending on whether `--online` was passed, so diffing it reports the flag
+#: rather than the project.
+_NEVER_DIFFED = frozenset({"install"})
+
 #: Ordering used when a string measure gets worse. Lower index is worse.
 _STRICTNESS_ORDER: dict[str, int] = {"true": 0, "false": 1, "unset": 2}
 
@@ -1151,7 +1178,7 @@ def diff_against_baseline(
             continue
         current = baseline_document([result])["projects"][result.key]
         for measure, before in recorded.items():
-            if measure not in current:
+            if measure not in current or measure in _NEVER_DIFFED:
                 continue
             after = current[measure]
             if before == after:
@@ -1166,6 +1193,14 @@ def diff_against_baseline(
 # --------------------------------------------------------------------------
 
 _CELL_WIDTH = 22
+
+
+def _clip(text: str, width: int = 78) -> str:
+    """Shorten a long path from the middle, so both ends stay readable."""
+    if len(text) <= width:
+        return text
+    keep = width - 1
+    return f"{text[: keep // 2]}...{text[-(keep - keep // 2) :]}"
 
 
 def _cell(value: str, width: int = _CELL_WIDTH) -> str:
@@ -1256,6 +1291,14 @@ def render_table(results: list[Result], online: bool) -> str:
                 continue
             for name, status in sorted(result.install.items()):
                 lines.append(f"{_cell(result.key, 18)}{_cell(name, 30)}{status}")
+    lines.append("")
+    lines.append("Provenance")
+    lines.append("-" * len(header))
+    for result in results:
+        commit = result.commit or "not a git checkout"
+        lines.append(
+            f"{_cell(result.key, 18)}{_cell(commit, 10)}{_clip(result.source)}"
+        )
     return "\n".join(lines)
 
 
@@ -1308,6 +1351,16 @@ def render_markdown(results: list[Result], online: bool) -> str:
         for result in results:
             for name, status in sorted(result.install.items()):
                 lines.append(f"| {result.key} | `{name}` | {status} |")
+    lines += [
+        "",
+        "A number without the commit it was measured at cannot be checked.",
+        "",
+        "| Project | Commit | Source |",
+        "| --- | --- | --- |",
+    ]
+    for result in results:
+        commit = result.commit or "n/a"
+        lines.append(f"| {result.key} | `{commit}` | {result.source} |")
     return "\n".join(lines)
 
 
@@ -1455,9 +1508,21 @@ def main(argv: list[str] | None = None) -> int:
     """Run the scorecard. See the module docstring for every definition."""
     args = build_parser().parse_args(argv)
 
+    # _parse_assignment raises ArgumentTypeError, which argparse only converts
+    # into a usage error when it is used as a `type=`. It is called directly
+    # here, so the error is turned into exit 2 explicitly rather than escaping
+    # as a traceback with exit 1, which a CI job would read as a gate failure.
+    try:
+        parsed_project = [_parse_assignment(v, "--project") for v in args.project]
+        parsed_extensions = [
+            _parse_assignment(v, "--extensions") for v in args.extensions
+        ]
+    except argparse.ArgumentTypeError as exc:
+        print(f"error: {exc}", file=sys.stderr)  # noqa: T201
+        return 2
+
     overrides: dict[str, str] = {}
-    for value in args.project:
-        key, source = _parse_assignment(value, "--project")
+    for key, source in parsed_project:
         if key not in PROJECTS_BY_KEY:
             print(  # noqa: T201
                 f"error: unknown project {key!r}; known: {', '.join(PROJECTS_BY_KEY)}",
@@ -1466,8 +1531,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         overrides[key] = source
     extension_overrides: dict[str, str] = {}
-    for value in args.extensions:
-        key, source = _parse_assignment(value, "--extensions")
+    for key, source in parsed_extensions:
         if PROJECTS_BY_KEY[key].extension is None:
             print(  # noqa: T201
                 f"error: {key} declares no extension root to override",
@@ -1530,6 +1594,7 @@ def main(argv: list[str] | None = None) -> int:
             project, checkout, extensions_checkout, args.online, args.timeout
         )
         result.source = note
+        result.commit = short_commit(checkout)
         results.append(result)
 
     printer = render_markdown if args.markdown else render_table
