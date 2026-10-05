@@ -14,9 +14,8 @@ import threading
 from pathlib import Path
 from types import ModuleType
 
-from nicegui import app, ui
-
 from mvgeos_core.constants import DEFAULT_MODEL
+from nicegui import app, ui
 
 from mvgeos_gui import __version__
 from mvgeos_gui.app import init_app

@@ -15,10 +15,11 @@ CLI when nobody chose a model -- not the import that produced it.
 from __future__ import annotations
 
 from mvgeos_core.constants import DEFAULT_MODEL
+from mvgeos_provider import list_models
+
 from mvgeos_gui.main import parse_args
 from mvgeos_gui.services.config_service import AppSettings
 from mvgeos_gui.state import AppState, ServerState
-from mvgeos_provider import list_models
 
 
 def test_app_settings_default_model_is_the_engine_default() -> None:
