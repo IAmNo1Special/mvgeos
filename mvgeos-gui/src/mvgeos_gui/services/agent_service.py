@@ -833,7 +833,7 @@ class AgentService:
                     )
                 )
                 self._active_transcript.set_text(
-                    "**Daily Free Tier Quota Reached (HTTP 429)**: You have exhausted "
+                    "**Daily Free Tier Quota Reached**: You have exhausted "
                     f"the daily request limit for free-tier models{quota_str}."
                     f"{reset_info}"
                     f"{remedy}"
