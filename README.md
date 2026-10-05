@@ -63,13 +63,14 @@ export OPENROUTER_API_KEY="sk-or-..."
 mvgeos --agent-name coding_mvge "Create a file named hello.txt containing exactly the text: hello from mvgeos"
 ```
 
-> **Step 2 asks a question in a real terminal.** `mvge install` gates its
-> declared `python_deps` the way `rune install` does, so on a TTY it prompts
-> before fetching. Answer `y`. **Answering `n` is harmless here**, and the
-> warning you get without a TTY is misleading: the four packages it names are
-> already installed with the engine, and the resolved Spell set is the same
-> nine either way. The recording above pipes `yes` into the prompt so it can
-> run unattended; you will be asked.
+> **Step 2 may ask a question in a real terminal — and it does not matter.**
+> `mvge install` gates its declared `python_deps` the way `rune install` does,
+> so on a TTY it prompts before fetching. **Answering `n` is harmless here**, and
+> the warning you get without a TTY is misleading: the four packages it names are
+> already installed with the engine, and the resolved Spell set is the same nine
+> either way. To fetch them anyway, `mvgeos mvge install --confirm-python-deps
+> coding_mvge` does it without prompting (`v0.6.6` and later). The recording
+> above pipes `yes` into the prompt so it can run unattended; you will be asked.
 
 Here is that task, actually run, with nothing edited. The Mvge cast `write`,
 checked its own work, and reported back:
@@ -169,7 +170,7 @@ quickstart, concepts, troubleshooting with real errors, and FAQ.
 
 ## Honest status
 
-- **`v0.6.5`, pre-1.0.** Internals are held to a high bar — mypy strict, ruff,
+- **`v0.6.6`, pre-1.0.** Internals are held to a high bar — mypy strict, ruff,
   ~2,200 tests. The command surface still moves.
 - **No published distribution yet**, hence the long install line.
 - **The default free model is unreliable, so step "run one task" is.** Every
