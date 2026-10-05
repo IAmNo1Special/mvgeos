@@ -104,6 +104,39 @@ jobs:
           uv run python mvgeos-core/scripts/check_marketplace_contract.py
           marketplace
 
+  # Reproduces the published scorecard: the same numbers `uv run python
+  # scripts/scorecard.py` prints locally, measured against fresh shallow
+  # clones of all seven projects.
+  #
+  # NON-BLOCKING, deliberately. Six of the seven repositories are not ours and
+  # move under us daily; a peer renaming a directory, or going unreachable,
+  # must not be able to fail our build. `continue-on-error` on the job is what
+  # makes it non-blocking -- the job still runs and still posts its table, and
+  # only its conclusion is discarded.
+  #
+  # Promote to blocking once this job has been green for three consecutive
+  # runs on main, at which point delete the `continue-on-error` line.
+  #
+  # Costs roughly 2 GB of shallow clones and a few minutes per run, which is
+  # also why there is no cache here: the job is the measurement, and a cached
+  # clone would quietly measure a stale commit.
+  scorecard:
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Measure the scorecard
+        # --online enables measure 5, one HTTP GET per package name. That is
+        # the axis we currently lose outright, so it is the one most worth
+        # watching; it is also the only check here that touches the network.
+        run: >-
+          uv run --no-project python scripts/scorecard.py
+          --online --markdown >> "$GITHUB_STEP_SUMMARY"
+
   lint:
     uses: IAmNo1Special/actions/.github/workflows/python-ci.yml@v1
     with:
@@ -138,6 +171,14 @@ jobs:
       !contains(github.event.head_commit.message, 'chore(release):')
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # One bump at a time. Two overlapping bumps would both compute a version
+    # from the same last tag, race to create the same tag, and one would push a
+    # main that the other cannot fast-forward. cancel-in-progress is false so a
+    # second push queues behind the first instead of killing a bump that is
+    # already halfway through committing.
+    concurrency:
+      group: bump-${{ github.ref }}
+      cancel-in-progress: false
     permissions:
       contents: write
       actions: write
@@ -238,17 +279,14 @@ jobs:
           PY
           uv lock
 
-          if ! git diff --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add pyproject.toml uv.lock \
-              mvgeos-core/pyproject.toml \
-              mvgeos-agent/pyproject.toml mvgeos-provider/pyproject.toml \
-              mvgeos-tome/pyproject.toml mvgeos-runes/pyproject.toml \
-              mvgeos-cli/pyproject.toml mvgeos-gui/pyproject.toml
-            git commit --amend --no-edit
-            echo "Amended internal dependency floors into the release commit."
-          fi
+          # Nothing is committed here on purpose. There is no release commit to
+          # amend yet -- the step that makes one runs next -- so an --amend here
+          # rewrites whatever commit was checked out instead. On a push to main
+          # that is a merge commit, which meant folding the version bump into
+          # someone else's merge under the merge's own message, and leaving the
+          # real "chore(release)" step with an empty tree and exit code 1. The
+          # refreshed floors ride along in the working tree and are staged by
+          # that next step, which is what "into the release commit" requires.
 
       - name: Commit, tag, and push
         if: steps.bump_type.outputs.type != 'none'
@@ -265,6 +303,24 @@ jobs:
             mvgeos-cli/pyproject.toml mvgeos-gui/pyproject.toml
 
           git commit -m "chore(release): v$NEW_VERSION"
+
+          # Someone else can land on main while this job is working -- three
+          # agents push here routinely. Rebase the release commit onto whatever
+          # main is now, and only give up if that rebase conflicts. This step
+          # already waited out any other bump (see concurrency above), so the
+          # only thing that can move main underneath us is a hand push, and a
+          # conflicted rebase means the next push to main re-runs this whole
+          # bump against content that includes the conflict resolution.
+          git fetch origin main
+          if ! git rebase origin/main; then
+            git rebase --abort
+            echo "::warning::main moved under this bump and the rebase conflicted; no release this run. The next push to main re-triggers the bump."
+            exit 0
+          fi
+
+          # Tagged after the rebase, not before: a rebase rewrites the commit, so
+          # a tag made beforehand would point at an orphaned object and the tag
+          # push would publish a commit that is not on main.
           git tag "v$NEW_VERSION"
 
           # Deliberately no [skip ci]: loop safety comes from the

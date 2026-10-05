@@ -95,7 +95,13 @@ jobs:
   publish:
     needs: preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # One upload attempt per name, no sleeping. A 429 here means PyPI's
+    # new-project quota is full, and that quota is measured in a trailing
+    # 24 hour window. No retry inside a run can outrun it, so a retry loop
+    # cannot help; it can only spend runner time, and a refused request may
+    # itself count against the window. The run reports when a slot frees and
+    # stops. Re-dispatching after that time is the whole recovery.
+    timeout-minutes: 30
     # The upload credential is an environment secret, so only a job that
     # declares this environment can read it. Nothing else in the repo can.
     # See docs/agents/releasing.md.
@@ -137,12 +143,33 @@ jobs:
               exit 1
             fi
           fi
+
           for package in ${{ needs.preflight.outputs.order }}; do
             echo "::group::upload $package"
             if [ "${{ inputs.dry_run }}" = "true" ]; then
               uv publish --dry-run "dist/$package/*"
             else
-              uv publish "dist/$package/*"
+              # Run once and report what the server said. A failure that is not
+              # rate limiting -- bad metadata, a rejected filename, no
+              # permission -- is a real defect and stops the release here.
+              set +e
+              output="$(uv publish "dist/$package/*" 2>&1)"
+              status=$?
+              set -e
+              echo "$output"
+              if [ "$status" -ne 0 ]; then
+                if printf '%s' "$output" | grep -qi '429\|too many new projects'; then
+                  echo "::error::$package was refused: PyPI's new-project quota is full. This is not a packaging fault and no retry inside this run can outrun a 24 hour window."
+                  {
+                    echo
+                    python3 scripts/pypi_new_project_window.py
+                  } >> "$GITHUB_STEP_SUMMARY" || true
+                  echo "::error::A slot next frees at the time printed in the step summary. Re-dispatch this workflow then; it skips what already landed."
+                  exit 1
+                fi
+                echo "::error::$package failed for a reason other than rate limiting"
+                exit "$status"
+              fi
             fi
             echo "::endgroup::"
           done

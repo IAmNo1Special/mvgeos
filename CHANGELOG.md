@@ -5,12 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.8] - 2026-10-05
+
+
+### Bug Fixes
+
+- **release:** read the PyPI quota as a window, and stop retrying a 429 (#179) (4671829)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (065ba58)
+
+- **release:** v0.6.8 (794e245)
+
+
+## [0.6.7] - 2026-10-05
+
+
+### Bug Fixes
+
+- **scripts:** report the commit each scorecard row was measured at (6d655dd)
+
+- **scripts:** count every language in measure 1, and run the scorecard on a schedule (4bffc3c)
+
+- **scripts:** stamp the snapshot with its date and each row's commit, and correct a rank (d8d7b62)
+
+- **scripts:** re-measure the baseline on the merge, not on the branch (f4c65e6)
+
+- **cli:** give `mvge install` the deps flag `rune install` already has (8ce22c0)
+
+- **release:** make bump land its own commit and retry a 429 publish (#177) (89ea5c0)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (535021d)
+
+- **release:** v0.6.7 (3d055f3)
 
 
 ### Continuous Integration
 
 - **release:** pass built distributions from preflight to the publish job (bc33229)
+
+- **release:** run verify on a dry run only when an upload actually happened (42a2a4e)
+
+- **scorecard:** never let a failed measurement turn main red (bf36d31)
+
+
+### Features
+
+- **scripts:** make the published scorecard reproducible (c7b14c0)
+
+
+### Refactoring
+
+- **gui:** read the engine default model instead of re-deriving it (4eca097)
+
+
+### Style
+
+- **gui:** sort the imports 4eca097 added, and close the test file (f7f21a2)
 
 
 ## [0.6.6] - 2026-10-05

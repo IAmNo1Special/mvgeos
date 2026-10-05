@@ -12,6 +12,7 @@ from typing import Any
 
 import keyring
 from mvgeos_agent.config_manager import ConfigManager
+from mvgeos_core.constants import DEFAULT_MODEL
 from mvgeos_core.layers import global_agents_dir
 
 _KEYRING_SERVICE = "mvgeos"
@@ -24,7 +25,7 @@ class AppSettings:
     """Global application settings."""
 
     api_key: str = ""
-    default_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    default_model: str = DEFAULT_MODEL
     mana_limit: int = 4096
     temperature: float = 0.7
     theme: str = "dark"

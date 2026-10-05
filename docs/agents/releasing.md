@@ -101,6 +101,47 @@ success.
 failure skip whatever already landed. PyPI versions are immutable, so without
 this a retry after uploading four of eight packages would fail on the first.
 
+### When PyPI refuses a project as new
+
+PyPI caps how many *new projects* one account may create in a window, and
+answers `429 Too many new projects created` at the cap. The cap is on project
+creation, not on uploads to existing projects, so a refusal means "come back
+later", not "this distribution is broken".
+
+That is why the first release is the one most likely to hit it: eight names,
+eight creations. When it happens, the `publish` job **stops on the first
+refusal**. It does not retry, and that is deliberate. PyPI advertises the
+policy as `"project.create.user";q=4;w=86400` — four creations counted in the
+trailing 24 hours. A retry inside a run cannot outrun that window, so it can
+only spend runner minutes; a refused request may itself count against the
+window it is waiting for. The run fails red, and the step summary prints when
+the quota next has room. Read that time, and re-dispatch the same tag after
+it. Re-running is safe and is the normal path, not an exception.
+
+**The quota frees as a trailing window, not one slot per day.** A creation
+leaves the window when it turns 24 hours old, so the time a slot frees is the
+upload time of the *oldest* project in the window, plus 24 hours. Creations
+made seconds apart therefore age out seconds apart, and the whole quota returns
+at once. The 0.6.6 first release created its first four names in an 8-second
+span, so the full quota of four came back in one go rather than over four days.
+Do not plan around a daily drip.
+
+To read the current state and get that time:
+
+```
+python scripts/pypi_new_project_window.py
+```
+
+The publish job appends the same report to its step summary when it is
+refused. It needs no credentials: it reads the public index.
+
+If more names remain than the window holds, the report says so, and it takes
+more than one window. That is the only case where asking PyPI for a lift is
+worth the wait: open a request at `https://github.com/pypi/support/issues/new`,
+choosing "Limit Request", and note that this is a coordinated first release of
+eight distributions in dependency order, how many already landed, and that the
+account is not being recreated. Expect it to take days to be answered.
+
 **`verify`** checks out nothing at all and runs `uvx mvgeos --help`. Because
 there is no clone and no `uv sync`, uvx resolves the command from PyPI exactly
 as a stranger's machine would. That job is the acceptance test; `pip download`
@@ -130,3 +171,16 @@ The `mvgeos-gui` upload is last because it is the largest and the least likely
 to be the reason someone ran `uvx mvgeos`. If one upload in the middle fails,
 the run stops there. Re-run the same tag: `--check-url` skips the packages
 that already landed and continues with the rest.
+
+## When the bump job cannot land
+
+The `bump` job commits, rebases onto whatever `main` is at that moment, tags,
+and pushes. It holds a concurrency group, so a second push to `main` queues
+behind a bump already in flight rather than racing it.
+
+If a hand push lands on `main` in the middle of a bump and the rebase
+conflicts, the job aborts the rebase and exits green with a warning instead of
+red. Nothing is tagged and nothing is released, which is deliberate: the next
+push to `main` re-runs the whole bump against content that already contains the
+conflict resolution. Read the warning on the run rather than assuming a release
+happened.

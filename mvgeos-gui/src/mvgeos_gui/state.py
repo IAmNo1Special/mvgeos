@@ -28,6 +28,7 @@ from mvgeos_core.approval import (
     ApprovalRequest,
     ApprovalScope,
 )
+from mvgeos_core.constants import DEFAULT_MODEL
 from mvgeos_core.invocations import Attachment, build_content_parts
 from mvgeos_core.layers import agents_dir, extensions_dir, skills_dir
 from mvgeos_provider import (
@@ -167,7 +168,7 @@ class ServerState:
     api_key: str | None = None
     selected_realm: str = "openrouter"
     selected_provider: str | None = "nvidia"
-    selected_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    selected_model: str = DEFAULT_MODEL
     contemplation_level: str = "medium"
     tome_service: TomeService = field(
         default_factory=TomeService, repr=False, compare=False
@@ -321,7 +322,7 @@ class AppState:
     inspector_expanded: bool = True
     selected_realm: str = "openrouter"
     selected_provider: str | None = "nvidia"
-    selected_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    selected_model: str = DEFAULT_MODEL
     contemplation_level: str = "medium"
     recent_projects: list[Path] = field(default_factory=list)
     is_channeling: bool = False
