@@ -84,6 +84,11 @@ _ERROR_LOG_BODY_CAP = 4000
 # window no larger than this is a spent daily allowance, not upstream capacity.
 FREE_TIER_DAILY_QUOTA = 50
 
+# OpenRouter names the account-wide daily cap on free models in the refusal
+# message; it is the only part of a router 402 that still says which limit ran
+# out.
+_FREE_TIER_DAILY_MARKER = "free-models-per-day"
+
 _FREE_TIER_REMEDY_HINT = (
     "Add credits to your OpenRouter account, switch to a paid model, or wait "
     "for the daily reset."
@@ -163,6 +168,42 @@ def _resolve_limit_source(
     return _classify_limit_source(quota_limit, quota_remaining)
 
 
+def _names_doubled_free_tier_report(metadata: Any) -> bool:
+    """Whether a 402 is one spent allowance, reported twice.
+
+    `openrouter/free` walks free endpoints until they all refuse on the
+    account-wide daily cap, then falls through to a provider that answers 402
+    for a different reason -- depleted BYOK credits, typically. The surviving
+    provider error becomes the top level and the router answers 402; the free
+    model refusals survive only inside `metadata.previous_errors`, each with an
+    empty `headers` map, and the 402 itself carries no `X-RateLimit-*` at all.
+
+    So the quota is unreadable here and only the shape is left: a 402 whose
+    previous errors are the daily free-model cap, reported again as one
+    allowance rather than a billing problem to debug. A previous error that is
+    some other rate limit disqualifies it -- the Summoner would be sent to fix
+    an allowance that is not the one that ran out.
+    """
+    previous_errors = (
+        metadata.get("previous_errors") if isinstance(metadata, dict) else None
+    )
+    if not isinstance(previous_errors, list) or not previous_errors:
+        return False
+
+    daily_refusals = 0
+    for entry in previous_errors:
+        if not isinstance(entry, dict):
+            return False
+        if entry.get("code") != 429:
+            # The provider error the 402 already reports, kept for context.
+            continue
+        if _FREE_TIER_DAILY_MARKER not in str(entry.get("message") or ""):
+            return False
+        daily_refusals += 1
+
+    return daily_refusals > 0
+
+
 def _resolve_remedy_hint(
     reported: str | None,
     limit_source: str | None,
@@ -187,14 +228,6 @@ def _build_parsed_error(body: bytes, status_code: int, headers: Any) -> ParsedEr
     message = err_obj.get("message", f"HTTP {status_code}")
     if message:
         message = message.replace("\r\n", "\n").replace("\r", "\n").strip("\n")
-    if status_code == 429:
-        error_code = "rate_limited"
-        if message == f"HTTP {status_code}":
-            message = "Rate limit exceeded"
-    elif status_code == 401:
-        error_code = "auth_failed"
-    else:
-        error_code = None
 
     err_dict = err_obj if isinstance(err_obj, dict) else {}
     metadata = err_dict.get("metadata", {}) if isinstance(err_dict, dict) else {}
@@ -210,7 +243,28 @@ def _build_parsed_error(body: bytes, status_code: int, headers: Any) -> ParsedEr
     )
 
     limit_source = _resolve_limit_source(declared_source, quota_limit, quota_remaining)
+    if limit_source is None and status_code == 402:
+        limit_source = (
+            "openrouter_free_tier_daily"
+            if _names_doubled_free_tier_report(metadata)
+            else None
+        )
     remedy_hint = _resolve_remedy_hint(declared_hint, limit_source)
+
+    # A 402 that carries the spent daily allowance is the same rate limit the
+    # 429 shape reports, so it needs the same error code. Without one the turn
+    # raises an opaque `Provider returned error` and nothing above this point
+    # ever renders.
+    if status_code == 429 or (
+        status_code == 402 and limit_source == "openrouter_free_tier_daily"
+    ):
+        error_code = "rate_limited"
+        if message == f"HTTP {status_code}":
+            message = "Rate limit exceeded"
+    elif status_code == 401:
+        error_code = "auth_failed"
+    else:
+        error_code = None
 
     retry_after: float | None = None
     q_retry = _get_header(resp_headers, "retry-after", meta_headers)

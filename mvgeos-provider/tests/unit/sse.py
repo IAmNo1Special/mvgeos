@@ -1044,6 +1044,111 @@ def test_error_from_response_leaves_source_unnamed_without_quota() -> None:
     assert err.remedy_hint is None
 
 
+# Captured 2026-10-05 from `openrouter/free` with the account's daily free
+# allowance spent. The router walked free endpoints, each refusing on the
+# account-wide daily cap, then fell through to a BYOK provider whose credits are
+# separately depleted and answered 402. `X-RateLimit-*` is absent from the 402
+# and from every `previous_errors` entry, so nothing here is readable as a
+# quota -- only the shape is. `raw` and the account `user_id` are omitted
+# because the parser reads neither and an account identifier should not be
+# committed.
+_FREE_MODEL_DAILY_REFUSAL: dict[str, Any] = {
+    "code": 429,
+    "message": (
+        "Rate limit exceeded: free-models-per-day. Add 10 credits to unlock "
+        "1000 free model requests per day"
+    ),
+}
+
+ROUTER_SPENT_ALLOWANCE_BODY_402: dict[str, Any] = {
+    "error": {
+        "message": "Provider returned error",
+        "code": 402,
+        "metadata": {
+            "provider_name": "Google AI Studio",
+            "is_byok": True,
+            "provider_error_code": "402",
+            "previous_errors": [
+                _FREE_MODEL_DAILY_REFUSAL,
+                _FREE_MODEL_DAILY_REFUSAL,
+                _FREE_MODEL_DAILY_REFUSAL,
+                _FREE_MODEL_DAILY_REFUSAL,
+                {
+                    "code": 402,
+                    "message": "Provider returned error",
+                    "provider_name": "Google AI Studio",
+                },
+                _FREE_MODEL_DAILY_REFUSAL,
+                _FREE_MODEL_DAILY_REFUSAL,
+                _FREE_MODEL_DAILY_REFUSAL,
+                _FREE_MODEL_DAILY_REFUSAL,
+            ],
+        },
+    },
+}
+
+
+class _RouterSpentAllowance402:
+    """The router's 402, with the real header set that carries no quota."""
+
+    status_code = 402
+
+    def __init__(self, body: dict[str, Any]):
+        self.headers = httpx.Headers(
+            {
+                "date": "Mon, 05 Oct 2026 10:39:26 GMT",
+                "content-type": "application/json",
+                "x-generation-id": "gen-1791196765-6HfulTo41tSFW22c6Fcr",
+                "cf-ray": "a45bcd6b2b9138c8-IAD",
+            }
+        )
+        self._body = body
+
+    def read(self) -> bytes:
+        return json.dumps(self._body).encode("utf-8")
+
+
+def test_error_from_response_names_spent_allowance_behind_router_402() -> None:
+    from mvgeos_provider.sse import _error_from_response
+
+    err = _error_from_response(
+        _RouterSpentAllowance402(ROUTER_SPENT_ALLOWANCE_BODY_402)
+    )
+
+    assert err.limit_source == "openrouter_free_tier_daily"
+    assert err.remedy_hint
+    # No window was reported, so none is claimed. A reset time invented here
+    # would be a lie the Summoner waits out.
+    assert err.reset_at is None
+    assert err.quota_limit is None
+    assert err.quota_remaining is None
+    assert err.retry_after is None
+    # The turn only reaches the formatter through a rate-limit error; a 402
+    # with no error code surfaces as an opaque `Provider returned error`.
+    assert err.error_code == "rate_limited"
+
+
+def test_error_from_response_leaves_402_alone_without_previous_errors() -> None:
+    """A BYOK billing 402 is still a billing 402."""
+    from mvgeos_provider.sse import _error_from_response
+
+    err = _error_from_response(
+        _RouterSpentAllowance402(
+            {
+                "error": {
+                    "message": "Provider returned error",
+                    "code": 402,
+                    "metadata": {"is_byok": True, "provider_name": "Google AI Studio"},
+                }
+            }
+        )
+    )
+
+    assert err.limit_source is None
+    assert err.remedy_hint is None
+    assert err.error_code is None
+
+
 def test_error_from_response_keeps_declared_source_over_classified_one() -> None:
     from mvgeos_provider.sse import _error_from_response
 

@@ -32,6 +32,22 @@ def test_format_error_rate_limit_daily_quota() -> None:
     assert "Wait for daily reset or purchase credits." in markup
 
 
+def test_format_error_rate_limit_daily_quota_without_reported_window() -> None:
+    """The router's 402 names the allowance without inventing a reset time."""
+    exc = RateLimitError(
+        "Provider returned error",
+        limit_source="openrouter_free_tier_daily",
+        remedy_hint="Add credits to your OpenRouter account, switch to a paid "
+        "model, or wait for the daily reset.",
+    )
+    markup = format_error(exc)
+    assert "Daily free-model quota exhausted" in markup
+    # No window was reported, so the message must not claim one.
+    assert "Resets at" not in markup
+    assert "requests)" not in markup
+    assert "wait for the daily reset" in markup
+
+
 def test_format_error_rate_limit_upstream_overload() -> None:
     exc = RateLimitError(
         "Provider returned error: Upstream error from Nvidia: "
