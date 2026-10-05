@@ -63,11 +63,13 @@ export OPENROUTER_API_KEY="sk-or-..."
 mvgeos --agent-name coding_mvge "Create a file named hello.txt containing exactly the text: hello from mvgeos"
 ```
 
-> **Step 2 asks a question in a real terminal.** `mvge install` has no
-> `--confirm-python-deps` the way `rune install` does, so when stdin is a TTY it
-> prompts before fetching its dependencies. Answer `y`. Answering `n` skips them
-> and the Mvge installs without the Spells it needs. The recording above pipes
-> `yes` into that prompt so it can run unattended; you will be asked.
+> **Step 2 asks a question in a real terminal.** `mvge install` gates its
+> declared `python_deps` the way `rune install` does, so on a TTY it prompts
+> before fetching. Answer `y`. **Answering `n` is harmless here**, and the
+> warning you get without a TTY is misleading: the four packages it names are
+> already installed with the engine, and the resolved Spell set is the same
+> nine either way. The recording above pipes `yes` into the prompt so it can
+> run unattended; you will be asked.
 
 Here is that task, actually run, with nothing edited. The Mvge cast `write`,
 checked its own work, and reported back:
