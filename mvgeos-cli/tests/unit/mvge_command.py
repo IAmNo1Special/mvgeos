@@ -19,7 +19,58 @@ def test_mvge_install_success(tmp_path: Path) -> None:
         result = runner.invoke(mvge_app, ["install", "coding_mvge"])
         assert result.exit_code == 0
         assert "Successfully installed mvge 'coding_mvge'" in result.stdout
-        mock_install.assert_called_once_with("coding_mvge")
+        # Unset forwards None, not False: the installer prompts on a TTY and
+        # fails closed without one. Defaulting to False would silently skip
+        # the Spells' own dependencies for anyone who did not pass a flag.
+        mock_install.assert_called_once_with("coding_mvge", confirm_python_deps=None)
+
+
+def test_mvge_install_confirms_python_deps_when_asked(tmp_path: Path) -> None:
+    dest_path = tmp_path / "coding_mvge"
+    with patch(
+        "mvgeos_cli.commands.mvge.install_mvge", return_value=dest_path
+    ) as mock_install:
+        result = runner.invoke(
+            mvge_app, ["install", "coding_mvge", "--confirm-python-deps"]
+        )
+        assert result.exit_code == 0
+        mock_install.assert_called_once_with("coding_mvge", confirm_python_deps=True)
+
+
+def test_mvge_install_declines_python_deps_when_asked(tmp_path: Path) -> None:
+    dest_path = tmp_path / "coding_mvge"
+    with patch(
+        "mvgeos_cli.commands.mvge.install_mvge", return_value=dest_path
+    ) as mock_install:
+        result = runner.invoke(
+            mvge_app, ["install", "coding_mvge", "--no-confirm-python-deps"]
+        )
+        assert result.exit_code == 0
+        mock_install.assert_called_once_with("coding_mvge", confirm_python_deps=False)
+
+
+def test_mvge_install_exposes_a_tri_state_deps_flag() -> None:
+    """The flag is the only non-interactive way to install a Mvge's deps.
+
+    Asserted on the declared option string rather than the rendered help,
+    which rich wraps and truncates to the terminal width.
+    """
+    import typer
+
+    group = typer.main.get_command(mvge_app)
+    commands = group.commands
+    install = (
+        commands["install"]
+        if isinstance(commands, dict)
+        else next(c for c in commands if c.name == "install")
+    )
+    deps = next(p for p in install.params if p.name == "confirm_python_deps")
+    assert deps.opts + deps.secondary_opts == [
+        "--confirm-python-deps",
+        "--no-confirm-python-deps",
+    ]
+    # Unset must stay None so the installer keeps prompting on a TTY.
+    assert deps.default is None
 
 
 def test_mvge_install_error() -> None:
