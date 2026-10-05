@@ -1,8 +1,11 @@
 # Releasing to PyPI
 
-How a `v*` tag becomes an installable `uvx mvgeos`. There is no PyPI token in
-this repository. Uploads authenticate through GitHub Actions OIDC against a
-PyPI *trusted publisher*, so a leaked repository cannot publish.
+How a `v*` tag becomes an installable `uvx mvgeos`. Uploads authenticate with a
+PyPI API token stored as the `PYPI_API_TOKEN` secret on the GitHub `pypi`
+environment. It is a long-lived credential: any workflow that declares that
+environment can read it, and anyone who obtains it can upload to every project
+under the account. That is the trade for not running PyPI's own publisher setup
+by hand. See "Moving to a trusted publisher" below for the way back.
 
 ## The eight distributions, not seven
 
@@ -38,30 +41,41 @@ time, so ordering is purely about risk: landing the package that owns the
 `mvgeos` name early means the headline command starts working before the
 largest upload is attempted, rather than after.
 
-## PyPI setup — the part only a human can do
+## PyPI setup
 
-PyPI will not accept an upload for a project name until that name exists and
-has a pending publisher. Both are account actions; neither can be automated.
+Two things must exist before the first upload, and only a person can do them.
 
 1. Create or log into the PyPI account that will own the releases, and enable
-   two-factor authentication on it. PyPI requires 2FA for API tokens and for
-   adding pending publishers.
-2. Reserve all eight names. Each one gets its own pending publisher:
+   two-factor authentication on it. PyPI requires 2FA before it will issue an
+   API token.
+2. Create an API token on that account, scoped to **upload only**, across all
+   projects. One token covers all eight names, because a token cannot be scoped
+   to a project that does not exist yet.
 
-   | Field | Value |
-   | --- | --- |
-   | PyPI project | `mvgeos`, `mvgeos-core`, `mvgeos-provider`, `mvgeos-tome`, `mvgeos-runes`, `mvgeos-agent`, `mvgeos-cli`, `mvgeos-gui` |
-   | Owner | `IAmNo1Special` |
-   | Repository name | `mvgeos` |
-   | Workflow name | `publish.yml` |
-   | Environment name | `pypi` |
+Then store it once:
 
-The workflow name must be `publish.yml` and the environment must be `pypi`
-exactly as written in `.github/workflows/publish.yml`. A mismatch fails the
-upload with an OIDC error and nothing is published.
+```
+gh secret set PYPI_API_TOKEN --repo IAmNo1Special/mvgeos --env pypi
+```
 
-If the names are already claimed by someone else, stop and escalate. Do not
+An environment secret, not a repository secret, so that only a job declaring
+`environment: pypi` can read it. No project has to be created by hand: the
+first upload of `mvgeos-core` creates that name on PyPI.
+
+If any name is already claimed by someone else, stop and escalate. Do not
 publish under a substitute name.
+
+### Moving to a trusted publisher
+
+PyPI's own answer to a stored token is OIDC trusted publishing: no secret is
+kept anywhere, and GitHub mints a 15-minute upload token per run. It needs a
+one-time browser step — a pending publisher per project name on
+`https://pypi.org/manage/account/publishing/`, with owner `IAmNo1Special`,
+repository `mvgeos`, workflow `publish.yml`, environment `pypi`. Then restore
+`id-token: write`, set `UV_PUBLISH_TRUSTED_PUBLISHING: always`, drop the two
+`UV_PUBLISH_*` credential lines, and delete the secret. PyPI still has no API
+for this, which is why it is worth doing deliberately rather than as a
+side effect.
 
 ## What the workflow does
 
@@ -78,10 +92,10 @@ the wheel installs elsewhere. The check then asserts two things:
   constraint, because a bare name resolves against whatever version of the
   sibling happens to be newest on PyPI.
 
-**`publish`** uploads in the derived order, one distribution per step, using
-`UV_PUBLISH_TRUSTED_PUBLISHING=always`. The `always` setting is deliberate: the
-default is `automatic`, which would quietly fall back to an ambient token if
-OIDC were unavailable. Publishing must fail loudly instead.
+**`publish`** uploads in the derived order, one distribution per step,
+authenticating as `__token__` with the `PYPI_API_TOKEN` secret. The job fails
+immediately if the secret is absent rather than uploading nothing and reporting
+success.
 
 `UV_PUBLISH_CHECK_URL=https://pypi.org/simple` makes a re-run after a partial
 failure skip whatever already landed. PyPI versions are immutable, so without

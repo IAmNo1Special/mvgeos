@@ -85,15 +85,12 @@ jobs:
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # PyPI binds a trusted publisher to a repo, a workflow filename, and an
-    # environment. This environment name must match the pending publisher
-    # registered on every PyPI project. See docs/agents/releasing.md.
+    # The upload credential is an environment secret, so only a job that
+    # declares this environment can read it. Nothing else in the repo can.
+    # See docs/agents/releasing.md.
     environment: pypi
     permissions:
       contents: read
-      # Mint the OIDC token PyPI exchanges for an upload token. This is the
-      # whole authentication mechanism: no PyPI secret is stored in this repo.
-      id-token: write
     steps:
       - uses: actions/checkout@v5
 
@@ -101,15 +98,19 @@ jobs:
 
       - name: Upload in dependency order
         env:
-          # "always" rather than the default "automatic": if OIDC is
-          # unavailable the run must fail instead of silently falling back to
-          # an ambient token.
-          UV_PUBLISH_TRUSTED_PUBLISHING: always
+          # A PyPI API token scoped to upload on all projects. "__token__" is
+          # the fixed username PyPI requires when authenticating with a token.
+          UV_PUBLISH_USERNAME: __token__
+          UV_PUBLISH_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
           # PyPI versions are immutable. Checking the index first makes a
           # re-run after a partial failure skip what already landed.
           UV_PUBLISH_CHECK_URL: https://pypi.org/simple
         run: |
           set -euo pipefail
+          if [ "${{ inputs.dry_run }}" != "true" ] && [ -z "${UV_PUBLISH_PASSWORD:-}" ]; then
+            echo "::error::PYPI_API_TOKEN is missing from the pypi environment"
+            exit 1
+          fi
           for package in ${{ needs.preflight.outputs.order }}; do
             echo "::group::upload $package"
             if [ "${{ inputs.dry_run }}" = "true" ]; then
