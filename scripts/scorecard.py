@@ -31,8 +31,12 @@ THE SIX MEASURES AND THEIR EXACT DEFINITIONS
    900,282 Python lines and ignores its 624,949 lines of TypeScript; v1's
    deepseek-harness row is its 478,874 TypeScript lines and ignores its 8,244
    lines of Python. Counting all languages therefore moves hermes-agent's ratio
-   from 1.43 to 1.07, and with hermes-agent below 1.07 rather than above 1.43,
-   MvgeOS moves from fifth to third of seven on test density.
+   from 1.43 to 1.07, and with hermes-agent below us rather than above us,
+   MvgeOS moves from fourth to third of seven on test density. Exactly three
+   ratios are above ours either way: adk-python 1.71 and openclaw 1.51, plus
+   hermes-agent at 1.43 under v1's rule and not at all under this one. An
+   earlier draft of this comment said fifth to third, which was wrong; the
+   ranks above are recomputed from the same snapshot they are published with.
 
    We count all languages anyway, for two reasons, and the reader should hold
    both against the paragraph above:
@@ -172,6 +176,7 @@ import urllib.error
 import urllib.request
 import warnings
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -1172,18 +1177,31 @@ _SPECIAL_MEASURES = frozenset({"type_strictness", "coverage_fail_under"})
 
 #: Recorded in the snapshot but never diffed. `install` is present or absent
 #: depending on whether `--online` was passed, so diffing it reports the flag
-#: rather than the project.
-_NEVER_DIFFED = frozenset({"install"})
+#: rather than the project. `commit` changes every time a peer lands anything,
+#: which is not a regression in any measure.
+_NEVER_DIFFED = frozenset({"install", "commit"})
 
 #: Ordering used when a string measure gets worse. Lower index is worse.
 _STRICTNESS_ORDER: dict[str, int] = {"true": 0, "false": 1, "unset": 2}
 
 
-def baseline_document(results: list[Result]) -> dict[str, Any]:
-    """The checked-in snapshot: one flat dict of comparable measures."""
+def baseline_document(
+    results: list[Result], measured_at: str | None = None
+) -> dict[str, Any]:
+    """The checked-in snapshot: one flat dict of comparable measures.
+
+    ``measured_at`` and each row's ``commit`` are provenance, not measures. They
+    are recorded so that a claim like "the whole table was re-measured on one
+    date" is checkable against the snapshot instead of being an assertion in a
+    commit message. Nothing here is ever diffed: a peer's commit moving is not a
+    regression, and today's date is never worse than the baseline's.
+    """
+    if measured_at is None:
+        measured_at = datetime.now(UTC).replace(microsecond=0).isoformat()
     projects: dict[str, Any] = {}
     for result in results:
         projects[result.key] = {
+            "commit": result.commit,
             "source_loc": result.source_loc,
             "test_loc": result.test_loc,
             "source_files": result.source_files,
@@ -1213,6 +1231,7 @@ def baseline_document(results: list[Result]) -> dict[str, Any]:
     return {
         "schema": BASELINE_SCHEMA,
         "generated_by": "scripts/scorecard.py",
+        "measured_at": measured_at,
         "projects": projects,
     }
 
@@ -1591,7 +1610,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         metavar="PATH",
-        help="write the current measurements to PATH as the new snapshot",
+        help=(
+            "write the current measurements to PATH as the new snapshot, "
+            "stamped with the UTC time of the run and each row's commit. "
+            "Those two are provenance, never diffed: a peer's commit moving "
+            "is not a regression, and a date is not a measure."
+        ),
     )
     parser.add_argument(
         "--json",

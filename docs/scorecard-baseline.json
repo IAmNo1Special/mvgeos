@@ -1,15 +1,17 @@
 {
   "schema": 1,
   "generated_by": "scripts/scorecard.py",
+  "measured_at": "2026-10-05T09:26:52+00:00",
   "projects": {
     "mvgeos": {
-      "source_loc": 40760,
+      "commit": "4bffc3c",
+      "source_loc": 40784,
       "test_loc": 57545,
       "source_files": 142,
-      "test_ratio": 1.411801,
+      "test_ratio": 1.41097,
       "language_split": {
         "Python": {
-          "source_loc": 40760,
+          "source_loc": 40784,
           "test_loc": 57545
         }
       },
@@ -25,24 +27,25 @@
       "annotation_weighted": 0.830986,
       "install": {
         "pypi:mvgeos": "404",
-        "pypi:mvgeos-core": "404",
+        "pypi:mvgeos-core": "200",
         "pypi:mvgeos-agent": "404",
-        "pypi:mvgeos-provider": "404",
-        "pypi:mvgeos-tome": "404",
-        "pypi:mvgeos-runes": "404",
+        "pypi:mvgeos-provider": "200",
+        "pypi:mvgeos-tome": "200",
+        "pypi:mvgeos-runes": "200",
         "pypi:mvgeos-cli": "404",
         "pypi:mvgeos-gui": "404"
       }
     },
     "adk-python": {
-      "source_loc": 243073,
-      "test_loc": 416835,
+      "commit": "6be386d",
+      "source_loc": 243084,
+      "test_loc": 416879,
       "source_files": 1244,
-      "test_ratio": 1.714855,
+      "test_ratio": 1.714959,
       "language_split": {
         "Python": {
-          "source_loc": 243073,
-          "test_loc": 416835
+          "source_loc": 243084,
+          "test_loc": 416879
         }
       },
       "type_strictness": "true",
@@ -60,6 +63,7 @@
       }
     },
     "smolagents": {
+      "commit": "c30b115",
       "source_loc": 17673,
       "test_loc": 12935,
       "source_files": 48,
@@ -85,6 +89,7 @@
       }
     },
     "hermes-agent": {
+      "commit": "e1fdf003",
       "source_loc": 1525231,
       "test_loc": 1636028,
       "source_files": 4797,
@@ -114,18 +119,19 @@
       }
     },
     "openclaw": {
-      "source_loc": 4471119,
-      "test_loc": 6730351,
-      "source_files": 23688,
-      "test_ratio": 1.505295,
+      "commit": "7dc1b2b2",
+      "source_loc": 4470600,
+      "test_loc": 6731164,
+      "source_files": 23687,
+      "test_ratio": 1.505651,
       "language_split": {
         "Python": {
           "source_loc": 10639,
           "test_loc": 22288
         },
         "TypeScript": {
-          "source_loc": 4460480,
-          "test_loc": 6708063
+          "source_loc": 4459961,
+          "test_loc": 6708876
         }
       },
       "type_strictness": "true",
@@ -143,6 +149,7 @@
       }
     },
     "deepseek-harness": {
+      "commit": "5badb15",
       "source_loc": 487118,
       "test_loc": 660571,
       "source_files": 2889,
@@ -172,6 +179,7 @@
       }
     },
     "pi": {
+      "commit": "b9ab918",
       "source_loc": 196905,
       "test_loc": 180469,
       "source_files": 860,
