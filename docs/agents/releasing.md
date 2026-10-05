@@ -30,6 +30,14 @@ python scripts/check_publish.py --list
 That way a newly added package cannot be published out of sequence by
 forgetting to edit a list.
 
+Any order that puts a dependency before its dependents is valid, and this is
+not the only one that has been proposed for the first release. This one puts
+`mvgeos` seventh rather than last, because it depends only on `mvgeos-cli` and
+`mvgeos-gui` is unrelated to it. PyPI does not check dependencies at upload
+time, so ordering is purely about risk: landing the package that owns the
+`mvgeos` name early means the headline command starts working before the
+largest upload is attempted, rather than after.
+
 ## PyPI setup — the part only a human can do
 
 PyPI will not accept an upload for a project name until that name exists and
