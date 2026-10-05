@@ -224,7 +224,7 @@ class TestReplHelpers:
         info = format_tome_info(agent, branch="main")
         parts = " ".join(text for _, text in info)
         assert "~/proj (main)" in parts
-        assert "nvidia/nemotron" in parts
+        assert DEFAULT_MODEL in parts
 
     def test_format_tome_info_reports_mana_used(
         self,
@@ -257,7 +257,7 @@ class TestReplHelpers:
         items = [
             ("bold", " ~/proj (main)"),
             ("dim", "  session abc12345"),
-            ("", "  nvidia/nemotron-3-ultra-550b-a55b:free • medium"),
+            ("", f"  {DEFAULT_MODEL} • medium"),
         ]
         fitted = fit_footer(items, 40)
         plain = "".join(text for _, text in fitted)
@@ -267,8 +267,10 @@ class TestReplHelpers:
     def test_fit_footer_no_truncation_when_fits(self) -> None:
         from mvgeos_cli.formatting import fit_footer
 
-        items = [("bold", " ~/proj"), ("", "  nvidia/nemotron-3-ultra-550b-a55b:free")]
-        fitted = fit_footer(items, 80)
+        items = [("bold", " ~/proj"), ("", f"  {DEFAULT_MODEL}")]
+        # Exactly the rendered width, so this stays the boundary case
+        # whatever the default slug currently is.
+        fitted = fit_footer(items, sum(len(text) for _, text in items))
         assert fitted == items
 
     def test_git_branch_returns_none_outside_repo(

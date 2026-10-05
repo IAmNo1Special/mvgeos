@@ -16,6 +16,7 @@ from mvgeos_core.approval import (
     ApprovalRequest,
     ApprovalScope,
 )
+from mvgeos_core.constants import DEFAULT_MODEL
 from mvgeos_tome.handle import TomeHandleFactory
 from mvgeos_tome.types import TomeEntry, TomeEntryType
 from nicegui import ui
@@ -39,7 +40,7 @@ def test_app_state_defaults() -> None:
     assert state.active_tome_id is None
     assert state.tome_title == "New Conversation"
     assert state.inspector_expanded is True
-    assert state.selected_model == "nvidia/nemotron-3-ultra-550b-a55b:free"
+    assert state.selected_model == DEFAULT_MODEL
     assert state.is_channeling is False
     assert isinstance(state.recent_projects, list)
     assert state.tome_service is not None
@@ -1374,8 +1375,10 @@ class TestCascadingSelectorState:
     def test_default_cascading_state(self) -> None:
         state = AppState()
         assert state.selected_realm == "openrouter"
-        assert state.selected_provider == "nvidia"
-        assert state.selected_model == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        # Provider cascades from the default model id, so it tracks the
+        # constant rather than naming one provider.
+        assert state.selected_provider == DEFAULT_MODEL.split("/")[0]
+        assert state.selected_model == DEFAULT_MODEL
         assert state.contemplation_level == "medium"
         assert state.is_router_realm() is True
 
@@ -1432,11 +1435,8 @@ class TestCascadingSelectorState:
     ) -> None:
         state = AppState()
         options = state.get_model_options_for_selection()
-        assert "nvidia/nemotron-3-ultra-550b-a55b:free" in options
-        assert (
-            options["nvidia/nemotron-3-ultra-550b-a55b:free"]
-            == "Nemotron 3 Ultra (free)"
-        )
+        assert DEFAULT_MODEL in options
+        assert options[DEFAULT_MODEL] == "Free Models Router"
 
     def test_get_model_options_for_selection_direct_preserves_names(self) -> None:
         state = AppState()
@@ -1940,7 +1940,7 @@ class TestServerStateSplit:
 
         server = ServerState()
         assert server.project_path == Path.cwd()
-        assert server.selected_model == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        assert server.selected_model == DEFAULT_MODEL
         assert server.recent_projects == [Path.cwd()]
         assert server.api_key is None
         assert server.client_states == []

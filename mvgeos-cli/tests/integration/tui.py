@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mvgeos_core.constants import DEFAULT_MODEL
 from mvgeos_core.events import (
     MvgeEvent,
     MvgeEventType,
@@ -221,7 +222,7 @@ class TestCommandDispatcherOut:
 class FakeAgent:
     def __init__(self, tome_id: str = "abcd1234efgh") -> None:
         self.tome_id = tome_id
-        self._model_id = "nvidia/nemotron-3-ultra-550b-a55b:free"
+        self._model_id = DEFAULT_MODEL
         self._contemplation_level = "medium"
         self.queue_mode = "one-at-a-time"
         self._initialized = False
@@ -341,7 +342,7 @@ class TestTuiApp:
             side_effect=lambda items, width: items,
         ):
             footer = app._footer_text()
-            assert any("nvidia" in text for _, text in footer)
+            assert any(DEFAULT_MODEL in text for _, text in footer)
 
     def test_footer_shows_working_while_busy(self) -> None:
         app = self._app(FakeAgent())
@@ -431,11 +432,11 @@ class TestTuiApp:
     async def test_slash_model_switch(self) -> None:
         agent = FakeAgent()
         app = self._app(agent)
-        app._buffer.text = "/model nvidia/nemotron-3-ultra-550b-a55b:free"
+        app._buffer.text = f"/model {DEFAULT_MODEL}"
         app._on_accept(app._buffer)
         assert app._task is not None
         await app._task
-        assert agent._model_id == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        assert agent._model_id == DEFAULT_MODEL
         plain = "\n".join((e.text or "").plain for e in app.sink._entries)
         assert "Model switched" in plain
 
@@ -452,7 +453,7 @@ class TestTuiApp:
         app._on_accept(app._buffer)
         assert app._task is not None
         await app._task
-        assert agent._model_id == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        assert agent._model_id == DEFAULT_MODEL
         plain = "\n".join((e.text or "").plain for e in app.sink._entries)
         assert "Unknown model" in plain
 
@@ -464,7 +465,7 @@ class TestTuiApp:
 
         agent = FailSwitch()
         app = self._app(agent)
-        app._buffer.text = "/model nvidia/nemotron-3-ultra-550b-a55b:free"
+        app._buffer.text = f"/model {DEFAULT_MODEL}"
         app._on_accept(app._buffer)
         assert app._task is not None
         await app._task
@@ -649,10 +650,9 @@ class TestTuiApp:
             ("bold", " ~/mvgeos (main)"),
             ("dim", "  session 12345678"),
             ("", "  mana 0"),
-            ("", "  nvidia/nemotron-3-ultra-550b-a55b:free • medium"),
+            ("", f"  {DEFAULT_MODEL} • medium"),
             ("", "  (working • mode: one-at-a-time)"),
         ]
-        # Total length of items is 119
         fitted_50 = fit_footer(items, 50)
         assert sum(len(text) for _, text in fitted_50) <= 50
 
