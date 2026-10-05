@@ -43,6 +43,28 @@ def test_format_error_rate_limit_upstream_overload() -> None:
     assert "Service temporarily overloaded" in markup
 
 
+def test_format_error_rate_limit_reset_at_beats_retry_after() -> None:
+    exc = RateLimitError(
+        "Rate limited",
+        retry_after=60,
+        reset_at=1788566400.0,
+    )
+    markup = format_error(exc)
+    assert "Resets at" in markup
+    assert "Try again in 60s" not in markup
+
+
+def test_format_error_rate_limit_upstream_overload_reports_reset_at() -> None:
+    exc = RateLimitError(
+        "Provider returned error",
+        limit_source="upstream_rate_limit",
+        reset_at=1788566400.0,
+    )
+    markup = format_error(exc)
+    assert "Upstream provider overloaded" in markup
+    assert "Resets at" in markup
+
+
 def test_format_error_authentication_error() -> None:
     exc = AuthenticationError("Invalid API key")
     markup = format_error(exc)

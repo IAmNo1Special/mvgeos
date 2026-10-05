@@ -80,6 +80,15 @@ logger = logging.getLogger(__name__)
 
 _ERROR_LOG_BODY_CAP = 4000
 
+# OpenRouter's daily allowance for `:free` models is 50 requests. A drained
+# window no larger than this is a spent daily allowance, not upstream capacity.
+FREE_TIER_DAILY_QUOTA = 50
+
+_FREE_TIER_REMEDY_HINT = (
+    "Add credits to your OpenRouter account, switch to a paid model, or wait "
+    "for the daily reset."
+)
+
 
 def _get_header(
     headers: dict[str, Any] | Any,
@@ -123,6 +132,49 @@ def _parse_rate_limits(
     return quota_limit, quota_remaining, reset_at
 
 
+def _classify_limit_source(
+    quota_limit: int | None,
+    quota_remaining: int | None,
+) -> str | None:
+    """Name the exhausted window from the reported quota.
+
+    Realms report the limit in `X-RateLimit-*` headers; `error.metadata` is
+    optional and usually absent, so deriving the source from metadata alone
+    leaves the free-tier message unreachable. A drained window no larger than
+    the free-tier daily allowance is a spent allowance; any other reported
+    window is upstream capacity. Returns None when no quota was reported at
+    all, because an unnamed source beats a wrong name.
+    """
+    if quota_limit is None or quota_remaining is None:
+        return None
+    if quota_remaining == 0 and quota_limit <= FREE_TIER_DAILY_QUOTA:
+        return "openrouter_free_tier_daily"
+    return "upstream_rate_limit"
+
+
+def _resolve_limit_source(
+    reported: str | None,
+    quota_limit: int | None,
+    quota_remaining: int | None,
+) -> str | None:
+    """Prefer a Realm-declared source, else classify from the quota headers."""
+    if reported is not None:
+        return reported
+    return _classify_limit_source(quota_limit, quota_remaining)
+
+
+def _resolve_remedy_hint(
+    reported: str | None,
+    limit_source: str | None,
+) -> str | None:
+    """Fill in a remedy when the classified source has a known way out."""
+    if reported is not None:
+        return reported
+    if limit_source == "openrouter_free_tier_daily":
+        return _FREE_TIER_REMEDY_HINT
+    return None
+
+
 def _build_parsed_error(body: bytes, status_code: int, headers: Any) -> ParsedError:
     """Parse an HTTP error body into a ParsedError (pure, no I/O)."""
     try:
@@ -146,14 +198,19 @@ def _build_parsed_error(body: bytes, status_code: int, headers: Any) -> ParsedEr
 
     err_dict = err_obj if isinstance(err_obj, dict) else {}
     metadata = err_dict.get("metadata", {}) if isinstance(err_dict, dict) else {}
-    limit_source = metadata.get("limit_source") if isinstance(metadata, dict) else None
-    remedy_hint = metadata.get("remedy_hint") if isinstance(metadata, dict) else None
+    declared_source = (
+        metadata.get("limit_source") if isinstance(metadata, dict) else None
+    )
+    declared_hint = metadata.get("remedy_hint") if isinstance(metadata, dict) else None
     meta_headers = metadata.get("headers", {}) if isinstance(metadata, dict) else {}
     resp_headers = headers or {}
 
     quota_limit, quota_remaining, reset_at = _parse_rate_limits(
         resp_headers, meta_headers
     )
+
+    limit_source = _resolve_limit_source(declared_source, quota_limit, quota_remaining)
+    remedy_hint = _resolve_remedy_hint(declared_hint, limit_source)
 
     retry_after: float | None = None
     q_retry = _get_header(resp_headers, "retry-after", meta_headers)
@@ -451,17 +508,22 @@ class SSEStreamingRealm(Realm, ABC):
                 meta = err.get("metadata", {}) if isinstance(err, dict) else {}
                 meta_hdrs = meta.get("headers", {}) if isinstance(meta, dict) else {}
                 quota_limit, quota_remaining, reset_at = _parse_rate_limits(meta_hdrs)
+                declared_source = (
+                    meta.get("limit_source") if isinstance(meta, dict) else None
+                )
+                limit_source = _resolve_limit_source(
+                    declared_source, quota_limit, quota_remaining
+                )
+                declared_hint = (
+                    meta.get("remedy_hint") if isinstance(meta, dict) else None
+                )
 
                 error_response = RealmResponse(
                     model=model,
                     error_message=err_msg,
                     error_code=str(err_code) if err_code is not None else None,
-                    limit_source=(
-                        meta.get("limit_source") if isinstance(meta, dict) else None
-                    ),
-                    remedy_hint=(
-                        meta.get("remedy_hint") if isinstance(meta, dict) else None
-                    ),
+                    limit_source=limit_source,
+                    remedy_hint=_resolve_remedy_hint(declared_hint, limit_source),
                     quota_limit=quota_limit,
                     quota_remaining=quota_remaining,
                     reset_at=reset_at,

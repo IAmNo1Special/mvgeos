@@ -15,6 +15,14 @@ from rich.console import Console
 _console = Console()
 
 
+def _reset_at_suffix(reset_at: float | None) -> str:
+    """Render an absolute reset time as a trailing clause, or nothing."""
+    if not reset_at:
+        return ""
+    dt = datetime.fromtimestamp(reset_at, UTC)
+    return f" Resets at {dt.strftime('%H:%M UTC')}."
+
+
 def format_error(exc: Exception | str) -> str:
     """Format an exception or error string into consistent Rich markup."""
     if isinstance(exc, RateLimitError):
@@ -24,10 +32,7 @@ def format_error(exc: Exception | str) -> str:
                 if exc.quota_limit
                 else ""
             )
-            reset_str = ""
-            if exc.reset_at:
-                dt = datetime.fromtimestamp(exc.reset_at, UTC)
-                reset_str = f" Resets at {dt.strftime('%H:%M UTC')}."
+            reset_str = _reset_at_suffix(exc.reset_at)
             hint = f"\n[dim]Hint: {exc.remedy_hint}[/dim]" if exc.remedy_hint else ""
             return (
                 f"[yellow]Daily free-model quota exhausted{limit_str}."
@@ -37,10 +42,13 @@ def format_error(exc: Exception | str) -> str:
             exc.limit_source == "upstream_rate_limit"
             or "provider returned error" in str(exc).lower()
         ):
-            return f"[yellow]Upstream provider overloaded: {exc}[/yellow]"
+            return (
+                f"[yellow]Upstream provider overloaded: {exc}"
+                f"{_reset_at_suffix(exc.reset_at)}[/yellow]"
+            )
 
         hint = ""
-        if exc.retry_after is not None:
+        if exc.retry_after is not None and not exc.reset_at:
             hint = f" Try again in {exc.retry_after:.0f}s."
         remedy = f"\n[dim]Hint: {exc.remedy_hint}[/dim]" if exc.remedy_hint else ""
         if str(exc) and str(exc).lower() not in (
@@ -49,9 +57,13 @@ def format_error(exc: Exception | str) -> str:
             "you are being rate limited",
         ):
             return (
-                f"[yellow]Rate limited by the provider: {exc}.{hint}[/yellow]{remedy}"
+                f"[yellow]Rate limited by the provider: {exc}.{hint}"
+                f"{_reset_at_suffix(exc.reset_at)}[/yellow]{remedy}"
             )
-        return f"[yellow]Rate limited by the provider.{hint}[/yellow]{remedy}"
+        return (
+            f"[yellow]Rate limited by the provider.{hint}"
+            f"{_reset_at_suffix(exc.reset_at)}[/yellow]{remedy}"
+        )
     if isinstance(exc, AuthenticationError):
         return (
             "[red]Authentication failed (401). "
@@ -239,9 +251,17 @@ async def render_live_rate_limit(
     invalidate: Callable[[], None] | None = None,
     sleep_fn: Any = asyncio.sleep,
 ) -> None:
-    """Render a live rate-limit countdown or static exhaustion message."""
-    if exc.limit_source == "openrouter_free_tier_daily" or (
-        exc.retry_after is None and exc.limit_source
+    """Render a live rate-limit countdown or static exhaustion message.
+
+    An absolute `reset_at` means the window is measured in hours, not
+    seconds, so the static message is printed once. Counting down
+    `retry_after` in that case tells the Summoner to watch a clock that ends
+    long before the limit actually clears.
+    """
+    if (
+        exc.limit_source == "openrouter_free_tier_daily"
+        or (exc.retry_after is None and exc.limit_source)
+        or exc.reset_at
     ):
         markup = format_error(exc)
         out(markup)

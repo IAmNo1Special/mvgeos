@@ -184,6 +184,27 @@ class TestReplHelpers:
         assert len(outputs) == 1
         assert "Daily free-model quota exhausted" in outputs[0]
 
+    @pytest.mark.asyncio
+    async def test_render_live_rate_limit_reset_at_skips_countdown(self) -> None:
+        from mvgeos_core.errors import RateLimitError
+
+        from mvgeos_cli.formatting import render_live_rate_limit
+
+        outputs: list[str] = []
+
+        async def dummy_sleep(sec: float) -> None:
+            raise AssertionError("sleep should not be called past a reset time")
+
+        exc = RateLimitError(
+            "Provider returned error",
+            retry_after=60,
+            reset_at=1788566400.0,
+        )
+        await render_live_rate_limit(exc, out=outputs.append, sleep_fn=dummy_sleep)
+        assert len(outputs) == 1
+        assert "Resets at" in outputs[0]
+        assert "Retry in" not in outputs[0]
+
     def test_format_error_rate_limit_with_retry_after(self) -> None:
         from mvgeos_core.errors import RateLimitError
 

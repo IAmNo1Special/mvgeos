@@ -984,6 +984,91 @@ def test_error_from_response_parses_openrouter_rate_limit_metadata() -> None:
     assert code == "rate_limited"
 
 
+class _HeaderOnlyResponse:
+    """A 429 the way OpenRouter sends it: the limit is in headers only."""
+
+    status_code = 429
+
+    def __init__(
+        self, headers: dict[str, str], message: str = "Provider returned error"
+    ):
+        self.headers = headers
+        self._message = message
+
+    def read(self) -> bytes:
+        body = {"error": {"code": 429, "message": self._message}}
+        return json.dumps(body).encode("utf-8")
+
+
+def test_error_from_response_names_free_tier_from_quota_headers() -> None:
+    from mvgeos_provider.sse import _error_from_response
+
+    err = _error_from_response(
+        _HeaderOnlyResponse(
+            {
+                "x-ratelimit-limit": "50",
+                "x-ratelimit-remaining": "0",
+                "x-ratelimit-reset": "1791244800000",
+                "retry-after": "60",
+            }
+        )
+    )
+
+    assert err.error_code == "rate_limited"
+    assert err.limit_source == "openrouter_free_tier_daily"
+    assert err.remedy_hint
+    assert err.reset_at == 1791244800.0
+
+
+def test_error_from_response_names_unreported_quota_upstream() -> None:
+    from mvgeos_provider.sse import _error_from_response
+
+    drained_large_window = _error_from_response(
+        _HeaderOnlyResponse({"x-ratelimit-limit": "1000", "x-ratelimit-remaining": "0"})
+    )
+    assert drained_large_window.limit_source == "upstream_rate_limit"
+    assert drained_large_window.remedy_hint is None
+
+    quota_left = _error_from_response(
+        _HeaderOnlyResponse({"x-ratelimit-limit": "50", "x-ratelimit-remaining": "7"})
+    )
+    assert quota_left.limit_source == "upstream_rate_limit"
+
+
+def test_error_from_response_leaves_source_unnamed_without_quota() -> None:
+    from mvgeos_provider.sse import _error_from_response
+
+    err = _error_from_response(_HeaderOnlyResponse({"retry-after": "60"}))
+
+    assert err.limit_source is None
+    assert err.remedy_hint is None
+
+
+def test_error_from_response_keeps_declared_source_over_classified_one() -> None:
+    from mvgeos_provider.sse import _error_from_response
+
+    class DeclaredResponse(_HeaderOnlyResponse):
+        def read(self) -> bytes:
+            body = {
+                "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded: free-models-per-day.",
+                    "metadata": {
+                        "limit_source": "upstream_rate_limit",
+                        "remedy_hint": "Realm knows better.",
+                    },
+                }
+            }
+            return json.dumps(body).encode("utf-8")
+
+    err = _error_from_response(
+        DeclaredResponse({"x-ratelimit-limit": "50", "x-ratelimit-remaining": "0"})
+    )
+
+    assert err.limit_source == "upstream_rate_limit"
+    assert err.remedy_hint == "Realm knows better."
+
+
 @pytest.mark.asyncio
 async def test_stream_exhausts_retries_surfaces_diagnostic_fields() -> None:
     err_body = json.dumps(
