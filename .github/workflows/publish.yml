@@ -50,7 +50,7 @@ jobs:
       - name: Derive the publish order from the dependency graph
         id: order
         run: |
-          packages="$(python scripts/check_publish.py --list | paste -sd' ' -)"
+          packages="$(python3 scripts/check_publish.py --list | paste -sd' ' -)"
           echo "packages=$packages" >> "$GITHUB_OUTPUT"
           echo "Publish order: $packages"
 
@@ -58,7 +58,7 @@ jobs:
       # resolving its own siblings. See scripts/check_publish.py.
       - name: Build every distribution
         run: |
-          for package in $(python scripts/check_publish.py --list); do
+          for package in $(python3 scripts/check_publish.py --list); do
             echo "::group::build $package"
             uv build --no-sources --package "$package" --out-dir "dist/$package"
             echo "::endgroup::"
@@ -66,7 +66,7 @@ jobs:
 
       - name: Validate wheel metadata and lockstep versions
         run: |
-          python scripts/check_publish.py \
+          python3 scripts/check_publish.py \
             --dist-dir dist \
             --version "${{ steps.version.outputs.version }}"
 
@@ -76,7 +76,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Package | Files |" >> "$GITHUB_STEP_SUMMARY"
           echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
-          for package in $(python scripts/check_publish.py --list); do
+          for package in $(python3 scripts/check_publish.py --list); do
             files="$(ls "dist/$package" | paste -sd' ' -)"
             echo "| \`$package\` | $files |" >> "$GITHUB_STEP_SUMMARY"
           done
