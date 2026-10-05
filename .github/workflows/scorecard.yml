@@ -35,6 +35,13 @@ jobs:
   # regress. The snapshot is an artifact; landing it stays a human decision,
   # made on a pull request where the diff is readable.
   measure:
+    # The same `continue-on-error` the pull-request job carries. The step below
+    # already swallows a gate regression, so without this line only a hard
+    # crash -- a script that raises before it writes scorecard.json, which then
+    # trips `if-no-files-found: error` -- could turn the default branch red. That
+    # is the opposite of why this job exists. A failed measurement should be a
+    # missed data point, not a build break.
+    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
