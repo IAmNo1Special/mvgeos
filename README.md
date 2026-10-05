@@ -1,32 +1,189 @@
 # 🧙‍♂️ MvgeOS
 
 [![Python](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
-[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![uv](https://img.shields.io/badge/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type Checking: mypy](https://img.shields.io/badge/type%20checking-mypy%20strict-blue.svg)](https://mypy-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests](https://img.shields.io/badge/tests-2200%2B%20passed-brightgreen.svg)]()
-[![Coverage](https://img.shields.io/badge/coverage-90%25%20target-blue.svg)]()
 
-> **MvgeOS** is a modern, extensible, protocol-compliant AI coding agent architecture built in Python.
+> **An open coding-agent platform. Read it, fork it, self-host it, and run it on a model you already pay for.**
 
-Mvges (Agents) invoke Spells (Tools) across Models through Realms (Providers) on behalf of Summoners (Users), storing state and conversation history in JSONL Tomes (Sessions) — a Pi-inspired format that is not byte-compatible with Pi session files. See [Architecture Provenance](docs/architecture/PROVENANCE.md) for ecosystem inspirations and the cross-harness continuity roadmap.
+MvgeOS is an operating system for AI agents, written in Python. A **Mvge** — the
+agent — casts **Spells** (tools) against models served by **Realms** (providers).
+Conversations persist as **Tomes**. Capabilities extend through **Runes**.
+
+No account to create. No telemetry in the engine. No model baked in — you bring a
+key for whichever provider you already use.
+
+## Install
+
+```bash
+uv tool install "git+https://github.com/IAmNo1Special/mvgeos#subdirectory=mvgeos-cli"
+mvgeos --help
+```
+
+Or run it without installing anything:
+
+```bash
+uvx --from "git+https://github.com/IAmNo1Special/mvgeos#subdirectory=mvgeos-cli" mvgeos --help
+```
+
+> **Why is the install line this long?** The `mvgeos` console script now exists
+> on the root distribution, but no release has been published to PyPI yet, so
+> `uvx mvgeos` still resolves to nothing:
+>
+> ```text
+> Because mvgeos was not found in the package registry ...
+> ```
+>
+> Once a tagged release ships, this becomes `uvx mvgeos` and this note goes
+> away. The git form above works today.
+
+## Run one task
+
+```bash
+# 1. the Realm — how MvgeOS reaches a model
+mvgeos rune install openrouter-realm --confirm-python-deps
+
+# 2. the Mvge — carries the Spells
+mvgeos mvge install coding_mvge
+
+# 3. your key
+export OPENROUTER_API_KEY="sk-or-..."
+
+# run a task
+mvgeos --agent-name coding_mvge "Create a file named hello.txt containing exactly the text: hello from mvgeos"
+```
+
+Here is that task, actually run, with nothing edited. The Mvge cast `write`,
+checked its own work, and reported back:
+
+```text
+Created hello.txt with the content "hello from mvgeos". Verified the file contents match exactly.
+Stop reason: stop
+```
+
+The file is on disk, byte for byte what was asked — 17 characters, and no
+trailing newline, because the prompt said *exactly* that text:
+
+```console
+$ ls -l hello.txt
+-rw-r--r-- 1 you you 17 hello.txt
+$ od -c hello.txt
+0000000   h   e   l   l   o       f   r   o   m       m   v   g   e   o
+0000020   s
+0000021
+```
+
+The same task in the desktop app, same Realm, same model:
+
+![The MvgeOS desktop app after running the hello.txt task: the Summoner's prompt, the Mvge's write Spell cast, the Mana it cost, and the reply](docs/images/mvgeos-gui-hello-txt.png)
+
+<details>
+<summary>Install and runtime output, from a clean machine</summary>
+
+```text
+$ mvgeos --help
+ MvgeOS - a Python-based AI coding agent
+
+╭─ Commands ────────────────────────────────────────────────────────────────────╮
+│ build   Serialise the resolved runtime manifest (read-only).                 │
+│ config  Configuration management                                             │
+│ info    Display the runtime snapshot as rich tables (read-only).             │
+│ mvge    Mvge (agent) management                                              │
+│ rune    Extension rune management                                            │
+│ setup   Install system dependencies for runes                                │
+│ tome    Session tome management                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+$ mvgeos rune install openrouter-realm --confirm-python-deps
+Successfully installed rune 'openrouter-realm' to ~/.agents/extensions/openrouter-realm
+
+$ mvgeos mvge install coding_mvge
+Successfully installed mvge 'coding_mvge' to ~/.agents/agents/coding_mvge
+
+$ mvgeos info --agent-name coding_mvge
+Agent: coding_mvge
+Model: nvidia/nemotron-3-ultra-550b-a55b:free
+
+                    Spells
+┏━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Name       ┃ Source  ┃ Source Rune ┃ Description                               ┃
+┡━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ bash       │ builtin │ -           │ Execute a shell command with working dir…  │
+│ read       │ builtin │ -           │ Read a file from the workspace…           │
+│ write      │ builtin │ -           │ Create or overwrite a file…               │
+│ edit       │ builtin │ -           │ Modify an existing file…                  │
+│ find       │ builtin │ -           │ Locate files by name…                     │
+│ list       │ builtin │ -           │ List directory contents…                  │
+│ grep       │ builtin │ -           │ Search file contents by pattern…          │
+└────────────┴─────────┴─────────────┴───────────────────────────────────────────┘
+```
+
+</details>
+
+> Put `--agent-name` **after** a subcommand (`mvgeos info --agent-name …`).
+> Before one it is silently ignored and you get `Agent: default-mvge` with no
+> Spells. For a one-shot run there is no subcommand, so it goes before the
+> prompt, as above.
+
+**[Full documentation →](https://iamno1special.github.io/mvgeos-marketplace/)** —
+quickstart, concepts, troubleshooting with real errors, and FAQ.
+
+## What you get
+
+- **A coding Mvge you can read.** `bash`, `read`, `write`, `edit`, `find`,
+  `list`, `grep` — installed as a package, so you can see exactly what your
+  agent is allowed to do.
+- **Tomes, not a chat database.** Every conversation is an append-only JSONL
+  file under `~/.agents/sessions/` that you can read, diff, fork, and export.
+- **Runes.** Mount MCP servers as Spells, trace with OpenTelemetry, wire in
+  Agent Skills, read your `AGENTS.md`, self-modify. Fifteen in the
+  [marketplace catalog](https://iamno1special.github.io/mvgeos-marketplace/#rune-catalog).
+- **Realm-agnostic by construction.** The engine programs against a Realm
+  abstraction, not one vendor's SDK. Your key reaches the provider you chose
+  and nothing else.
+- **Terminal and desktop.** Streaming REPL, full-screen TUI, and a NiceGUI +
+  PyWebView desktop app with live Spell tracking and diff review.
+
+## Honest status
+
+- **`v0.6.5`, pre-1.0.** Internals are held to a high bar — mypy strict, ruff,
+  ~2,200 tests. The command surface still moves.
+- **No published distribution yet**, hence the long install line.
+- **A known bug costs a wasted round-trip.** When a Mvge checks its own work with
+  `read`, `grep`, `find`, or `list_files`, leaving the optional paging arguments
+  out, the cast is rejected once and retried: a nullable optional Spell argument
+  loses its nullability and then fails the second of two validation passes. The
+  task still completes correctly; you pay one extra model call. Tracked as
+  SOM-23.
+- **Runes run in-process** via `importlib`. Not sandboxed, not
+  process-isolated — a Rune has your permissions, and a manifest's
+  `python_deps` is an instruction to fetch packages from PyPI. Read manifests
+  before installing code you did not write. The
+  [approval rune](https://iamno1special.github.io/mvgeos-marketplace/runes/approval-rune/)
+  is a fail-closed gate you can put in front of mutating casts.
+- **No run-level spend cap.** *Mana Budget* is not implemented; Contemplation
+  is a per-request reasoning parameter, not a ceiling.
 
 ---
 
-## ✨ Features
+<details>
+<summary><b>✨ Features</b></summary>
 
-- ⚡ **Event-Driven Agent Loop (`mvgeos-agent`)**: Stream-centric execution loop with parallel spell dispatching, turn management, and automatic context compaction.
-- 🌐 **Multi-Model Provider Abstraction (`mvgeos-provider`)**: Realm protocol, model registry, and retry policies. The concrete OpenRouter realm (60+ LLMs, streaming, exponential backoff, rate-limit handling, reasoning effort configuration) ships as the `openrouter-realm` rune in `mvgeos-marketplace` and registers itself at runtime.
-- 📜 **JSONL Session Persistence (`mvgeos-tome`)**: JSONL session storage in a Pi-inspired format (not byte-compatible with Pi: Pi session files cannot be opened by MvgeOS and vice versa), featuring cross-process file locking, tree branching/forking, and in-memory index caching.
-- 🔮 **Rune Extension Ecosystem (`mvgeos-runes`)**: Hot-reloadable extension modules with 23 lifecycle Sigil hooks and command registration. Rune code executes in-process via `importlib` — extensions are *not* process-isolated; an opt-in sandbox seam exists for code that runes voluntarily submit for sandboxed execution.
-- 🖥️ **Desktop GUI (`mvgeos-gui`)**: Native desktop interface powered by NiceGUI and PyWebView offering a 1:1 Antigravity layout with interactive chat, step cards, floating dock, file tree, diff review, and artifact inspector.
-- ⌨️ **Rich CLI & TUI (`mvgeos-cli`)**: Full terminal interface featuring an interactive REPL with prompt-toolkit, terminal dashboard, and system diagnostic tooling.
-- 🛠️ **Full-Featured Coding Agent (`coding-mvge`)**: Pre-configured agent with built-in spells for bash execution, file reading, editing, creation, grep searching, and directory listing.
+- ⚡ **Event-Driven Agent Loop (<code>mvgeos-agent</code>)**: Stream-centric execution loop with parallel spell dispatching, turn management, and automatic context compaction.
+- 🌐 **Multi-Model Provider Abstraction (<code>mvgeos-provider</code>)**: Realm protocol, model registry, and retry policies. The concrete OpenRouter realm (60+ LLMs, streaming, exponential backoff, rate-limit handling, reasoning effort configuration) ships as the `openrouter-realm` rune in `mvgeos-marketplace` and registers itself at runtime.
+- 📜 **JSONL Session Persistence (<code>mvgeos-tome</code>)**: JSONL session storage in a Pi-inspired format (not byte-compatible with Pi: Pi session files cannot be opened by MvgeOS and vice versa), featuring cross-process file locking, tree branching/forking, and in-memory index caching.
+- 🔮 **Rune Extension Ecosystem (<code>mvgeos-runes</code>)**: Hot-reloadable extension modules with 23 lifecycle Sigil hooks and command registration. Rune code executes in-process via `importlib` — extensions are *not* process-isolated; an opt-in sandbox seam exists for code that runes voluntarily submit for sandboxed execution.
+- 🖥️ **Desktop GUI (<code>mvgeos-gui</code>)**: Native desktop interface powered by NiceGUI and PyWebView offering a 1:1 Antigravity layout with interactive chat, step cards, floating dock, file tree, diff review, and artifact inspector.
+- ⌨️ **Rich CLI & TUI (<code>mvgeos-cli</code>)**: Full terminal interface featuring an interactive REPL with prompt-toolkit, terminal dashboard, and system diagnostic tooling.
+- 🛠️ **Full-Featured Coding Agent (<code>coding-mvge</code>)**: Pre-configured agent with built-in spells for bash execution, file reading, editing, creation, grep searching, and directory listing.
 
----
+</details>
 
-## 🏛️ Monorepo Architecture
+<details>
+<summary><b>🏛️ Monorepo Architecture</b></summary>
 
 MvgeOS is organized as a monorepo powered by `uv` workspaces:
 
@@ -39,7 +196,7 @@ MvgeOS is organized as a monorepo powered by `uv` workspaces:
 | [`mvgeos-runes`](mvgeos-runes/AGENTS.md) | Extension system: manifest parser, loader, watcher, and sigil hooks |
 | [`mvgeos-cli`](mvgeos-cli/AGENTS.md) | CLI commands (`mvgeos`), REPL, and TUI interface |
 | [`mvgeos-gui`](mvgeos-gui/AGENTS.md) | Native desktop application powered by NiceGUI with 1:1 Antigravity UI |
-| [`coding-mvge`](coding-mvge/AGENTS.md) | Concrete coding agent implementation with built-in development spells |
+| [`coding-mvge`](https://github.com/IAmNo1Special/mvgeos-marketplace/tree/main/mvges/coding_mvge) | Concrete coding Mvge with built-in development Spells (ships from the marketplace, not this repo) |
 
 ```mermaid
 flowchart TD
@@ -69,9 +226,10 @@ flowchart TD
     Harness --> Tome
 ```
 
----
+</details>
 
-## 📖 MvgeOS Terminology
+<details>
+<summary><b>📖 MvgeOS Terminology</b></summary>
 
 MvgeOS adopts a consistent domain language across all packages:
 
@@ -90,74 +248,30 @@ MvgeOS adopts a consistent domain language across all packages:
 | **Callback / Hook** | `Sigil` | Lifecycle event handler |
 | **Reasoning Effort** | `Contemplation` | Thought generation configuration |
 
----
+The authoritative definitions, including what each term is *not*, are in
+[`CONTEXT.md`](CONTEXT.md).
 
-## 🚀 Quick Start
+</details>
 
-### Prerequisites
+<details>
+<summary><b>⚙️ Configuration &amp; the <code>.agents</code> protocol</b></summary>
 
-- **Python**: `>= 3.13`
-- **Package Manager**: [`uv`](https://github.com/astral-sh/uv)
-- **API Key**: [OpenRouter API Key](https://openrouter.ai/)
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/IAmNo1Special/mvgeos.git
-cd mvgeos
-
-# Install workspace dependencies
-uv sync
-```
-
-### Environment Configuration
-
-Copy the example configuration or set your OpenRouter API key directly:
-
-```bash
-# Copy template to .env
-cp .env.example .env
-
-# Or export in shell (Linux / macOS)
-export OPENROUTER_API_KEY="your-openrouter-api-key"
-
-# Windows PowerShell
-$env:OPENROUTER_API_KEY="your-openrouter-api-key"
-```
-
-### Launching MvgeOS
-
-```bash
-# Run a single prompt via CLI
-uv run mvgeos "Explain the project architecture"
-
-# Start the interactive terminal REPL
-uv run mvgeos
-
-# Launch the native Desktop GUI (NiceGUI + PyWebView)
-uv run mvgeos-gui
-
-# Serve the GUI to your web browser
-uv run mvgeos-gui --web --port 8000
-```
-
----
-
-## ⚙️ Configuration & `.agents` Protocol
-
-MvgeOS complies with the [dotagents protocol](https://dotagentsprotocol.com). Configuration data is stored under `.agents/.mvgeos/`:
+MvgeOS complies with the [dotagents protocol](https://dotagentsprotocol.com).
+At filesystem and wire boundaries it uses the standard protocol names — so its
+files stay readable by anything else that speaks the protocol.
 
 ```text
-~/.agents/.mvgeos/
-├── runes/
-│   └── manifest.json    # Rune extension registry
-├── tomes/               # Session JSONL storage
-├── auth/                # API keys and credentials
-└── models.json          # Custom model configurations
+~/.agents/
+├── extensions/          # Runes, including Realms
+├── agents/<mvge>/       # installed Mvges, their Spells, Skills, runes/
+├── sessions/            # Tomes, as JSONL
+├── auth/                # credentials
+├── skills/              # user-scope Skills
+├── models.json          # model configuration
+└── mcp.json             # MCP server registry
 ```
 
-### Environment Variables
+### Environment variables
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
@@ -173,73 +287,73 @@ MvgeOS complies with the [dotagents protocol](https://dotagentsprotocol.com). Co
 | `MVGEOS_BASH_TIMEOUT_MS` | integer | `600000` (10 min) | Default spell execution timeout in milliseconds |
 | `EDITOR` | string | System default | External text editor command for editing configurations or notes |
 
----
+</details>
 
-## 🧩 Dependency Setup for Runes
+<details>
+<summary><b>🧩 Rune dependencies</b></summary>
 
-Runes can declare both Python and system dependencies. Use `mvgeos setup` to inspect and install them:
-
-```bash
-# Check required dependencies
-uv run mvgeos setup check
-
-# Interactively install missing dependencies
-uv run mvgeos setup install
-
-# Non-interactively install all dependencies
-uv run mvgeos setup install --yes
-
-# Dry-run preview of installation actions
-uv run mvgeos setup install --dry-run
-```
-
----
-
-## 🧪 Quality Gates & Development
-
-All code in MvgeOS is developed using strict TDD (Test-Driven Development) and adheres to rigorous quality gates:
+Runes can declare both Python and system dependencies. Use `mvgeos setup` to
+inspect and install them:
 
 ```bash
-# Run complete test suite with coverage
-uv run python -m pytest --cov
-
-# Run type checker in strict mode
-uv run mypy .
-
-# Run linter
-uv run ruff check
-
-# Verify formatting
-uv run ruff format --check
+mvgeos setup check              # check required dependencies
+mvgeos setup install            # interactively install missing dependencies
+mvgeos setup install --yes      # non-interactively install all dependencies
+mvgeos setup install --dry-run  # dry-run preview of installation actions
 ```
 
----
+</details>
 
-## 🔒 Security & Architecture Provenance
+<details>
+<summary><b>🧪 Development</b></summary>
 
-- **Security Policy**: For vulnerability reporting, prompt injection threat models, and local execution safeguards, review [SECURITY.md](SECURITY.md).
-- **Architecture Provenance**: To learn about the origins of MvgeOS, its ecosystem inspirations (Pi, Google ADK, Eve, arXiv literature), and the cross-harness session continuity roadmap, review [PROVENANCE.md](docs/architecture/PROVENANCE.md).
-
----
-
-## 📦 Releases & Changelog
-
-- **Changelog**: Managed via [`git-cliff`](https://github.com/orhun/git-cliff) using conventional commits.
-- **Workflow**: Automated release workflow in `.github/workflows/release.yml`.
+All code in MvgeOS is developed using strict TDD and adheres to rigorous quality
+gates:
 
 ```bash
-# Preview unreleased changes
-uv run git-cliff --config cliff.toml --unreleased
-
-# Generate updated CHANGELOG.md
-uv run git-cliff --config cliff.toml --output CHANGELOG.md
+uv sync                                  # workspace dependencies
+uv run python -m pytest --cov            # full suite with coverage
+uv run mypy .                            # type checker, strict mode
+uv run ruff check                        # linter
+uv run ruff format --check               # formatting
 ```
 
----
+### Interfaces
 
-## 📄 License
+The desktop GUI is a separate package and is not part of the CLI install above —
+run it from a source checkout:
 
-This project is licensed under the [MIT License](LICENSE).
+```bash
+uv run mvgeos                       # streaming REPL
+uv run mvgeos --tui                 # full-screen TUI
+uv run mvgeos-gui                   # native desktop app (NiceGUI + PyWebView)
+uv run mvgeos-gui --web --port 8000 # serve the GUI to your browser
+```
+
+See [`TESTING.md`](TESTING.md) for the testing standards charter and
+[`CONTRIBUTING.md`](CONTRIBUTING.md) to get set up.
+
+</details>
+
+<details>
+<summary><b>🔒 Security, provenance, releases, licence</b></summary>
+
+- **Security policy**: vulnerability reporting, prompt injection threat models,
+  and local execution safeguards — see [`SECURITY.md`](SECURITY.md).
+- **Architecture provenance**: origins of MvgeOS, its ecosystem inspirations
+  (Pi, Google ADK, Eve, arXiv literature), and the cross-harness session
+  continuity roadmap — see [`docs/architecture/PROVENANCE.md`](docs/architecture/PROVENANCE.md).
+- **Changelog**: managed via [`git-cliff`](https://github.com/orhun/git-cliff)
+  from conventional commits; automated on pushes to `main`.
+
+```bash
+uv run git-cliff --config cliff.toml --unreleased     # preview unreleased
+uv run git-cliff --config cliff.toml --output CHANGELOG.md   # regenerate
+```
+
+**Licence**: MIT — see [`LICENSE`](LICENSE).
+
+</details>
 
 ---
 
