@@ -74,6 +74,26 @@ Any config setter (`set_model_and_realm`, future `set_contemplation`, `set_tools
 - `Mvge` callers must migrate from `agent._state.xxx` to `agent.harness.snapshot.xxx` or Event stream.
 - `Mvge.reload_spells()` is a new public method; callers using Rune watcher must adopt it.
 
+## Contract
+
+Symbols this decision commits to. All of these exist today.
+
+<!-- adr-contract: MvgeHarness, MvgeState, ExecutionSnapshot, LoopCallbacks, CONFIG_CHANGE, refresh_spells, reload_spells, spell_version -->
+
+**Not yet contracted — the migration is incomplete.** Section 2 promises three
+Harness methods that do not exist. They are deliberately absent from the marker
+above so CI stays green while the gap is real; step 4 of the plan below adds them
+and moves them into the contract in the same commit.
+
+| Promised | Reality |
+| --- | --- |
+| `MvgeHarness.steer` | absent from Harness; `Mvge.steer` exists and mutates `MvgeState` directly |
+| `MvgeHarness.abort` | absent from Harness; `Mvge.abort` exists |
+| `MvgeHarness.with_model` | absent everywhere; zero adapters justify the seam |
+
+Section 3's *"make `MvgeState` internal"* is also unmet: 15 writes remain in
+`Mvge`, plus `state._spell_index` written from outside the Harness twice.
+
 ## Migration Plan (TDD)
 1. Add `ExecutionSnapshot` + `config_change` event + `with_model` to Harness (tests first).
 2. Implement `refresh_spells` hook + `spell_version` + `reload_spells()` in Mvge (tests first).

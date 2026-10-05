@@ -87,6 +87,14 @@ One module owns the layer stack and is the only place a path is derived.
 7. **`GLOBAL_DIR_ENV` is honoured everywhere, including by Runes.** A Rune that
    hardcodes `~/.agents` is a bug, and the test suite asserts it.
 
+## Contract
+
+Symbols this decision commits to. `GLOBAL_DIR_ENV` and `PROJECT_RUNE_PATH` are
+the protocol-facing names and must not be renamed. `global_agents_dir` is the
+documented single resolver. `Scope` is what decision 5 turns into a ranking rule.
+
+<!-- adr-contract: GLOBAL_DIR_ENV, PROJECT_RUNE_PATH, global_agents_dir, sessions_dir, agents_dir, extensions_dir, skills_dir, auth_dir, auth_file, approval_dir, models_file, history_file, Scope, RuneScope -->
+
 ## Consequences
 
 **Positive**

@@ -87,6 +87,13 @@ revision check, and format shape belongs to a codec.
    Pi sessions are readable, resumable, appendable, compactable and forkable
    through the `pi-codec` Rune — natively, without conversion into a Tome.
 
+## Contract
+
+Symbols this decision commits to. An implementer may rely on these existing;
+renaming any of them is a breaking change to this ADR.
+
+<!-- adr-contract: SessionCodec, TomeV1Codec, AppendPlan, Revision, TomeHandle, TomeHandleFactory, repair_torn_tail, append_leaf, list_tomes, get_leaf_id, portalocker -->
+
 ## Consequences
 
 **Positive**

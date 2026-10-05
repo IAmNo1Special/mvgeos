@@ -2,7 +2,7 @@
 
 ## Status
 
-Mechanism superseded by [ADR 0013](0013-cache-free-format-agnostic-tome-persistence.md)
+Accepted — mechanism superseded by [ADR 0013](0013-cache-free-format-agnostic-tome-persistence.md)
 
 > **Mechanism superseded 2026-10-04.** The decision to store one Tome per JSONL
 > file survives. Three mechanisms named below do not exist:

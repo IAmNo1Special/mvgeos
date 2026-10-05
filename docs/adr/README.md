@@ -5,7 +5,7 @@
 | 0014 | [One Resolved Layer Stack for the `.agents` Protocol](0014-one-resolved-layer-stack.md) | Accepted | 2026-10-04 |
 | 0013 | [Cache-Free, Format-Agnostic Tome Persistence](0013-cache-free-format-agnostic-tome-persistence.md) | Accepted | 2026-10-04 |
 | 0012 | [Deepened Mvge Turn-Driving Module](0012-deepened-mvge-turn-driving-module.md) | Accepted — migration incomplete, see note | 2026-09-12 |
-| 0011 | [skill_evolution — MvgeOS Architecture for Autonomous Skill Evolution](0011-skill-evolution-rune-architecture.md) | Accepted | 2026-09-08 |
+| 0011 | [skill_evolution — MvgeOS Architecture for Autonomous Skill Evolution](0011-skill-evolution-rune-architecture.md) | Accepted (supersedes ADR 0010) | 2026-09-08 |
 | 0010 | [knowledge_skill — MvgeOS Implementation of WikiSkill with Persistent Knowledge](0010-knowledge-skill-persistent-knowledge-architecture.md) | Superseded by ADR 0011 | 2026-09-06 |
 | 0009 | [Two-Layer Invariant Scaffolding & Colocated Zero-Config Agent Architecture](0009-two-layer-invariant-scaffolding-and-colocated-agent-architecture.md) | Accepted (amended 2026-10-04) | 2026-09-02 |
 | 0008 | [NiceGUI Desktop Application Architecture (1:1 Antigravity UI)](0008-nicegui-desktop-application.md) | Accepted (amended 2026-08: component inventory descoped to the shipped pipeline) | 2026-08-22 |
