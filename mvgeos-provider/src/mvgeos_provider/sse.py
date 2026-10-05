@@ -23,11 +23,14 @@ from mvgeos_core.channel import (
 
 from mvgeos_provider.base import Realm
 from mvgeos_provider.retry import (
+    RetryBudget,
     ServerRetryDelayTooLongError,
     _sleep_ms,
     is_retryable_realm_response,
     is_retryable_status,
     realm_request_delay_ms,
+    retry_budget_for,
+    transient_retry_budget,
 )
 
 
@@ -308,9 +311,14 @@ class SSEStreamingRealm(Realm, ABC):
                 stream_options = {}
                 payload["stream_options"] = stream_options
             stream_options.setdefault("include_usage", True)
-        max_attempts = max(1, config.max_retries)
+        # A failure re-rates the budget it is retrying on: capacity saturation
+        # earns a minutes-scale ceiling, everything else stays transient. Only
+        # the accumulated wait bounds the loop, so the run always terminates.
+        budget: RetryBudget = transient_retry_budget(config.max_retries)
+        attempt = 0
+        waited_ms = 0.0
 
-        for attempt in range(max_attempts):
+        while attempt < budget.max_attempts:
             if signal is not None and signal.aborted:
                 raise AbortError("Operation aborted")
 
@@ -322,8 +330,8 @@ class SSEStreamingRealm(Realm, ABC):
                 timeout=config.timeout_ms / 1000,
             ) as response:
                 try:
-                    retryable_chunk_error: RealmResponse | None = None
-                    parsed_err: ParsedError | None = None
+                    # Every path that reaches the retry decision below sets this.
+                    failure: RealmResponse | None = None
                     if response.status_code == 200:
                         streamed_any = False
                         async for item in self._consume_stream(model, response):
@@ -333,52 +341,59 @@ class SSEStreamingRealm(Realm, ABC):
                                 item.error_message
                                 and not streamed_any
                                 and is_retryable_realm_response(item)
-                                and attempt < max_attempts - 1
                             ):
-                                retryable_chunk_error = item
-                                break
+                                budget = retry_budget_for(item, budget.max_attempts)
+                                if attempt < budget.max_attempts - 1:
+                                    failure = item
+                                    break
                             streamed_any = True
                             yield item
-                        if retryable_chunk_error is None:
+                        if failure is None:
                             return
-                        message = retryable_chunk_error.error_message or ""
-                        error_code = retryable_chunk_error.error_code
                     else:
                         parsed_err = await self._parse_error_async(
-                            response, attempt, max_attempts
+                            response, attempt, budget.max_attempts
                         )
-                        message, error_code = parsed_err
                         if not is_retryable_status(
                             response.status_code, response.headers
                         ):
                             yield parsed_err.to_response(model)
                             return
+                        failure = parsed_err.to_response(model)
+                        budget = retry_budget_for(failure, budget.max_attempts)
+                    assert failure is not None
                 finally:
                     if signal is not None and signal.aborted:
                         await response.aclose()
 
-                if attempt >= max_attempts - 1:
-                    if parsed_err is not None:
-                        yield parsed_err.to_response(model)
-                    else:
-                        yield RealmResponse(
-                            model=model,
-                            error_message=message,
-                            error_code=error_code,
-                        )
+                if attempt >= budget.max_attempts - 1:
+                    yield failure
                     return
 
                 try:
-                    delay_ms = realm_request_delay_ms(response.headers, attempt)
+                    delay_ms = realm_request_delay_ms(
+                        response.headers,
+                        attempt,
+                        base_delay_ms=budget.base_delay_ms,
+                        max_backoff_ms=budget.max_backoff_ms,
+                    )
                 except ServerRetryDelayTooLongError as exc:
                     yield RealmResponse(
                         model=model,
-                        error_message=f"{exc}. {message}",
-                        error_code=error_code,
+                        error_message=f"{exc}. {failure.error_message or ''}",
+                        error_code=failure.error_code,
                     )
                     return
 
+                if waited_ms + delay_ms > budget.max_total_wait_ms:
+                    # Bounded: the ceiling is spent, so fail with the Realm's own
+                    # message instead of stalling past the budget.
+                    yield failure
+                    return
+
             await _sleep_ms(delay_ms, signal)
+            waited_ms += delay_ms
+            attempt += 1
 
     async def _consume_stream(
         self,

@@ -18,6 +18,7 @@ from mvgeos_core.channel import (
     StopReason,
 )
 
+from mvgeos_provider.retry import CAPACITY_RETRY_BUDGET
 from mvgeos_provider.sse import SSEChunk, SSEStreamingRealm
 
 
@@ -79,6 +80,7 @@ def _make_client(
 
 def _make_sequence_client(
     entries: list[tuple[int, dict[str, str], list[bytes], bytes]],
+    sink: dict[str, Any] | None = None,
 ) -> httpx.AsyncClient:
     class _SeqCM:
         _calls = 0
@@ -89,6 +91,8 @@ def _make_sequence_client(
         async def __aenter__(self) -> MockStreamResponse:
             idx = min(_SeqCM._calls, len(entries) - 1)
             _SeqCM._calls += 1
+            if sink is not None:
+                sink["calls"] = _SeqCM._calls
             status, headers, lines, body = entries[idx]
             return MockStreamResponse(
                 lines=lines,
@@ -104,6 +108,27 @@ def _make_sequence_client(
     client.stream = _SeqCM
     client.is_closed = False
     return client
+
+
+class _SleepRecorder:
+    """Stands in for the retry sleep and records what it was asked to wait."""
+
+    def __init__(self) -> None:
+        self.requested_ms: list[float] = []
+
+    async def __call__(self, delay_ms: float, signal: Any = None) -> None:
+        self.requested_ms.append(delay_ms)
+
+    @property
+    def total_ms(self) -> float:
+        return sum(self.requested_ms)
+
+
+#: The free-endpoint saturation this retry budget exists for, verbatim.
+_OVERLOADED_CHUNK = (
+    b'data: {"error":{"code":503,"message":"Upstream error from Nvidia: '
+    b'Service temporarily overloaded"}}\n\n'
+)
 
 
 class DummySSERealm(SSEStreamingRealm):
@@ -558,16 +583,12 @@ async def test_stream_chunk_error_surfaces_realm_response() -> None:
 
 @pytest.mark.asyncio
 async def test_stream_chunk_error_retryable_recovers() -> None:
-    err_chunk = (
-        b'data: {"error":{"code":503,"message":"Upstream error from Nvidia: '
-        b'Service temporarily overloaded"}}\n\n'
-    )
     rec_chunk = (
         b'data: {"choices":[{"delta":{"content":"recovered"},'
         b'"finish_reason":"stop"}]}\n\n'
     )
     entries = [
-        (200, {}, [err_chunk], b""),
+        (200, {}, [_OVERLOADED_CHUNK], b""),
         (200, {}, [rec_chunk, b"data: [DONE]\n\n"], b""),
     ]
     client = _make_sequence_client(entries)
@@ -625,13 +646,9 @@ async def test_stream_mid_stream_non_retryable_error_keeps_code() -> None:
 
 @pytest.mark.asyncio
 async def test_stream_chunk_error_retryable_exhausts_retries() -> None:
-    err_chunk = (
-        b'data: {"error":{"code":503,"message":"Upstream error from Nvidia: '
-        b'Service temporarily overloaded"}}\n\n'
-    )
     entries = [
-        (200, {}, [err_chunk], b""),
-        (200, {}, [err_chunk], b""),
+        (200, {}, [_OVERLOADED_CHUNK], b""),
+        (200, {}, [_OVERLOADED_CHUNK], b""),
     ]
     client = _make_sequence_client(entries)
     realm = DummySSERealm(client=client)
@@ -643,6 +660,186 @@ async def test_stream_chunk_error_retryable_exhausts_retries() -> None:
 
     assert len(responses) == 1
     assert "temporarily overloaded" in (responses[0].error_message or "")
+
+
+@pytest.mark.asyncio
+async def test_stream_capacity_saturation_outlasts_a_saturation_window() -> None:
+    # A saturated free endpoint fails in windows, not at random, so the fix has
+    # to spread attempts across tens of seconds rather than add a fourth try.
+    sink: dict[str, Any] = {}
+    realm = DummySSERealm(
+        client=_make_sequence_client([(200, {}, [_OVERLOADED_CHUNK], b"")], sink)
+    )
+    model = _test_model()
+    config = ChannelConfig(model=model)
+    sleep = _SleepRecorder()
+
+    with patch("mvgeos_provider.sse._sleep_ms", sleep):
+        responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 1
+    assert "temporarily overloaded" in (responses[0].error_message or "")
+    assert sink["calls"] >= 5
+    assert sleep.total_ms >= 30_000
+
+
+@pytest.mark.asyncio
+async def test_stream_transient_failure_keeps_the_short_budget() -> None:
+    sink: dict[str, Any] = {}
+    err_chunk = (
+        b'data: {"error":{"code":503,"message":"Upstream error: '
+        b'connection reset before headers"}}\n\n'
+    )
+    realm = DummySSERealm(
+        client=_make_sequence_client([(200, {}, [err_chunk], b"")], sink)
+    )
+    model = _test_model()
+    config = ChannelConfig(model=model)
+    sleep = _SleepRecorder()
+
+    with patch("mvgeos_provider.sse._sleep_ms", sleep):
+        await _collect(realm.stream(model, [], config))
+
+    assert sink["calls"] == 3
+    assert sleep.total_ms < 5_000
+
+
+@pytest.mark.asyncio
+async def test_stream_capacity_retry_budget_is_bounded() -> None:
+    # A genuinely dead Realm must still fail, and must not have converted a
+    # four-second failure into an open-ended hang.
+    sink: dict[str, Any] = {}
+    realm = DummySSERealm(
+        client=_make_sequence_client([(200, {}, [_OVERLOADED_CHUNK], b"")], sink)
+    )
+    model = _test_model()
+    config = ChannelConfig(model=model)
+    sleep = _SleepRecorder()
+
+    with patch("mvgeos_provider.sse._sleep_ms", sleep):
+        responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 1
+    assert responses[0].error_message is not None
+    assert sleep.total_ms <= CAPACITY_RETRY_BUDGET.max_total_wait_ms
+    assert sink["calls"] <= CAPACITY_RETRY_BUDGET.max_attempts
+
+
+@pytest.mark.asyncio
+async def test_stream_capacity_wait_ceiling_bounds_a_large_attempt_request() -> None:
+    # Even a caller that asks for far more retries than the ceiling can spend
+    # stops at the ceiling instead of stalling on the backoff schedule.
+    sink: dict[str, Any] = {}
+    realm = DummySSERealm(
+        client=_make_sequence_client([(200, {}, [_OVERLOADED_CHUNK], b"")], sink)
+    )
+    model = _test_model()
+    config = ChannelConfig(model=model, max_retries=200)
+    sleep = _SleepRecorder()
+
+    with patch("mvgeos_provider.sse._sleep_ms", sleep):
+        responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 1
+    assert sleep.total_ms <= CAPACITY_RETRY_BUDGET.max_total_wait_ms
+    assert sink["calls"] < 200
+
+
+@pytest.mark.asyncio
+async def test_stream_capacity_error_on_a_non_200_gets_the_long_budget() -> None:
+    sink: dict[str, Any] = {}
+    entries = [
+        (
+            503,
+            {},
+            [],
+            b'{"error":{"message":"No capacity available for this model"}}',
+        )
+    ]
+    realm = DummySSERealm(client=_make_sequence_client(entries, sink))
+    model = _test_model()
+    config = ChannelConfig(model=model)
+    sleep = _SleepRecorder()
+
+    with patch("mvgeos_provider.sse._sleep_ms", sleep):
+        responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 1
+    assert "No capacity available" in (responses[0].error_message or "")
+    assert sleep.total_ms >= 30_000
+
+
+@pytest.mark.asyncio
+async def test_stream_quota_error_is_not_retried_under_a_capacity_budget() -> None:
+    # Billing and quota are deterministic. The capacity patterns must never
+    # outrank them, however many attempts the caller allowed.
+    sink: dict[str, Any] = {}
+    err_chunk = (
+        b'data: {"error":{"code":429,"message":"Upstream overloaded: '
+        b'insufficient_quota for this key"}}\n\n'
+    )
+    realm = DummySSERealm(
+        client=_make_sequence_client([(200, {}, [err_chunk], b"")], sink)
+    )
+    model = _test_model()
+    config = ChannelConfig(model=model)
+    sleep = _SleepRecorder()
+
+    with patch("mvgeos_provider.sse._sleep_ms", sleep):
+        responses = await _collect(realm.stream(model, [], config))
+
+    assert sink["calls"] == 1
+    assert sleep.requested_ms == []
+    assert "insufficient_quota" in (responses[0].error_message or "")
+
+
+@pytest.mark.asyncio
+async def test_stream_capacity_error_after_content_is_not_replayed() -> None:
+    # The capacity budget must not weaken the rule that stops a retry from
+    # duplicating transcript text: once anything has streamed, no replay.
+    lines = [
+        b'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n',
+        _OVERLOADED_CHUNK,
+    ]
+    realm = DummySSERealm(client=_make_client(lines))
+    model = _test_model()
+    config = ChannelConfig(model=model)
+    sleep = _SleepRecorder()
+
+    with patch("mvgeos_provider.sse._sleep_ms", sleep):
+        responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 2
+    assert responses[0].stop_reason == "pending"
+    assert responses[1].error_message is not None
+    assert "temporarily overloaded" in responses[1].error_message
+    assert sleep.requested_ms == []
+
+
+@pytest.mark.asyncio
+async def test_stream_capacity_retry_recovers_once_the_window_clears() -> None:
+    ok_chunk = b'data: {"choices":[{"delta":{"content":"recovered"}}]}\n\n'
+    entries = [
+        (200, {}, [_OVERLOADED_CHUNK], b""),
+        (
+            200,
+            {},
+            [ok_chunk, b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'],
+            b"",
+        ),
+    ]
+    realm = DummySSERealm(client=_make_sequence_client(entries))
+    model = _test_model()
+    config = ChannelConfig(model=model)
+
+    with patch("mvgeos_provider.sse._sleep_ms", _SleepRecorder()):
+        responses = await _collect(realm.stream(model, [], config))
+
+    assert any(
+        r.invocation is not None
+        and any(c.get("text") == "recovered" for c in r.invocation.content)
+        for r in responses
+    )
 
 
 def test_error_from_response_parses_openrouter_rate_limit_metadata() -> None:

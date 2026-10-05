@@ -88,12 +88,38 @@ _NON_RETRYABLE_PATTERNS = (
     "billing",
 )
 
+# Endpoint at capacity: the Realm has no room for this request right now. This
+# is a narrower class than _RETRYABLE_PATTERNS on purpose. A dropped connection
+# or a socket hang up recovers in milliseconds; a saturated free endpoint
+# recovers in seconds to minutes, measured as bursty windows rather than
+# independent per-attempt failures. Retrying either on the same budget packs
+# every attempt inside the same window and fails them all together, so only the
+# capacity wording earns the minutes-scale budget in CAPACITY_RETRY_BUDGET.
+#
+# Deliberately absent: 429 and "rate.?limit". Those Realms say when to come back
+# via `Retry-After`, which realm_request_delay_ms already honours exactly.
+_CAPACITY_PATTERNS = (
+    "overloaded",
+    "at.?capacity",
+    "no.?capacity",
+    "capacity.?exceeded",
+    "insufficient.?capacity",
+    "no.?available.?capacity",
+    "service.?unavailable",
+    "server.?is.?busy",
+    "too.?many.?concurrent",
+)
+
 _RETRYABLE_RE = re.compile("|".join(_RETRYABLE_PATTERNS), re.IGNORECASE)
 _NON_RETRYABLE_RE = re.compile("|".join(_NON_RETRYABLE_PATTERNS), re.IGNORECASE)
+_CAPACITY_RE = re.compile("|".join(_CAPACITY_PATTERNS), re.IGNORECASE)
 
 # Error codes a Realm sets explicitly. Trusted ahead of the prose patterns.
 _RETRYABLE_CODES = frozenset({"rate_limited"})
 _NON_RETRYABLE_CODES = frozenset({"auth_failed"})
+#: Runes that can classify their own saturation set one of these; it wins over
+#: the prose patterns exactly as `rate_limited` already does.
+_CAPACITY_CODES = frozenset({"overloaded", "capacity_exceeded", "server_overloaded"})
 
 
 class ServerRetryDelayTooLongError(Exception):
@@ -118,6 +144,58 @@ class RetryPolicy:
 
 
 DEFAULT_RETRY_POLICY = RetryPolicy()
+
+
+@dataclass(frozen=True)
+class RetryBudget:
+    """Attempts a retry loop may make, the wall-clock it may spend waiting, and
+    the backoff schedule it waits on.
+
+    `max_total_wait_ms` is the enforced bound: a loop stops once the sleeps it
+    has already asked for plus the next one would exceed it. Bounding the
+    accumulated wait rather than trusting the schedule means retuning the
+    backoff constants cannot quietly turn a bounded retry into a stall.
+    """
+
+    max_attempts: int
+    max_total_wait_ms: float
+    base_delay_ms: float
+    max_backoff_ms: float
+
+
+#: Transient failures clear in milliseconds, so they keep the historical
+#: schedule. The total-wait ceiling is 3x the per-delay ceiling, which does not
+#: bind at the default attempt count: three attempts wait 500 ms then 1000 ms.
+#: It exists so a caller raising `max_retries` cannot buy an unbounded stall.
+TRANSIENT_RETRY_BUDGET = RetryBudget(
+    max_attempts=3,
+    max_total_wait_ms=3 * _MAX_BACKOFF_MS,
+    base_delay_ms=_BACKOFF_BASE_MS,
+    max_backoff_ms=_MAX_BACKOFF_MS,
+)
+
+#: Capacity saturation at a free endpoint clears in seconds to minutes, and the
+#: failures come in windows rather than at random, so the useful lever is
+#: spacing, not attempt count. Eight attempts on this schedule wait 5 s, 10 s,
+#: then 15 s each, i.e. 90 s spread across eight requests -- about 30x the
+#: transient budget and long enough that attempts land in different windows.
+#:
+#: The ceiling is chosen, not tuned into the stratosphere. A stranger's first
+#: run must still finish inside the five-minute onboarding promise, and a
+#: genuinely dead Realm has to fail rather than hang. Every individual delay
+#: stays under DEFAULT_MAX_RETRY_DELAY_MS (60 s), so a server-supplied
+#: `Retry-After` above that cap still raises rather than stalling, and
+#: max_total_wait_ms caps the run even if the schedule above changes.
+#:
+#: Tripwire: if a clean-machine quickstart still fails at a poor rate with this
+#: budget in place, the saturation window is longer than 90 s and this ceiling
+#: is the thing to raise.
+CAPACITY_RETRY_BUDGET = RetryBudget(
+    max_attempts=8,
+    max_total_wait_ms=90_000.0,
+    base_delay_ms=5_000.0,
+    max_backoff_ms=15_000.0,
+)
 
 
 @dataclass
@@ -151,6 +229,58 @@ def is_retryable_realm_response(response: RealmResponse) -> bool:
     if _NON_RETRYABLE_RE.search(response.error_message):
         return False
     return bool(_RETRYABLE_RE.search(response.error_message))
+
+
+def is_capacity_saturated_realm_response(response: RealmResponse) -> bool:
+    """Whether a failure says the Realm is at capacity, not merely flaky.
+
+    Capacity saturation and a transient blip get separate retry budgets
+    (`retry_budget_for`), so this must be the narrower claim of the two. A
+    wording that is also a billing or quota limit is deterministic and stays
+    non-retryable -- "429 insufficient quota" is a permanent refusal, not a
+    window that closes.
+    """
+    if not response.error_message:
+        return False
+
+    code = response.error_code
+    if code in _NON_RETRYABLE_CODES:
+        return False
+    if code in _CAPACITY_CODES:
+        return True
+
+    if _NON_RETRYABLE_RE.search(response.error_message):
+        return False
+    return bool(_CAPACITY_RE.search(response.error_message))
+
+
+def transient_retry_budget(max_attempts: int) -> RetryBudget:
+    """The budget for a failure that has not yet been classified as capacity."""
+    return RetryBudget(
+        max_attempts=max(1, max_attempts),
+        max_total_wait_ms=TRANSIENT_RETRY_BUDGET.max_total_wait_ms,
+        base_delay_ms=TRANSIENT_RETRY_BUDGET.base_delay_ms,
+        max_backoff_ms=TRANSIENT_RETRY_BUDGET.max_backoff_ms,
+    )
+
+
+def retry_budget_for(response: RealmResponse, max_attempts: int) -> RetryBudget:
+    """The budget a classified failure earns.
+
+    Capacity earns a longer schedule and a minutes-scale ceiling. Its attempt
+    count is a floor a caller can raise but not lower, because a caller asking
+    for three retries means "three retries", not "three retries unless the
+    endpoint is saturated"; the absolute ceiling stays in CAPACITY_RETRY_BUDGET
+    either way. Every other failure keeps the transient budget.
+    """
+    if not is_capacity_saturated_realm_response(response):
+        return transient_retry_budget(max_attempts)
+    return RetryBudget(
+        max_attempts=max(max_attempts, CAPACITY_RETRY_BUDGET.max_attempts),
+        max_total_wait_ms=CAPACITY_RETRY_BUDGET.max_total_wait_ms,
+        base_delay_ms=CAPACITY_RETRY_BUDGET.base_delay_ms,
+        max_backoff_ms=CAPACITY_RETRY_BUDGET.max_backoff_ms,
+    )
 
 
 async def _sleep_ms(delay_ms: float, signal: Any | None = None) -> None:
@@ -241,13 +371,16 @@ def realm_request_delay_ms(
     headers: _HeaderLike,
     retry_index: int,
     max_retry_delay_ms: float | None = None,
+    base_delay_ms: float | None = None,
+    max_backoff_ms: float | None = None,
 ) -> float:
     """Delay before the next HTTP attempt.
 
     A Realm-supplied `Retry-After` wins. Anything longer than the cap raises
     rather than stalling the run; pass `max_retry_delay_ms=0` to disable it.
     Otherwise backoff is exponential, capped, and jittered downward so parallel
-    callers do not retry in lockstep.
+    callers do not retry in lockstep. `base_delay_ms` and `max_backoff_ms` let a
+    caller apply a `RetryBudget`'s schedule; both default to this module's.
     """
     cap = (
         DEFAULT_MAX_RETRY_DELAY_MS if max_retry_delay_ms is None else max_retry_delay_ms
@@ -263,7 +396,9 @@ def realm_request_delay_ms(
             raise ServerRetryDelayTooLongError(requested, cap)
         return float(requested)
 
-    exponential = min(_BACKOFF_BASE_MS * (2**retry_index), _MAX_BACKOFF_MS)
+    base = _BACKOFF_BASE_MS if base_delay_ms is None else base_delay_ms
+    ceiling = _MAX_BACKOFF_MS if max_backoff_ms is None else max_backoff_ms
+    exponential = min(base * (2**retry_index), ceiling)
     return float(exponential * (1 - random.random() * _JITTER_FRACTION))
 
 
@@ -331,14 +466,20 @@ _EMPTY_HEADERS: dict[str, Any] = {}
 
 
 __all__ = [
+    "CAPACITY_RETRY_BUDGET",
     "DEFAULT_MAX_RETRY_DELAY_MS",
     "DEFAULT_RETRY_POLICY",
+    "TRANSIENT_RETRY_BUDGET",
+    "RetryBudget",
     "RetryCallbacks",
     "RetryPolicy",
     "ServerRetryDelayTooLongError",
+    "is_capacity_saturated_realm_response",
     "is_retryable_realm_response",
     "is_retryable_status",
     "realm_request_delay_ms",
+    "retry_budget_for",
     "retry_invocation",
     "retry_realm_request",
+    "transient_retry_budget",
 ]
