@@ -5,12 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.14] - 2026-10-06
 
 
 ### Bug Fixes
 
 - **gui,adr:** derive the provider tier from the model, and record what Zen actually does (#193) (d36f3e0)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (15362b9)
+
+- **release:** v0.6.14 (46d8d12)
 
 
 ## [0.6.13] - 2026-10-06
