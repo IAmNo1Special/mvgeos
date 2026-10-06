@@ -1377,7 +1377,11 @@ class TestCascadingSelectorState:
     def test_default_cascading_state(self) -> None:
         state = AppState()
         assert state.selected_realm == DEFAULT_REALM
-        assert state.selected_provider == DEFAULT_REALM
+        # Derived from the model, not copied from the Realm: the two coincide
+        # only while the default slug is directly served, and asserting the copy
+        # would make this a test of the default's shape rather than of the
+        # selector's starting state.
+        assert state.selected_provider == realm_for_model_id(DEFAULT_MODEL)
         assert state.selected_model == DEFAULT_MODEL
         assert state.contemplation_level == "medium"
         # The Realm must be selectable on a fresh install, which is the state
@@ -1397,13 +1401,34 @@ class TestCascadingSelectorState:
             state.selected_realm == DEFAULT_REALM
         )
         assert state.selected_realm in state.get_realms()
-        # A directly-served slug has no provider tier of its own.
-        assert state.selected_provider == DEFAULT_REALM
+        # The provider tier the selector opens on is the id prefix, which is the
+        # Realm for a directly-served slug and the provider for a routed one.
+        # Asserted as a derivation so this holds under either shape of default.
+        assert state.selected_provider == realm_for_model_id(DEFAULT_MODEL)
 
     def test_get_realms(self) -> None:
         state = AppState()
         realms = state.get_realms()
         assert "openrouter" in realms
+
+    def test_a_routed_slug_selects_its_own_provider_tier(self) -> None:
+        """A routed slug's provider tier comes from the id, not from the Realm.
+
+        With ``selected_provider`` set to the Realm instead, the cascading
+        selector asks the catalog for models under provider ``openrouter``, finds
+        the router's own entry, and opens offering "Free Models Router" for a
+        model that is neither routed nor a router selection. Asserted through
+        ``get_models_for_selection`` because that is where the consequence lands.
+        """
+        state = AppState()
+        state.selected_realm = "openrouter"
+        state.selected_model = "nvidia/nemotron-3-ultra-550b-a55b:free"
+        state.selected_provider = realm_for_model_id(state.selected_model)
+
+        models = state.get_models_for_selection()
+
+        assert state.selected_model in models
+        assert "openrouter/free" not in models
 
     def test_get_providers_for_router_and_direct(self) -> None:
         # Router-realm behaviour, so it is asked of the router Realm explicitly.

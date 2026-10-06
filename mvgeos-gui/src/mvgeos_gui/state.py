@@ -39,7 +39,7 @@ from mvgeos_provider import (
     get_supported_contemplation_levels,
     is_realm_router,
 )
-from mvgeos_provider.realms import DEFAULT_REALM, REALM_RUNES
+from mvgeos_provider.realms import DEFAULT_REALM, REALM_RUNES, realm_for_model_id
 from mvgeos_runes import (
     fetch_marketplace_runes,
     install_rune,
@@ -167,13 +167,21 @@ class ServerState:
     project_path: Path = field(default_factory=Path.cwd)
     recent_projects: list[Path] = field(default_factory=list)
     api_key: str | None = None
-    # Realm and provider both come from the default model's Realm. They were
-    # separate literals, so changing DEFAULT_MODEL alone left the cascading
-    # selector opening on a Realm that could not serve the model it started on.
-    # For a directly-served slug the two coincide; that is checked by
-    # test_default_selector_state_matches_the_default_model.
+    # Neither the Realm nor the provider is a literal here. Both used to be, so
+    # changing DEFAULT_MODEL alone left the cascading selector opening on a Realm
+    # that could not serve the model it started on.
+    #
+    # The Realm comes from the Realm table, because the two are not the same
+    # question: for a routed slug the id prefix is the *provider*. The provider
+    # does come from the id, which is the rule the rest of the engine already
+    # follows, and which is right for both shapes. A directly-served slug is
+    # ``<realm>/<model>``, so the prefix is the Realm; a routed one is
+    # ``<provider>/<model>``, so the prefix is the provider tier the cascading
+    # selector has to open on. Copying the Realm instead turns a routed default
+    # into "no provider tier", and the selector then offers the router's own
+    # entry rather than the model's. Same for both the states above.
     selected_realm: str = DEFAULT_REALM
-    selected_provider: str | None = DEFAULT_REALM
+    selected_provider: str | None = realm_for_model_id(DEFAULT_MODEL)
     selected_model: str = DEFAULT_MODEL
     contemplation_level: str = "medium"
     tome_service: TomeService = field(
@@ -326,13 +334,21 @@ class AppState:
     active_tome_id: str | None = None
     tome_title: str = "New Conversation"
     inspector_expanded: bool = True
-    # Realm and provider both come from the default model's Realm. They were
-    # separate literals, so changing DEFAULT_MODEL alone left the cascading
-    # selector opening on a Realm that could not serve the model it started on.
-    # For a directly-served slug the two coincide; that is checked by
-    # test_default_selector_state_matches_the_default_model.
+    # Neither the Realm nor the provider is a literal here. Both used to be, so
+    # changing DEFAULT_MODEL alone left the cascading selector opening on a Realm
+    # that could not serve the model it started on.
+    #
+    # The Realm comes from the Realm table, because the two are not the same
+    # question: for a routed slug the id prefix is the *provider*. The provider
+    # does come from the id, which is the rule the rest of the engine already
+    # follows, and which is right for both shapes. A directly-served slug is
+    # ``<realm>/<model>``, so the prefix is the Realm; a routed one is
+    # ``<provider>/<model>``, so the prefix is the provider tier the cascading
+    # selector has to open on. Copying the Realm instead turns a routed default
+    # into "no provider tier", and the selector then offers the router's own
+    # entry rather than the model's. Same for both the states above.
     selected_realm: str = DEFAULT_REALM
-    selected_provider: str | None = DEFAULT_REALM
+    selected_provider: str | None = realm_for_model_id(DEFAULT_MODEL)
     selected_model: str = DEFAULT_MODEL
     contemplation_level: str = "medium"
     recent_projects: list[Path] = field(default_factory=list)
