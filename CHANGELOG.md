@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+
+### Bug Fixes
+
+- **gui,adr:** derive the provider tier from the model, and record what Zen actually does (#193) (d36f3e0)
+
+
+## [0.6.13] - 2026-10-06
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (7c05328)
+
+- **release:** v0.6.13 (c8985d5)
+
+
+### Documentation
+
+- **adr:** record what the live gateway actually measured (3a84f2a)
+
+
+### Features
+
+- **core:** land agent_spells_dir and the ADR 0015 sandbox fixes (#190) (04a2fc8)
+
+
 ## [0.6.12] - 2026-10-06
 
 
