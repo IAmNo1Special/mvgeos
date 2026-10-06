@@ -1,24 +1,31 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import pytest
 from mvgeos_core.channel import (
+    ChannelConfig,
     Model,
     RealmResponse,
 )
 
 from mvgeos_provider.retry import (
+    CAPACITY_RETRY_BUDGET,
     DEFAULT_MAX_RETRY_DELAY_MS,
     DEFAULT_RETRY_POLICY,
+    TRANSIENT_RETRY_BUDGET,
     RetryCallbacks,
     RetryPolicy,
     ServerRetryDelayTooLongError,
+    is_capacity_saturated_realm_response,
     is_retryable_realm_response,
     is_retryable_status,
     realm_request_delay_ms,
+    retry_budget_for,
     retry_invocation,
     retry_realm_request,
+    transient_retry_budget,
 )
 
 
@@ -38,6 +45,21 @@ def _error(message: str, code: str | None = None) -> RealmResponse:
         error_message=message,
         error_code=code,
         stop_reason="error",
+    )
+
+
+def _window(
+    message: str,
+    seconds_from_now: float,
+    code: str | None = None,
+) -> RealmResponse:
+    """A failure carrying the Realm's reported window reopening time."""
+    return RealmResponse(
+        model=_model(),
+        error_message=message,
+        error_code=code,
+        stop_reason="error",
+        reset_at=time.time() + seconds_from_now,
     )
 
 
@@ -112,6 +134,205 @@ class TestClassifier:
 
     def test_empty_error_message_is_not_retryable(self) -> None:
         assert is_retryable_realm_response(_error("")) is False
+
+
+class TestCapacityClassifier:
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "Upstream error from Nvidia: Service temporarily overloaded",
+            "Model is overloaded",
+            "Service Unavailable",
+            "No capacity available for this model",
+            "At capacity",
+            "capacity exceeded",
+            "insufficient capacity",
+            "no available capacity",
+            "server is busy",
+            "too many concurrent requests",
+        ],
+    )
+    def test_capacity_prose_is_capacity(self, message: str) -> None:
+        assert is_capacity_saturated_realm_response(_error(message)) is True
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "connection refused",
+            "socket hang up",
+            "network error",
+            "request timed out",
+            "Provider returned error",
+            "Internal error",
+        ],
+    )
+    def test_transient_blips_are_not_capacity(self, message: str) -> None:
+        # A millisecond-to-second failure must not buy a minutes-scale budget.
+        assert is_retryable_realm_response(_error(message)) is True
+        assert is_capacity_saturated_realm_response(_error(message)) is False
+
+    def test_rate_limit_is_not_capacity(self) -> None:
+        # The Realm states when to return via Retry-After, which the delay
+        # function already honours exactly; capacity is the un-timed signal.
+        assert is_capacity_saturated_realm_response(_error("429 slow down")) is False
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "insufficient_quota",
+            "quota exceeded",
+            "billing problem",
+            "Monthly usage limit reached",
+            "429 quota exceeded",
+            "overloaded: insufficient_quota",
+        ],
+    )
+    def test_billing_and_quota_win_over_capacity(self, message: str) -> None:
+        assert is_retryable_realm_response(_error(message)) is False
+        assert is_capacity_saturated_realm_response(_error(message)) is False
+
+    def test_explicit_capacity_code_beats_prose(self) -> None:
+        response = _error("upstream said something unremarkable", "overloaded")
+        assert is_capacity_saturated_realm_response(response) is True
+
+    def test_auth_failed_code_wins_over_capacity_prose(self) -> None:
+        response = _error("overloaded", "auth_failed")
+        assert is_capacity_saturated_realm_response(response) is False
+
+    def test_success_is_not_capacity(self) -> None:
+        assert is_capacity_saturated_realm_response(_ok()) is False
+
+
+class TestSpentAllowanceIsNotRetried:
+    """A drained daily allowance is deterministic for hours, not milliseconds.
+
+    These are the exact strings the engine emits, not paraphrases. The first is
+    OpenRouter's own wording on a 429 and carries no transient signal at all --
+    the retry came from the status code alone.
+    """
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "Rate limit exceeded: free-models-per-day. Add 10 credits to unlock "
+            "1000 free model requests per day",
+            "Daily free-model quota exhausted (50/50 requests). Resets at 00:00 UTC.",
+            "quota exhausted",
+        ],
+    )
+    def test_real_quota_exhaustion_message_is_not_retryable(self, message: str) -> None:
+        assert is_retryable_realm_response(_error(message)) is False
+        assert is_capacity_saturated_realm_response(_error(message)) is False
+
+    def test_free_models_per_day_wins_over_rate_limit_wording(self) -> None:
+        # "Rate limit exceeded" reads as transient, but this is a daily
+        # allowance that will not change for hours.
+        response = _error("Rate limit exceeded: free-models-per-day.", "rate_limited")
+        assert is_retryable_realm_response(response) is False
+
+    def test_quota_exhaustion_is_not_promoted_to_capacity(self) -> None:
+        # Otherwise a spent allowance would inherit the 90-second budget, which
+        # is the exact failure this change exists to remove.
+        assert is_capacity_saturated_realm_response(_error("quota exhausted")) is False
+
+    def test_window_beyond_any_budget_is_not_retryable(self) -> None:
+        # The measured live case: a drained window reopening in 14 hours, with
+        # wording that otherwise looks like an upstream error.
+        response = _window("Provider returned error", 14 * 3600, "rate_limited")
+        assert is_retryable_realm_response(response) is False
+        assert is_capacity_saturated_realm_response(response) is False
+
+    def test_window_beyond_any_budget_beats_the_retryable_code(self) -> None:
+        # A Realm may assert `rate_limited` and still report a window we can
+        # never sit out; the structured window is the more specific claim.
+        response = _window("Rate limit exceeded", 30 * 24 * 3600, "rate_limited")
+        assert is_retryable_realm_response(response) is False
+
+    @pytest.mark.parametrize("seconds", [5, 30, 60])
+    def test_window_inside_the_budget_stays_retryable(self, seconds: int) -> None:
+        # A drained per-minute window is measured in seconds, and waiting it
+        # out is precisely what retrying is for.
+        response = _window("Rate limit exceeded", seconds, "rate_limited")
+        assert is_retryable_realm_response(response) is True
+
+    def test_absent_window_leaves_the_prose_decision_untouched(self) -> None:
+        response = _error("overloaded", "rate_limited")
+        assert is_retryable_realm_response(response) is True
+        assert is_capacity_saturated_realm_response(response) is True
+
+    def test_window_beats_capacity_wording(self) -> None:
+        # An "overloaded" message with a 14-hour window is a spent allowance
+        # wearing upstream's wording, not a capacity blip.
+        response = _window("Service temporarily overloaded", 14 * 3600)
+        assert is_retryable_realm_response(response) is False
+        assert is_capacity_saturated_realm_response(response) is False
+
+
+class TestRetryBudget:
+    def test_capacity_budget_is_materially_longer_than_transient(self) -> None:
+        capacity = retry_budget_for(_error("overloaded"), 3)
+        transient = retry_budget_for(_error("socket hang up"), 3)
+        assert capacity.max_attempts >= 2 * transient.max_attempts
+        assert capacity.max_total_wait_ms >= 3 * transient.max_total_wait_ms
+        assert capacity.base_delay_ms > transient.base_delay_ms
+
+    def test_transient_budget_is_unchanged_by_capacity_work(self) -> None:
+        budget = retry_budget_for(_error("socket hang up"), 3)
+        assert budget.max_attempts == 3
+        assert budget.base_delay_ms == TRANSIENT_RETRY_BUDGET.base_delay_ms
+        assert budget.max_backoff_ms == TRANSIENT_RETRY_BUDGET.max_backoff_ms
+
+    def test_capacity_attempt_count_is_a_floor_not_a_ceiling(self) -> None:
+        # A caller asking for three retries means three retries unless the
+        # endpoint is saturated; it must not be able to lower the floor.
+        assert retry_budget_for(_error("overloaded"), 3).max_attempts == (
+            CAPACITY_RETRY_BUDGET.max_attempts
+        )
+        assert retry_budget_for(_error("overloaded"), 1).max_attempts == (
+            CAPACITY_RETRY_BUDGET.max_attempts
+        )
+        assert retry_budget_for(_error("overloaded"), 40).max_attempts == 40
+
+    def test_transient_attempt_count_still_follows_the_caller(self) -> None:
+        assert transient_retry_budget(1).max_attempts == 1
+        assert transient_retry_budget(7).max_attempts == 7
+        assert transient_retry_budget(0).max_attempts == 1
+
+    def test_capacity_ceiling_is_bounded(self) -> None:
+        # Long enough to outlast a saturation window, short enough that a first
+        # run still finishes inside the five-minute onboarding promise.
+        assert 60_000 <= CAPACITY_RETRY_BUDGET.max_total_wait_ms <= 180_000
+
+    def test_no_capacity_delay_reaches_the_server_delay_cap(self) -> None:
+        # realm_request_delay_ms raises rather than stall past this cap, so a
+        # capacity budget that used delays above it could never be honoured.
+        assert CAPACITY_RETRY_BUDGET.max_backoff_ms < DEFAULT_MAX_RETRY_DELAY_MS
+
+    def test_capacity_schedule_fits_inside_its_own_ceiling(self) -> None:
+        waits = [
+            min(
+                CAPACITY_RETRY_BUDGET.base_delay_ms * (2**index),
+                CAPACITY_RETRY_BUDGET.max_backoff_ms,
+            )
+            for index in range(CAPACITY_RETRY_BUDGET.max_attempts - 1)
+        ]
+        # Jitter only shortens a wait, so the unjittered schedule is the bound.
+        assert sum(waits) <= CAPACITY_RETRY_BUDGET.max_total_wait_ms
+        assert len(waits) >= 5  # several windows' worth of spacing, not three tries
+
+    def test_transient_ceiling_does_not_bind_at_the_default(self) -> None:
+        # Three transient attempts wait 500 ms then 1000 ms; the ceiling is
+        # headroom for callers who raise max_retries, not a behaviour change.
+        assert 2 * TRANSIENT_RETRY_BUDGET.base_delay_ms < (
+            TRANSIENT_RETRY_BUDGET.max_total_wait_ms
+        )
+
+    def test_transient_attempt_count_matches_the_channel_default(self) -> None:
+        # These two defaults are independent today; a divergence would mean the
+        # transient budget silently overrides a caller's configured retries.
+        assert ChannelConfig(model=_model()).max_retries == (
+            TRANSIENT_RETRY_BUDGET.max_attempts
+        )
 
 
 class TestRetryInvocation:
@@ -324,6 +545,45 @@ class TestRealmRequestDelay:
 
     def test_default_cap_is_sixty_seconds(self) -> None:
         assert DEFAULT_MAX_RETRY_DELAY_MS == 60_000
+
+    def test_capacity_schedule_still_applies_jitter(self) -> None:
+        headers = _Headers()
+        # Parallel callers must not retry in lockstep, and that matters most on
+        # the long capacity waits, so the fix must not spend jitter to tighten
+        # spacing. Index 2 is pinned at the 15 s ceiling before jitter.
+        delays = {
+            realm_request_delay_ms(
+                headers,
+                2,
+                base_delay_ms=CAPACITY_RETRY_BUDGET.base_delay_ms,
+                max_backoff_ms=CAPACITY_RETRY_BUDGET.max_backoff_ms,
+            )
+            for _ in range(50)
+        }
+        assert all(11_250 <= delay <= 15_000 for delay in delays)
+        assert len(delays) > 1  # jitter actually varies
+
+    def test_capacity_schedule_spins_longer_than_the_transient_one(self) -> None:
+        headers = _Headers()
+        transient = realm_request_delay_ms(headers, 2)
+        capacity = realm_request_delay_ms(
+            headers,
+            2,
+            base_delay_ms=CAPACITY_RETRY_BUDGET.base_delay_ms,
+            max_backoff_ms=CAPACITY_RETRY_BUDGET.max_backoff_ms,
+        )
+        assert capacity >= 3 * transient
+
+    def test_server_delay_cap_still_applies_to_a_capacity_schedule(self) -> None:
+        # The ceiling protects the run; a capacity budget must not widen it.
+        headers = _Headers({"retry-after": "90"})
+        with pytest.raises(ServerRetryDelayTooLongError):
+            realm_request_delay_ms(
+                headers,
+                0,
+                base_delay_ms=CAPACITY_RETRY_BUDGET.base_delay_ms,
+                max_backoff_ms=CAPACITY_RETRY_BUDGET.max_backoff_ms,
+            )
 
 
 class TestRetryRealmRequest:
