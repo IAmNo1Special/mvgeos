@@ -128,10 +128,14 @@ def test_repl_callback_with_options(mock_run_agent: AsyncMock) -> None:
 
 def test_repl_callback_missing_api_key() -> None:
     env = dict(os.environ)
+    # Both realm variables: the default realm reads its own first, so clearing
+    # only OpenRouter's would leave the callback with a key on a machine that
+    # happens to have one set.
     env.pop("OPENROUTER_API_KEY", None)
+    env.pop("OPENCODE_API_KEY", None)
     with (
         patch.dict(os.environ, env, clear=True),
-        patch("mvgeos_cli.main.load_api_key_from_auth", return_value=None),
+        patch("mvgeos_cli.main.load_api_key_for_realm", return_value=None),
     ):
         result = runner.invoke(app, ["--incantation", "test"])
         assert result.exit_code == 1
@@ -319,3 +323,53 @@ def test_repl_callback_rejects_bad_approval_mode(
     result = runner.invoke(app, ["--approval-mode", "sometimes"])
     assert result.exit_code != 0
     mock_run_agent.assert_not_called()
+
+
+@patch.dict(os.environ, {"OPENCODE_API_KEY": "sk-zen-test-key"})
+@patch("mvgeos_cli.main.load_api_key_for_realm", return_value=None)
+@patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
+def test_the_default_realm_reads_its_own_api_key(
+    mock_run_agent: AsyncMock, mock_auth: MagicMock
+) -> None:
+    """The default model's Realm must get its own key, not OpenRouter's.
+
+    Handing one Realm's credential to another authenticates at the wrong host
+    and then fails every call with a message naming the model, so the Summoner is
+    sent to look at the wrong thing.
+    """
+    mock_run_agent.return_value = 0
+    result = runner.invoke(app, ["--incantation", "hello"])
+
+    assert result.exit_code == 0
+    assert mock_run_agent.await_args.kwargs["api_key"] == "sk-zen-test-key"
+
+
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-test-key"})
+@patch("mvgeos_cli.main.load_api_key_for_realm", return_value=None)
+@patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
+def test_an_explicit_model_reads_its_own_realms_key(
+    mock_run_agent: AsyncMock, mock_auth: MagicMock
+) -> None:
+    """Choosing an openrouter model reads OpenRouter's key, not the default's."""
+    mock_run_agent.return_value = 0
+    result = runner.invoke(
+        app, ["--model", "openrouter/free", "--incantation", "hello"]
+    )
+
+    assert result.exit_code == 0
+    assert mock_run_agent.await_args.kwargs["api_key"] == "sk-or-test-key"
+
+
+@patch.dict(os.environ, {}, clear=True)
+def test_the_missing_key_message_names_the_models_own_variable() -> None:
+    """The remedy has to name the variable that would actually fix it."""
+    env = dict(os.environ)
+    for name in ("OPENROUTER_API_KEY", "OPENCODE_API_KEY"):
+        env.pop(name, None)
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("mvgeos_cli.main.load_api_key_for_realm", return_value=None),
+    ):
+        result = runner.invoke(app, ["--model", "opencode/space-bunny-free"])
+        assert result.exit_code == 1
+        assert "OPENCODE_API_KEY" in result.output

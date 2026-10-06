@@ -618,7 +618,13 @@ def test_create_realm_raises_no_realm_registered_error() -> None:
 
     msg = str(exc_info.value)
     assert "No Realm factory registered for model 'anthropic/claude-3-5-sonnet'" in msg
-    assert "Run 'mvgeos rune install openrouter-realm'" in msg
+    # The Rune to install is derived from the model's own Realm. This model has
+    # none set, so the id prefix is the only evidence available and the message
+    # follows it. It used to say openrouter-realm unconditionally, which sent a
+    # Summoner after a Rune that cannot serve the model they asked for.
+    assert "Run 'mvgeos rune install anthropic-realm'" in msg
+    assert exc_info.value.rune_name == "anthropic-realm"
+    assert exc_info.value.realm == "anthropic"
 
 
 def test_clear_realm_factories() -> None:

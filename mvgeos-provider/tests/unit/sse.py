@@ -183,6 +183,25 @@ async def _collect(gen: AsyncIterator[RealmResponse]) -> list[RealmResponse]:
     return [item async for item in gen]
 
 
+class _ConcreteRealm(SSEStreamingRealm):
+    """The smallest thing that can be constructed, for header assertions."""
+
+    def _prepare_request(self, model, invocations, config):  # noqa: ANN001, ANN201
+        raise NotImplementedError
+
+    def _parse_sse_chunk(self, chunk):  # noqa: ANN001, ANN201
+        return None
+
+
+def _concrete_realm(api_key: str) -> SSEStreamingRealm:
+    """Build a realm that owns a real httpx client, headers and all.
+
+    The owned client is the point: an injected mock would accept a malformed
+    header, which is how this defect survived a green suite.
+    """
+    return _ConcreteRealm(api_key=api_key, base_url="https://api.example.com/v1")
+
+
 @pytest.mark.asyncio
 async def test_stream_text_deltas_and_final_invocation() -> None:
     lines = [
@@ -1124,3 +1143,32 @@ async def test_error_from_response_async_log_level_by_attempt(
     assert len(warning_logs) == 1
     assert "attempt 3/3" in warning_logs[0].message
     assert "Rate limit exceeded" in warning_logs[0].message
+
+
+@pytest.mark.asyncio
+async def test_a_keyless_realm_sends_no_authorization_header() -> None:
+    """`Bearer ` with nothing after it is an illegal header, and httpx refuses it.
+
+    Zen's free tier needs no key, so an empty credential is the normal case for
+    a Realm serving it -- not a misconfiguration. The client default headers
+    used to send the empty bearer anyway, which raised LocalProtocolError before
+    the request left the process. A mock client accepts the malformed value, so
+    this is only observable against a real transport or an httpx-built client;
+    the assertion is on the headers the client was constructed with, which is
+    the fact that caused it.
+    """
+    realm = _concrete_realm(api_key="")
+    try:
+        assert "Authorization" not in realm._client.headers
+        assert realm._client.headers["Content-Type"] == "application/json"
+    finally:
+        await realm.close()
+
+
+@pytest.mark.asyncio
+async def test_a_keyed_realm_still_sends_its_bearer_header() -> None:
+    realm = _concrete_realm(api_key="secret-key")
+    try:
+        assert realm._client.headers["Authorization"] == "Bearer secret-key"
+    finally:
+        await realm.close()

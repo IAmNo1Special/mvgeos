@@ -1,4 +1,4 @@
-# ADR 0015: A Sandbox Allow-List Is a Privilege Budget, Not a Wish List
+# ADR 0016: A Sandbox Allow-List Is a Privilege Budget, Not a Wish List
 
 ## Status
 

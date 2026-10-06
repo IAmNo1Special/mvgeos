@@ -7,10 +7,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from mvgeos_core.abort import AbortSignal
+from mvgeos_core.constants import DEFAULT_MODEL
 from mvgeos_core.events import QueueMode
 from mvgeos_core.invocations import SummonerRequest
 from mvgeos_core.spells import ExecutionMode
 from mvgeos_provider.base import Realm
+from mvgeos_provider.realms import realm_for_model_id
 from mvgeos_provider.registry import RealmRegistry
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import RuneLoad, RuneManifest, SpellDefinition
@@ -698,7 +700,11 @@ async def test_initialize_records_project_dir_as_tome_cwd(
         caller_dir=tmp_path,
     )
     registry = RealmRegistry()
-    registry.register_realm_factory("nvidia", lambda **kwargs: MagicMock(spec=Realm))
+    # Registered under the default model's Realm prefix, so this test does not
+    # have to change every time the default model does.
+    registry.register_realm_factory(
+        realm_for_model_id(DEFAULT_MODEL), lambda **kwargs: MagicMock(spec=Realm)
+    )
     agent = Mvge(
         api_key="k",
         environment=env,
