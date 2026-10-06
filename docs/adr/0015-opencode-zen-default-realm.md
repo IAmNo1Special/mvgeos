@@ -13,6 +13,10 @@ documents (SOM-29). The documented five-minute first run was false, and the
 failure was not fixable in prose: it is an engine default pointing at an endpoint
 that is at capacity.
 
+Zen's free tier needs **no API key** — a request with no `Authorization` header
+returns HTTP 200 with `"cost": "0"`. That is the reason this decision is cheap:
+the default Realm resolves and runs for a Summoner who has signed up for nothing.
+
 Two properties of the default decide how a first run behaves, and they are
 worth separating because the fix for one is not the fix for the other:
 
@@ -98,3 +102,25 @@ not in a table, because they run on the failure path.
   parameter for this tier, and the standard has no field for it, so the Realm caps
   output tokens instead. Contemplation deltas are still read, so an upstream model
   that thinks out loud lands in the transcript rather than being dropped.
+## Verification
+
+Driving the shipped `opencode-realm` against the live gateway, installed the way
+the engine installs it and resolved through `RealmRegistry`:
+
+| Fact | Measured |
+|---|---|
+| Plain channel | stream completes, `PONG` |
+| Spells | offered as `tools`; the model casts `bash` with `{"command": "ls -la"}`, stop reason `spellUse` |
+| Non-channelled `complete()` | returns text, used for compaction summaries |
+| Credential | none required; `cost: 0` |
+| Context window | 1,048,576 (1,045,162 accepted, ~1,055,000 refused) |
+
+That live run also found a defect the hermetic suite could not. With no key, both
+the Rune and `SSEStreamingRealm` built `Authorization: Bearer ` with nothing
+after it, which is an illegal header value — httpx raises `LocalProtocolError`
+before the request leaves the process. An `httpx` mock transport accepts the
+malformed value, so every test passed. The one Summoner this Realm exists to
+serve could not make a single call.
+
+Both the Rune and the engine's client defaults now omit the header when there is
+no credential.
