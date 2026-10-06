@@ -2,6 +2,7 @@
 
 | # | Title | Status | Date |
 | --- | ------- | -------- | ------ |
+| 0016 | [Realm Facts in One Module](0016-realm-facts-in-one-module.md) | Accepted | 2026-10-06 |
 | 0014 | [One Resolved Layer Stack for the `.agents` Protocol](0014-one-resolved-layer-stack.md) | Accepted | 2026-10-04 |
 | 0013 | [Cache-Free, Format-Agnostic Tome Persistence](0013-cache-free-format-agnostic-tome-persistence.md) | Accepted | 2026-10-04 |
 | 0012 | [Deepened Mvge Turn-Driving Module](0012-deepened-mvge-turn-driving-module.md) | Accepted — migration incomplete, see note | 2026-09-12 |
@@ -12,7 +13,7 @@
 | 0007 | [Unified Tome Session System on Pi-Compatible JSONL Format](0007-unified-tome-session-system.md) | Accepted — mechanism superseded by ADR 0013 | 2026-08-03 |
 | 0006 | [Extension Interoperability at Data Level](0006-extension-interoperability.md) | Superseded by ADR 0002, 0013, 0014 | 2026-07-28 |
 | 0005 | [TDD for All Code](0005-tdd-mvge-agent.md) | Accepted | 2026-07-25 |
-| 0004 | [OpenRouter as First Provider](0004-openrouter-realm.md) | Accepted | 2026-07-22 |
+| 0004 | [OpenRouter as First Provider](0004-openrouter-realm.md) | Accepted (amended 2026-10-05: implementation location) | 2026-07-22 |
 | 0003 | [Full JSONL Session Schema](0003-full-jsonl-schema.md) | Accepted — mechanism superseded by ADR 0013 | 2026-07-20 |
 | 0002 | [dotagents Protocol Compliance](0002-dotagents-protocol.md) | Superseded by ADR 0014 | 2026-07-18 |
 | 0001 | [Monorepo with uv](0001-monorepo-with-uv.md) | Accepted | 2026-07-15 |
