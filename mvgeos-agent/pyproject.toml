@@ -1,16 +1,16 @@
 [project]
 name = "mvgeos-agent"
-version = "0.6.12"
+version = "0.6.13"
 description = "Core Mvge agent loop, invocation types, state management, and spell execution"
 requires-python = ">=3.13"
 license = "MIT"
 dependencies = [
     # Explicit floors: uv_build does not substitute the workspace version, so
     # bare names ship as unbounded Requires-Dist. Bumped in lockstep by ci.yml.
-    "mvgeos-core>=0.6.12",
-    "mvgeos-provider>=0.6.12",
-    "mvgeos-tome>=0.6.12",
-    "mvgeos-runes>=0.6.12",
+    "mvgeos-core>=0.6.13",
+    "mvgeos-provider>=0.6.13",
+    "mvgeos-tome>=0.6.13",
+    "mvgeos-runes>=0.6.13",
     "pydantic>=2.0",
     "python-dotenv>=1.2.2",
     "httpx>=0.28.1",
