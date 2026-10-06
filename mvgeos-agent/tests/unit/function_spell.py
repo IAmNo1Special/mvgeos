@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from mvgeos_agent import (
     FunctionSpell,
     Mvge,
+    MvgeEnvironment,
     coerce_spell,
 )
 
@@ -182,6 +183,35 @@ class TestMvgeApiKeyAndEnvLoading:
 
         with pytest.raises(MissingApiKeyError, match="API key not found"):
             await agent.initialize()
+
+    @pytest.mark.asyncio
+    async def test_missing_api_key_error_names_the_realm_being_served(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The message names this Realm's variable, not OpenRouter's.
+
+        ``google/`` is the discriminating case. It does need a credential, and
+        it is not ``openrouter``, so a message that hardcodes
+        ``OPENROUTER_API_KEY`` still passes every assertion written against the
+        default model -- which is the bug, since the default model's Realm is
+        ``opencode``.
+        """
+        for var in self.API_KEY_ENV_VARS:
+            monkeypatch.delenv(var, raising=False)
+
+        environment = MvgeEnvironment.resolve(
+            config_dir=tmp_path,
+            overrides={"model": "google/gemini-2.5-flash"},
+        )
+        agent = Mvge(environment=environment)
+
+        with pytest.raises(MissingApiKeyError) as caught:
+            await agent.initialize()
+
+        message = str(caught.value)
+        assert "google" in message
+        assert "GOOGLE_API_KEY" in message
+        assert "OPENROUTER_API_KEY" not in message
 
     def test_dot_env_auto_loading(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

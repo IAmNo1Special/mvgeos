@@ -1703,7 +1703,14 @@ class Mvge:
             or self._provider_name == "ollama"
         )
         if not self._api_key and not is_ollama:
-            raise MissingApiKeyError
+            # Named from the Realm being served, not from a default. The
+            # message this replaces named OPENROUTER_API_KEY regardless of which
+            # Realm wanted a credential, so a Summoner on `opencode` was sent to
+            # set a key that Realm never reads.
+            realm = realm_for_model_id(self._model_id)
+            raise MissingApiKeyError(
+                realm=realm, api_key_env=api_key_env_for_realm(realm)
+            )
 
         await self._load_runes()
 
