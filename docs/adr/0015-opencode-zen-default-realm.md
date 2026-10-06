@@ -81,12 +81,33 @@ not in a table, because they run on the failure path.
   the live gateway rather than taken from documentation. Zen publishes no context
   length — all 86 entries in `/zen/v1/models` carry only `id`, `object`,
   `created` and `owned_by` — so the value had to be found by sending prompts of
-  increasing size until the gateway refused one. A prompt of 1,045,162 tokens
-  was accepted; one aiming at 1,055,000 was refused. That brackets 2^20, and
+  increasing size until the gateway refused one. An earlier attempt aimed at
+  1,045,162 tokens, accepted, and 1,055,000, refused. A second, tighter probe
+  narrows it to **1,048,465 accepted and 1,048,765 refused**, which leaves
+  1048576 — 2^20, and the only round value in that interval — as the reading
+  rather than an assumption. Accepted without error below that point at 200,165,
+  1,000,165, 1,002,165, 1,010,165 and 1,040,165; refused above it at 1,050,165,
+  1,100,165, 1,250,000, 1,500,165, 2,000,165 and 4,000,165.
   `should_compact` keeps 16384 tokens of headroom below the recorded value, so
   the recorded figure is the total rather than a ceiling that leaves no room for
   output. An earlier guess of 128000 was eight times too low and would have
-  compacted a long session roughly every 128k tokens.
+  compacted a long session roughly every 128k tokens. This is a measurement of
+  one provider on one day, not a published specification; re-measure before
+  trusting it, and prefer the smaller figure if the two ever disagree.
+- **Zen's free tier needs a key, but not a subscription.** A request carrying no
+  `Authorization` header at all is answered: `200`, `cost: "0"`, and content on
+  eight consecutive short prompts. A request carrying `Authorization: Bearer
+  <wrong>` is refused with `401 Invalid API key.`, which the Rune surfaces as
+  `error_code='auth_failed'`. So the free tier is reachable without paying, but
+  not without presenting a credential, and MvgeOS does not omit the header — the
+  CLI refuses to start without a resolved key and the Rune sends what it is
+  given. A real `OPENCODE_API_KEY` is required to run Zen.
+- **An empty bearer cannot be sent at all**, and says nothing useful when it
+  fails. `httpx` rejects the header value `Bearer ` locally, so the Rune raises
+  `httpx.LocalProtocolError` instead of a credential error. Unreachable through
+  the CLI and the GUI, both of which refuse to start without a resolved key, so
+  this is recorded rather than fixed. A Summoner who reaches it through a script
+  sees a transport fault where the truth is a missing credential.
 - `DEFAULT_REALM` is a copy of what the catalog says about `DEFAULT_MODEL`, since
   the two are not the same question: for a routed slug the id prefix is the
   *provider*, not the Realm. `test_default_realm_agrees_with_the_shipped_catalog`
