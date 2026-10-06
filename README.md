@@ -393,6 +393,9 @@ credited here by name and by the work they landed.
 | --- | --- |
 | [@MalcomThigpen](https://github.com/MalcomThigpen) | GUI skills management and Rune settings panels, replacing the placeholder panels — [`c9290e5e`](https://github.com/IAmNo1Special/mvgeos/commit/c9290e5e), 29 files, +792/−380. Centred the send/stop control and aligned the attach control with the model picker — [`1335caaa`](https://github.com/IAmNo1Special/mvgeos/commit/1335caaa). Made the Windows test suite green — [`46bfe9d7`](https://github.com/IAmNo1Special/mvgeos/commit/46bfe9d7). |
 
+Longer accounts of what landed, and why, are in
+[Contributors discussion #191](https://github.com/IAmNo1Special/mvgeos/discussions/191).
+
 New here? Scoped, unassigned work is labelled `help wanted`:
 <https://github.com/IAmNo1Special/mvgeos/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22>.
 A clone is all you need — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
