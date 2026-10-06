@@ -77,11 +77,16 @@ not in a table, because they run on the failure path.
 - The documented first run depends on a marketplace fetch to install the Rune. A
   fetch failure trades "provider is saturated" for "could not reach the
   marketplace". Both are first-run failures; this one is at least visible.
-- `opencode/space-bunny-free`'s context window in the baseline catalog is
-  **unverified**. Zen publishes no context length — all 86 entries carry only
-  `id`, `object`, `created`, `owned_by` — so the catalog states 128000 and should
-  be corrected once the provider publishes one. A wrong-low value causes silent
-  compaction; a wrong-high value causes a hard provider error.
+- `opencode/space-bunny-free`'s context window is **1048576**, measured against
+  the live gateway rather than taken from documentation. Zen publishes no context
+  length — all 86 entries in `/zen/v1/models` carry only `id`, `object`,
+  `created` and `owned_by` — so the value had to be found by sending prompts of
+  increasing size until the gateway refused one. A prompt of 1,045,162 tokens
+  was accepted; one aiming at 1,055,000 was refused. That brackets 2^20, and
+  `should_compact` keeps 16384 tokens of headroom below the recorded value, so
+  the recorded figure is the total rather than a ceiling that leaves no room for
+  output. An earlier guess of 128000 was eight times too low and would have
+  compacted a long session roughly every 128k tokens.
 - `DEFAULT_REALM` is a copy of what the catalog says about `DEFAULT_MODEL`, since
   the two are not the same question: for a routed slug the id prefix is the
   *provider*, not the Realm. `test_default_realm_agrees_with_the_shipped_catalog`

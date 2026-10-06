@@ -264,7 +264,7 @@
     [
       "opencode/space-bunny-free",
       "Space Bunny Free (OpenCode Zen)",
-      128000,
+      1048576,
       [
         "max_tokens",
         "temperature",
