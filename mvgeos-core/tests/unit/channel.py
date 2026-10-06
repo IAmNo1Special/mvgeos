@@ -86,3 +86,52 @@ def test_model_provider_prefix() -> None:
         api_key="key",
     )
     assert m3.provider_prefix == "custom-direct-model"
+
+
+def _model(id: str, realm: str = "openrouter", *, is_free: bool = False) -> Model:
+    return Model(
+        id=id,
+        name="Test Model",
+        realm=realm,
+        base_url="",
+        api_key="key",
+        is_free=is_free,
+    )
+
+
+def test_free_is_declared_by_the_catalog() -> None:
+    assert _model("vendor/paid-model", is_free=True).free is True
+
+
+def test_free_recognises_openrouters_colon_suffix() -> None:
+    assert _model("vendor/model:free").free is True
+
+
+def test_free_recognises_the_free_models_router() -> None:
+    """No suffix to read: the id routes to whatever free model is available."""
+    assert _model("openrouter/free").free is True
+
+
+def test_free_recognises_the_dash_suffix_on_the_realm_that_uses_it() -> None:
+    """OpenCode Zen spells its free tier ``-free``.
+
+    Before this, every Zen free model was reported as paid, which fed the
+    free-first model ordering and any cost guard built on it.
+    """
+    assert _model("opencode/space-bunny-free", realm="opencode").free is True
+
+
+def test_the_dash_suffix_does_not_apply_to_other_realms() -> None:
+    """A name must not be able to call a paid model free.
+
+    ``-free`` is a weaker signal than ``:free``, so it is scoped to the Realm
+    whose convention it is. Reading it globally would let any future model id
+    ending in ``-free`` be reported free.
+    """
+    assert _model("vendor/model-free", realm="openrouter").free is False
+    assert _model("vendor/some-free-preview", realm="ollama").free is False
+
+
+def test_a_paid_model_is_not_free() -> None:
+    assert _model("vendor/model", realm="openrouter").free is False
+    assert _model("opencode/space-bunny", realm="opencode").free is False

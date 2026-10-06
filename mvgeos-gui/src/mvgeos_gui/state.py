@@ -39,6 +39,7 @@ from mvgeos_provider import (
     get_supported_contemplation_levels,
     is_realm_router,
 )
+from mvgeos_provider.realms import DEFAULT_REALM, REALM_RUNES, realm_for_model_id
 from mvgeos_runes import (
     fetch_marketplace_runes,
     install_rune,
@@ -166,8 +167,22 @@ class ServerState:
     project_path: Path = field(default_factory=Path.cwd)
     recent_projects: list[Path] = field(default_factory=list)
     api_key: str | None = None
-    selected_realm: str = "openrouter"
-    selected_provider: str | None = "nvidia"
+    # Neither the Realm nor the provider is a literal here. Both used to be, so
+    # changing DEFAULT_MODEL alone left the cascading selector opening on a
+    # Realm that could not serve the model it started on.
+    #
+    # The Realm comes from the Realm table, because the two are not the same
+    # question: for a routed slug the id prefix is the *provider*. The provider
+    # does come from the id, which is the rule the rest of the engine already
+    # follows -- and which happens to be right for both shapes. A directly-served
+    # slug is ``<realm>/<model>``, so the prefix is the Realm; a routed one is
+    # ``<provider>/<model>``, so the prefix is the provider the selector has to
+    # open on. Deriving it beats copying the Realm here, which silently turns a
+    # routed default into "no provider tier" and offers the router's own entry
+    # instead of the model's. Checked by
+    # test_default_selector_state_matches_the_default_model.
+    selected_realm: str = DEFAULT_REALM
+    selected_provider: str | None = realm_for_model_id(DEFAULT_MODEL)
     selected_model: str = DEFAULT_MODEL
     contemplation_level: str = "medium"
     tome_service: TomeService = field(
@@ -320,8 +335,22 @@ class AppState:
     active_tome_id: str | None = None
     tome_title: str = "New Conversation"
     inspector_expanded: bool = True
-    selected_realm: str = "openrouter"
-    selected_provider: str | None = "nvidia"
+    # Neither the Realm nor the provider is a literal here. Both used to be, so
+    # changing DEFAULT_MODEL alone left the cascading selector opening on a
+    # Realm that could not serve the model it started on.
+    #
+    # The Realm comes from the Realm table, because the two are not the same
+    # question: for a routed slug the id prefix is the *provider*. The provider
+    # does come from the id, which is the rule the rest of the engine already
+    # follows -- and which happens to be right for both shapes. A directly-served
+    # slug is ``<realm>/<model>``, so the prefix is the Realm; a routed one is
+    # ``<provider>/<model>``, so the prefix is the provider the selector has to
+    # open on. Deriving it beats copying the Realm here, which silently turns a
+    # routed default into "no provider tier" and offers the router's own entry
+    # instead of the model's. Checked by
+    # test_default_selector_state_matches_the_default_model.
+    selected_realm: str = DEFAULT_REALM
+    selected_provider: str | None = realm_for_model_id(DEFAULT_MODEL)
     selected_model: str = DEFAULT_MODEL
     contemplation_level: str = "medium"
     recent_projects: list[Path] = field(default_factory=list)
@@ -1093,16 +1122,23 @@ class AppState:
         return self.active_tome_id == stored
 
     def get_realms(self) -> list[str]:
-        """Return available realm identifiers."""
+        """Return available realm identifiers.
+
+        Every Realm the engine ships a Rune for, plus any a loaded Rune
+        registered under. Anchoring on that table rather than on a literal is
+        what lets a Realm be selectable before its Rune is installed, which is
+        the state every fresh install is in -- and it is the state the default
+        Realm has to be selectable in, or the selector opens on a value its own
+        options do not contain.
+        """
         try:
-            reg = get_default_realm_registry()
-            realms = ["openrouter"]
-            for r in reg.get_registered_realm_factories():
+            realms = list(REALM_RUNES)
+            for r in get_default_realm_registry().get_registered_realm_factories():
                 if r not in realms:
                     realms.append(r)
             return realms
         except Exception:
-            return ["openrouter"]
+            return [DEFAULT_REALM]
 
     def is_router_realm(self, realm: str | None = None) -> bool:
         """Return True if the realm is a router requiring provider selection."""
@@ -1714,6 +1750,18 @@ class AppState:
         """Check if a rune extension is installed in the global extensions layer."""
         target = extensions_dir() / rune_name
         return target.is_dir()
+
+    def is_selected_realm_rune_installed(self) -> bool:
+        """Is the Rune that provides the selected Realm installed?
+
+        Asks about the selected Realm rather than taking a name, so the empty
+        case is handled once. ``is_rune_installed("")`` would join the extensions
+        directory onto nothing and test the directory itself, which exists -- so
+        an unknown Realm would report its Rune installed, and the badge that
+        exists to warn about a missing Rune would never appear.
+        """
+        rune_name = REALM_RUNES.get(self.selected_realm)
+        return rune_name is not None and self.is_rune_installed(rune_name)
 
     async def fetch_marketplace_runes_async(self) -> dict[str, Any]:
         """Fetch available marketplace runes asynchronously."""

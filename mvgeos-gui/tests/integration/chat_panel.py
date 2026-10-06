@@ -352,6 +352,9 @@ class TestComposerComponents:
     async def test_model_selector_renders(self, user: User) -> None:
         """Verify model selector dropdown renders with options."""
         state = AppState()
+        # A router Realm, so the catalog's routed models are the ones offered
+        # rather than whatever the default Realm happens to carry.
+        state.selected_realm = "openrouter"
 
         @ui.page("/test_model_select")
         def page() -> None:
@@ -359,7 +362,14 @@ class TestComposerComponents:
 
         await user.open("/test_model_select")
 
-        await user.should_see("Nemotron 3 Ultra (free)")
+        # Read the label off the selector's own output rather than pinning it.
+        # The display name is catalog data and a router Realm strips the vendor
+        # prefix, so both facts are the selector's to decide. It has to be the
+        # *selected* model's label: that is the one the control renders, and
+        # asserting an arbitrary option's would test the popup, not the control.
+        options = state.get_model_options_for_selection()
+        assert options, "the model selector offered nothing"
+        await user.should_see(options[state.selected_model])
 
     def test_get_word_range_returns_correct_range(
         self, state_with_project: AppState

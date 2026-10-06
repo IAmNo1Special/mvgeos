@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from mvgeos_core.constants import DEFAULT_MODEL
 from mvgeos_runes.types import (
     SkillManifest,
     SkillScope,
@@ -95,8 +96,10 @@ async def test_full_shell_layout_rendering(user: User) -> None:
     await user.should_see("Skills")
     await user.should_see("Settings")
 
-    # Status bar and model info
-    await user.should_see("nemotron")
+    # Status bar and model info. The status bar shows the model segment of the
+    # selected slug -- not the Realm or provider prefix, and not the free-tier
+    # suffix -- so read that segment off the default rather than naming a model.
+    await user.should_see(DEFAULT_MODEL.split("/")[-1].split(":")[0])
 
 
 @pytest.mark.asyncio

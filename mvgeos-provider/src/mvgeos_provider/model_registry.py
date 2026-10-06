@@ -10,9 +10,12 @@ import httpx
 from mvgeos_core.channel import Model
 from mvgeos_core.layers import models_file
 
+from mvgeos_provider.realms import REALM_BASE_URLS
+
 logger = logging.getLogger(__name__)
 
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 CACHE_TTL_SECONDS = 86400
 
 _MODELS_PATH = Path(__file__).parent / "models.json"
@@ -27,14 +30,24 @@ _DEFAULT_CONTEMPLATION_LEVELS: list[str] = [
 ]
 
 
-def _create_openrouter_model(
+def _create_catalog_model(
     id: str,
     name: str,
+    realm: str,
+    base_url: str,
     context_window: int = 4096,
     supported_parameters: list[str] | None = None,
     is_free: bool = False,
     supported_contemplation_levels: list[str] | None = None,
 ) -> Model:
+    """Build one catalog entry for the Realm that serves it.
+
+    The Realm and its base URL are arguments rather than constants because the
+    baseline catalog is no longer exclusively OpenRouter's. Hardcoding
+    ``realm="openrouter"`` here meant a non-OpenRouter entry would have been
+    built as an OpenRouter model -- and would have been sent to
+    openrouter.ai, where it does not exist.
+    """
     params = supported_parameters or []
     if supported_contemplation_levels is not None:
         levels = list(supported_contemplation_levels)
@@ -49,8 +62,8 @@ def _create_openrouter_model(
     return Model(
         id=id,
         name=name,
-        realm="openrouter",
-        base_url="https://openrouter.ai/api/v1",
+        realm=realm,
+        base_url=base_url,
         api_key="",
         max_completion_mana=0,
         context_window=context_window,
@@ -61,17 +74,52 @@ def _create_openrouter_model(
     )
 
 
-def _load_models_json() -> list[tuple[str, str, int, list[str], bool]]:
+def _create_openrouter_model(
+    id: str,
+    name: str,
+    context_window: int = 4096,
+    supported_parameters: list[str] | None = None,
+    is_free: bool = False,
+    supported_contemplation_levels: list[str] | None = None,
+) -> Model:
+    """Build one OpenRouter catalog entry.
+
+    The live refresh at ``OPENROUTER_MODELS_URL`` only ever returns OpenRouter
+    models, so those two call sites keep this name rather than passing a Realm
+    they already know.
+    """
+    return _create_catalog_model(
+        id=id,
+        name=name,
+        realm="openrouter",
+        base_url=OPENROUTER_BASE_URL,
+        context_window=context_window,
+        supported_parameters=supported_parameters,
+        is_free=is_free,
+        supported_contemplation_levels=supported_contemplation_levels,
+    )
+
+
+def _load_models_json() -> list[tuple[str, str, str, int, list[str], bool]]:
+    """Read the shipped baseline catalog.
+
+    Entries are positional ``[id, name, context_window, params, realm]``. The
+    Realm is optional and defaults to ``openrouter``, which is what every entry
+    written before a second Realm existed means -- so the default keeps the
+    existing file valid instead of forcing a rewrite of ~200 entries to say
+    something already implied by their shape.
+    """
     try:
         data = json.loads(_MODELS_PATH.read_text(encoding="utf-8"))
-        result: list[tuple[str, str, int, list[str], bool]] = []
+        result: list[tuple[str, str, str, int, list[str], bool]] = []
         for is_free, key in ((True, "free"), (False, "paid")):
             for entry in data.get(key, []):
                 mid = entry[0]
                 name = entry[1]
                 ctx = entry[2]
                 params = entry[3] if len(entry) > 3 else []
-                result.append((mid, name, ctx, params, is_free))
+                realm = entry[4] if len(entry) > 4 else "openrouter"
+                result.append((mid, name, realm, ctx, params, is_free))
         return result
     except (json.JSONDecodeError, OSError):
         return []
@@ -79,14 +127,16 @@ def _load_models_json() -> list[tuple[str, str, int, list[str], bool]]:
 
 def _load_baseline_models() -> dict[str, Model]:
     return {
-        mid: _create_openrouter_model(
+        mid: _create_catalog_model(
             id=mid,
             name=name,
+            realm=realm,
+            base_url=REALM_BASE_URLS.get(realm, ""),
             context_window=ctx,
             supported_parameters=params,
             is_free=is_free,
         )
-        for mid, name, ctx, params, is_free in _load_models_json()
+        for mid, name, realm, ctx, params, is_free in _load_models_json()
     }
 
 

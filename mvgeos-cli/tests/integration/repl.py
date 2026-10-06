@@ -11,6 +11,7 @@ from mvgeos_core.events import (
     MvgeEventType,
 )
 from mvgeos_provider.model_registry import ModelRegistry
+from mvgeos_provider.realms import realm_for_model_id
 
 from mvgeos_cli.commands.dispatcher import CliCommandDispatcher
 
@@ -224,12 +225,24 @@ class TestReplHelpers:
         info = format_tome_info(agent, branch="main")
         parts = " ".join(text for _, text in info)
         assert "~/proj (main)" in parts
-        assert "nvidia/nemotron" in parts
+        # The status line shows the selected model, so assert on the default's
+        # prefix. AGENTS.md already requires footer assertions to match a prefix
+        # rather than a full slug, since the width truncation makes the full one
+        # a formatting detail.
+        assert realm_for_model_id(DEFAULT_MODEL) in parts
 
     def test_format_tome_info_reports_mana_used(
-        self,
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        from mvgeos_cli import formatting as formatting_mod
         from mvgeos_cli.formatting import format_tome_info
+
+        # The cwd is stubbed because the footer truncates to console width from
+        # the right, so a long real working directory pushes "mana ?" off the
+        # end and the assertion fails on how deep the checkout is rather than on
+        # the formatter. That made these two the last non-hermetic tests in this
+        # file (SOM-19).
+        monkeypatch.setattr(formatting_mod, "format_cwd", lambda: "~/proj")
 
         agent = Mvge(api_key="test-key")
         # Test fallback when no state is initialized
@@ -237,8 +250,13 @@ class TestReplHelpers:
         parts = " ".join(text for _, text in info)
         assert "mana ?" in parts
 
-    def test_format_tome_info_without_state(self) -> None:
+    def test_format_tome_info_without_state(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mvgeos_cli import formatting as formatting_mod
         from mvgeos_cli.formatting import format_tome_info
+
+        monkeypatch.setattr(formatting_mod, "format_cwd", lambda: "~/proj")
 
         agent = Mvge(api_key="test-key")
         info = format_tome_info(agent)
@@ -257,7 +275,7 @@ class TestReplHelpers:
         items = [
             ("bold", " ~/proj (main)"),
             ("dim", "  session abc12345"),
-            ("", "  nvidia/nemotron-3-ultra-550b-a55b:free • medium"),
+            ("", f"  {DEFAULT_MODEL} • medium"),
         ]
         fitted = fit_footer(items, 40)
         plain = "".join(text for _, text in fitted)
@@ -267,7 +285,7 @@ class TestReplHelpers:
     def test_fit_footer_no_truncation_when_fits(self) -> None:
         from mvgeos_cli.formatting import fit_footer
 
-        items = [("bold", " ~/proj"), ("", "  nvidia/nemotron-3-ultra-550b-a55b:free")]
+        items = [("bold", " ~/proj"), ("", f"  {DEFAULT_MODEL}")]
         fitted = fit_footer(items, 80)
         assert fitted == items
 
