@@ -2,6 +2,7 @@
 
 | # | Title | Status | Date |
 | --- | ------- | -------- | ------ |
+| 0016 | [A Sandbox Allow-List Is a Privilege Budget, Not a Wish List](0016-sandbox-privilege-is-a-budget-not-a-list.md) | Accepted | 2026-10-05 |
 | 0015 | [OpenCode Zen as the Default Realm](0015-opencode-zen-default-realm.md) | Accepted | 2026-10-05 |
 | 0014 | [One Resolved Layer Stack for the `.agents` Protocol](0014-one-resolved-layer-stack.md) | Accepted | 2026-10-04 |
 | 0013 | [Cache-Free, Format-Agnostic Tome Persistence](0013-cache-free-format-agnostic-tome-persistence.md) | Accepted | 2026-10-04 |

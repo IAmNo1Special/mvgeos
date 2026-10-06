@@ -156,6 +156,19 @@ def agent_skills_dir(name: str) -> Path:
     return agent_dir(name) / "skills"
 
 
+def agent_spells_dir(name: str) -> Path:
+    """Agent-scope Spells directory: ``<global>/agents/<name>/spells``.
+
+    Added because a Rune reached for its own Spells root and there was
+    nothing to reach for: the host package spells this path out in both its
+    installer and its spell discovery, and the Rune that searches it spelled
+    out a different one. A Rune may not import the host package -- the
+    direction is ``agent -> runes -> core`` -- so without this resolver the
+    only options were a wrong literal or an inverted host dependency.
+    """
+    return agent_dir(name) / "spells"
+
+
 def skills_dir() -> Path:
     """User-scope skills: ``<global>/skills``."""
     return global_agents_dir() / "skills"
@@ -324,6 +337,7 @@ __all__ = [
     "agent_dir",
     "agent_extensions_dir",
     "agent_skills_dir",
+    "agent_spells_dir",
     "agents_dir",
     "approval_dir",
     "auth_dir",

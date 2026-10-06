@@ -17,6 +17,7 @@ from mvgeos_core.layers import (
     agent_dir,
     agent_extensions_dir,
     agent_skills_dir,
+    agent_spells_dir,
     agents_dir,
     approval_dir,
     auth_dir,
@@ -140,6 +141,10 @@ def test_every_layer_resolver_follows_the_override(
     assert (
         agent_skills_dir("coding_mvge")
         == relocated / "agents" / "coding_mvge" / "skills"
+    )
+    assert (
+        agent_spells_dir("coding_mvge")
+        == relocated / "agents" / "coding_mvge" / "spells"
     )
     assert skills_dir() == relocated / "skills"
     assert auth_dir() == relocated / "auth"
