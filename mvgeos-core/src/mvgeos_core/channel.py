@@ -4,6 +4,14 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+#: Realms that spell their free tier with a ``-free`` suffix rather than the
+#: ``:free`` suffix OpenRouter uses.
+#:
+#: This lives beside ``Model.free`` rather than in the provider layer's shared
+#: Realm table, because it is the one Realm fact core needs and core sits below
+#: provider in the dependency graph.
+_FREE_SUFFIX_REALMS = frozenset({"opencode"})
+
 
 class StopReason(StrEnum):
     PENDING = "pending"
@@ -43,8 +51,26 @@ class Model:
 
     @property
     def free(self) -> bool:
-        """Return True if the model is free of charge."""
-        return self.is_free or self.id.endswith(":free") or self.id == "openrouter/free"
+        """Return True if the model is free of charge.
+
+        Three realms are reachable today and they do not agree on how to spell
+        "free", so all of the conventions are recognised rather than one:
+
+        - ``is_free``, set by whoever authored the catalog entry.
+        - A ``:free`` suffix. OpenRouter's convention.
+        - A ``-free`` suffix, but only for a Realm that uses it. OpenCode Zen
+          spells its free tier this way (``space-bunny-free``), and treating the
+          suffix as universal would let a paid model be called free on the
+          strength of a name -- which is the one mistake a cost guard must not
+          make. Gate it on the Realm rather than guessing from the id.
+        - ``openrouter/free``, which routes to whatever free model is available
+          and so has no suffix to read.
+        """
+        if self.is_free or self.id.endswith(":free"):
+            return True
+        if self.id == "openrouter/free":
+            return True
+        return self.realm in _FREE_SUFFIX_REALMS and self.id.endswith("-free")
 
     @property
     def provider(self) -> str:

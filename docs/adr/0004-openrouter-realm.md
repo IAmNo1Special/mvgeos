@@ -2,7 +2,27 @@
 
 ## Status
 
-Accepted
+Accepted (amended 2026-10-05: default Realm changed to OpenCode Zen)
+
+> **Amended 2026-10-05.** The decision — build and validate the Realm
+> abstraction against one real provider before adding a second — is what made a
+> second Realm cheap, and nothing here is in question. What moved is two facts it
+> stated as fixed: which provider is the default, and where its implementation
+> lives. See [ADR 0015](0015-opencode-zen-default-realm.md).
+>
+> - **Default Realm.** `nvidia/nemotron-3-ultra-550b-a55b:free` was at capacity on
+>   three of three clean-machine runs (SOM-29), so the default is now
+>   `opencode/space-bunny-free`. OpenRouter remains available and remains the wider
+>   catalog; it is simply no longer what a first run reaches for.
+> - **Implementation location.** "MVP includes only the OpenRouter provider
+>   (`OpenRouterRealm`)" described an in-package class. `OpenRouterRealm` ships as
+>   the `openrouter-realm` Rune in `mvgeos-marketplace` and registers itself at
+>   runtime, so `mvgeos-provider` contains the Realm *protocol* and no concrete
+>   Realm. That is the shape the package's own AGENTS.md now documents.
+>
+> The claim worth keeping from the original: the decision was made to build the
+> abstraction, and the second provider arrived as a consequence rather than a
+> goal.
 
 ## Context
 

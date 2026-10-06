@@ -20,8 +20,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from mvgeos_core.channel import MvgeResponse, RealmResponse, StopReason
+from mvgeos_core.constants import DEFAULT_MODEL
 from mvgeos_core.layers import ResolvedLayer, Scope
 from mvgeos_provider.base import Realm
+from mvgeos_provider.realms import realm_for_model_id
 from mvgeos_provider.registry import RealmRegistry
 
 import mvgeos_agent.mvge as mvge_module
@@ -40,10 +42,18 @@ BASE_PERSONA = "# PERSONA_BASE\nYou are the base persona.\n"
 
 
 def _make_registry(realm: Realm | None = None) -> RealmRegistry:
-    """A hermetic realm registry: no network, no global state touched."""
+    """A hermetic realm registry: no network, no global state touched.
+
+    The factory is registered under whatever prefix the default model's Realm
+    has. Hardcoding a vendor prefix here tied this helper to one default model,
+    so every change of default broke all 31 tests that use it without any of
+    them being about the default.
+    """
     registry = RealmRegistry()
     stub = realm if realm is not None else MagicMock(spec=Realm)
-    registry.register_realm_factory("nvidia", lambda **kwargs: stub)
+    registry.register_realm_factory(
+        realm_for_model_id(DEFAULT_MODEL), lambda **kwargs: stub
+    )
     return registry
 
 

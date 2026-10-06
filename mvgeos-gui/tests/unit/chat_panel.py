@@ -275,8 +275,17 @@ async def test_chat_panel_shows_diff_side_panel(user: User, tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_chat_panel_cascading_selector(user: User) -> None:
-    """Verify 4-tier cascading selector renders tiers dynamically."""
+    """Verify 4-tier cascading selector renders tiers dynamically.
+
+    Pinned to the router Realm on a reasoning-capable model, because the tiers
+    are dynamic: the provider tier renders only for a router Realm, and the
+    Contemplation tier only for a model that has a reasoning parameter. The
+    default Realm satisfies neither, so asserting four tiers of it would be
+    asserting that every model offers them.
+    """
     state = AppState()
+    state.selected_realm = "openrouter"
+    state.selected_model = "nvidia/nemotron-3-ultra-550b-a55b:free"
 
     @ui.page("/test_chat_cascading")
     def page() -> None:

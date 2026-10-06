@@ -10,15 +10,21 @@ from typing import Any, cast
 import typer
 import typer._click as _click
 from mvgeos_agent.auth import (
-    load_api_key_from_auth,
+    load_api_key_for_realm,
     save_api_key_to_auth,
 )
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.protocol import AgentFactory, MvgeAgent
 from mvgeos_core.constants import (
     DEFAULT_AGENT_NAME,
+    DEFAULT_MODEL,
 )
 from mvgeos_provider import NoRealmRegisteredError, get_default_realm_registry
+from mvgeos_provider.realms import (
+    api_key_env_for_realm,
+    realm_for_model_id,
+    rune_for_realm,
+)
 from mvgeos_runes.installer import install_rune
 from typer._click.parser import _split_opt
 from typer.core import TyperGroup
@@ -265,12 +271,18 @@ async def _run_agent(
             return await _run_print_mode(agent, prompts_out)
     except NoRealmRegisteredError as exc:
         is_interactive = not prompts_out and not tui
-        if is_interactive:
+        # The exception carries the Rune that provides the model's Realm. Reading
+        # it from here rather than hardcoding one is what lets a second Realm be
+        # the default without this prompt offering the wrong install. When the
+        # Realm could not be determined there is no install to offer, so the
+        # error is reported as-is instead of a prompt naming nothing.
+        missing_rune = exc.rune_name or rune_for_realm(exc.realm)
+        if is_interactive and missing_rune:
             try:
                 answer = (
                     input(
                         "No Realm extension installed. Would you like to install "
-                        "'openrouter-realm' from the marketplace now? [Y/n]: "
+                        f"'{missing_rune}' from the marketplace now? [Y/n]: "
                     )
                     .strip()
                     .lower()
@@ -280,9 +292,9 @@ async def _run_agent(
 
             if answer in ("", "y", "yes"):
                 try:
-                    install_rune("openrouter-realm")
+                    install_rune(missing_rune)
                     console.print(
-                        "[green]Successfully installed 'openrouter-realm'. "
+                        f"[green]Successfully installed '{missing_rune}'. "
                         "Starting session...[/green]"
                     )
                     return await _run_agent(
@@ -480,23 +492,34 @@ def _repl_callback(
         api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if api_key is None and model and model.startswith("ollama/"):
         api_key = ""
+    # Which variable holds the credential depends on the model's Realm, so the
+    # model has to be known first. With no --model the Realm is the default
+    # model's. Passing the resolved slug onwards is deliberately *not* done:
+    # an agent's own config may name a different model, and that precedence
+    # belongs to the config layer, not to this lookup.
+    key_realm = realm_for_model_id(model or DEFAULT_MODEL)
+    if api_key is None:
+        # The Realm's own variable is read before OpenRouter's. Handing one
+        # Realm's key to another authenticates at the wrong host and then fails
+        # every call with a message that names the model, so the Summoner is
+        # sent looking in the wrong place. The openrouter fallback stays last so
+        # a key saved before this existed keeps working.
+        api_key = os.environ.get(api_key_env_for_realm(key_realm))
     if api_key is None:
         api_key = os.environ.get("OPENROUTER_API_KEY")
     if api_key is None:
-        api_key = load_api_key_from_auth()
+        api_key = load_api_key_for_realm(key_realm)
     if api_key is None:
         if sys.stdin.isatty() and sys.stdout.isatty():
             prompted_key = prompt_api_key(console)
             if prompted_key:
-                save_api_key_to_auth(prompted_key)
-                console.print(
-                    "[green]Saved API key to ~/.agents/auth/openrouter.json[/green]"
-                )
+                saved_to = save_api_key_to_auth(prompted_key, key_realm)
+                console.print(f"[green]Saved API key to {saved_to}[/green]")
                 api_key = prompted_key
         if api_key is None:
             console.print(
                 format_error(
-                    "API key required. Set OPENROUTER_API_KEY, "
+                    f"API key required. Set {api_key_env_for_realm(key_realm)}, "
                     "run 'mvgeos setup', or use --api-key"
                 )
             )

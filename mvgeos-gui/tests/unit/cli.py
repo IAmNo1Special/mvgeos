@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from mvgeos_core.constants import DEFAULT_MODEL
 from nicegui import app as nicegui_app
 
 import mvgeos_gui.main as main_module
@@ -32,7 +33,7 @@ def test_parse_args_defaults() -> None:
     assert args.host == "127.0.0.1"
     assert args.port == 8000
     assert args.project == Path.cwd()
-    assert args.model == "nvidia/nemotron-3-ultra-550b-a55b:free"
+    assert args.model == DEFAULT_MODEL
     assert args.reload is False
 
 

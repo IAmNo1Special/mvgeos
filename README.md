@@ -121,7 +121,7 @@ Successfully installed mvge 'coding_mvge' to ~/.agents/agents/coding_mvge
 
 $ mvgeos info --agent-name coding_mvge
 Agent: coding_mvge
-Model: nvidia/nemotron-3-ultra-550b-a55b:free
+Model: opencode/space-bunny-free
 
 Spells
   bash        builtin

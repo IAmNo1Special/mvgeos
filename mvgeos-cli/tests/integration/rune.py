@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 from mvgeos_provider import NoRealmRegisteredError
+from mvgeos_provider.registry import no_realm_registered
 from typer.testing import CliRunner
 
 from mvgeos_cli.main import _run_agent, app
@@ -55,6 +56,17 @@ def test_rune_install_failure() -> None:
         assert "Rune 'bad-rune' not found in marketplace." in result.output
 
 
+def _no_realm(model_id: str) -> NoRealmRegisteredError:
+    """The error the registry actually raises for an uninstalled Realm.
+
+    Constructed here rather than as a literal because ``rune_name`` is what the
+    prompt now reads, and only the registry's constructor fills it in. A
+    hand-written message would have left the attribute empty and the test would
+    have been asserting the fallback rather than the behaviour.
+    """
+    return no_realm_registered(model_id)
+
+
 @pytest.mark.asyncio
 async def test_no_realm_registered_repl_prompt_accepted() -> None:
     call_count = 0
@@ -63,11 +75,7 @@ async def test_no_realm_registered_repl_prompt_accepted() -> None:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
-            raise NoRealmRegisteredError(
-                "No Realm factory registered for model 'anthropic/claude-3-5-sonnet'. "
-                "Run 'mvgeos rune install openrouter-realm' to install it from "
-                "the central marketplace."
-            )
+            raise _no_realm("opencode/space-bunny-free")
         return 0
 
     with (
@@ -77,8 +85,8 @@ async def test_no_realm_registered_repl_prompt_accepted() -> None:
     ):
         code = await _run_agent(
             incantation=None,
-            model_id="anthropic/claude-3-5-sonnet",
-            api_key="sk-or-test",
+            model_id="opencode/space-bunny-free",
+            api_key="sk-test",
             temperature=None,
             max_tokens=None,
             contemplation_level=None,
@@ -94,15 +102,13 @@ async def test_no_realm_registered_repl_prompt_accepted() -> None:
         assert code == 0
         assert call_count == 2
         mock_input.assert_called_once()
-        mock_install.assert_called_once_with("openrouter-realm")
+        mock_install.assert_called_once_with("opencode-realm")
 
 
 @pytest.mark.asyncio
 async def test_no_realm_registered_repl_prompt_rejected() -> None:
     async def fake_repl(**kwargs: object) -> int:
-        raise NoRealmRegisteredError(
-            "No Realm factory registered for model 'anthropic/claude-3-5-sonnet'."
-        )
+        raise _no_realm("opencode/space-bunny-free")
 
     with (
         patch("mvgeos_cli.main.run_repl", side_effect=fake_repl),
@@ -111,8 +117,8 @@ async def test_no_realm_registered_repl_prompt_rejected() -> None:
     ):
         code = await _run_agent(
             incantation=None,
-            model_id="anthropic/claude-3-5-sonnet",
-            api_key="sk-or-test",
+            model_id="opencode/space-bunny-free",
+            api_key="sk-test",
             temperature=None,
             max_tokens=None,
             contemplation_level=None,
@@ -135,7 +141,7 @@ async def test_no_realm_registered_print_mode_no_prompt() -> None:
     with (
         patch(
             "mvgeos_cli.main._create_agent",
-            side_effect=NoRealmRegisteredError("No Realm factory registered."),
+            side_effect=_no_realm("opencode/space-bunny-free"),
         ),
         patch("builtins.input") as mock_input,
     ):

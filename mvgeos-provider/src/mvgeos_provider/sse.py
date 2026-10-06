@@ -239,12 +239,21 @@ class SSEStreamingRealm(Realm, ABC):
         self._api_key = api_key
         self._base_url = base_url
         self._owned_client = client is None
+        client_headers: dict[str, str] = {
+            "Content-Type": "application/json",
+        }
+        # Only sent when there is a credential to put in it. `Bearer ` with
+        # nothing after it is an illegal header value, and httpx raises
+        # LocalProtocolError on it before the request leaves the process --
+        # so a Realm that serves an unauthenticated endpoint (OpenCode Zen's
+        # free tier needs no key) crashed for exactly the callers it exists to
+        # serve. Found by driving the live gateway; a mock transport accepts the
+        # malformed value, so no hermetic test would ever have caught it.
+        if api_key:
+            client_headers["Authorization"] = f"Bearer {api_key}"
         self._client = client or httpx.AsyncClient(
             base_url=self._base_url,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
+            headers=client_headers,
             timeout=httpx.Timeout(60.0),
             limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
         )

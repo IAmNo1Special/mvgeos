@@ -132,9 +132,13 @@ def _keyless_state(tmp_path, monkeypatch) -> AppState:
     Neutralizes every key source AgentService.resolve_api_key consults so
     the test is hermetic on machines that do have a key configured.
     """
+    # Every realm's variable is neutralised, not just OpenRouter's: key
+    # resolution reads the default realm's own variable first, so clearing one
+    # of the two would leave a live source on a machine that has the other set.
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
     monkeypatch.delenv("MVGEOS_API_KEY", raising=False)
-    monkeypatch.setattr(agent_service, "load_api_key_from_auth", lambda: None)
+    monkeypatch.setattr(agent_service, "load_api_key_for_realm", lambda *a, **k: None)
     return AppState(project_path=tmp_path)
 
 

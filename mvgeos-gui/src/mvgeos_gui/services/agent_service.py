@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from dotenv import load_dotenv
 from mvgeos_agent import Mvge
-from mvgeos_agent.auth import load_api_key_from_auth
+from mvgeos_agent.auth import load_api_key_for_realm
 from mvgeos_agent.commands import (
     CommandAction,
     CommandDispatcher,
@@ -34,6 +34,11 @@ from mvgeos_core.events import (
 )
 from mvgeos_provider import NoRealmRegisteredError
 from mvgeos_provider.model_registry import ModelRegistry
+from mvgeos_provider.realms import (
+    DEFAULT_REALM,
+    api_key_env_for_realm,
+    rune_for_realm,
+)
 
 from mvgeos_gui.approval.presenter import bind_approval_presenter
 from mvgeos_gui.context_usage import extract_token_usage
@@ -76,23 +81,34 @@ def _load_saved_gui_api_key() -> str | None:
     return None
 
 
-def resolve_api_key(explicit_key: str | None = None) -> str | None:
-    """Resolve the OpenRouter API key.
+def resolve_api_key(
+    explicit_key: str | None = None, realm: str | None = None
+) -> str | None:
+    """Resolve the API key for a realm.
 
-    Precedence: explicit argument, ``OPENROUTER_API_KEY``/``MVGEOS_API_KEY``
-    environment variables, the key saved through the GUI settings dialog
-    (``gui.json``/keyring), then the ``mvgeos setup`` auth file.
+    Precedence: explicit argument, the realm's own environment variable, then
+    ``MVGEOS_API_KEY``, the key saved through the GUI settings dialog
+    (``gui.json``/keyring), then the ``mvgeos setup`` auth file for that realm.
+
+    The realm's own variable is read before the OpenRouter one, and OpenRouter's
+    is read at all only when the realm has no key of its own. Reading one realm's
+    credential and handing it to another authenticates at the wrong host and then
+    fails every call with a message naming the model, which sends the Summoner
+    to look at the wrong thing.
     """
     if explicit_key and explicit_key.strip():
         return explicit_key.strip()
-    env_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("MVGEOS_API_KEY")
+    target = realm or DEFAULT_REALM
+    env_key = os.environ.get(api_key_env_for_realm(target)) or os.environ.get(
+        "MVGEOS_API_KEY"
+    )
     if env_key and env_key.strip():
         return env_key.strip()
     saved_key = _load_saved_gui_api_key()
     if saved_key:
         return saved_key
     with contextlib.suppress(Exception):
-        auth_key = load_api_key_from_auth()
+        auth_key = load_api_key_for_realm(target)
         if auth_key and auth_key.strip():
             return auth_key.strip()
     return None
@@ -112,7 +128,7 @@ class AgentService:
         env_path = (self._project_path / ".env").resolve()
         if env_path.is_file():
             load_dotenv(env_path)
-        self._api_key = resolve_api_key(api_key)
+        self._api_key = resolve_api_key(api_key, DEFAULT_REALM)
         self._agent_factory = agent_factory
         self._model_registry = model_registry or ModelRegistry()
         self._agent: MvgeAgent | None = None
@@ -180,7 +196,7 @@ class AgentService:
         if self._agent is not None or self._agent_factory is not None:
             return True
         if not self._api_key:
-            self._api_key = resolve_api_key()
+            self._api_key = resolve_api_key(None, DEFAULT_REALM)
         return bool(self._api_key)
 
     def get_or_create_agent(self, state: AppState) -> MvgeAgent:
@@ -858,18 +874,14 @@ class AgentService:
             logger.warning("No realm registered: %s", exc)
             message.is_error = True
             message.error_message = str(exc)
-            missing_rune = "openrouter-realm"
-            if "install " in str(exc):
-                parts = str(exc).split("install ")
-                if len(parts) > 1:
-                    cand = parts[1].split()[0].strip("'\"")
-                    if cand:
-                        missing_rune = cand
-            message.missing_rune = missing_rune
+            # The exception carries the Rune that provides the Realm. Reading it
+            # from there replaces splitting the message on "install ", which
+            # coupled the GUI to the wording of an error string.
+            message.missing_rune = exc.rune_name or rune_for_realm(exc.realm)
             if not message.content:
                 self._active_transcript.set_text(
                     f"**Missing Realm Extension**: The selected model requires the "
-                    f"`{missing_rune}` extension to communicate with upstream "
+                    f"`{message.missing_rune}` extension to communicate with upstream "
                     f"providers.\n\n"
                     f"Install it from the Rune Marketplace or use the button below."
                 )
