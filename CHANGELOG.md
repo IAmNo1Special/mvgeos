@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.11] - 2026-10-06
+
+
+### Bug Fixes
+
+- **cli:** report already-written work when a one-shot run exits non-zero (#174) (f1ed8e7)
+
+- **provider:** give capacity saturation a minutes-scale retry budget (#178) (b01d754)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (a3e5486)
+
+- **release:** v0.6.11 (cb5d8a8)
+
+
+### Continuous Integration
+
+- **scorecard:** name the gate reason in the log, and keep the failure propagating (#180) (ad6e68f)
+
+- **release:** dispatch publish.yml from the bump job (351e581)
+
+
+### Documentation
+
+- lead the README with the product instead of the package table (#167) (d31cbfc)
+
+
+### Tests
+
+- **scripts:** test the release helper instead of excluding scripts/ from measure 1 (5365a6a)
+
+
 ## [0.6.10] - 2026-10-05
 
 
