@@ -384,6 +384,22 @@ See [`TESTING.md`](TESTING.md) for the testing standards charter and
 </details>
 
 <details>
+<summary><b>👥 Contributors</b></summary>
+
+MvgeOS is built in the open. Contributions from outside the maintainer are
+credited here by name and by the work they landed.
+
+| Contributor | Landed |
+| --- | --- |
+| [@MalcomThigpen](https://github.com/MalcomThigpen) | GUI skills management and Rune settings panels, replacing the placeholder panels — [`c9290e5e`](https://github.com/IAmNo1Special/mvgeos/commit/c9290e5e), 29 files, +792/−380. Centred the send/stop control and aligned the attach control with the model picker — [`1335caaa`](https://github.com/IAmNo1Special/mvgeos/commit/1335caaa). Made the Windows test suite green — [`46bfe9d7`](https://github.com/IAmNo1Special/mvgeos/commit/46bfe9d7). |
+
+New here? Scoped, unassigned work is labelled `help wanted`:
+<https://github.com/IAmNo1Special/mvgeos/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22>.
+A clone is all you need — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+</details>
+
+<details>
 <summary><b>🔒 Security, provenance, releases, licence</b></summary>
 
 - **Security policy**: vulnerability reporting, prompt injection threat models,
