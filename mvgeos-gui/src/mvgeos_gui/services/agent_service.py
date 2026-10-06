@@ -49,7 +49,7 @@ from mvgeos_gui.models import (
     ChatMessage,
     TaskStatus,
 )
-from mvgeos_gui.services.config_service import ConfigService
+from mvgeos_gui.services.config_service import API_KEY_REALM, ConfigService
 from mvgeos_gui.transcript import InvocationTranscript
 
 if TYPE_CHECKING:
@@ -87,14 +87,18 @@ def resolve_api_key(
     """Resolve the API key for a realm.
 
     Precedence: explicit argument, the realm's own environment variable, then
-    ``MVGEOS_API_KEY``, the key saved through the GUI settings dialog
-    (``gui.json``/keyring), then the ``mvgeos setup`` auth file for that realm.
+    ``MVGEOS_API_KEY``, then -- for OpenRouter only -- the key saved through the
+    GUI settings dialog (``gui.json``/keyring), then the ``mvgeos setup`` auth
+    file for that realm.
 
-    The realm's own variable is read before the OpenRouter one, and OpenRouter's
-    is read at all only when the realm has no key of its own. Reading one realm's
-    credential and handing it to another authenticates at the wrong host and then
-    fails every call with a message naming the model, which sends the Summoner
-    to look at the wrong thing.
+    Every step is scoped to the Realm being asked about. Reading one Realm's
+    credential and handing it to another authenticates at the wrong host, fails
+    every call with a message that names the model rather than the credential,
+    and gives the Summoner's key to a host that never asked for it.
+
+    A Realm with no credential of its own resolves to ``None``. For OpenCode Zen
+    that is the normal case, not a missing setup step: its free tier needs no
+    key.
     """
     if explicit_key and explicit_key.strip():
         return explicit_key.strip()
@@ -104,9 +108,15 @@ def resolve_api_key(
     )
     if env_key and env_key.strip():
         return env_key.strip()
-    saved_key = _load_saved_gui_api_key()
-    if saved_key:
-        return saved_key
+    # The settings dialog keeps a single credential and the storage names it
+    # `openrouter_api_key`, so it is only ever an OpenRouter key. Reading it for
+    # any other Realm sent the Summoner's OpenRouter credential to that Realm's
+    # host -- which, with `opencode` as the default Realm, was the first-run path
+    # for the GUI as well as the CLI and the library.
+    if target == API_KEY_REALM:
+        saved_key = _load_saved_gui_api_key()
+        if saved_key:
+            return saved_key
     with contextlib.suppress(Exception):
         auth_key = load_api_key_for_realm(target)
         if auth_key and auth_key.strip():

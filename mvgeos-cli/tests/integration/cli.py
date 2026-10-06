@@ -61,7 +61,7 @@ def test_app_info_help() -> None:
     assert "snapshot" in result.output.lower()
 
 
-@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
+@patch.dict(os.environ, {"OPENCODE_API_KEY": "sk-zen-v1-test-key"})
 @patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
 def test_repl_callback_no_incantation_runs_repl(mock_run_agent: AsyncMock) -> None:
     mock_run_agent.return_value = 0
@@ -70,7 +70,7 @@ def test_repl_callback_no_incantation_runs_repl(mock_run_agent: AsyncMock) -> No
     mock_run_agent.assert_called_once()
 
 
-@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
+@patch.dict(os.environ, {"OPENCODE_API_KEY": "sk-zen-v1-test-key"})
 @patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
 def test_repl_callback_with_incantation(mock_run_agent: AsyncMock) -> None:
     mock_run_agent.return_value = 0
@@ -81,7 +81,10 @@ def test_repl_callback_with_incantation(mock_run_agent: AsyncMock) -> None:
     assert call_kwargs["incantation"] == "hello world"
 
 
-@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
+# This invocation names `--model test/model`, so the Realm being served is
+# `test` and that is the Realm whose credential has to be present. A key for
+# any other Realm is no longer accepted on its behalf.
+@patch.dict(os.environ, {"TEST_API_KEY": "sk-test-v1-key"})
 @patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
 def test_repl_callback_with_options(mock_run_agent: AsyncMock) -> None:
     mock_run_agent.return_value = 0
@@ -142,7 +145,36 @@ def test_repl_callback_missing_api_key() -> None:
         assert "API key required" in result.output
 
 
-@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
+def test_openrouter_key_is_not_handed_to_another_realm() -> None:
+    """The CLI must not answer one Realm's credential with another's.
+
+    ``OPENROUTER_API_KEY`` used to be a fallback for every Realm, which sent it
+    to whichever host the model named. With ``opencode`` as the default Realm
+    that was the common case.
+
+    Note the exit code is 1 either way: the CLI still insists on a credential
+    for a Realm whose free tier needs none, which is a separate defect. What
+    matters here is that it does not reach that point holding an OpenRouter
+    key -- it says no key rather than the wrong one.
+    """
+    env = dict(os.environ)
+    env["OPENROUTER_API_KEY"] = "sk-or-v1-openrouter-secret"
+    env.pop("OPENCODE_API_KEY", None)
+    env.pop("MVGEOS_API_KEY", None)
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("mvgeos_cli.main.load_api_key_for_realm", return_value=None),
+        patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock) as mock_run,
+    ):
+        mock_run.return_value = 0
+        result = runner.invoke(app, ["--model", "opencode/space-bunny-free", "hi"])
+        assert result.exit_code == 1
+        assert "API key required" in _strip_ansi(result.output)
+        assert "sk-or-v1-openrouter-secret" not in _strip_ansi(result.output)
+        mock_run.assert_not_called()
+
+
+@patch.dict(os.environ, {"OPENCODE_API_KEY": "sk-zen-v1-test-key"})
 @patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
 def test_one_shot_merges_incantation_and_positionals(mock_run_agent: AsyncMock) -> None:
     mock_run_agent.return_value = 0
@@ -154,7 +186,7 @@ def test_one_shot_merges_incantation_and_positionals(mock_run_agent: AsyncMock) 
     assert call_kwargs["prompts"] == ["p1", "p2"]
 
 
-@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
+@patch.dict(os.environ, {"OPENCODE_API_KEY": "sk-zen-v1-test-key"})
 @patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
 def test_one_shot_positional_only(mock_run_agent: AsyncMock) -> None:
     mock_run_agent.return_value = 0
@@ -166,7 +198,7 @@ def test_one_shot_positional_only(mock_run_agent: AsyncMock) -> None:
     assert call_kwargs["prompts"] == ["list", "files"]
 
 
-@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
+@patch.dict(os.environ, {"OPENCODE_API_KEY": "sk-zen-v1-test-key"})
 @patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
 def test_subcommands_still_route(mock_run_agent: AsyncMock) -> None:
     result = runner.invoke(app, ["tome", "list"])
@@ -174,7 +206,7 @@ def test_subcommands_still_route(mock_run_agent: AsyncMock) -> None:
     mock_run_agent.assert_not_called()
 
 
-@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
+@patch.dict(os.environ, {"OPENCODE_API_KEY": "sk-zen-v1-test-key"})
 @patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
 def test_leaf_subcommand_with_extra_args_routes_to_prompts(
     mock_run_agent: AsyncMock,
@@ -196,7 +228,7 @@ def test_leaf_subcommand_with_extra_args_routes_to_prompts(
     assert call_kwargs_build["prompts"] == ["build", "a", "snake", "game"]
 
 
-@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
+@patch.dict(os.environ, {"OPENCODE_API_KEY": "sk-zen-v1-test-key"})
 @patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
 def test_options_after_positionals_are_prompts(mock_run_agent: AsyncMock) -> None:
     mock_run_agent.return_value = 0
@@ -207,7 +239,7 @@ def test_options_after_positionals_are_prompts(mock_run_agent: AsyncMock) -> Non
     assert call_kwargs["prompts"] == ["p1", "--model", "x"]
 
 
-@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
+@patch.dict(os.environ, {"OPENCODE_API_KEY": "sk-zen-v1-test-key"})
 @patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
 def test_error_exit_code_propagates(mock_run_agent: AsyncMock) -> None:
     mock_run_agent.return_value = 1
@@ -215,7 +247,7 @@ def test_error_exit_code_propagates(mock_run_agent: AsyncMock) -> None:
     assert result.exit_code == 1
 
 
-@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
+@patch.dict(os.environ, {"OPENCODE_API_KEY": "sk-zen-v1-test-key"})
 @patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
 def test_success_exit_code_zero(mock_run_agent: AsyncMock) -> None:
     mock_run_agent.return_value = 0
@@ -304,7 +336,7 @@ def test_app_help_lists_approval_mode() -> None:
     assert "--approval-mode" in _strip_ansi(result.output)
 
 
-@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
+@patch.dict(os.environ, {"OPENCODE_API_KEY": "sk-zen-v1-test-key"})
 @patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
 def test_repl_callback_passes_approval_mode(mock_run_agent: AsyncMock) -> None:
     mock_run_agent.return_value = 0
@@ -315,7 +347,7 @@ def test_repl_callback_passes_approval_mode(mock_run_agent: AsyncMock) -> None:
     assert call_kwargs["approval_mode"] == "allow-all"
 
 
-@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test-key"})
+@patch.dict(os.environ, {"OPENCODE_API_KEY": "sk-zen-v1-test-key"})
 @patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
 def test_repl_callback_rejects_bad_approval_mode(
     mock_run_agent: AsyncMock,

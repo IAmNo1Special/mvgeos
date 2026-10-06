@@ -20,7 +20,11 @@ from mvgeos_tome.handle import TomeHandleFactory
 
 from mvgeos_agent import Mvge
 from mvgeos_agent.environment import MvgeEnvironment
-from mvgeos_agent.mvge import _apply_gateway_allowlist, _validate_spell_name
+from mvgeos_agent.mvge import (
+    _apply_gateway_allowlist,
+    _resolve_api_key,
+    _validate_spell_name,
+)
 from mvgeos_agent.types import MvgeState
 
 
@@ -719,3 +723,24 @@ async def test_initialize_records_project_dir_as_tome_cwd(
         assert meta.cwd == str(project_dir)
     finally:
         await agent.close()
+
+
+def test_api_key_resolution_never_crosses_realms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Realm's credential is read only for that Realm.
+
+    An OpenRouter key in the environment used to be read first, unconditionally,
+    so an Mvge whose model named any other Realm sent it to that Realm's host.
+    Since ``opencode`` became the default Realm that was the ordinary first-run
+    path, not an edge case.
+    """
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-secret")
+    monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
+    monkeypatch.delenv("MVGEOS_API_KEY", raising=False)
+
+    assert _resolve_api_key(realm="opencode") == ""
+    assert _resolve_api_key(realm="openrouter") == "sk-or-secret"
+
+    # An explicit key is not a guess about which Realm was meant, so it stands.
+    assert _resolve_api_key("sk-explicit", realm="opencode") == "sk-explicit"

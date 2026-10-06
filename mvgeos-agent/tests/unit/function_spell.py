@@ -159,10 +159,11 @@ class TestCoerceSpell:
 class TestMvgeApiKeyAndEnvLoading:
     #: Every variable ``_resolve_api_key`` consults, in fallback order. A
     #: test that wants no key must clear all of them: clearing only the
-    #: OpenRouter pair leaves a developer's exported ``GEMINI_API_KEY`` (or
-    #: a ``.env`` another test loaded) to satisfy the lookup, and the
-    #: missing-key path silently stops being exercised.
+    #: Realm's own leaves another Realm's variable (or a ``.env`` another test
+    #: loaded) to satisfy the lookup, and the missing-key path silently stops
+    #: being exercised.
     API_KEY_ENV_VARS = (
+        "OPENCODE_API_KEY",
         "OPENROUTER_API_KEY",
         "MVGEOS_API_KEY",
         "GEMINI_API_KEY",
@@ -186,11 +187,16 @@ class TestMvgeApiKeyAndEnvLoading:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
         monkeypatch.delenv("MVGEOS_API_KEY", raising=False)
 
+        # The default model is served by the `opencode` Realm, so that is the
+        # Realm whose variable is read. What is under test is that a `.env`
+        # beside the caller is loaded at all -- an OpenRouter key here would
+        # only have been honoured by falling back across Realms.
         env_file = tmp_path / ".env"
         env_file.write_text(
-            "OPENROUTER_API_KEY=sk-or-test-from-env-file\n", encoding="utf-8"
+            "OPENCODE_API_KEY=sk-zen-test-from-env-file\n", encoding="utf-8"
         )
 
         fake_caller_file = tmp_path / "caller.py"
@@ -201,7 +207,7 @@ class TestMvgeApiKeyAndEnvLoading:
             mock_stack.return_value = [None, frame_mock]
 
             agent = Mvge()
-            assert agent._api_key == "sk-or-test-from-env-file"
+            assert agent._api_key == "sk-zen-test-from-env-file"
 
 
 class TestSpellDirectoryDiscovery:

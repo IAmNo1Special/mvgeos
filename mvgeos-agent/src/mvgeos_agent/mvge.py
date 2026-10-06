@@ -48,6 +48,10 @@ from mvgeos_core.loop import StreamFn
 from mvgeos_core.spells import MvgeSpell
 from mvgeos_provider.base import Realm, RealmFactory
 from mvgeos_provider.model_registry import ModelRegistry
+from mvgeos_provider.realms import (
+    api_key_env_for_realm,
+    realm_for_model_id,
+)
 from mvgeos_provider.registry import RealmRegistry, get_default_realm_registry
 from mvgeos_runes.codecs import load_session_codecs
 from mvgeos_runes.rune_audit import (
@@ -100,15 +104,28 @@ logger = logging.getLogger(__name__)
 SPELL_NAME_REGEX = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
-def _resolve_api_key(explicit_key: str | None = None) -> str:
-    return (
-        explicit_key
-        or os.environ.get("OPENROUTER_API_KEY")
-        or os.environ.get("MVGEOS_API_KEY")
-        or os.environ.get("GEMINI_API_KEY")
-        or os.environ.get("GOOGLE_API_KEY")
-        or ""
-    )
+def _resolve_api_key(explicit_key: str | None = None, realm: str = "") -> str:
+    """Read the credential for ``realm``, never for a different one.
+
+    The lookup order is explicit argument, the Realm's own environment
+    variable, then ``MVGEOS_API_KEY`` -- which is Realm-agnostic by name and so
+    stays a valid fallback for whichever Realm is being served.
+
+    There is deliberately no cross-Realm fallback. An earlier version read
+    ``OPENROUTER_API_KEY`` first, unconditionally, so a Summoner whose only
+    credential was an OpenRouter key had it sent to ``opencode.ai`` the moment
+    ``opencode`` became the default Realm. That hands one Realm's key to another
+    Realm's host: it authenticates at the wrong host, and the Summoner's key is
+    exposed to a host that never asked for it. ``opencode`` is the default now,
+    so this was not a corner case -- it was the first-run path.
+
+    A Realm with no credential of its own resolves to ``""``, which is a correct
+    answer rather than a failure: OpenCode Zen's free tier needs no key at all.
+    """
+    if explicit_key:
+        return explicit_key
+    env_key = os.environ.get(api_key_env_for_realm(realm)) if realm else None
+    return env_key or os.environ.get("MVGEOS_API_KEY") or ""
 
 
 def _validate_spell_name(name: Any) -> bool:
@@ -401,7 +418,10 @@ class Mvge:
                 load_dotenv(env_path)
         caller_dir = resolved_caller_dir
 
-        self._api_key = _resolve_api_key(api_key)
+        # Held explicitly here and resolved from the environment once the Realm
+        # is known -- reading a credential before that would mean reading a
+        # Realm-blind one, which is the bug this ordering exists to prevent.
+        self._api_key = api_key or ""
         self._name = name
         self._caller_dir = caller_dir
 
@@ -441,6 +461,11 @@ class Mvge:
         self._config_manager = environment.config_manager
 
         self._model_id = environment.model_id
+        # Now that the model is known, its Realm is too, and only then is it
+        # safe to read a credential. An explicit key still wins: the Summoner
+        # handing one over is not a guess about which Realm they meant.
+        if not self._api_key:
+            self._api_key = _resolve_api_key(realm=realm_for_model_id(self._model_id))
         self._temperature = environment.temperature
         self._max_tokens = environment.max_tokens
         self._contemplation_level = environment.contemplation_level
@@ -1672,7 +1697,7 @@ class Mvge:
             return
 
         if not self._api_key:
-            self._api_key = _resolve_api_key()
+            self._api_key = _resolve_api_key(realm=realm_for_model_id(self._model_id))
         is_ollama = bool(
             (self._model_id and self._model_id.startswith("ollama"))
             or self._provider_name == "ollama"
