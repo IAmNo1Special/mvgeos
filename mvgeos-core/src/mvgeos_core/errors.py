@@ -67,14 +67,55 @@ class UpstreamTimeoutError(MvgeError):
 
 
 class MissingApiKeyError(MvgeError):
+    """Raised when the Realm serving this turn has no resolved credential.
+
+    Carries the Realm and its variable rather than baking one into the default
+    message. The default this replaces named ``OPENROUTER_API_KEY``, so a path
+    whose Realm was ``opencode`` sent the Summoner to set a credential that
+    Realm never reads -- the wrong variable is worse than none, because setting
+    it looks like the fix and the next run fails the same way.
+
+    Names the variable as well as the Realm, matching the CLI's own missing-key
+    message. An embedder that raises this through the library should not hand a
+    Summoner less than the command line does.
+
+    Every argument is optional so a bare ``raise MissingApiKeyError`` still
+    builds. A bare one cannot know the Realm, so it asks for a credential
+    without claiming to know whose it is.
+    """
+
     def __init__(
         self,
-        message: str = (
-            "API key not found. Set OPENROUTER_API_KEY in your environment "
-            "or in a co-located .env file."
-        ),
+        message: str = "",
+        realm: str = "",
+        api_key_env: str = "",
     ) -> None:
-        super().__init__("missing_api_key", message)
+        self.realm = realm
+        # A caller holding the Realm's table entry passes the variable that
+        # entry names. One that does not gets the `<REALM>_API_KEY` shape, which
+        # is the fallback the Realm tables derive for an unmapped Realm.
+        # Duplicated rather than imported because the tables live in a leaf
+        # package and core may not reach down into one -- see the
+        # dependency_direction guard.
+        if not api_key_env and realm:
+            api_key_env = f"{realm.upper()}_API_KEY"
+        self.api_key_env = api_key_env
+        super().__init__(
+            "missing_api_key",
+            message or _missing_api_key_message(realm, api_key_env),
+        )
+
+
+def _missing_api_key_message(realm: str, api_key_env: str) -> str:
+    if not realm:
+        subject = "API key not found."
+    else:
+        subject = f"API key not found for Realm '{realm}'."
+    if not api_key_env:
+        return f"{subject} Set it in your environment or in a co-located .env file."
+    return (
+        f"{subject} Set {api_key_env} in your environment or in a co-located .env file."
+    )
 
 
 class SpellTimeoutError(MvgeError):

@@ -20,6 +20,7 @@ from mvgeos_core.constants import (
     DEFAULT_MODEL,
 )
 from mvgeos_provider import NoRealmRegisteredError, get_default_realm_registry
+from mvgeos_provider.model_registry import model_requires_credential
 from mvgeos_provider.realms import (
     api_key_env_for_realm,
     realm_for_model_id,
@@ -245,7 +246,11 @@ async def _run_agent(
             )
             return 0
 
-        validate_api_key(api_key)
+        # The model's Realm, not a bare key: this validator needs to know whether
+        # the Realm being served requires a credential at all. Passing nothing
+        # made a Realm whose free tier needs no key fail here with a demand for
+        # a credential that could not change the outcome.
+        validate_api_key(api_key, model_id=model_id)
         agent = await _create_agent(
             model=model_id,
             api_key=api_key,
@@ -490,14 +495,13 @@ def _repl_callback(
 
     if api_key is None and model and model.startswith("google/"):
         api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    if api_key is None and model and model.startswith("ollama/"):
-        api_key = ""
     # Which variable holds the credential depends on the model's Realm, so the
     # model has to be known first. With no --model the Realm is the default
     # model's. Passing the resolved slug onwards is deliberately *not* done:
     # an agent's own config may name a different model, and that precedence
     # belongs to the config layer, not to this lookup.
     key_realm = realm_for_model_id(model or DEFAULT_MODEL)
+    key_model = model or DEFAULT_MODEL
     if api_key is None:
         # Only the Realm's own variable, then its own credential file. The
         # unconditional OpenRouter fallback this replaced sent an OpenRouter key
@@ -508,6 +512,18 @@ def _repl_callback(
         api_key = os.environ.get(api_key_env_for_realm(key_realm))
     if api_key is None:
         api_key = load_api_key_for_realm(key_realm)
+    if api_key is None and not model_requires_credential(key_model):
+        # A model this engine will serve without one. Only reached once every
+        # lookup above came up empty, so a key the Summoner *did* set is still
+        # forwarded -- the exemption removes the requirement, not the key.
+        # Asking for a credential here is a dead end, since there is none to
+        # set, and the shipped default is exempt, so the default could not
+        # otherwise start on the machine it ships for.
+        #
+        # Asked per model, not per Realm: a Realm whose free tier is anonymous
+        # still serves keyed paid models, so demanding a key for those would be
+        # as wrong as demanding one for the free tier.
+        api_key = ""
     if api_key is None:
         if sys.stdin.isatty() and sys.stdout.isatty():
             prompted_key = prompt_api_key(console)

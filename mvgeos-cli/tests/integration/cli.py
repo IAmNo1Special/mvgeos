@@ -130,19 +130,95 @@ def test_repl_callback_with_options(mock_run_agent: AsyncMock) -> None:
 
 
 def test_repl_callback_missing_api_key() -> None:
+    """A Realm that does need one still refuses, naming its own variable.
+
+    ``google/`` is the discriminating case: it needs a credential and it is not
+    ``openrouter``, so a message naming OpenRouter's variable passes every
+    assertion written against the default model -- which is the bug, since the
+    default model's Realm is ``opencode``.
+    """
     env = dict(os.environ)
-    # Both realm variables: the default realm reads its own first, so clearing
-    # only OpenRouter's would leave the callback with a key on a machine that
-    # happens to have one set.
-    env.pop("OPENROUTER_API_KEY", None)
-    env.pop("OPENCODE_API_KEY", None)
+    for name in ("OPENROUTER_API_KEY", "OPENCODE_API_KEY", "GEMINI_API_KEY"):
+        env.pop(name, None)
+    env.pop("GOOGLE_API_KEY", None)
     with (
         patch.dict(os.environ, env, clear=True),
         patch("mvgeos_cli.main.load_api_key_for_realm", return_value=None),
+        patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock) as mock_run,
     ):
-        result = runner.invoke(app, ["--incantation", "test"])
+        mock_run.return_value = 0
+        result = runner.invoke(
+            app, ["--model", "google/gemini-2.5-flash", "--incantation", "test"]
+        )
         assert result.exit_code == 1
         assert "API key required" in result.output
+        assert "GOOGLE_API_KEY" in result.output
+        mock_run.assert_not_called()
+
+
+def test_a_paid_model_on_zen_still_refuses_and_names_its_own_variable() -> None:
+    """The exemption is per *model*, not per Realm -- at the CLI gate.
+
+    Zen's free tier needs no key (ADR-0015); its paid models are keyed. A gate
+    that asked only "is this Realm exempt?" would let a Summoner spend a paid
+    model anonymously and then fail at the host with a message about the model
+    rather than about the missing credential.
+
+    This is the only test at this gate that can catch that: the neighbouring
+    ones use ``google/``, a *different* Realm, so they cannot tell a per-model
+    answer from a per-Realm one.
+    """
+    env = dict(os.environ)
+    for name in (
+        "OPENROUTER_API_KEY",
+        "OPENCODE_API_KEY",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "MVGEOS_API_KEY",
+    ):
+        env.pop(name, None)
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("mvgeos_cli.main.load_api_key_for_realm", return_value=None),
+        patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock) as mock_run,
+    ):
+        mock_run.return_value = 0
+        result = runner.invoke(app, ["--model", "opencode/glm-5", "hi"])
+        assert result.exit_code == 1
+        assert "API key required" in _strip_ansi(result.output)
+        assert "OPENCODE_API_KEY" in _strip_ansi(result.output)
+        mock_run.assert_not_called()
+
+
+def test_the_default_model_runs_with_no_credential_at_all() -> None:
+    """The shipped default must start on a machine with no credentials.
+
+    ``DEFAULT_MODEL`` is ``opencode/space-bunny-free`` and Zen's free tier
+    answers a request carrying no ``Authorization`` header (ADR-0015). The
+    refusal this replaces was a pure loss: the Summoner was told to run a setup
+    step for a credential that could not change the outcome.
+
+    Asserted as the CLI *reaching* the agent rather than exiting, so it covers
+    the gate rather than whatever comes after it. ``_run_agent`` is mocked
+    because the next real step is resolving a Realm, which needs a Rune
+    installed -- a separate concern with its own test.
+    """
+    env = dict(os.environ)
+    env.pop("OPENROUTER_API_KEY", None)
+    env.pop("OPENCODE_API_KEY", None)
+    env.pop("MVGEOS_API_KEY", None)
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("mvgeos_cli.main.load_api_key_for_realm", return_value=None),
+        patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock) as mock_run,
+    ):
+        mock_run.return_value = 0
+        result = runner.invoke(app, ["--model", "opencode/space-bunny-free", "hi"])
+        assert result.exit_code == 0
+        assert "API key required" not in _strip_ansi(result.output)
+        mock_run.assert_called_once()
+        # An empty credential, not the string "None" and not another Realm's.
+        assert mock_run.call_args.kwargs["api_key"] == ""
 
 
 def test_openrouter_key_is_not_handed_to_another_realm() -> None:
@@ -152,10 +228,10 @@ def test_openrouter_key_is_not_handed_to_another_realm() -> None:
     to whichever host the model named. With ``opencode`` as the default Realm
     that was the common case.
 
-    Note the exit code is 1 either way: the CLI still insists on a credential
-    for a Realm whose free tier needs none, which is a separate defect. What
-    matters here is that it does not reach that point holding an OpenRouter
-    key -- it says no key rather than the wrong one.
+    An OpenRouter key on the ``opencode`` path is now simply unused: that Realm
+    is exempt from the credential requirement, so the Summoner has nothing to
+    do. What this pins is that their key is never forwarded -- on a Realm that
+    *does* require one, only that Realm's own variable is read.
     """
     env = dict(os.environ)
     env["OPENROUTER_API_KEY"] = "sk-or-v1-openrouter-secret"
@@ -168,10 +244,24 @@ def test_openrouter_key_is_not_handed_to_another_realm() -> None:
     ):
         mock_run.return_value = 0
         result = runner.invoke(app, ["--model", "opencode/space-bunny-free", "hi"])
-        assert result.exit_code == 1
-        assert "API key required" in _strip_ansi(result.output)
+        assert result.exit_code == 0
         assert "sk-or-v1-openrouter-secret" not in _strip_ansi(result.output)
-        mock_run.assert_not_called()
+        assert mock_run.call_args.kwargs["api_key"] == ""
+
+    # And on a Realm that does need one, the OpenRouter key is not the answer.
+    env["GOOGLE_API_KEY"] = "AIza-google-key-for-the-wrong-realm"
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("mvgeos_cli.main.load_api_key_for_realm", return_value=None),
+        patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock) as mock_run,
+    ):
+        mock_run.return_value = 0
+        result = runner.invoke(app, ["--model", "google/gemini-2.5-flash", "hi"])
+        assert result.exit_code == 0
+        assert (
+            mock_run.call_args.kwargs["api_key"]
+            == "AIza-google-key-for-the-wrong-realm"
+        )
 
 
 @patch.dict(os.environ, {"OPENCODE_API_KEY": "sk-zen-v1-test-key"})
@@ -357,17 +447,43 @@ def test_repl_callback_rejects_bad_approval_mode(
     mock_run_agent.assert_not_called()
 
 
-@patch.dict(os.environ, {"OPENCODE_API_KEY": "sk-zen-test-key"})
+@patch.dict(os.environ, {"GOOGLE_API_KEY": "AIza-google-test-key"})
 @patch("mvgeos_cli.main.load_api_key_for_realm", return_value=None)
 @patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
-def test_the_default_realm_reads_its_own_api_key(
+def test_a_realm_that_needs_a_key_reads_its_own_api_key(
     mock_run_agent: AsyncMock, mock_auth: MagicMock
 ) -> None:
-    """The default model's Realm must get its own key, not OpenRouter's.
+    """A Realm that requires a credential must read its own, not another's.
 
     Handing one Realm's credential to another authenticates at the wrong host
     and then fails every call with a message naming the model, so the Summoner is
     sent to look at the wrong thing.
+
+    ``google/`` rather than the default model, because ``opencode`` is exempt
+    from the credential requirement: a Summoner who has no key is not stopped
+    there, so a test on that path cannot show the lookup happening.
+    """
+    mock_run_agent.return_value = 0
+    result = runner.invoke(
+        app, ["--model", "google/gemini-2.5-flash", "--incantation", "hello"]
+    )
+
+    assert result.exit_code == 0
+    assert mock_run_agent.await_args.kwargs["api_key"] == "AIza-google-test-key"
+
+
+@patch.dict(os.environ, {"OPENCODE_API_KEY": "sk-zen-test-key"})
+@patch("mvgeos_cli.main.load_api_key_for_realm", return_value=None)
+@patch("mvgeos_cli.main._run_agent", new_callable=AsyncMock)
+def test_a_key_is_still_used_by_the_realm_that_does_not_require_one(
+    mock_run_agent: AsyncMock, mock_auth: MagicMock
+) -> None:
+    """Exempting a Realm must not discard a key the Summoner did set.
+
+    The exemption removes the *requirement*. A Summoner holding an
+    ``OPENCODE_API_KEY`` -- paid Zen, or an endpoint that wants one -- must still
+    have it forwarded, or the fix would have cost them working access in order to
+    make the free tier work.
     """
     mock_run_agent.return_value = 0
     result = runner.invoke(app, ["--incantation", "hello"])
@@ -394,14 +510,20 @@ def test_an_explicit_model_reads_its_own_realms_key(
 
 @patch.dict(os.environ, {}, clear=True)
 def test_the_missing_key_message_names_the_models_own_variable() -> None:
-    """The remedy has to name the variable that would actually fix it."""
+    """The remedy has to name the variable that would actually fix it.
+
+    ``google/`` rather than the default model, which is exempt: its Realm serves
+    without a credential, so no message is printed there and naming its variable
+    would be advice for a key it never reads.
+    """
     env = dict(os.environ)
-    for name in ("OPENROUTER_API_KEY", "OPENCODE_API_KEY"):
+    for name in ("OPENROUTER_API_KEY", "OPENCODE_API_KEY", "GOOGLE_API_KEY"):
         env.pop(name, None)
     with (
         patch.dict(os.environ, env, clear=True),
         patch("mvgeos_cli.main.load_api_key_for_realm", return_value=None),
     ):
-        result = runner.invoke(app, ["--model", "opencode/space-bunny-free"])
+        result = runner.invoke(app, ["--model", "google/gemini-2.5-flash"])
         assert result.exit_code == 1
-        assert "OPENCODE_API_KEY" in result.output
+        assert "GOOGLE_API_KEY" in result.output
+        assert "OPENROUTER_API_KEY" not in result.output

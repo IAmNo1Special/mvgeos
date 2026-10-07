@@ -2,20 +2,25 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from mvgeos_core import MissingApiKeyError
+from mvgeos_core.constants import DEFAULT_MODEL
 from mvgeos_core.spells import (
     MvgeSpell,
     SpellResult,
     SpellStatus,
 )
+from mvgeos_provider.base import Realm
+from mvgeos_provider.realms import realm_for_model_id
+from mvgeos_provider.registry import RealmRegistry
 from pydantic import BaseModel
 
 from mvgeos_agent import (
     FunctionSpell,
     Mvge,
+    MvgeEnvironment,
     coerce_spell,
 )
 
@@ -177,11 +182,115 @@ class TestMvgeApiKeyAndEnvLoading:
         for var in self.API_KEY_ENV_VARS:
             monkeypatch.delenv(var, raising=False)
 
-        agent = Mvge()
+        agent = Mvge(
+            environment=MvgeEnvironment.resolve(
+                overrides={"model": "google/gemini-2.5-flash"}
+            )
+        )
         agent._api_key = ""
 
         with pytest.raises(MissingApiKeyError, match="API key not found"):
             await agent.initialize()
+
+    @pytest.mark.asyncio
+    async def test_a_realm_that_needs_no_credential_initializes_without_one(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The shipped default must start on a machine with no credentials.
+
+        ``opencode/space-bunny-free`` is the model MvgeOS boots on, and Zen's
+        free tier answers a request with no ``Authorization`` header at all
+        (ADR-0015). Requiring a key for it is a dead end -- there is nothing to
+        go set, so the Summoner is told to run a setup step that cannot help.
+
+        A stub Realm is registered so the assertion is on reaching the end of
+        ``initialize`` rather than on which error stopped the way. That matters:
+        whether a Realm factory exists for ``opencode`` is process-wide state
+        another test sets, so an assertion naming the successor error would be
+        green or red depending on what ran first.
+        """
+        for var in self.API_KEY_ENV_VARS:
+            monkeypatch.delenv(var, raising=False)
+
+        realm = realm_for_model_id(DEFAULT_MODEL)
+        registry = RealmRegistry()
+        registry.register_realm_factory(realm, lambda **kwargs: MagicMock(spec=Realm))
+
+        environment = MvgeEnvironment.resolve(
+            config_dir=tmp_path,
+            overrides={"model": DEFAULT_MODEL},
+        )
+        agent = Mvge(
+            api_key="",
+            environment=environment,
+            tome_dir=tmp_path / "tomes",
+            runes_paths=[str(tmp_path / "runes")],
+            provider_registry=registry,
+        )
+
+        await agent.initialize()
+
+        assert agent._model is not None
+
+    @pytest.mark.asyncio
+    async def test_a_paid_model_on_zen_still_raises_and_names_its_own_variable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The exemption is per *model*, not per Realm -- at the library gate.
+
+        Zen's free tier needs no key (ADR-0015); its paid models are keyed. A
+        gate that asked only "is this Realm exempt?" would attempt a paid model
+        anonymously and fail at the host with a message about the model rather
+        than about the missing credential.
+
+        The neighbouring test uses ``google/``, a *different* Realm, so it
+        cannot tell a per-model answer from a per-Realm one. This is the
+        library-side half of the pair, and it is what keeps
+        ``Mvge.initialize`` from being widened without a test going red.
+        """
+        for var in self.API_KEY_ENV_VARS:
+            monkeypatch.delenv(var, raising=False)
+
+        environment = MvgeEnvironment.resolve(
+            config_dir=tmp_path,
+            overrides={"model": "opencode/glm-5"},
+        )
+        agent = Mvge(api_key="", environment=environment)
+
+        with pytest.raises(MissingApiKeyError) as caught:
+            await agent.initialize()
+
+        message = str(caught.value)
+        assert "OPENCODE_API_KEY" in message
+
+    @pytest.mark.asyncio
+    async def test_missing_api_key_error_names_the_realm_being_served(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The message names this Realm's variable, not OpenRouter's.
+
+        ``google/`` is the discriminating case. It does need a credential, and
+        it is not ``openrouter``, so a message that hardcodes
+        ``OPENROUTER_API_KEY`` still passes every assertion written against the
+        default model -- which is the bug, since the default model's Realm is
+        ``opencode``.
+        """
+        for var in self.API_KEY_ENV_VARS:
+            monkeypatch.delenv(var, raising=False)
+
+        environment = MvgeEnvironment.resolve(
+            config_dir=tmp_path,
+            overrides={"model": "google/gemini-2.5-flash"},
+        )
+        agent = Mvge(environment=environment)
+
+        with pytest.raises(MissingApiKeyError) as caught:
+            await agent.initialize()
+
+        message = str(caught.value)
+        assert "google" in message
+        assert "GOOGLE_API_KEY" in message
+        assert "OPENROUTER_API_KEY" not in message
 
     def test_dot_env_auto_loading(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

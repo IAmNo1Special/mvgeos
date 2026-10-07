@@ -15,7 +15,7 @@ from mvgeos_core.channel import Model
 from mvgeos_core.constants import DEFAULT_MODEL
 
 from mvgeos_provider.base import NoRealmRegisteredError
-from mvgeos_provider.model_registry import list_models
+from mvgeos_provider.model_registry import list_models, model_requires_credential
 from mvgeos_provider.realms import (
     DEFAULT_REALM,
     REALM_API_KEY_ENV,
@@ -114,6 +114,67 @@ def test_an_unmapped_realm_key_follows_the_ecosystem_shape() -> None:
 def test_the_key_environments_are_distinct() -> None:
     """Two Realms sharing a variable name means one silently overwrites the other."""
     assert len(set(REALM_API_KEY_ENV.values())) == len(REALM_API_KEY_ENV)
+
+
+def test_a_realm_not_in_either_table_still_requires_a_credential() -> None:
+    """A new Realm must work before it is added to any table.
+
+    ``groq`` is in no table at all, and ``""`` is what a bare model slug derives
+    to. Both default to *required*, so an omission cannot make a Realm silently
+    unauthenticated -- which is the failure a table that recorded rules rather
+    than exceptions would allow.
+    """
+    assert model_requires_credential("groq/some-model") is True
+    assert model_requires_credential("") is True
+    assert model_requires_credential(None) is True
+
+
+def test_a_realm_whose_free_tier_is_anonymous_exempts_only_its_free_models() -> None:
+    """The whole point of consulting the model rather than the Realm.
+
+    Zen serves its free tier with no credential -- measured, a request carrying
+    no ``Authorization`` header is answered 200 with ``"cost": "0"`` (ADR-0015).
+    It also serves keyed paid models, and those must still be refused: an
+    exemption wide enough to cover them would attempt a paid model anonymously
+    and fail at the host with a message about the model rather than about the
+    missing credential.
+    """
+    assert model_requires_credential("opencode/space-bunny-free") is False
+
+
+def test_a_paid_model_on_zen_still_requires_a_credential() -> None:
+    """``opencode`` is not exempt; its free tier is.
+
+    A realm-wide exemption is the tempting simplification and it is wrong here for
+    one reason: Zen has keyed paid models as well as keyless free ones, so the
+    wide form silently authorises an unauthenticated paid call.
+    """
+    assert model_requires_credential("opencode/glm-5") is True
+
+
+def test_a_realm_with_no_credential_at_all_is_exempt_for_every_model() -> None:
+    """``ollama`` is a different fact from Zen's, and it stays realm-wide.
+
+    A local daemon has no credential to present for *any* model, and none of its
+    models are in the shipped catalog, so keying its exemption off ``is_free``
+    would make every local run demand a variable the daemon has no concept of.
+    There is no Ollama Realm in the marketplace -- ``docs/troubleshooting.md``
+    records it as unreachable -- so this preserves an out-of-tree Realm Rune's
+    local path rather than a shipped one.
+    """
+    assert model_requires_credential("ollama/llama3") is False
+    assert model_requires_credential("ollama/some-model-nobody-has-catalogued") is False
+
+
+def test_the_default_model_serves_without_a_credential() -> None:
+    """The shipped default must not be the thing that refuses to start.
+
+    This is the assertion that ties the exemption to the model MvgeOS boots on.
+    It reads ``DEFAULT_MODEL`` rather than naming a Realm, so if either the
+    default model or ``DEFAULT_REALM`` moves to a Realm and model that does need
+    a key, this fails and the failure is correct.
+    """
+    assert model_requires_credential(DEFAULT_MODEL) is False
 
 
 # ---------------------------------------------------------------------------

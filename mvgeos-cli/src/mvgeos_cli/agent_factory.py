@@ -9,6 +9,7 @@ from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.protocol import AgentFactory, MvgeAgent
 from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_core.layers import agent_dir
+from mvgeos_provider.model_registry import model_requires_credential
 
 from mvgeos_cli.dynamic_commands import cli_project_dir
 
@@ -16,8 +17,15 @@ _global_default_factory: AgentFactory | None = None
 
 
 def validate_api_key(api_key: str, model_id: str | None = None) -> None:
-    """Validate API key format. Raises ValueError if invalid."""
-    if model_id and model_id.startswith("ollama/"):
+    """Validate API key format. Raises ValueError if invalid.
+
+    A model the engine will serve without a credential is exempt, read from the
+    Realm tables rather than a prefix on the model id: a prefix is a proxy for a
+    Realm, and it is wrong for any Realm whose slug does not start with its own
+    name. Consulted per model rather than per Realm, so a Realm's paid models
+    are still refused.
+    """
+    if model_id and not model_requires_credential(model_id):
         return
     if api_key.startswith("sk-or-") or api_key.startswith("AIza"):
         return
@@ -98,7 +106,11 @@ async def create_agent(
     **kwargs: Any,
 ) -> MvgeAgent:
     """Resolve environment, create an agent via factory, and initialize it."""
-    if api_key or (model and not model.startswith("ollama/")):
+    # With neither a key nor a model there is nothing to validate, and raising
+    # here would refuse a call that has not yet decided what it is running. Any
+    # model exempt from a credential is exempt inside the validator itself, so
+    # the model is passed for that answer and not this one.
+    if api_key or model:
         validate_api_key(api_key, model_id=model)
     spells_list: list[str] | None = None
     if isinstance(spells, str):

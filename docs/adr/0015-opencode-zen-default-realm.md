@@ -75,7 +75,27 @@ registry, the CLI and the GUI agree on a Rune name, a base URL and a credential
 variable; the derivations must keep producing a usable answer for a Realm that is
 not in a table, because they run on the failure path.
 
-<!-- adr-contract: DEFAULT_MODEL, REALM_RUNES, REALM_BASE_URLS, REALM_API_KEY_ENV, REALM_FREE_SUFFIXES, DEFAULT_REALM, realm_for_model_id, rune_for_realm, api_key_env_for_realm, free_suffix_for_realm, no_realm_registered, NoRealmRegisteredError, Model.free -->
+Whether a Realm needs a credential is not one fact but two, so it is two tables
+and one derivation. `REALMS_WITH_ANONYMOUS_FREE_TIER` records a Realm whose *free
+tier* is served without one — `opencode`, measured, a request carrying no
+`Authorization` header is answered 200 with `"cost": "0"` — and the credential is
+then optional *per model*, because Zen also serves keyed paid models.
+`REALMS_WITHOUT_CREDENTIAL` records a Realm with no credential concept at all,
+which is a categorically different fact and so stays a separate Realm-wide entry.
+
+`model_requires_credential` combines them with the model's own `is_free`, so the
+exemption is consulted per model. It is deliberately not the Realm-wide form: a
+Realm-wide exemption would attempt a paid Zen model anonymously and fail at the
+host with a message about the model rather than about the missing credential.
+Both tables record *exceptions* rather than rules, so a newly added Realm needs no
+engine edit and cannot be made to fail by an omission, and a model the shipped
+catalog does not carry is treated as needing one.
+
+The engine cannot defer any of this to a Rune's manifest: every credential gate
+runs before any Rune is loaded, so a declaration on the Rune could not be read at
+any of them, and on a clean machine the Realm being exempted is not installed yet.
+
+<!-- adr-contract: DEFAULT_MODEL, REALM_RUNES, REALM_BASE_URLS, REALM_API_KEY_ENV, REALM_FREE_SUFFIXES, DEFAULT_REALM, REALMS_WITHOUT_CREDENTIAL, REALMS_WITH_ANONYMOUS_FREE_TIER, realm_for_model_id, rune_for_realm, api_key_env_for_realm, free_suffix_for_realm, model_requires_credential, no_realm_registered, NoRealmRegisteredError, Model.free -->
 
 ## Consequences
 
