@@ -36,7 +36,10 @@ uvx mvgeos --help
 ## Run one task
 
 This is the whole sequence, recorded start to finish on a machine with an empty
-`$HOME`. No cuts, no re-run, 23 seconds:
+`$HOME`. No cuts, no re-run, 23 seconds. One caveat: the recording predates
+0.6.14 and so shows the `git+` install line, not the PyPI one above. The four
+commands are unchanged — only where mvgeos comes from is different — but the
+timings in it belong to the git form, not to `uvx mvgeos`.
 
 ![Terminal recording: installing mvgeos from git, installing the openrouter-realm Rune and the coding_mvge Mvge, writing the credential, then running one task that creates hello.txt and verifying it with od -c](docs/images/mvgeos-demo.gif)
 
