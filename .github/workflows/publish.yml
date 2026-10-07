@@ -205,3 +205,56 @@ jobs:
 
       - name: Run the command a stranger types
         run: uvx mvgeos --help
+
+  # The half `verify` above structurally cannot reach. `--help` returns before a
+  # Realm is contacted, so a release whose key never loads, whose Rune is
+  # missing, or whose Tome never reaches disk is green and still unusable. This
+  # job installs the Realm and the Mvge, runs one real task, and asserts on the
+  # artifact and the persisted session.
+  #
+  # It checks out the repository, unlike `verify` above, and that is not a
+  # contradiction: only the harness script is taken from the checkout. Every
+  # mvgeos the run touches still comes from PyPI via uvx, so the thing under test
+  # is the published distribution and never the workspace.
+  verify-install:
+    needs: publish
+    if: ${{ inputs.dry_run != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: false
+
+      - name: Resolve the released version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            tag="${{ github.event.inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      # A skipped gate is indistinguishable from a passing one once the run is
+      # green, which is how this job would come to protect nothing. It fails, and
+      # names the unblock, rather than going quiet.
+      - name: Require the credential this gate spends
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::error::Repository secret OPENROUTER_API_KEY is not set, so no real task can run. A repository owner must add it under Settings > Secrets and actions > Actions. Until then this gate proves nothing and is failing on purpose."
+            exit 1
+          fi
+
+      # Stdlib only on purpose: the harness must be runnable without a sync, so
+      # the thing standing between a release and this check cannot itself fail
+      # to install.
+      - name: Install the Realm, the Mvge, and run one real task
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          python3 scripts/verify_install.py --version "${{ steps.version.outputs.version }}"

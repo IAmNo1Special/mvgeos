@@ -19,26 +19,19 @@ key for whichever provider you already use.
 ## Install
 
 ```bash
-uv tool install "git+https://github.com/IAmNo1Special/mvgeos#subdirectory=mvgeos-cli"
+uv tool install mvgeos
 mvgeos --help
 ```
 
 Or run it without installing anything:
 
 ```bash
-uvx --from "git+https://github.com/IAmNo1Special/mvgeos#subdirectory=mvgeos-cli" mvgeos --help
+uvx mvgeos --help
 ```
 
-> **Why is the install line this long?** The `mvgeos` console script now exists
-> on the root distribution, but no release has been published to PyPI yet, so
-> `uvx mvgeos` still resolves to nothing:
->
-> ```text
-> Because mvgeos was not found in the package registry ...
-> ```
->
-> Once a tagged release ships, this becomes `uvx mvgeos` and this note goes
-> away. The git form above works today.
+> Working from source instead? `uv sync --all-packages` in a clone, then
+> `uv run mvgeos --help`. The published distribution is the one the commands
+> above install; nothing here needs a clone.
 
 ## Run one task
 

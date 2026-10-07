@@ -147,6 +147,36 @@ there is no clone and no `uv sync`, uvx resolves the command from PyPI exactly
 as a stranger's machine would. That job is the acceptance test; `pip download`
 is not.
 
+**`verify-install`** runs `scripts/verify_install.py`, which is the half
+`verify` structurally cannot reach. `--help` returns before a Realm is
+contacted, so a release whose credential never loads, whose Realm Rune is
+missing, or whose Tome never reaches disk is green and still unusable. The
+script builds a scratch `HOME` that starts empty apart from the credential,
+installs `openrouter-realm` and `coding_mvge` into it, runs one real task, and
+fails unless the artifact is byte-correct and a session Tome naming the model
+lands under `.agents/sessions/`. It reports cold-to-first-token on the way.
+
+Unlike `verify`, this job checks the repository out — only to get the script.
+Every mvgeos the run touches still comes from PyPI through uvx, so the thing
+under test is the published distribution and never the workspace.
+
+The script is stdlib-only so that the thing standing between a release and this
+check cannot itself fail to install, and it needs the repository secret
+`OPENROUTER_API_KEY`. If that secret is absent the job **fails on purpose**
+rather than skipping: a skipped gate is indistinguishable from a passing one
+once a run is green, which is how the check would come to protect nothing. A
+repository owner adds it under Settings > Secrets and actions > Actions.
+
+The model defaults to `openai/gpt-4o-mini` and `--max-tokens` is capped, so a
+run costs a fraction of a cent and survives a key whose remaining credit cannot
+cover the engine's 4096 default. Override both when a specific failure needs a
+different target:
+
+```bash
+OPENROUTER_API_KEY=sk-or-... python scripts/verify_install.py \
+  --version 0.6.14 --model anthropic/claude-sonnet-4 --max-tokens 8000
+```
+
 ## The normal path
 
 The `bump` job in `ci.yml` creates and pushes the tag after a green `main`, then
