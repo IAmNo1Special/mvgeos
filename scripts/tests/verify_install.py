@@ -80,6 +80,16 @@ def _bound_writes(command: list[str]) -> list[str]:
     return [command[i + 1] for i, arg in enumerate(command) if arg == "--bind"]
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason=(
+        "The sandbox argv is Linux-only. SANDBOX_BINDS is a tuple of absolute "
+        "POSIX paths, and bubblewrap does not exist on Windows, so there is no "
+        "OS bind for the command to carry and the assertion cannot pass. The "
+        "harness only reaches this code on a Linux runner; a Windows sandbox "
+        "would remove the skip."
+    ),
+)
 def test_sandbox_binds_no_host_state(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
