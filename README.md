@@ -19,31 +19,27 @@ key for whichever provider you already use.
 ## Install
 
 ```bash
-uv tool install "git+https://github.com/IAmNo1Special/mvgeos#subdirectory=mvgeos-cli"
+uv tool install mvgeos
 mvgeos --help
 ```
 
 Or run it without installing anything:
 
 ```bash
-uvx --from "git+https://github.com/IAmNo1Special/mvgeos#subdirectory=mvgeos-cli" mvgeos --help
+uvx mvgeos --help
 ```
 
-> **Why is the install line this long?** The `mvgeos` console script now exists
-> on the root distribution, but no release has been published to PyPI yet, so
-> `uvx mvgeos` still resolves to nothing:
->
-> ```text
-> Because mvgeos was not found in the package registry ...
-> ```
->
-> Once a tagged release ships, this becomes `uvx mvgeos` and this note goes
-> away. The git form above works today.
+> Working from source instead? `uv sync --all-packages` in a clone, then
+> `uv run mvgeos --help`. The published distribution is the one the commands
+> above install; nothing here needs a clone.
 
 ## Run one task
 
 This is the whole sequence, recorded start to finish on a machine with an empty
-`$HOME`. No cuts, no re-run, 23 seconds:
+`$HOME`. No cuts, no re-run, 23 seconds. One caveat: the recording predates
+0.6.14 and so shows the `git+` install line, not the PyPI one above. The four
+commands are unchanged — only where mvgeos comes from is different — but the
+timings in it belong to the git form, not to `uvx mvgeos`.
 
 ![Terminal recording: installing mvgeos from git, installing the openrouter-realm Rune and the coding_mvge Mvge, writing the credential, then running one task that creates hello.txt and verifying it with od -c](docs/images/mvgeos-demo.gif)
 
