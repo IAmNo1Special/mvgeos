@@ -499,14 +499,13 @@ def _repl_callback(
     # belongs to the config layer, not to this lookup.
     key_realm = realm_for_model_id(model or DEFAULT_MODEL)
     if api_key is None:
-        # The Realm's own variable is read before OpenRouter's. Handing one
-        # Realm's key to another authenticates at the wrong host and then fails
-        # every call with a message that names the model, so the Summoner is
-        # sent looking in the wrong place. The openrouter fallback stays last so
-        # a key saved before this existed keeps working.
+        # Only the Realm's own variable, then its own credential file. The
+        # unconditional OpenRouter fallback this replaced sent an OpenRouter key
+        # to whichever Realm the model named, which since `opencode` became the
+        # default was the common case rather than an edge: the key went to
+        # opencode.ai, authenticating at the wrong host and exposing the
+        # Summoner's credential to a host that never asked for it.
         api_key = os.environ.get(api_key_env_for_realm(key_realm))
-    if api_key is None:
-        api_key = os.environ.get("OPENROUTER_API_KEY")
     if api_key is None:
         api_key = load_api_key_for_realm(key_realm)
     if api_key is None:

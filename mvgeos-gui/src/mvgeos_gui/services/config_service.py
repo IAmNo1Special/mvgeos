@@ -8,7 +8,7 @@ import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import keyring
 from mvgeos_agent.config_manager import ConfigManager
@@ -18,6 +18,14 @@ from mvgeos_core.layers import global_agents_dir
 _KEYRING_SERVICE = "mvgeos"
 _KEYRING_API_KEY_USERNAME = "openrouter_api_key"
 _API_KEY_FIELD = "api_key"
+
+#: The Realm the settings-dialog credential belongs to.
+#:
+#: One slot, not one per Realm, and the keyring username already names the Realm
+#: it is for. The dialog field is labelled "API Key" with no Realm on it, so the
+#: value stored here is only ever an OpenRouter credential. Serving it to another
+#: Realm would hand it to that Realm's host.
+API_KEY_REALM: Final[str] = "openrouter"
 
 
 @dataclass

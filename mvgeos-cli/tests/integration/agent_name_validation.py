@@ -12,7 +12,11 @@ from mvgeos_cli.main import app
 
 runner = CliRunner()
 FAKE_AGENT = "totally-fake-unknown-agent-999"
-TEST_ENV = {"OPENROUTER_API_KEY": "sk-or-test-key"}
+# The default model is served by the `opencode` Realm, so the key under test
+# belongs to that Realm. An OpenRouter key here would only have worked by
+# falling back across Realms, which is the defect
+# test_openrouter_key_is_not_handed_to_another_realm pins.
+TEST_ENV = {"OPENCODE_API_KEY": "sk-zen-test-key"}
 
 
 def _has_error(result: Any, text: str) -> bool:

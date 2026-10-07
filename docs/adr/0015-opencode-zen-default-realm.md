@@ -56,8 +56,9 @@ them from there instead of carrying their own:
 - `NoRealmRegisteredError` carries `realm` and `rune_name`, and the CLI prompt and
   the GUI badge read the attribute. The GUI previously recovered the name by
   splitting the message on `"install "`.
-- The CLI reads `<REALM>_API_KEY` for the selected model's Realm before falling
-  back to `OPENROUTER_API_KEY`.
+- The CLI reads `<REALM>_API_KEY` for the selected model's Realm. It does not
+  fall back to another Realm's variable, which an earlier version of this
+  decision required it to do. See the amendment below.
 - The baseline catalog carries a per-entry Realm, so an entry can name a base URL
   other than OpenRouter's.
 
@@ -98,20 +99,42 @@ not in a table, because they run on the failure path.
   compacted a long session roughly every 128k tokens. This is a measurement of
   one provider on one day, not a published specification; re-measure before
   trusting it, and prefer the smaller figure if the two ever disagree.
-- **Zen's free tier needs a key, but not a subscription.** A request carrying no
-  `Authorization` header at all is answered: `200`, `cost: "0"`, and content on
-  eight consecutive short prompts. A request carrying `Authorization: Bearer
-  <wrong>` is refused with `401 Invalid API key.`, which the Rune surfaces as
-  `error_code='auth_failed'`. So the free tier is reachable without paying, but
-  not without presenting a credential, and MvgeOS does not omit the header — the
-  CLI refuses to start without a resolved key and the Rune sends what it is
-  given. A real `OPENCODE_API_KEY` is required to run Zen.
+- **Zen's free tier needs no key, and this contradicts a paragraph that used to
+  sit here.** An earlier draft of this bullet claimed the opposite: that a
+  request carrying no `Authorization` header was answered while
+  `Authorization: Bearer <wrong>` was refused with `401 Invalid API key.`, and
+  concluded that "a real `OPENCODE_API_KEY` is required to run Zen". The first
+  half of that observation is still true and is still the reason the key is
+  optional. The conclusion drawn from it was not: `Bearer <wrong>` is refused
+  because it is wrong, which says nothing about whether *no* header is accepted,
+  and the measurement above had already shown it is. The bullet now agrees with
+  the Context section, which is where the fact was recorded correctly first.
 - **An empty bearer cannot be sent at all**, and says nothing useful when it
   fails. `httpx` rejects the header value `Bearer ` locally, so the Rune raises
   `httpx.LocalProtocolError` instead of a credential error. Unreachable through
   the CLI and the GUI, both of which refuse to start without a resolved key, so
   this is recorded rather than fixed. A Summoner who reaches it through a script
   sees a transport fault where the truth is a missing credential.
+- **No Realm is ever handed another Realm's credential.** Amended after
+  measurement. The per-Realm variables and per-Realm credential files this
+  decision introduced were added, but three older Realm-blind lookups survived
+  beside them and overrode the new ones on the ordinary path:
+
+  - `mvgeos_agent.mvge._resolve_api_key` read `OPENROUTER_API_KEY` first,
+    unconditionally, so it resolved before any Realm was known.
+  - The CLI read `OPENROUTER_API_KEY` as a fallback for every Realm.
+  - The GUI's settings dialog keeps one credential in one keyring slot named
+    `openrouter_api_key`, and offered it to every Realm.
+
+  With `opencode` the default Realm, each of these sent an OpenRouter key to
+  `opencode.ai`. That authenticates at the wrong host and hands the Summoner's
+  credential to a host that never asked for it. The CLI fallback was also
+  redundant for its own case: `api_key_env_for_realm("openrouter")` *is*
+  `OPENROUTER_API_KEY`, so removing it changed nothing for OpenRouter and
+  removed the leak for every other Realm.
+
+  A Realm with no credential of its own now resolves to none. That is a correct
+  answer rather than a missing step, and for Zen it is the normal case.
 - `DEFAULT_REALM` is a copy of what the catalog says about `DEFAULT_MODEL`, since
   the two are not the same question: for a routed slug the id prefix is the
   *provider*, not the Realm. `test_default_realm_agrees_with_the_shipped_catalog`

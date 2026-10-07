@@ -94,6 +94,38 @@ def test_resolve_api_key_variants() -> None:
         assert resolve_api_key(None, "openrouter") is None
 
 
+def test_an_openrouter_key_is_not_served_to_another_realm() -> None:
+    """One Realm's credential must never be handed to a different Realm's host.
+
+    The settings dialog keeps a single key and stores it under an
+    ``openrouter_api_key`` name, so it is only ever an OpenRouter credential.
+    With ``opencode`` as the default Realm, returning it for ``opencode`` sent
+    the Summoner's OpenRouter key to opencode.ai.
+    """
+    with (
+        patch.dict(
+            "os.environ",
+            {
+                "OPENROUTER_API_KEY": "sk-or-env",
+                "OPENCODE_API_KEY": "",
+                "MVGEOS_API_KEY": "",
+            },
+        ),
+        patch(
+            "mvgeos_gui.services.agent_service._load_saved_gui_api_key",
+            return_value="sk-or-saved",
+        ),
+        patch(
+            "mvgeos_gui.services.agent_service.load_api_key_for_realm",
+            return_value=None,
+        ),
+    ):
+        assert resolve_api_key(None, "openrouter") == "sk-or-env"
+        # The same environment, asked about a different Realm: the OpenRouter
+        # key is not an answer, and neither is the saved slot.
+        assert resolve_api_key(None, "opencode") is None
+
+
 def test_agent_service_loads_env_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2124,7 +2156,9 @@ def test_resolve_api_key_reads_saved_gui_settings(
     monkeypatch.setattr("mvgeos_agent.auth.AUTH_FILE_PATH", tmp_path / "auth.json")
     ConfigService().save_app_settings(AppSettings(api_key="sk-saved-gui"))
 
-    assert resolve_api_key() == "sk-saved-gui"
+    # Asked for by Realm: the saved slot holds an OpenRouter credential, so it
+    # is only an answer for OpenRouter.
+    assert resolve_api_key(None, "openrouter") == "sk-saved-gui"
 
 
 def test_resolve_api_key_env_beats_saved_gui_settings(
