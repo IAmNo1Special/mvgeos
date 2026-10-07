@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.16] - 2026-10-07
 
 
 ### Bug Fixes
@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **agent:** a missing credential names the Realm that wanted one (41bbaaf)
 
 - **provider:** stop asking a Realm that serves without a credential for one (2ddce83)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (4ac6fcb)
+
+- **release:** v0.6.16 (0c4ab5b)
 
 
 ## [0.6.15] - 2026-10-07
