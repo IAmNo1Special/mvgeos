@@ -50,6 +50,36 @@ REALM_API_KEY_ENV: Final[dict[str, str]] = {
     "opencode": "OPENCODE_API_KEY",
 }
 
+#: Realms that have no credential at all, for any of their models.
+#:
+#: A categorically different fact from the one below, and kept apart from it
+#: because the two need different questions asked of them. ``ollama`` is a local
+#: daemon: there is no key to present and no paid tier to distinguish, so the
+#: exemption is the whole Realm. No Ollama Realm ships in the marketplace --
+#: ``docs/troubleshooting.md`` records it as unreachable -- so this preserves an
+#: out-of-tree Realm Rune's local path rather than a shipped one. Reading the
+#: exemption off a ``ollama/`` prefix on the model id was a proxy for a Realm,
+#: and wrong for any Realm whose slug does not start with its own name.
+REALMS_WITHOUT_CREDENTIAL: Final[frozenset[str]] = frozenset({"ollama"})
+
+#: Realms that serve their *free tier* without a credential.
+#:
+#: Recorded rather than declared by the Rune, because every credential gate runs
+#: before any Rune is loaded: the CLI callback exits before ``_run_agent`` is
+#: called and ``Mvge.initialize`` raises before ``_load_runes``, so a manifest
+#: field could not be read at either of them. On a clean machine the Realm this
+#: exempts is not installed yet, so there is nothing there to ask.
+#:
+#: ``opencode`` is measured, not assumed: Zen's free tier answers a request
+#: carrying no ``Authorization`` header with 200 and ``"cost": "0"`` (ADR-0015).
+#:
+#: This is deliberately *not* a Realm-wide exemption. Zen also serves keyed paid
+#: models, and a Realm-wide one would attempt them anonymously and fail at the
+#: host with a message about the model rather than about the missing credential.
+#: The pair of them -- this table and the model's own ``is_free`` -- is what
+#: ``mvgeos_provider.model_registry.model_requires_credential`` combines.
+REALMS_WITH_ANONYMOUS_FREE_TIER: Final[frozenset[str]] = frozenset({"opencode"})
+
 #: Realms that spell their free tier with a ``-free`` suffix rather than the
 #: ``:free`` suffix OpenRouter uses.
 #:
@@ -138,6 +168,8 @@ __all__ = [
     "REALM_BASE_URLS",
     "REALM_FREE_SUFFIXES",
     "REALM_RUNES",
+    "REALMS_WITHOUT_CREDENTIAL",
+    "REALMS_WITH_ANONYMOUS_FREE_TIER",
     "api_key_env_for_realm",
     "free_suffix_for_realm",
     "realm_for_model_id",

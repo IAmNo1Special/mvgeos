@@ -25,15 +25,27 @@ class TestPromptCommands:
 
 class TestPromptCommand:
     def test_prompt_no_api_key(self) -> None:
-        # Ensure OPENROUTER_API_KEY is not set and no auth file exists
+        """A Realm that needs a credential refuses, naming its own variable.
+
+        ``google/`` rather than the default model: ``opencode`` is exempt from
+        the credential requirement because its free tier serves without one, so
+        on the default model this exits 0 now -- correctly, since there is no key
+        to go and set. That behaviour is pinned separately, in ``cli.py``.
+        """
         env = dict(os.environ)
-        env.pop("OPENROUTER_API_KEY", None)
+        for name in ("OPENROUTER_API_KEY", "OPENCODE_API_KEY", "GEMINI_API_KEY"):
+            env.pop(name, None)
+        env.pop("GOOGLE_API_KEY", None)
         with (
             patch.dict(os.environ, env, clear=True),
             patch("mvgeos_cli.main.load_api_key_for_realm", return_value=None),
         ):
-            result = runner.invoke(app, ["--incantation", "test prompt"])
+            result = runner.invoke(
+                app,
+                ["--model", "google/gemini-2.5-flash", "--incantation", "test prompt"],
+            )
             assert result.exit_code != 0
+            assert "GOOGLE_API_KEY" in result.output
 
     def test_prompt_unknown_model(self) -> None:
         result = runner.invoke(

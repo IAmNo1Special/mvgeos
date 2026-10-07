@@ -149,6 +149,44 @@ class TestCliCommandsDecoupling:
             )
 
     @pytest.mark.asyncio
+    async def test_print_mode_reaches_the_agent_with_no_credential(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The one-shot path must not re-demand a key the Realm does not use.
+
+        This is a third gate, after the callback's own check and the library's:
+        ``validate_api_key`` is called again inside ``_run_agent``, and it was
+        called with no ``model_id``, so it had no Realm to reason about and could
+        only ask for a key unconditionally. A Summoner with no credentials
+        reached it and got ``API key is required.`` for a Realm whose free tier
+        needs none.
+
+        Asserted on the response being printed, so it covers the whole one-shot
+        path rather than the exit code alone.
+        """
+        mock_instance = MockAgent()
+        factory = MagicMock(return_value=mock_instance)
+
+        exit_code = await _run_agent(
+            incantation="hello world",
+            model_id="opencode/space-bunny-free",
+            api_key="",
+            temperature=0.7,
+            max_tokens=1000,
+            contemplation_level="low",
+            spells_enabled=["read"],
+            extension_dir=None,
+            resume=None,
+            provider_name=None,
+            tome_dir=None,
+            tui=False,
+            agent_factory=factory,
+        )
+
+        assert exit_code == 0
+        assert "API key is required" not in capsys.readouterr().out
+
+    @pytest.mark.asyncio
     async def test_run_agent_print_mode_with_mock_factory(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

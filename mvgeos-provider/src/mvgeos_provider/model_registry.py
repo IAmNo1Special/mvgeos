@@ -10,7 +10,12 @@ import httpx
 from mvgeos_core.channel import Model
 from mvgeos_core.layers import models_file
 
-from mvgeos_provider.realms import REALM_BASE_URLS
+from mvgeos_provider.realms import (
+    REALM_BASE_URLS,
+    REALMS_WITH_ANONYMOUS_FREE_TIER,
+    REALMS_WITHOUT_CREDENTIAL,
+    realm_for_model_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +147,46 @@ def _load_baseline_models() -> dict[str, Model]:
 
 def list_models() -> list[Model]:
     return list(_load_baseline_models().values())
+
+
+def model_requires_credential(model_id: str | None) -> bool:
+    """True unless the engine will serve ``model_id`` without a credential.
+
+    Every credential gate asks this, so a Summoner is prompted by one answer
+    rather than by several ad-hoc tests that happened to agree. Three cases, in
+    the order they can be decided:
+
+    - a Realm with no credential concept at all is exempt for every model;
+    - a Realm whose free tier is anonymous is exempt only for a model the
+      catalog records as free;
+    - anything else requires one.
+
+    Defaults to required. Both tables record exceptions rather than rules, so a
+    newly added Realm works on day one with no engine edit and cannot be made to
+    fail by an omission -- and the unknown-model case below is the same
+    reasoning: a model the shipped catalog does not carry is required, because a
+    Realm wrongly exempted reaches a host that may answer anyway for a while,
+    while a model wrongly exempted is the one that costs a Summoner their paid
+    access.
+
+    Reads ``is_free`` rather than ``Model.free``. The property also accepts a
+    ``-free`` or ``:free`` suffix on the strength of the name, and a credential
+    gate must not decide that a model is free from how it is spelled -- the same
+    reason ``free_suffix_for_realm`` is deliberately one Realm at a time.
+
+    The baseline catalog is read rather than ``ModelRegistry``, whose cache
+    refreshes from the network. This runs on the path that decides whether to
+    prompt, and a prompt must not wait on an HTTP call.
+    """
+    if not model_id:
+        return True
+    realm = realm_for_model_id(model_id)
+    if realm in REALMS_WITHOUT_CREDENTIAL:
+        return False
+    if realm not in REALMS_WITH_ANONYMOUS_FREE_TIER:
+        return True
+    model = _load_baseline_models().get(model_id)
+    return model is None or not model.is_free
 
 
 def _default_cache_path() -> Path:
