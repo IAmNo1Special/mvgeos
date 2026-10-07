@@ -9,6 +9,7 @@ confident green summary:
 
 * an environment that leaks the host's ``HOME`` and quietly turns "a stranger's
   machine" into this machine;
+* a sandbox that binds the operator's own directory and calls itself clean;
 * a wrapped ``WARNING:`` miscounted as the model's first token, which
   understates time-to-first-token by however long Realm setup took;
 * a Tome with no Spell cast reported as a completed task.
@@ -60,6 +61,105 @@ def test_clean_env_cannot_see_the_host(
 )
 def test_local_preamble_is_not_the_first_token(line: str, expected: bool) -> None:
     assert verify_install.is_model_output(line) is expected
+
+
+def _scratch(tmp_path: pathlib.Path) -> pathlib.Path:
+    scratch = tmp_path / "scratch"
+    for name in ("home", "cache", "work", "harness"):
+        (scratch / name).mkdir(parents=True, exist_ok=True)
+    return scratch
+
+
+def _bound_sources(command: list[str]) -> list[str]:
+    """The host paths a bwrap argv exposes, read off the command itself."""
+    return [command[i + 1] for i, arg in enumerate(command) if arg == "--ro-bind"]
+
+
+def _bound_writes(command: list[str]) -> list[str]:
+    """The host paths a bwrap argv mounts read-write."""
+    return [command[i + 1] for i, arg in enumerate(command) if arg == "--bind"]
+
+
+def test_sandbox_binds_no_host_state(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The sandbox must expose the scratch and the OS, never the operator.
+
+    Binding the host's ``HOME`` would let a green run pass off state the release
+    gate was supposed to prove nothing about. Binding the harness *in place* is
+    the subtler version of the same mistake: bubblewrap materialises a
+    destination's parents, so it rebuilds the operator's whole tree with the
+    checkout at the bottom of it. Nothing under ``$HOME`` may appear at all.
+    """
+    home = tmp_path / "home-of-somebody"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("PATH", f"{tmp_path}:/usr/bin:/bin")
+    monkeypatch.setattr(verify_install.shutil, "which", lambda _: "/usr/bin/bwrap")
+
+    command = verify_install.sandbox_command(_scratch(tmp_path), ["python3", "x.py"])
+
+    assert command is not None
+    sources = _bound_sources(command) + _bound_writes(command)
+    assert "/usr" in sources
+    assert [source for source in sources if str(home) in source] == []
+    assert [source for source in sources if ".paperclip" in source] == []
+    assert [source for source in sources if source.startswith(str(tmp_path))] == [
+        str(_scratch(tmp_path))
+    ]
+
+
+def test_sandbox_keeps_the_network(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unsharing the network would prove a run fails offline, not one that works.
+
+    PyPI resolution and the Realm call are the two things under test, so the net
+    namespace has to stay the host's. ``--unshare-all`` is the trap: it reads
+    like everything-isolated and quietly takes the network with it, so both that
+    and the explicit flag are rejected rather than just the obvious one.
+    """
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setattr(verify_install.shutil, "which", lambda _: "/usr/bin/bwrap")
+
+    command = verify_install.sandbox_command(_scratch(tmp_path), ["python3"])
+
+    assert command is not None
+    assert "--unshare-net" not in command
+    assert "--unshare-all" not in command
+
+
+def test_no_sandbox_is_reported_rather_than_assumed(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A host without bwrap gets no sandbox, and that must be visible."""
+    monkeypatch.setattr(verify_install.shutil, "which", lambda _: None)
+
+    command = verify_install.sandbox_command(_scratch(tmp_path), ["python3"])
+
+    assert command is None
+
+
+def test_host_paths_reachable_spots_a_leaked_directory(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reachable host path is the one thing that voids the whole run."""
+    present = tmp_path / "visible"
+    present.mkdir()
+    monkeypatch.setenv(
+        verify_install.SANDBOX_HOST_PATHS,
+        json.dumps([str(present), str(tmp_path / "hidden")]),
+    )
+
+    assert verify_install.host_paths_reachable() == [str(present)]
+
+
+def test_host_paths_reachable_is_empty_outside_a_sandbox(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(verify_install.SANDBOX_HOST_PATHS, raising=False)
+
+    assert verify_install.host_paths_reachable() == []
 
 
 def test_each_line_keeps_its_own_arrival_time() -> None:

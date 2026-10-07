@@ -253,6 +253,15 @@ jobs:
       # Stdlib only on purpose: the harness must be runnable without a sync, so
       # the thing standing between a release and this check cannot itself fail
       # to install.
+      #
+      # bubblewrap is what turns "a scratch HOME on a runner that already has a
+      # checkout" into something closer to a stranger's machine: the harness
+      # re-runs itself in a mount namespace where this job's checkout and the
+      # runner's own HOME do not exist. A runner is fresh enough that this is
+      # belt-and-braces, but the gate costs nothing to be as strong as it can be.
+      - name: Install bubblewrap for the sandbox
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends bubblewrap
+
       - name: Install the Realm, the Mvge, and run one real task
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}

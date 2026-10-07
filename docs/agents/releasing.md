@@ -167,6 +167,17 @@ rather than skipping: a skipped gate is indistinguishable from a passing one
 once a run is green, which is how the check would come to protect nothing. A
 repository owner adds it under Settings > Secrets and actions > Actions.
 
+Where `bwrap` is available — the job installs it, and most developer machines
+have it — the script re-runs itself inside a sandbox and says so on its first
+line. That is a real narrowing of what the run can see: a mount, process, and
+UTS namespace in which the checkout and the operator's own `HOME` do not exist,
+which is the difference between "a stranger's HOME" and "a stranger's machine".
+The network namespace is deliberately *not* unshared, because resolving mvgeos
+from PyPI and reaching a Realm are the two things under test. The script checks
+the isolation from the inside and fails if a host path is still reachable, so a
+sandbox that leaks is a red gate rather than a quiet one. Pass `--no-sandbox`
+to run without it.
+
 The model defaults to `openai/gpt-4o-mini` and `--max-tokens` is capped, so a
 run costs a fraction of a cent and survives a key whose remaining credit cannot
 cover the engine's 4096 default. Override both when a specific failure needs a

@@ -14,10 +14,14 @@ task and asserts on the three things a Summoner would notice:
 
 "Cold" here is precise, and the distinction matters. The scratch ``HOME`` starts
 empty apart from the credential, and the uv cache is a fresh directory, so the
-measured install is a real download rather than a cache hit. The process is a
-fresh user account, not a fresh container: the kernel and ``PATH`` are the
-host's. That is a weaker claim than "clean machine" and the report says so
-rather than rounding up.
+measured install is a real download rather than a cache hit.
+
+How isolated the run is depends on the host, and the report says which it got
+rather than rounding up. On a host with ``bwrap`` the harness re-runs itself
+inside a mount, process, and UTS namespace in which the repository and the
+operator's own ``HOME`` do not exist at all -- and it proves that from inside,
+because a sandbox nobody checked is a claim, not evidence. Without ``bwrap`` it
+still runs against a scratch ``HOME``, which is a weaker thing, and says so.
 
 Usage:
     python scripts/verify_install.py --version 0.6.14
@@ -70,6 +74,29 @@ TASK = f"Create a file named {ARTIFACT} containing exactly the text: {ARTIFACT_C
 # time-to-first-token by however long Realm setup took -- which is most of it.
 LOCAL_PREAMBLE = re.compile(r"^(WARNING|Error)\s*:", re.IGNORECASE)
 
+# Set on the re-executed child so it cannot sandbox itself again. The underscore
+# prefix is load-bearing: ``scrubbed`` drops private keys from every ``uvx``
+# child, so neither the marker nor the host paths reach the process under test.
+SANDBOX_MARKER = "_MVGEOS_VERIFY_IN_SANDBOX"
+SANDBOX_HOST_PATHS = "_MVGEOS_VERIFY_HOST_PATHS"
+
+# A read-only view of an ordinary Linux install, and nothing else. Bubblewrap
+# cannot mount onto a destination that does not exist, so a target missing here
+# is skipped rather than fatal: a host without ``/lib64`` should still verify.
+SANDBOX_BINDS = ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc")
+
+# systemd-resolved is reached through the ``/etc/resolv.conf`` symlink, which
+# resolves outside ``/etc``. Bind only the target and the sandbox has no DNS,
+# which would stop ``uvx`` reaching PyPI -- the opposite of this harness's job.
+SANDBOX_DNS = "/run/systemd/resolve"
+
+SANDBOX_PATH = "/usr/bin:/bin"
+
+# The harness is stdlib-only on purpose, so a system interpreter is enough to
+# re-enter it. Binding the running one instead would drag a workspace ``.venv``
+# into the sandbox, which is the workspace this harness exists to ignore.
+SANDBOX_PYTHONS = ("/usr/bin/python3", "/usr/local/bin/python3")
+
 
 def clean_env(home: pathlib.Path, cache: pathlib.Path, api_key: str) -> dict[str, str]:
     """Return an environment that cannot see the machine running the harness.
@@ -104,6 +131,108 @@ def is_model_output(line: str) -> bool:
     if not stripped:
         return False
     return LOCAL_PREAMBLE.match(stripped) is None
+
+
+def sandbox_interpreter() -> str:
+    """The interpreter used to re-enter the harness inside a sandbox."""
+    for candidate in SANDBOX_PYTHONS:
+        if pathlib.Path(candidate).exists():
+            return candidate
+    return sys.executable
+
+
+def _needs_bind(target: str | pathlib.Path) -> bool:
+    """Whether ``target`` still requires its own bind, once ``/usr`` is bound.
+
+    On a distribution that symlinks ``/lib64`` and ``/bin`` into ``/usr``, the
+    contents arrive with the ``/usr`` bind but the *path* does not: nothing
+    recreates ``/lib64/ld-linux-x86-64.so.2``, so the sandboxed interpreter
+    cannot start. Hence the roots are always bound -- the bind is what creates
+    the path -- while anything already inside one of them, such as a ``python3``
+    symlink under ``/usr/bin``, is skipped, because a second bind onto a symlink
+    destination fails outright.
+    """
+    path = pathlib.Path(target)
+    if not path.exists():
+        return False
+    roots = [pathlib.Path(root).resolve() for root in SANDBOX_BINDS]
+    return not any(path.resolve().is_relative_to(root) for root in roots)
+
+
+def sandbox_command(scratch: pathlib.Path, argv: list[str]) -> list[str] | None:
+    """The argv that re-runs this harness inside a throwaway sandbox.
+
+    The mount, process, IPC, UTS, and cgroup namespaces are unshared. The
+    network is deliberately not: resolving ``mvgeos`` from PyPI and reaching a
+    Realm are the two things being proved, and cutting the network would prove
+    something else entirely -- a run that fails for want of DNS is not evidence
+    of a broken release.
+
+    What makes this a stranger's machine rather than a stranger's ``HOME`` is the
+    binds. The host's ``HOME``, working tree, and every file outside
+    ``SANDBOX_BINDS`` are simply absent, so the run cannot accidentally pass by
+    reading state the operator already had. Returns ``None`` when the host has no
+    sandbox, which the caller reports rather than quietly falling back.
+    """
+    bubblewrap = shutil.which("bwrap")
+    if bubblewrap is None:
+        return None
+    host_paths = json.dumps([os.environ.get("HOME", ""), str(pathlib.Path.cwd())])
+    command = [
+        bubblewrap,
+        "--unshare-user",
+        "--unshare-pid",
+        "--unshare-ipc",
+        "--unshare-uts",
+        "--unshare-cgroup",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--tmpfs",
+        "/tmp",
+        "--chdir",
+        str(scratch),
+    ]
+    for target in SANDBOX_BINDS:
+        if pathlib.Path(target).exists():
+            command += ["--ro-bind", target, target]
+    for target in (sandbox_interpreter(),):
+        if _needs_bind(target):
+            command += ["--ro-bind", str(target), str(target)]
+    if pathlib.Path(SANDBOX_DNS).is_dir():
+        command += ["--ro-bind", SANDBOX_DNS, SANDBOX_DNS]
+    # The whole scratch, read-write, because everything in it was made by this
+    # run: the credential, the cache the install downloads into, the directory
+    # the task writes its artifact to, and the harness's own copy. It is the
+    # only writable host path the sandbox has.
+    command += ["--bind", str(scratch), str(scratch)]
+    command += [
+        "--setenv",
+        "PATH",
+        SANDBOX_PATH,
+        "--setenv",
+        SANDBOX_MARKER,
+        "1",
+        "--setenv",
+        SANDBOX_HOST_PATHS,
+        host_paths,
+    ]
+    return [*command, *argv]
+
+
+def host_paths_reachable() -> list[str]:
+    """Which host paths the sandbox failed to hide.
+
+    Empty outside a sandbox, where the concept does not apply. Inside one, a
+    non-empty result means the isolation is decorative: the run could have
+    picked up the operator's Realm cache or a local checkout, and every green
+    line after it would be worth nothing.
+    """
+    raw = os.environ.get(SANDBOX_HOST_PATHS, "")
+    if not raw:
+        return []
+    return [path for path in json.loads(raw) if path and pathlib.Path(path).exists()]
 
 
 def newest_tome(sessions: pathlib.Path) -> pathlib.Path | None:
@@ -199,6 +328,51 @@ def stamp_lines(lines: list[tuple[float, str]]) -> str:
     return "\n".join(f"[{elapsed:7.2f}s] {text}" for elapsed, text in lines)
 
 
+def run_sandboxed(arguments: argparse.Namespace) -> int:
+    """Re-run the whole harness inside a sandbox and return its exit code.
+
+    The harness is copied into the scratch rather than bound from its checkout,
+    and that is not tidiness. Bubblewrap materialises a destination's parent
+    directories, so binding ``.../mvgeos/scripts/verify_install.py`` in place
+    rebuilds the entire ``/home/vanluther/...`` chain inside the sandbox -- the
+    operator's tree, recreated, with the repository sitting at the bottom of it.
+    The run still passed, which is exactly the failure mode worth being afraid
+    of: a green line that proves nothing because the thing it should not have
+    seen was sitting right there.
+
+    Nothing about the measurement changes. The copy is the measuring instrument,
+    not the thing measured; every ``mvgeos`` still arrives from PyPI.
+    """
+    outer = pathlib.Path(tempfile.mkdtemp(prefix="mvgeos-verify-sandbox-"))
+    scratch = outer / "scratch"
+    for name in ("home", "cache", "work", "harness"):
+        (scratch / name).mkdir(parents=True)
+    harness = scratch / "harness" / pathlib.Path(__file__).name
+    shutil.copyfile(pathlib.Path(__file__).resolve(), harness)
+    command = sandbox_command(
+        scratch,
+        [
+            sandbox_interpreter(),
+            str(harness),
+            *sys.argv[1:],
+            "--scratch",
+            str(scratch),
+            "--no-sandbox",
+        ],
+    )
+    if command is None:
+        shutil.rmtree(outer, ignore_errors=True)
+        return 1
+    try:
+        completed = subprocess.run(command, check=False)
+        return completed.returncode
+    finally:
+        if arguments.keep:
+            print(f"sandbox scratch kept at {outer}")
+        else:
+            shutil.rmtree(outer, ignore_errors=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", required=True, help="released version to test")
@@ -219,20 +393,47 @@ def main() -> int:
         action="store_true",
         help="prove resolution only, skipping the paid task",
     )
+    parser.add_argument(
+        "--sandbox",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="re-run inside a bwrap sandbox that hides the repo and this HOME",
+    )
+    parser.add_argument(
+        "--scratch",
+        default=None,
+        help="directory to build HOME, cache, and work in",
+    )
     parser.add_argument("--keep", action="store_true", help="keep the scratch HOME")
     arguments = parser.parse_args()
 
-    api_key = os.environ.get("OPENROUTER_API_KEY")
-    if not api_key:
+    api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    if not api_key and not arguments.help_only:
         print(
             "verify_install failed: OPENROUTER_API_KEY is not set. Without a "
             "credential there is no first real task to run, and a green gate "
-            "that never called a model would be a lie.",
+            "that never called a model would be a lie. `--help-only` checks "
+            "resolution alone and needs no credential.",
             file=sys.stderr,
         )
         return 2
 
-    scratch = pathlib.Path(tempfile.mkdtemp(prefix="mvgeos-verify-"))
+    already_sandboxed = bool(os.environ.get(SANDBOX_MARKER))
+    if arguments.sandbox and not already_sandboxed:
+        if shutil.which("bwrap") is None:
+            print(
+                "verify_install: no bwrap on PATH, so the run cannot be isolated "
+                "from this machine. Proceeding against a scratch HOME only, which "
+                "is a weaker claim than a clean machine.",
+                file=sys.stderr,
+            )
+        else:
+            return run_sandboxed(arguments)
+
+    scratch = pathlib.Path(
+        arguments.scratch or tempfile.mkdtemp(prefix="mvgeos-verify-")
+    )
+    owns_scratch = arguments.scratch is None
     home = scratch / "home"
     cache = scratch / "cache"
     work = scratch / "work"
@@ -249,10 +450,19 @@ def main() -> int:
 
     failures: list[str] = []
     stamps: list[float] = []
+    leaked = host_paths_reachable()
     try:
         print(f"verify_install: mvgeos=={version} on a scratch HOME")
         print(f"  HOME   {home}")
         print(f"  cache  {cache} (empty: the install below is a real download)")
+        isolation = (
+            "sandbox; this HOME and the repo are absent"
+            if already_sandboxed
+            else "scratch HOME only"
+        )
+        print(f"  isolation  {isolation}")
+        for path in leaked:
+            failures.append(f"{path} is reachable from inside the run")
 
         code, output, elapsed = run_uvx(version, env, ["--help"], cwd=work)
         print(f"\n[1/4] uvx mvgeos --help -> exit {code} in {elapsed:.2f}s")
@@ -360,7 +570,7 @@ def main() -> int:
     finally:
         if arguments.keep:
             print(f"\nscratch kept at {scratch}")
-        else:
+        elif owns_scratch:
             shutil.rmtree(scratch, ignore_errors=True)
 
     print()
