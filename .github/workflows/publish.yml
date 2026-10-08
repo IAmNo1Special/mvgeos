@@ -4,6 +4,11 @@ name: Publish
 # generates the changelog and creates the GitHub Release; this one owns the
 # package index. A failure to upload must not block the changelog, and a tag
 # must never produce a GitHub Release without the upload having been attempted.
+#
+# Uploads authenticate with OIDC trusted publishing, not a stored API token:
+# GitHub mints a per-run token that PyPI exchanges for a short-lived upload
+# credential. Nothing in this repo holds a PyPI password. See
+# docs/agents/releasing.md.
 
 on:
   push:
@@ -102,12 +107,17 @@ jobs:
     # itself count against the window. The run reports when a slot frees and
     # stops. Re-dispatching after that time is the whole recovery.
     timeout-minutes: 30
-    # The upload credential is an environment secret, so only a job that
-    # declares this environment can read it. Nothing else in the repo can.
-    # See docs/agents/releasing.md.
+    # The environment is not a credential gate any more: nothing is stored
+    # there to gate. It stays because PyPI's trusted publisher names it, and
+    # PyPI rejects an OIDC token whose job did not come from the environment
+    # the publisher was registered against.
     environment: pypi
     permissions:
       contents: read
+      # id-token: write is what lets GitHub mint the OIDC token that PyPI
+      # exchanges for a 15-minute upload credential. Without it there is no
+      # token to exchange and the upload fails.
+      id-token: write
     steps:
       - uses: actions/checkout@v5
 
@@ -124,18 +134,33 @@ jobs:
 
       - name: Upload in dependency order
         env:
-          # A PyPI API token scoped to upload on all projects. "__token__" is
-          # the fixed username PyPI requires when authenticating with a token.
-          UV_PUBLISH_USERNAME: __token__
-          UV_PUBLISH_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+          # No stored credential. uv exchanges the job's OIDC token with PyPI
+          # for a short-lived upload credential scoped to this one workflow
+          # run.
+          #
+          # "always" states that intent and stops uv going looking for a
+          # credential some other way. It is not what enforces it: measured
+          # against uv 0.12.10 and 0.12.23, an explicitly exported
+          # UV_PUBLISH_USERNAME/UV_PUBLISH_PASSWORD is used regardless of this
+          # setting, so "always" and "automatic" behave identically in both the
+          # no-credential and the ambient-credential case. What actually
+          # enforces "no stored credential" is that the two lines are gone
+          # from this job and the secret is deleted from the environment.
+          UV_PUBLISH_TRUSTED_PUBLISHING: always
           # PyPI versions are immutable. Checking the index first makes a
           # re-run after a partial failure skip what already landed.
           UV_PUBLISH_CHECK_URL: https://pypi.org/simple
         run: |
           set -euo pipefail
           if [ "${{ inputs.dry_run }}" != "true" ]; then
-            if [ -z "${UV_PUBLISH_PASSWORD:-}" ]; then
-              echo "::error::PYPI_API_TOKEN is missing from the pypi environment"
+            # uv reports a missing OIDC token as a generic "trusted publishing
+            # failed" against the OIDC audience URL. Checking the runner's
+            # variable names the actual fault -- id-token: write dropped, so no
+            # token was minted -- instead of leaving it to be read as PyPI
+            # refusing the project. GitHub sets this variable on every job
+            # granted id-token: write and on no other job.
+            if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+              echo "::error::No OIDC token was minted, so the upload cannot authenticate. The publish job needs permissions.id-token: write. If that is set, PyPI has no trusted publisher registered for this project name (see docs/agents/releasing.md)."
               exit 1
             fi
             if [ ! -d "dist" ]; then

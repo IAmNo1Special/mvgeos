@@ -1,11 +1,15 @@
 # Releasing to PyPI
 
-How a `v*` tag becomes an installable `uvx mvgeos`. Uploads authenticate with a
-PyPI API token stored as the `PYPI_API_TOKEN` secret on the GitHub `pypi`
-environment. It is a long-lived credential: any workflow that declares that
-environment can read it, and anyone who obtains it can upload to every project
-under the account. That is the trade for not running PyPI's own publisher setup
-by hand. See "Moving to a trusted publisher" below for the way back.
+How a `v*` tag becomes an installable `uvx mvgeos`. Uploads authenticate with
+OIDC trusted publishing, not a stored credential: GitHub mints a token for the
+`publish` job's run, PyPI exchanges it for a short-lived upload credential, and
+nothing is kept in the repository. Anyone who obtains that upload credential
+still has it until it expires, minutes later.
+
+This depends on a one-time PyPI account step. See "PyPI setup" below — without a
+trusted publisher registered per project name, the upload fails closed. That
+is deliberate: failing closed is what makes "no stored token" a real property
+rather than a stated intention.
 
 ## The eight distributions, not seven
 
@@ -46,36 +50,30 @@ largest upload is attempted, rather than after.
 Two things must exist before the first upload, and only a person can do them.
 
 1. Create or log into the PyPI account that will own the releases, and enable
-   two-factor authentication on it. PyPI requires 2FA before it will issue an
-   API token.
-2. Create an API token on that account, scoped to **upload only**, across all
-   projects. One token covers all eight names, because a token cannot be scoped
-   to a project that does not exist yet.
+   two-factor authentication on it.
+2. Register a **pending publisher** for each of the eight project names at
+   `https://pypi.org/manage/account/publishing/`, with exactly these values:
 
-Then store it once:
+   | Field | Value |
+   | --- | --- |
+   | Owner | `IAmNo1Special` |
+   | Repository | `mvgeos` |
+   | Workflow filename | `publish.yml` |
+   | Environment | `pypi` |
 
-```
-gh secret set PYPI_API_TOKEN --repo IAmNo1Special/mvgeos --env pypi
-```
+The workflow filename and the environment are matched character for character
+against the job that uploads. Rename either and PyPI rejects the exchange with a
+message that does not mention either rename.
 
-An environment secret, not a repository secret, so that only a job declaring
-`environment: pypi` can read it. No project has to be created by hand: the
-first upload of `mvgeos-core` creates that name on PyPI.
+A pending publisher on a name that already exists becomes active on the next
+successful upload. The eight names were created by the first release, so all
+eight now need the entry added.
 
-If any name is already claimed by someone else, stop and escalate. Do not
-publish under a substitute name.
+No project has to be created by hand. If any name is already claimed by someone
+else, stop and escalate. Do not publish under a substitute name.
 
-### Moving to a trusted publisher
-
-PyPI's own answer to a stored token is OIDC trusted publishing: no secret is
-kept anywhere, and GitHub mints a 15-minute upload token per run. It needs a
-one-time browser step — a pending publisher per project name on
-`https://pypi.org/manage/account/publishing/`, with owner `IAmNo1Special`,
-repository `mvgeos`, workflow `publish.yml`, environment `pypi`. Then restore
-`id-token: write`, set `UV_PUBLISH_TRUSTED_PUBLISHING: always`, drop the two
-`UV_PUBLISH_*` credential lines, and delete the secret. PyPI still has no API
-for this, which is why it is worth doing deliberately rather than as a
-side effect.
+There is no API for this step — it is a browser form — which is why it is a
+human prerequisite and not something an agent can unblock.
 
 ## What the workflow does
 
@@ -93,9 +91,28 @@ the wheel installs elsewhere. The check then asserts two things:
   sibling happens to be newest on PyPI.
 
 **`publish`** uploads in the derived order, one distribution per step,
-authenticating as `__token__` with the `PYPI_API_TOKEN` secret. The job fails
-immediately if the secret is absent rather than uploading nothing and reporting
-success.
+authenticating with OIDC: `id-token: write` lets GitHub mint a token for this
+run, and `UV_PUBLISH_TRUSTED_PUBLISHING: always` tells `uv` to use trusted
+publishing. What enforces "no stored credential" is the absence of any
+`UV_PUBLISH_USERNAME` / `UV_PUBLISH_PASSWORD` line in the job plus the deleted
+secret — `always` on its own does not. Measured against uv 0.12.10 and 0.12.23:
+
+| | `automatic` | `always` |
+| --- | --- | --- |
+| OIDC available | uploads via OIDC | uploads via OIDC |
+| No credentials of any kind | fails, 0 requests sent | fails, 0 requests sent |
+| `UV_PUBLISH_USERNAME`/`PASSWORD` exported | **uploads with them** | **uploads with them** |
+
+So a reintroduced credential line would be used whatever this setting says. The
+setting is still worth carrying because it stops `uv` hunting for a credential
+by other means, and because it keeps the job honest if someone changes the
+mechanism later — but it is not the control.
+
+The job also asserts `ACTIONS_ID_TOKEN_REQUEST_URL` is set, which is what
+GitHub puts on the runner for a job granted `id-token: write` and on no other
+job. Without that check a dropped `id-token: write` surfaces as uv's generic
+"Trusted publishing failed … `_/oidc/audience`", which reads like PyPI refusing
+the project rather than a permission mistake.
 
 `UV_PUBLISH_CHECK_URL=https://pypi.org/simple` makes a re-run after a partial
 failure skip whatever already landed. PyPI versions are immutable, so without
