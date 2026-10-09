@@ -43,7 +43,9 @@ largest upload is attempted, rather than after.
 
 ## PyPI setup
 
-Two things must exist before the first upload, and only a person can do them.
+Uploads authenticate with a **stored API token**, not a trusted publisher. Two
+things must exist before an upload, and only a person can do them. See
+"Moving to a trusted publisher" below for the state this is a fallback from.
 
 1. Create or log into the PyPI account that will own the releases, and enable
    two-factor authentication on it. PyPI requires 2FA before it will issue an
@@ -92,6 +94,50 @@ watching.
 Register **all eight** names before flipping the workflow. A `dry_run` dispatch
 does not help here: it uploads nothing, so it cannot detect a missing
 registration either. The only thing that detects it is an upload.
+
+### A refused project is not a misconfigured one
+
+PyPI answers "this OIDC token is not valid for project X" with a 403, which
+means **X has no trusted publisher matching this run**. It does not mean the
+workflow, the workflow filename, or the environment is wrong — if any of those
+were wrong, *every* package in the loop would fail, because one token is minted
+for the job and offered to all eight uploads.
+
+So read the scope of the failure as the diagnosis:
+
+| What failed | What it means |
+| --- | --- |
+| All eight | The workflow filename, owner, repository, or environment is wrong on every registration |
+| Some, and it stops partway | Only those project names are unregistered; the rest are fine |
+
+The run stops at the first refusal, so a failure at position seven tells you
+nothing about position eight. That is exactly what happened on 2026-10-09:
+`mvgeos` was refused at position seven and `mvgeos-gui` was never attempted.
+Check every project page, not just the one named in the error.
+
+### Where the registration goes depends on whether the project exists
+
+This is the step that is easy to get half-right, and getting it half-right
+produces a release that uploads most of its packages and then stops.
+
+- **A project that does not exist yet** takes a **pending publisher**, added on
+  the account page at `https://pypi.org/manage/account/publishing/`. Pending
+  publishers create the project on first use.
+- **A project that already exists** takes an ordinary trusted publisher, added
+  on that project's own page at
+  `https://pypi.org/manage/project/<name>/settings/publishing/`. An account
+  page is not where it goes.
+
+All eight names already exist — the first release created them with a stored
+token — so all eight belong on their project pages. A pending publisher had
+been registered on the account page for all eight names, and six of them
+worked; the two that 403d, `mvgeos` and `mvgeos-gui`, were the two that needed
+the project page instead. **Do not assume one registration covers the set.**
+
+Re-running the same tag is the recovery once registration is complete.
+`UV_PUBLISH_CHECK_URL` skips what already landed, so a run that uploaded six
+and refused the seventh resumes at the seventh. The tag is unchanged and PyPI
+versions are immutable, so nothing needs re-releasing.
 
 ## What the workflow does
 
@@ -171,6 +217,23 @@ script builds a scratch `HOME` that starts empty apart from the credential,
 installs `openrouter-realm` and `coding_mvge` into it, runs one real task, and
 fails unless the artifact is byte-correct and a session Tome naming the model
 lands under `.agents/sessions/`. It reports cold-to-first-token on the way.
+
+It also asserts the resolved tree is one coherent release: all eight
+first-party distributions at the released version, none missing, none from a
+different release. That check exists because of a measured failure — on
+2026-10-09 a release uploaded six of eight and was refused on the seventh, and
+because `mvgeos 0.6.16` declares `mvgeos-cli>=0.6.16`, the mixed tree that
+resulted satisfied every constraint it was given. `uvx mvgeos --help` exited
+zero on it and a real task completed. Run against that tree the gate now says:
+
+```
+[1/5] uvx mvgeos --help -> exit 0 in 5.43s
+[2/5] resolved tree -> mvgeos 0.6.16, mvgeos-agent 0.6.17, mvgeos-cli 0.6.17, mvgeos-core 0.6.17, mvgeos-provider 0.6.17, mvgeos-runes 0.6.17, mvgeos-tome 0.6.17
+verify_install failed: not installed by this release: mvgeos-gui
+verify_install failed: a mixed-version tree resolved at released 0.6.16: mvgeos-agent 0.6.17, mvgeos-cli 0.6.17, mvgeos-core 0.6.17, mvgeos-provider 0.6.17, mvgeos-runes 0.6.17, mvgeos-tome 0.6.17
+```
+
+Step 1 passing on the line above is the point: it is what the gate did before.
 
 Unlike `verify`, this job checks the repository out — only to get the script.
 Every mvgeos the run touches still comes from PyPI through uvx, so the thing
