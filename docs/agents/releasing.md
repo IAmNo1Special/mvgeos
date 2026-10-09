@@ -218,13 +218,18 @@ installs `openrouter-realm` and `coding_mvge` into it, runs one real task, and
 fails unless the artifact is byte-correct and a session Tome naming the model
 lands under `.agents/sessions/`. It reports cold-to-first-token on the way.
 
-It also asserts the resolved tree is one coherent release: all eight
-first-party distributions at the released version, none missing, none from a
-different release. That check exists because of a measured failure — on
-2026-10-09 a release uploaded six of eight and was refused on the seventh, and
-because `mvgeos 0.6.16` declares `mvgeos-cli>=0.6.16`, the mixed tree that
-resulted satisfied every constraint it was given. `uvx mvgeos --help` exited
-zero on it and a real task completed. Run against that tree the gate now says:
+It also asserts the resolved tree is one coherent release: every first-party
+distribution present is at the released version, and none of the seven that
+make up the runtime closure is missing. Seven, not eight — `mvgeos-gui` is
+published in lockstep and installed by nothing, so requiring it would fail on
+every correct release. That `mvgeos-gui` exists on the index at the same
+version is the publish workflow's job, which asks PyPI for all eight by HTTP.
+
+The check exists because of a measured failure — on 2026-10-09 a release
+uploaded six of eight and was refused on the seventh, and because
+`mvgeos 0.6.16` declares `mvgeos-cli>=0.6.16`, the mixed tree that resulted
+satisfied every constraint it was given. `uvx mvgeos --help` exited zero on it
+and a real task completed. Run against that tree the gate now says:
 
 ```
 [1/5] uvx mvgeos --help -> exit 0 in 5.43s

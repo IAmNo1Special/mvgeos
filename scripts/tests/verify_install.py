@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import subprocess
 
 import pytest
 import verify_install
@@ -253,7 +254,7 @@ def test_a_tome_with_no_spell_cast_is_detectable(tmp_path: pathlib.Path) -> None
 
 
 def _coherent(version: str) -> dict[str, str]:
-    return dict.fromkeys(verify_install.RELEASE_PACKAGES, version)
+    return dict.fromkeys(verify_install.RUNTIME_CLOSURE, version)
 
 
 def test_a_coherent_tree_is_accepted() -> None:
@@ -269,13 +270,36 @@ def test_the_half_landed_release_is_detected() -> None:
     """
     resolved = _coherent("0.6.17")
     resolved["mvgeos"] = "0.6.16"
-    del resolved["mvgeos-gui"]
+    del resolved["mvgeos-tome"]
 
     failures = verify_install.lockstep_failures(resolved, "0.6.17")
 
     assert len(failures) == 2
-    assert any("mvgeos-gui" in failure for failure in failures)
+    assert any("mvgeos-tome" in failure for failure in failures)
     assert any("mvgeos 0.6.16" in failure for failure in failures)
+
+
+def test_the_gui_is_not_required_in_the_runtime_tree() -> None:
+    """`mvgeos-gui` is published in lockstep and installed by nothing.
+
+    Reading it off the published 0.6.17 metadata: `mvgeos` requires
+    `mvgeos-cli`, which requires agent, core, provider, tome and runes. Nothing
+    requires the GUI. Asserting all eight are present would fail on every
+    correct release, for a reason that has nothing to do with the packaging --
+    which is worse than no gate, because it teaches everyone to ignore it.
+    """
+    assert "mvgeos-gui" not in verify_install.RUNTIME_CLOSURE
+
+    resolved = dict(_coherent("0.6.17"), **{"mvgeos-gui": "0.6.17"})
+
+    assert verify_install.lockstep_failures(resolved, "0.6.17") == []
+
+
+def test_a_name_outside_the_closure_does_not_fail_the_tree() -> None:
+    """A third-party `mvgeos-*` name arriving is not this gate's business."""
+    resolved = dict(_coherent("0.6.17"), **{"mvgeos-someone-elses": "0.6.17"})
+
+    assert verify_install.lockstep_failures(resolved, "0.6.17") == []
 
 
 def test_a_probe_that_ran_nothing_is_a_failure_not_a_pass() -> None:
@@ -294,3 +318,50 @@ def test_a_missing_name_alone_is_enough_to_fail() -> None:
 
     assert len(failures) == 1
     assert "mvgeos-tome" in failures[0]
+
+
+def test_a_missing_bwrap_is_reported_as_the_known_reason(monkeypatch) -> None:
+    monkeypatch.setattr(verify_install.shutil, "which", lambda _name: None)
+
+    usable, why_not = verify_install.sandbox_usable()
+
+    assert usable is False
+    assert why_not == "no bwrap on PATH"
+
+
+def test_a_bwrap_that_cannot_unshare_is_not_treated_as_usable(monkeypatch) -> None:
+    """The GitHub Actions runner case: installed, on PATH, and denied.
+
+    Checking only for the binary's presence sent the first CI run of this
+    script straight into a sandbox it could not create, and it died there with
+    a bare exit code instead of the transcript that makes a failure readable.
+    """
+    monkeypatch.setattr(verify_install.shutil, "which", lambda _name: "/usr/bin/bwrap")
+
+    def denied(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=["bwrap"],
+            returncode=1,
+            stdout="",
+            stderr="bwrap: setting up uid map: Permission denied\n",
+        )
+
+    monkeypatch.setattr(verify_install.subprocess, "run", denied)
+
+    usable, why_not = verify_install.sandbox_usable()
+
+    assert usable is False
+    assert "uid map" in why_not
+
+
+def test_a_working_bwrap_is_usable(monkeypatch) -> None:
+    monkeypatch.setattr(verify_install.shutil, "which", lambda _name: "/usr/bin/bwrap")
+
+    def works(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=["bwrap"], returncode=0, stdout="", stderr=""
+        )
+
+    monkeypatch.setattr(verify_install.subprocess, "run", works)
+
+    assert verify_install.sandbox_usable() == (True, "")
