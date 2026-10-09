@@ -163,6 +163,68 @@ success.
 failure skip whatever already landed. PyPI versions are immutable, so without
 this a retry after uploading four of eight packages would fail on the first.
 
+**That skip only works if the rebuild is byte-identical**, which is what the uv
+pin in every workflow is for. See "A re-dispatch that will not resume" below.
+
+### A re-dispatch that will not resume
+
+`--check-url` skips a distribution that is already on the index, but it
+compares **hashes**, not names. So a re-dispatch only resumes if the rebuild
+produces the same bytes as the upload did. It does not, by default, and the
+reason is one line in every workflow:
+
+```yaml
+- uses: astral-sh/setup-uv@v7     # no `version:` — installs newest uv
+```
+
+uv writes itself into what it builds. Every wheel carries
+
+```
+Generator: uv 0.12.24
+```
+
+in its `WHEEL` metadata, that line is hashed into `RECORD`, and so the file's
+sha256 changes when uv does. Three builders, one commit, one package:
+
+| Built by | `mvgeos_core-0.6.17-py3-none-any.whl` |
+| --- | --- |
+| uv 0.12.10 | `8b1999f4…` |
+| uv 0.12.24 | `9c156697…` |
+| uv 0.13.0 | `39207b40…` |
+| what PyPI holds | `9c156697…` |
+
+uv 0.13.0 shipped 2026-10-09 at 19:49. A re-dispatch run at 23:28 that morning
+installed it, rebuilt the same commit, and could not skip anything:
+
+```
+error: Local file and index file do not match for
+`mvgeos_core-0.6.17-py3-none-any.whl`. Local: sha256=39207b40…, Remote: sha256=9c156697…
+```
+
+Each of those three hashes was reproduced from a clean worktree at the release
+commit, so the difference is the builder and nothing else. All twelve files of
+the v0.6.17 release — six wheels and six sdists — rebuild byte-for-byte under
+uv 0.12.24, which is the proof that the wheel was always reproducible and only
+the builder had moved.
+
+That failure names a hash mismatch and nothing else, so read cold it looks like
+a corrupted artifact or a tampered index, and both are wrong conclusions.
+**If a re-dispatch stops on a package that is already on PyPI at the right
+version, compare the two hashes before anything else.** If the local one changes
+when nothing in the repository did, the builder moved and the pin is the cause.
+
+Every `setup-uv` step therefore pins `version: "0.12.24"`.
+`scripts/tests/uv_pin.py` fails the `release-tooling` job if any of them stops
+pinning, or drifts to a version that is not the one the published artifacts were
+built with. Bumping the pin is a deliberate act, and it means every artifact
+built before it is no longer reproducible from its tag.
+
+**To recover a release stopped this way**, pin uv to the version that built what
+is already on PyPI — not to the newest one — then re-dispatch the same tag. The
+six that landed are skipped by hash and the run resumes at the first one that
+did not. Note that this is independent of how the upload authenticates: a
+stored token and an OIDC token hit the same `--check-url` comparison.
+
 ### When PyPI refuses a project as new
 
 PyPI caps how many *new projects* one account may create in a window, and
