@@ -279,8 +279,8 @@ is not.
 `verify` structurally cannot reach. `--help` returns before a Realm is
 contacted, so a release whose credential never loads, whose Realm Rune is
 missing, or whose Tome never reaches disk is green and still unusable. The
-script builds a scratch `HOME` that starts empty apart from the credential,
-installs `openrouter-realm` and `coding_mvge` into it, runs one real task, and
+script builds a scratch `HOME` that starts empty — no credential, no config —
+installs `opencode-realm` and `coding_mvge` into it, runs one real task, and
 fails unless the artifact is byte-correct and a session Tome naming the model
 lands under `.agents/sessions/`. It reports cold-to-first-token on the way.
 
@@ -311,11 +311,19 @@ Every mvgeos the run touches still comes from PyPI through uvx, so the thing
 under test is the published distribution and never the workspace.
 
 The script is stdlib-only so that the thing standing between a release and this
-check cannot itself fail to install, and it needs the repository secret
-`OPENROUTER_API_KEY`. If that secret is absent the job **fails on purpose**
-rather than skipping: a skipped gate is indistinguishable from a passing one
-once a run is green, which is how the check would come to protect nothing. A
-repository owner adds it under Settings > Secrets and actions > Actions.
+check cannot itself fail to install, and it needs **no secret at all**: the
+default Realm, `opencode`, serves its free tier keyless. That is worth more
+than the money it saves. A gate requiring a credential cannot run on a fork,
+and a fork is exactly where a stranger's first contact with this repository
+happens.
+
+An earlier revision failed on purpose when the `OPENROUTER_API_KEY` repository
+secret was absent, on the reasoning that a skipped gate is indistinguishable
+from a passing one. That reasoning was right and the conclusion was wrong: the
+gate was not skipping, it was refusing to run at all over a credential it no
+longer spends. The secret is still passed through for an optional
+`--provider openrouter` run, and the harness exits 2 naming the variable if it
+is asked for a billing Realm and finds none.
 
 Where `bwrap` is available — the job installs it, and most developer machines
 have it — the script re-runs itself inside a sandbox and says so on its first
@@ -328,15 +336,19 @@ the isolation from the inside and fails if a host path is still reachable, so a
 sandbox that leaks is a red gate rather than a quiet one. Pass `--no-sandbox`
 to run without it.
 
-The model defaults to `openai/gpt-4o-mini` and `--max-tokens` is capped, so a
-run costs a fraction of a cent and survives a key whose remaining credit cannot
-cover the engine's 4096 default. Override both when a specific failure needs a
-different target:
+The gate follows the engine's own defaults rather than naming a model of its
+own: `opencode/space-bunny-free` on the `opencode` Realm, billed at zero. That
+is the Realm and model a new Summoner reaches first, so it is the one worth
+testing. `--max-tokens` is still capped to keep the turn short. Override any of
+it when a specific failure needs a different target:
 
 ```bash
-OPENROUTER_API_KEY=sk-or-... python scripts/verify_install.py \
-  --version 0.6.14 --model anthropic/claude-sonnet-4 --max-tokens 8000
+python scripts/verify_install.py \
+  --version 0.6.14 --provider openrouter --model openai/gpt-4o-mini --max-tokens 8000
 ```
+
+That invocation needs `OPENROUTER_API_KEY` in the environment, and the harness
+will say so and exit 2 if it is missing.
 
 ## The normal path
 

@@ -309,17 +309,19 @@ jobs:
           fi
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
 
-      # A skipped gate is indistinguishable from a passing one once the run is
-      # green, which is how this job would come to protect nothing. It fails, and
-      # names the unblock, rather than going quiet.
-      - name: Require the credential this gate spends
-        env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: |
-          if [ -z "$OPENROUTER_API_KEY" ]; then
-            echo "::error::Repository secret OPENROUTER_API_KEY is not set, so no real task can run. A repository owner must add it under Settings > Secrets and actions > Actions. Until then this gate proves nothing and is failing on purpose."
-            exit 1
-          fi
+      # The default Realm serves its free tier keyless, so this gate needs no
+      # secret at all. An earlier revision failed on purpose when
+      # OPENROUTER_API_KEY was absent, on the reasoning that a skipped gate is
+      # indistinguishable from a passing one. That reasoning was right and the
+      # conclusion was wrong: the gate was not skipping, it was refusing to run
+      # at all over a credential it no longer spends. A secret here would also
+      # mean this gate cannot run on a fork, and a fork is exactly where a
+      # stranger's first contact with this repository happens.
+      #
+      # OPENROUTER_API_KEY is still passed through for a `--provider openrouter`
+      # run. That is optional: the harness exits 2 with a message naming the
+      # variable if it is asked for a billing Realm and finds none, which is a
+      # clearer failure than a silently keyless request.
 
       # Stdlib only on purpose: the harness must be runnable without a sync, so
       # the thing standing between a release and this check cannot itself fail
