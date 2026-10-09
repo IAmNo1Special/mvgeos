@@ -9,7 +9,8 @@ task and asserts on the three things a Summoner would notice:
 
 1. `uvx mvgeos --help` exits zero.
 2. Every first-party distribution in the resolved tree is at the released
-   version -- all eight, none missing, none from a different release.
+   version -- the seven that make up the runtime closure, none missing, none
+   from a different release.
 3. The task produces its artifact, byte for byte.
 4. A session Tome lands in ``$HOME/.agents/sessions/`` naming the model that
    served it, and records the Spell that was cast.
@@ -79,18 +80,28 @@ ARTIFACT_CONTENT = "hello from mvgeos"
 
 TASK = f"Create a file named {ARTIFACT} containing exactly the text: {ARTIFACT_CONTENT}"
 
-# The eight first-party names a release uploads. Checked by name rather than by
-# glob, because a glob would also catch a third-party distribution that happens
-# to start with "mvgeos" and would miss a name that has been dropped.
-RELEASE_PACKAGES = (
+# The first-party distributions `uvx mvgeos` resolves. Seven, not eight:
+# `mvgeos-gui` is published in lockstep but nothing depends on it -- it is a
+# sibling front end, not part of the closure -- so a stranger running the
+# documented command never installs it. Reading this off the published metadata
+# at 0.6.17:
+#
+#   mvgeos      -> mvgeos-cli
+#   mvgeos-cli  -> mvgeos-agent, mvgeos-core, mvgeos-provider,
+#                  mvgeos-tome, mvgeos-runes
+#
+# Asserting all eight are *present* would fail forever and for a reason that has
+# nothing to do with the release. That `mvgeos-gui` exists on the index at the
+# same version is checked by the publish workflow, which asks PyPI for all eight
+# by HTTP.
+RUNTIME_CLOSURE = (
     "mvgeos",
-    "mvgeos-core",
     "mvgeos-cli",
-    "mvgeos-gui",
-    "mvgeos-provider",
     "mvgeos-agent",
-    "mvgeos-runes",
+    "mvgeos-core",
+    "mvgeos-provider",
     "mvgeos-tome",
+    "mvgeos-runes",
 )
 
 # Marks the probe's answer so a uv banner, a warning, or a Realm's chatter on
@@ -397,7 +408,7 @@ def resolved_distributions(version: str, env: dict[str, str]) -> dict[str, str]:
 
 
 def lockstep_failures(resolved: dict[str, str], version: str) -> list[str]:
-    """Why ``resolved`` is not one coherent release of the eight names.
+    """Why ``resolved`` is not one coherent release of the runtime closure.
 
     Split out from ``main`` so the rule is readable on its own and testable
     without installing anything.
@@ -405,7 +416,7 @@ def lockstep_failures(resolved: dict[str, str], version: str) -> list[str]:
     if not resolved:
         return ["the resolved-tree probe returned nothing"]
     failures = []
-    missing = [name for name in RELEASE_PACKAGES if name not in resolved]
+    missing = [name for name in RUNTIME_CLOSURE if name not in resolved]
     if missing:
         failures.append("not installed by this release: " + ", ".join(missing))
     off = {name: found for name, found in resolved.items() if found != version}
@@ -425,6 +436,50 @@ def stamp_lines(lines: list[tuple[float, str]]) -> str:
     gap look like simultaneity -- the one thing a timing report must not do.
     """
     return "\n".join(f"[{elapsed:7.2f}s] {text}" for elapsed, text in lines)
+
+
+def sandbox_usable() -> tuple[bool, str]:
+    """Whether a sandbox can actually be created here, and why not if it cannot.
+
+    "Is bwrap on PATH" is the wrong question. On a GitHub Actions ubuntu runner
+    the workflow installs bubblewrap, it is on PATH, and it still cannot create
+    a user namespace:
+
+    ```
+    bwrap: setting up uid map: Permission denied
+    ```
+
+    That is what happened the first time this script ever executed in CI, on
+    2026-10-09. The harness took the sandbox path on the strength of the binary
+    existing and died there, so a release gate that had never run before
+    reported a bare exit code and an exit-1 with none of the transcript that
+    makes a failure diagnosable.
+
+    So the probe is the cheapest thing that exercises the capability rather than
+    the file's presence: unshare a user namespace and bind the root read-only.
+    Anything weaker passes on a host where bwrap exists and cannot do what this
+    harness needs.
+
+    Returns ``(usable, reason)``, and ``reason`` is empty when usable. The
+    caller reports the reason rather than falling back silently, because a
+    weaker run has to be described as weaker to be worth anything.
+    """
+    bubblewrap = shutil.which("bwrap")
+    if bubblewrap is None:
+        return False, "no bwrap on PATH"
+    completed = subprocess.run(
+        [bubblewrap, "--unshare-user", "--ro-bind", "/", "/", "true"],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
+    if completed.returncode == 0:
+        return True, ""
+    said = (completed.stderr or completed.stdout or "").strip().splitlines()
+    return False, (
+        "bwrap is on PATH but cannot unshare a user namespace here ("
+        f"{said[-1] if said else f'exit {completed.returncode}'})"
+    )
 
 
 def run_sandboxed(arguments: argparse.Namespace) -> int:
@@ -519,11 +574,12 @@ def main() -> int:
 
     already_sandboxed = bool(os.environ.get(SANDBOX_MARKER))
     if arguments.sandbox and not already_sandboxed:
-        if shutil.which("bwrap") is None:
+        usable, why_not = sandbox_usable()
+        if not usable:
             print(
-                "verify_install: no bwrap on PATH, so the run cannot be isolated "
-                "from this machine. Proceeding against a scratch HOME only, which "
-                "is a weaker claim than a clean machine.",
+                f"verify_install: {why_not}, so the run cannot be isolated "
+                "from this machine. Proceeding against a scratch HOME only, "
+                "which is a weaker claim than a clean machine.",
                 file=sys.stderr,
             )
         else:
