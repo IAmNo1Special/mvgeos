@@ -5,7 +5,11 @@ from mvgeos_core.channel import (
 )
 
 from mvgeos_provider.base import NoRealmRegisteredError, Realm, RealmFactory
-from mvgeos_provider.model_registry import ModelRegistry, list_models
+from mvgeos_provider.model_registry import (
+    ModelRegistry,
+    list_models,
+    serving_realm_for_model,
+)
 from mvgeos_provider.realms import (
     DEFAULT_REALM,
     REALM_API_KEY_ENV,
@@ -59,4 +63,5 @@ __all__ = [
     "realm_for_model_id",
     "refresh_models",
     "rune_for_realm",
+    "serving_realm_for_model",
 ]

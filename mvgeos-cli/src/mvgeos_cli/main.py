@@ -20,10 +20,12 @@ from mvgeos_core.constants import (
     DEFAULT_MODEL,
 )
 from mvgeos_provider import NoRealmRegisteredError, get_default_realm_registry
-from mvgeos_provider.model_registry import model_requires_credential
+from mvgeos_provider.model_registry import (
+    model_requires_credential,
+    serving_realm_for_model,
+)
 from mvgeos_provider.realms import (
     api_key_env_for_realm,
-    realm_for_model_id,
     rune_for_realm,
 )
 from mvgeos_runes.installer import install_rune
@@ -493,14 +495,18 @@ def _repl_callback(
         except ValueError as exc:
             raise typer.BadParameter(str(exc)) from exc
 
-    if api_key is None and model and model.startswith("google/"):
-        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     # Which variable holds the credential depends on the model's Realm, so the
     # model has to be known first. With no --model the Realm is the default
     # model's. Passing the resolved slug onwards is deliberately *not* done:
     # an agent's own config may name a different model, and that precedence
     # belongs to the config layer, not to this lookup.
-    key_realm = realm_for_model_id(model or DEFAULT_MODEL)
+    #
+    # The Realm that serves the model, not the slug's prefix. Those differ for a
+    # routed slug: `nvidia/nemotron-3-ultra-550b-a55b:free` is served by
+    # openrouter, so reading the prefix asked for NVIDIA_API_KEY and for
+    # ~/.agents/auth/nvidia.json while the credential `mvgeos export` writes sits
+    # in openrouter.json doing nothing.
+    key_realm = serving_realm_for_model(model or DEFAULT_MODEL)
     key_model = model or DEFAULT_MODEL
     if api_key is None:
         # Only the Realm's own variable, then its own credential file. The

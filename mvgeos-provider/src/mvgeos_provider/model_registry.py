@@ -149,6 +149,35 @@ def list_models() -> list[Model]:
     return list(_load_baseline_models().values())
 
 
+def serving_realm_for_model(model_id: str) -> str:
+    """The Realm that will actually serve ``model_id``.
+
+    Two derivations answer two different questions, and picking the wrong one
+    sends a credential to a host that never asked for it:
+
+    ``realm_for_model_id``
+        what the id is *spelled* -- its prefix, which for a routed slug like
+        ``nvidia/nemotron-3-ultra-550b-a55b:free`` is the provider.
+    this
+        where the request is *sent*, which is what a credential lookup, a cost
+        guard, and a "which Rune do I install" message all need.
+
+    The shipped catalog already records the answer per entry -- that entry is
+    why ``DEFAULT_REALM`` has to be a copy at all (see ADR-0015) -- so it is
+    consulted first. Falling back to the prefix is not a second answer: a Rune
+    may serve a model no catalog carries, which is the feature that makes Runes
+    worth having, and refusing to name a Realm there would refuse that model.
+
+    Reads the baseline catalog rather than ``ModelRegistry``, whose cache
+    refreshes over the network. This runs on the credential gate, and a prompt
+    must not wait on an HTTP call.
+    """
+    model = _load_baseline_models().get(model_id)
+    if model is not None and model.realm:
+        return model.realm
+    return realm_for_model_id(model_id)
+
+
 def model_requires_credential(model_id: str | None) -> bool:
     """True unless the engine will serve ``model_id`` without a credential.
 
@@ -180,7 +209,7 @@ def model_requires_credential(model_id: str | None) -> bool:
     """
     if not model_id:
         return True
-    realm = realm_for_model_id(model_id)
+    realm = serving_realm_for_model(model_id)
     if realm in REALMS_WITHOUT_CREDENTIAL:
         return False
     if realm not in REALMS_WITH_ANONYMOUS_FREE_TIER:
