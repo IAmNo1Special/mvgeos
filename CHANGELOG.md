@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.17] - 2026-10-09
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (77387ba)
+
+- **release:** v0.6.17 (71a0810)
+
+
+### Continuous Integration
+
+- **release:** prove the published mvgeos completes a real task (3fbed01)
+
+- **release:** sandbox the install gate so it cannot see this machine (c802e1e)
+
+- **publish:** authenticate to PyPI with OIDC trusted publishing instead of a stored token (a99270f)
+
+
+### Documentation
+
+- **readme:** stop the recording caption implying a PyPI install (2835aab)
+
+- **agents:** put the publish dispatch back where it actually lives (416075d)
+
+
+### Tests
+
+- **verify_install:** skip the Linux sandbox-argv test on Windows (ad6d9b0)
+
+
 ## [0.6.16] - 2026-10-07
 
 
