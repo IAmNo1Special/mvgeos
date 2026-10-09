@@ -5,14 +5,11 @@ name: Publish
 # package index. A failure to upload must not block the changelog, and a tag
 # must never produce a GitHub Release without the upload having been attempted.
 #
-# Uploads authenticate with the `PYPI_API_TOKEN` secret again as of 2026-10-09,
-# a deliberate rollback of OIDC trusted publishing. Trusted publishing requires
-# a registered publisher per project name on pypi.org, and that registration is
-# a web action no agent can perform. `mvgeos` and `mvgeos-gui` had none, so the
-# `v0.6.17` run uploaded six of eight distributions and was refused on the
-# seventh, leaving `uvx mvgeos` resolving a mixed-version tree. The token is the
-# fallback, not the end state: migrating all eight names to OIDC and deleting
-# the secret is the real fix. See docs/agents/releasing.md.
+# Uploads authenticate with OIDC trusted publishing: GitHub mints a short-lived
+# token from `id-token: write`, PyPI exchanges it for a 15-minute upload
+# credential, and nothing long-lived is stored in this repository. Each of the
+# eight project names needs a trusted publisher registered on its own PyPI
+# project page. See "PyPI setup" in docs/agents/releasing.md.
 
 on:
   push:
@@ -114,12 +111,17 @@ jobs:
     # itself count against the window. The run reports when a slot frees and
     # stops. Re-dispatching after that time is the whole recovery.
     timeout-minutes: 30
-    # The upload credential is an environment secret, so only a job that
-    # declares this environment can read it. Nothing else in the repo can.
-    # See docs/agents/releasing.md.
+    # The environment is not a credential gate any more: nothing is stored
+    # there to gate. It stays because PyPI's trusted publisher names it, and
+    # PyPI rejects an OIDC token whose job did not come from the environment
+    # the publisher was registered against.
     environment: pypi
     permissions:
       contents: read
+      # id-token: write is what lets GitHub mint the OIDC token that PyPI
+      # exchanges for a 15-minute upload credential. Without it there is no
+      # token to exchange and the upload fails.
+      id-token: write
     steps:
       - uses: actions/checkout@v5
 
@@ -138,16 +140,22 @@ jobs:
 
       - name: Upload in dependency order
         env:
-          # A PyPI API token scoped to upload on all projects. "__token__" is
-          # the fixed username PyPI requires when authenticating with a token.
-          UV_PUBLISH_USERNAME: __token__
-          UV_PUBLISH_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+          # `always` stops uv hunting for a credential by other means, and keeps
+          # the job honest if the mechanism changes later. It is not the control:
+          # a credential exported into this job would be used whatever this says.
+          # The control is that no credential exists here at all.
+          UV_PUBLISH_TRUSTED_PUBLISHING: always
           VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -euo pipefail
           if [ "${{ inputs.dry_run }}" != "true" ]; then
-            if [ -z "${UV_PUBLISH_PASSWORD:-}" ]; then
-              echo "::error::PYPI_API_TOKEN is missing from the pypi environment"
+            # GitHub sets this on the runner for a job granted `id-token: write`
+            # and on no other job. Without the check a dropped permission
+            # surfaces as uv's generic "Trusted publishing failed ...
+            # `_/oidc/audience`", which reads like PyPI refusing the project
+            # rather than a permissions mistake.
+            if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+              echo "::error::No OIDC token was minted, so the upload cannot authenticate. The publish job needs permissions.id-token: write. If that is set, PyPI has no trusted publisher registered for this project name (see docs/agents/releasing.md)."
               exit 1
             fi
             if [ ! -d "dist" ]; then
@@ -221,11 +229,10 @@ jobs:
               # whoever reads it to the wrong page, because every distribution
               # in this loop is built and validated by preflight already.
               #
-              # Unreachable while uploads authenticate with a stored token:
-              # "OIDC scoped token is not valid for project" is wording only
-              # trusted publishing produces. Kept because the rollback is
-              # temporary, and this is the branch that explains the failure the
-              # rollback was caused by.
+              # Read the scope of the failure as the diagnosis: one token is
+              # minted for the job and offered to every upload here, so a wrong
+              # workflow filename or environment refuses all eight, while a
+              # refusal partway means only those names are unregistered.
               if printf '%s' "$output" | grep -qi "not valid for project"; then
                 echo "::error::$package was refused: PyPI has no trusted publisher that matches this run's OIDC token for '$package'. Register one at https://pypi.org/manage/project/$package/settings/publishing/ with owner IAmNo1Special, repository mvgeos, workflow filename publish.yml, environment pypi. Everything before this package already uploaded; re-run the same tag to upload the rest."
                 exit "$status"
