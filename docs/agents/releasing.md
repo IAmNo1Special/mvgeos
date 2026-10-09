@@ -356,6 +356,33 @@ the tagged commit. Dispatching against `main` would build whatever `main` holds
 when the runner starts, which can be a commit that landed after the tag, and
 those wheels would be published and permanently labelled `v0.6.5`.
 
+**The cost of that choice: `--ref <tag>` runs the workflow file *as the tag has
+it*, not as `main` has it.** Any fix merged to `main` after a tag is cut does not
+exist for a re-dispatch of that tag. Measured on v0.6.17, tagged before the uv
+pin existed:
+
+```
+gh workflow run publish.yml --ref v0.6.17 -f tag=v0.6.17 -f dry_run=false
+   -> the pin was absent, so uv 0.13.0 was installed, and the run rebuilt
+      mvgeos-core at 39207b40... and failed against PyPI's 9c156697...
+
+gh workflow run publish.yml -f tag=v0.6.17 -f dry_run=false
+   -> runs from main, pin applies, uv 0.12.24, and every package is
+      recognised as already published and skipped
+```
+
+So a fix to the release tooling cannot rescue the tag it was cut before. Either
+cut a new tag, or dispatch from `main` — but only when the *source* at the tag is
+unchanged and only the tooling moved. Check first:
+
+```
+git diff <tag>..main -- '*/pyproject.toml' pyproject.toml
+```
+
+Empty means no package version moved, so the wheels `main` builds are the
+released ones and dispatching from `main` is safe. If anything moved, they are
+not, and only a new tag is correct.
+
 ## When a publish run needs redoing by hand
 
 Re-run the same tag. `UV_PUBLISH_CHECK_URL` skips every package that already
