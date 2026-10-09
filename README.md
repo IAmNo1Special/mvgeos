@@ -13,8 +13,9 @@ MvgeOS is an operating system for AI agents, written in Python. A **Mvge** — t
 agent — casts **Spells** (tools) against models served by **Realms** (providers).
 Conversations persist as **Tomes**. Capabilities extend through **Runes**.
 
-No account to create. No telemetry in the engine. No model baked in — you bring a
-key for whichever provider you already use.
+No account to create. No telemetry in the engine. One default model *is* baked in,
+and it runs with no credential at all — so your first task needs no key. To use
+another provider, bring the key for the Realm you want.
 
 ## Install
 
@@ -35,38 +36,63 @@ uvx mvgeos --help
 
 ## Run one task
 
-This is the whole sequence, recorded start to finish on a machine with an empty
-`$HOME`. No cuts, no re-run, 23 seconds. One caveat: the recording predates
-0.6.14 and so shows the `git+` install line, not the PyPI one above. The four
-commands are unchanged — only where mvgeos comes from is different — but the
-timings in it belong to the git form, not to `uvx mvgeos`.
-
-![Terminal recording: installing mvgeos from git, installing the openrouter-realm Rune and the coding_mvge Mvge, writing the credential, then running one task that creates hello.txt and verifying it with od -c](docs/images/mvgeos-demo.gif)
-
-The same four commands to type yourself:
+Three commands. From nothing to a file on disk, with no account, no key, and no
+configuration:
 
 ```bash
 # 1. the Realm — how MvgeOS reaches a model
-mvgeos rune install openrouter-realm --confirm-python-deps
+uvx mvgeos rune install opencode-realm --confirm-python-deps
 
 # 2. the Mvge — carries the Spells
-mvgeos mvge install coding_mvge
+uvx mvgeos mvge install coding_mvge
 
-# 3. your key
-export OPENROUTER_API_KEY="sk-or-..."
-
-# run a task
-mvgeos --agent-name coding_mvge "Create a file named hello.txt containing exactly the text: hello from mvgeos"
+# 3. run a task
+uvx mvgeos --agent-name coding_mvge "Create a file named hello.txt containing exactly the text: hello from mvgeos"
 ```
 
-> **Step 2 may ask a question in a real terminal — and it does not matter.**
+**There is no credential step, and that is not an omission.** The default Realm
+serves a free model with no key at all, so the first task runs as the third
+command. To use a provider you already pay for instead, see
+[Bring your own key](#bring-your-own-key).
+
+Commands 1 and 2 both succeed, unedited, on a machine with an empty `$HOME`.
+The second one says it is skipping four packages — see the note under the block
+for why that is fine:
+
+```text
+$ uvx mvgeos rune install opencode-realm --confirm-python-deps
+Successfully installed rune 'opencode-realm' to ~/.agents/extensions/opencode-realm
+
+$ uvx mvgeos mvge install coding_mvge
+Non-interactive session: skipping install of unreviewed python dependencies
+['mvgeos-agent', 'mvgeos-core', 'mvgeos-provider', 'mvgeos-runes'].
+Re-run with confirm=True to install.
+Successfully installed mvge 'coding_mvge' to ~/.agents/agents/coding_mvge
+```
+
+> **Command 2 may ask a question in a real terminal — and it does not matter.**
 > `mvge install` gates its declared `python_deps` the way `rune install` does,
 > so on a TTY it prompts before fetching. **Answering `n` is harmless here**, and
 > the warning you get without a TTY is misleading: the four packages it names are
 > already installed with the engine, and the resolved Spell set is the same nine
-> either way. To fetch them anyway, `mvgeos mvge install --confirm-python-deps
-> coding_mvge` does it without prompting (`v0.6.6` and later). The recording
-> above pipes `yes` into the prompt so it can run unattended; you will be asked.
+> either way. To fetch them anyway, `uvx mvgeos mvge install
+> --confirm-python-deps coding_mvge` does it without prompting (`v0.6.6` and
+> later).
+
+<details>
+<summary>The same run as a terminal recording, on a machine with an empty <code>$HOME</code></summary>
+
+This recording is from an earlier version and is kept for what it shows — a real
+task, start to finish, unedited. **Two things in it no longer match the commands
+above, and both are listed here rather than left for you to find**: it installs
+`openrouter-realm` instead of `opencode-realm`, and it writes an
+`OPENROUTER_API_KEY` that the current default does not need. It also predates the
+PyPI distribution, so it shows the `git+` install line. A recording of the recipe
+as it stands now is tracked separately.
+
+![Terminal recording: installing mvgeos from git, installing the openrouter-realm Rune and the coding_mvge Mvge, writing the credential, then running one task that creates hello.txt and verifying it with od -c](docs/images/mvgeos-demo.gif)
+
+</details>
 
 Here is that task, actually run, with nothing edited. The Mvge cast `write`,
 checked its own work, and reported back:
@@ -96,7 +122,7 @@ The same task in the desktop app, same Realm, same model:
 <summary>Install and runtime output, from a clean machine</summary>
 
 ```text
-$ mvgeos --help
+$ uvx mvgeos --help
  MvgeOS - a Python-based AI coding agent
 
 ╭─ Commands ────────────────────────────────────────────────────────────────────╮
@@ -109,13 +135,13 @@ $ mvgeos --help
 │ tome    Session tome management                                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 
-$ mvgeos rune install openrouter-realm --confirm-python-deps
-Successfully installed rune 'openrouter-realm' to ~/.agents/extensions/openrouter-realm
+$ uvx mvgeos rune install opencode-realm --confirm-python-deps
+Successfully installed rune 'opencode-realm' to ~/.agents/extensions/opencode-realm
 
-$ mvgeos mvge install coding_mvge
+$ uvx mvgeos mvge install coding_mvge
 Successfully installed mvge 'coding_mvge' to ~/.agents/agents/coding_mvge
 
-$ mvgeos info --agent-name coding_mvge
+$ uvx mvgeos info --agent-name coding_mvge
 Agent: coding_mvge
 Model: opencode/space-bunny-free
 
@@ -144,6 +170,31 @@ them.
 > Spells. For a one-shot run there is no subcommand, so it goes before the
 > prompt, as above.
 
+## Bring your own key
+
+The recipe above needs none, and it is not the only way in. Any Realm in the
+[marketplace catalog](https://iamno1special.github.io/mvgeos-marketplace/#rune-catalog)
+works, and each reads its own credential variable:
+
+```bash
+# OpenRouter: one key, many models behind it
+uvx mvgeos rune install openrouter-realm --confirm-python-deps
+export OPENROUTER_API_KEY="sk-or-..."
+uvx mvgeos --agent-name coding_mvge -m nvidia/nemotron-3-super-120b-a12b:free \
+  "Create a file named hello.txt containing exactly the text: hello from mvgeos"
+```
+
+`-m` takes a `<realm>/<model-id>` slug and accepts only ids from the model list
+shipped in the repository. Check which ones are in it:
+
+```console
+$ uvx mvgeos info --agent-name coding_mvge
+```
+
+The `Model:` line is the model you would otherwise get; the model's list is the
+one a different Realm would serve from. A key goes to the Realm you named and to
+nothing else — MvgeOS never proxies one Realm's credential to another host.
+
 **[Full documentation →](https://iamno1special.github.io/mvgeos-marketplace/)** —
 quickstart, concepts, troubleshooting with real errors, and FAQ.
 
@@ -159,42 +210,43 @@ quickstart, concepts, troubleshooting with real errors, and FAQ.
   Agent Skills, read your `AGENTS.md`, self-modify. Fifteen in the
   [marketplace catalog](https://iamno1special.github.io/mvgeos-marketplace/#rune-catalog).
 - **Realm-agnostic by construction.** The engine programs against a Realm
-  abstraction, not one vendor's SDK. Your key reaches the provider you chose
-  and nothing else.
+  abstraction, not one vendor's SDK. Two Realms ship today —
+  `opencode-realm` (OpenCode Zen, the default, no key needed for free models)
+  and `openrouter-realm` (OpenRouter, one key across many models). Your key
+  reaches the Realm you chose and nothing else.
 - **Terminal and desktop.** Streaming REPL, full-screen TUI, and a NiceGUI +
   PyWebView desktop app with live Spell tracking and diff review.
 
 ## Honest status
 
-- **`v0.6.8`, pre-1.0.** Internals are held to a high bar — mypy strict, ruff,
-  ~2,200 tests. The command surface still moves.
-- **No published distribution yet**, hence the long install line.
-- **The default free model is unreliable, so step "run one task" is.** Every
-  install and inspect command here is re-verified on a clean machine on a
-  schedule. The model call is not: across eight clean-machine runs of the task
-  above, four ended in
+- **Pre-1.0.** Internals are held to a high bar — mypy strict, ruff, ~2,200
+  tests. The command surface still moves. The distribution on PyPI is `v0.6.16`;
+  check yours with `uv tool list`.
+- **The default model call can be refused, so "run one task" is.** Every install
+  and inspect command above was verified on a clean machine, and so was the
+  recipe's Realm. The model call was not, and it is not MvgeOS's to fix: when
+  the default free tier is at capacity the run ends in
 
   ```text
-  Error: Upstream error from Nvidia: Service temporarily overloaded
+  Rate limited by the provider: Realm requested 2209s retry delay (max: 60s). Rate
+  limit exceeded. Please try again later..
+  No spells ran before the failure, so nothing was written.
   ```
 
-  and four completed and wrote the correct file. A retry clears it; the engine's
-  own retry gives up before the provider does. Check before you run it again, so
-  you do not pay twice for one task:
+  Seven consecutive clean-machine attempts at the command above returned exactly
+  that. **Read the number before you retry** — `2209s` is about 37 minutes, and
+  a fast retry loop will not shorten it. A refused attempt costs a few seconds
+  and writes nothing.
+
+  Check the file before you re-run, so you do not overwrite work you already
+  have:
 
   ```console
   $ ls -l hello.txt && cat hello.txt
   ```
 
-  Naming a different model also clears it:
-
-  ```bash
-  mvgeos -m nvidia/nemotron-3-super-120b-a12b:free --agent-name coding_mvge \
-    "Create a file named hello.txt containing exactly the text: hello from mvgeos"
-  ```
-
-  `-m` accepts only ids from the model list shipped in the repository, and that
-  list is a drifting snapshot. Details in the
+  A `-m` slug names its Realm in the prefix, so naming a different model only
+  helps if the Realm that serves it is installed. Details in the
   [troubleshooting guide](https://iamno1special.github.io/mvgeos-marketplace/troubleshooting/).
 - **A known bug costs a wasted round-trip.** When a Mvge checks its own work with
   `read`, `grep`, `find`, or `list_files`, leaving the optional paging arguments
@@ -217,7 +269,7 @@ quickstart, concepts, troubleshooting with real errors, and FAQ.
 <summary><b>✨ Features</b></summary>
 
 - ⚡ **Event-Driven Agent Loop (<code>mvgeos-agent</code>)**: Stream-centric execution loop with parallel spell dispatching, turn management, and automatic context compaction.
-- 🌐 **Multi-Model Provider Abstraction (<code>mvgeos-provider</code>)**: Realm protocol, model registry, and retry policies. The concrete OpenRouter realm (60+ LLMs, streaming, exponential backoff, rate-limit handling, reasoning effort configuration) ships as the `openrouter-realm` rune in `mvgeos-marketplace` and registers itself at runtime.
+- 🌐 **Multi-Model Provider Abstraction (<code>mvgeos-provider</code>)**: Realm protocol, model registry, and retry policies. Concrete Realms ship as runes in `mvgeos-marketplace` and register themselves at runtime — `opencode-realm` (OpenCode Zen, the default, streaming with exponential backoff and rate-limit handling) and `openrouter-realm` (OpenRouter, one key across 60+ LLMs, reasoning-effort configuration).
 - 📜 **JSONL Session Persistence (<code>mvgeos-tome</code>)**: JSONL session storage in a Pi-inspired format (not byte-compatible with Pi: Pi session files cannot be opened by MvgeOS and vice versa), featuring cross-process file locking, tree branching/forking, and in-memory index caching.
 - 🔮 **Rune Extension Ecosystem (<code>mvgeos-runes</code>)**: Hot-reloadable extension modules with 23 lifecycle Sigil hooks and command registration. Rune code executes in-process via `importlib` — extensions are *not* process-isolated; an opt-in sandbox seam exists for code that runes voluntarily submit for sandboxed execution.
 - 🖥️ **Desktop GUI (<code>mvgeos-gui</code>)**: Native desktop interface powered by NiceGUI and PyWebView offering a 1:1 Antigravity layout with interactive chat, step cards, floating dock, file tree, diff review, and artifact inspector.
@@ -235,7 +287,7 @@ MvgeOS is organized as a monorepo powered by `uv` workspaces:
 | --- | --- |
 | [`mvgeos-core`](mvgeos-core/AGENTS.md) | Canonical loop vocabulary: abort primitives, invocations, spells, events, pure turn loop (zero first-party deps) |
 | [`mvgeos-agent`](mvgeos-agent/AGENTS.md) | Core Mvge loop, invocations, state, spell execution, and MvgeHarness session lifecycle |
-| [`mvgeos-provider`](mvgeos-provider/AGENTS.md) | Realm protocol, model registry, retry policies, and OpenRouter provider |
+| [`mvgeos-provider`](mvgeos-provider/AGENTS.md) | Realm protocol, model registry, and retry policies (concrete Realms ship as marketplace runes) |
 | [`mvgeos-tome`](mvgeos-tome/AGENTS.md) | JSONL session persistence with cross-process file locking and in-memory index |
 | [`mvgeos-runes`](mvgeos-runes/AGENTS.md) | Extension system: manifest parser, loader, watcher, and sigil hooks |
 | [`mvgeos-cli`](mvgeos-cli/AGENTS.md) | CLI commands (`mvgeos`), REPL, and TUI interface |
@@ -257,7 +309,8 @@ flowchart TD
 
     subgraph StorageEcosystem["Extensions, Providers & Storage"]
         Runes["mvgeos-runes (Runes, Sigil Hooks, Skills)"]
-        Provider["mvgeos-provider (OpenRouter Realm & Models)"]
+        Provider["mvgeos-provider (Realm protocol & model registry)"]
+        Realms["Realms: opencode-realm, openrouter-realm"]
         Tome["mvgeos-tome (JSONL Ledgers & FileLock)"]
     end
 
@@ -266,6 +319,7 @@ flowchart TD
     Mvge --> Harness
     Harness --> Loop
     Loop --> Provider
+    Provider --> Realms
     Loop --> Runes
     Harness --> Tome
 ```
@@ -317,9 +371,14 @@ files stay readable by anything else that speaks the protocol.
 
 ### Environment variables
 
+Each Realm reads its own variable, and the CLI does **not** fall back to another
+Realm's — a key presented to the wrong host authenticates nowhere and then fails
+with a message about the model rather than about the credential.
+
 | Variable | Type | Default | Description |
 |---|---|---|---|
-| `OPENROUTER_API_KEY` | string | *Required* | Primary API key for OpenRouter LLM inference |
+| `OPENCODE_API_KEY` | string | *Not needed* | API key for OpenCode Zen. Optional: its free models are served without one, which is what the default first run uses. |
+| `OPENROUTER_API_KEY` | string | *Not needed* | API key for OpenRouter. Required only if you install `openrouter-realm`. |
 | `MVGEOS_API_KEY` | string | *Optional* | Fallback / alias API key for MvgeOS operations |
 | `GEMINI_API_KEY` | string | *Optional* | API key for Gemini models |
 | `GOOGLE_API_KEY` | string | *Optional* | API key for Google Cloud / Gemini endpoints |
