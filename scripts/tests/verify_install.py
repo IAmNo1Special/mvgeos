@@ -250,3 +250,47 @@ def test_a_tome_with_no_spell_cast_is_detectable(tmp_path: pathlib.Path) -> None
     path = _tome(tmp_path, "t.jsonl", "openai/gpt-4o-mini", [])
 
     assert verify_install.cast_spells(path) == []
+
+
+def _coherent(version: str) -> dict[str, str]:
+    return dict.fromkeys(verify_install.RELEASE_PACKAGES, version)
+
+
+def test_a_coherent_tree_is_accepted() -> None:
+    assert verify_install.lockstep_failures(_coherent("0.6.17"), "0.6.17") == []
+
+
+def test_the_half_landed_release_is_detected() -> None:
+    """The 2026-10-09 tree: six at 0.6.17, root at 0.6.16, gui never attempted.
+
+    Every constraint `mvgeos 0.6.16` declared was satisfied by this tree --
+    `mvgeos-cli>=0.6.16` against a 0.6.17 cli -- and `uvx mvgeos --help` exited
+    zero on it. It is the shape the assertion exists to refuse.
+    """
+    resolved = _coherent("0.6.17")
+    resolved["mvgeos"] = "0.6.16"
+    del resolved["mvgeos-gui"]
+
+    failures = verify_install.lockstep_failures(resolved, "0.6.17")
+
+    assert len(failures) == 2
+    assert any("mvgeos-gui" in failure for failure in failures)
+    assert any("mvgeos 0.6.16" in failure for failure in failures)
+
+
+def test_a_probe_that_ran_nothing_is_a_failure_not_a_pass() -> None:
+    """An empty mapping is "the probe failed", not "nothing is wrong"."""
+    failures = verify_install.lockstep_failures({}, "0.6.17")
+
+    assert len(failures) == 1
+    assert "probe returned nothing" in failures[0]
+
+
+def test_a_missing_name_alone_is_enough_to_fail() -> None:
+    resolved = _coherent("0.6.17")
+    del resolved["mvgeos-tome"]
+
+    failures = verify_install.lockstep_failures(resolved, "0.6.17")
+
+    assert len(failures) == 1
+    assert "mvgeos-tome" in failures[0]

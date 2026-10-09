@@ -8,9 +8,19 @@ and fail on a stranger's first real task. This harness runs that first real
 task and asserts on the three things a Summoner would notice:
 
 1. `uvx mvgeos --help` exits zero.
-2. The task produces its artifact, byte for byte.
-3. A session Tome lands in ``$HOME/.agents/sessions/`` naming the model that
+2. Every first-party distribution in the resolved tree is at the released
+   version -- all eight, none missing, none from a different release.
+3. The task produces its artifact, byte for byte.
+4. A session Tome lands in ``$HOME/.agents/sessions/`` naming the model that
    served it, and records the Spell that was cast.
+
+Assertion 2 exists because of a measured failure. On 2026-10-09 a release
+half-landed: six of eight distributions reached PyPI and the root ``mvgeos``
+was refused, and ``mvgeos 0.6.16`` declares ``mvgeos-cli>=0.6.16``, so a
+mixed-version tree still satisfied every constraint it was given. ``--help``
+exited zero on it and the first real task completed. Nothing that existed at
+the time could tell. A half-published release is now a loud failure instead of
+a silent one.
 
 "Cold" here is precise, and the distinction matters. The scratch ``HOME`` starts
 empty apart from the credential, and the uv cache is a fresh directory, so the
@@ -68,6 +78,24 @@ ARTIFACT = "hello.txt"
 ARTIFACT_CONTENT = "hello from mvgeos"
 
 TASK = f"Create a file named {ARTIFACT} containing exactly the text: {ARTIFACT_CONTENT}"
+
+# The eight first-party names a release uploads. Checked by name rather than by
+# glob, because a glob would also catch a third-party distribution that happens
+# to start with "mvgeos" and would miss a name that has been dropped.
+RELEASE_PACKAGES = (
+    "mvgeos",
+    "mvgeos-core",
+    "mvgeos-cli",
+    "mvgeos-gui",
+    "mvgeos-provider",
+    "mvgeos-agent",
+    "mvgeos-runes",
+    "mvgeos-tome",
+)
+
+# Marks the probe's answer so a uv banner, a warning, or a Realm's chatter on
+# stdout cannot be mistaken for it.
+PROBE_MARKER = "MVGEOS-PROBE:"
 
 # Lines the CLI prints about itself before the model says anything. They are
 # local diagnostics, so counting one as the first token would understate the
@@ -318,6 +346,77 @@ def scrubbed(env: dict[str, str]) -> dict[str, str]:
     return {k: v for k, v in env.items() if not k.startswith("_")}
 
 
+def resolved_distributions(version: str, env: dict[str, str]) -> dict[str, str]:
+    """Every first-party distribution this release actually resolves to.
+
+    ``uvx --from mvgeos==VERSION python`` builds the same environment the
+    console script runs in and then asks that environment what it holds, so the
+    answer describes the resolved tree rather than what the release claimed to
+    contain.
+
+    An empty mapping means the probe did not run -- no interpreter, or uv
+    refused before python started. The caller turns that into one reported
+    failure; the distinction between "the probe is broken" and "the tree is
+    wrong" matters more to the person reading the log than to the exit code,
+    which is 1 either way.
+    """
+    probe = (
+        "import json\n"
+        "from importlib.metadata import distributions\n"
+        "found = {\n"
+        "    d.metadata['Name']: d.version\n"
+        "    for d in distributions()\n"
+        "    if (d.metadata['Name'] or '').startswith('mvgeos')\n"
+        "}\n"
+        f"print('{PROBE_MARKER}' + json.dumps(found, sort_keys=True))\n"
+    )
+    process = subprocess.run(
+        ["uvx", "--from", f"mvgeos=={version}", "python", "-c", probe],
+        env=scrubbed(env),
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
+    for line in process.stdout.splitlines():
+        if not line.startswith(PROBE_MARKER):
+            continue
+        try:
+            parsed = json.loads(line[len(PROBE_MARKER) :])
+        except json.JSONDecodeError:
+            return {}
+        # Only a flat name->version mapping is a usable answer; anything else
+        # means the probe printed something this harness does not understand,
+        # which is the "could not run" case rather than a pass.
+        if not isinstance(parsed, dict) or not all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in parsed.items()
+        ):
+            return {}
+        return parsed
+    return {}
+
+
+def lockstep_failures(resolved: dict[str, str], version: str) -> list[str]:
+    """Why ``resolved`` is not one coherent release of the eight names.
+
+    Split out from ``main`` so the rule is readable on its own and testable
+    without installing anything.
+    """
+    if not resolved:
+        return ["the resolved-tree probe returned nothing"]
+    failures = []
+    missing = [name for name in RELEASE_PACKAGES if name not in resolved]
+    if missing:
+        failures.append("not installed by this release: " + ", ".join(missing))
+    off = {name: found for name, found in resolved.items() if found != version}
+    if off:
+        failures.append(
+            f"a mixed-version tree resolved at released {version}: "
+            + ", ".join(f"{name} {found}" for name, found in sorted(off.items()))
+        )
+    return failures
+
+
 def stamp_lines(lines: list[tuple[float, str]]) -> str:
     """Render ``(elapsed, text)`` pairs as the timestamped transcript.
 
@@ -465,10 +564,20 @@ def main() -> int:
             failures.append(f"{path} is reachable from inside the run")
 
         code, output, elapsed = run_uvx(version, env, ["--help"], cwd=work)
-        print(f"\n[1/4] uvx mvgeos --help -> exit {code} in {elapsed:.2f}s")
+        print(f"\n[1/5] uvx mvgeos --help -> exit {code} in {elapsed:.2f}s")
         if code != 0:
             failures.append(f"`--help` exited {code}")
             print(output[-2000:])
+
+        # Run even when `--help` failed: a resolution failure and a mixed tree
+        # are different faults and the log should say which one it hit.
+        resolved = resolved_distributions(version, env)
+        print(
+            "[2/5] resolved tree -> "
+            + (", ".join(f"{n} {v}" for n, v in sorted(resolved.items())) or "nothing")
+        )
+        for failure in lockstep_failures(resolved, version):
+            failures.append(failure)
 
         if arguments.help_only:
             for failure in failures:
@@ -481,7 +590,7 @@ def main() -> int:
             ["rune", "install", REALM_RUNE, "--confirm-python-deps"],
             cwd=work,
         )
-        print(f"[2/4] rune install {REALM_RUNE} -> exit {code}")
+        print(f"[3/5] rune install {REALM_RUNE} -> exit {code}")
         if code != 0:
             failures.append(f"`rune install {REALM_RUNE}` exited {code}")
             print(output[-2000:])
@@ -492,7 +601,7 @@ def main() -> int:
             ["mvge", "install", "--confirm-python-deps", MVGE],
             cwd=work,
         )
-        print(f"[3/4] mvge install {MVGE} -> exit {code}")
+        print(f"[4/5] mvge install {MVGE} -> exit {code}")
         if code != 0:
             failures.append(f"`mvge install {MVGE}` exited {code}")
             print(output[-2000:])
@@ -537,7 +646,7 @@ def main() -> int:
         code = process.wait()
         total = time.monotonic() - started
 
-        print(f"[4/4] real task -> exit {code} in {total:.2f}s")
+        print(f"[5/5] real task -> exit {code} in {total:.2f}s")
         print(stamp_lines(lines))
         if code != 0:
             failures.append(f"the task exited {code}")
