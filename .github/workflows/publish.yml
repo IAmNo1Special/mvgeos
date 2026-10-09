@@ -192,7 +192,17 @@ jobs:
                   echo "::error::A slot next frees at the time printed in the step summary. Re-dispatch this workflow then; it skips what already landed."
                   exit 1
                 fi
-                echo "::error::$package failed for a reason other than rate limiting"
+                # PyPI answers a missing or mismatched trusted publisher with a
+                # 403 that names the project and nothing else actionable. Left
+                # generic, this reads as "the packaging is broken" and sends
+                # whoever reads it to the wrong page, because every distribution
+                # in this loop is built and validated by preflight already.
+                # Say which fault it is and which page fixes it.
+                if printf '%s' "$output" | grep -qi "not valid for project"; then
+                  echo "::error::$package was refused: PyPI has no trusted publisher that matches this run's OIDC token for '$package'. Register one at https://pypi.org/manage/project/$package/settings/publishing/ with owner IAmNo1Special, repository mvgeos, workflow filename publish.yml, environment pypi. Everything before this package already uploaded; re-run the same tag to upload the rest."
+                  exit "$status"
+                fi
+                echo "::error::$package failed for a reason other than rate limiting or a missing trusted publisher"
                 exit "$status"
               fi
             fi

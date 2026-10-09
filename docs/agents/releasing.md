@@ -47,12 +47,14 @@ largest upload is attempted, rather than after.
 
 ## PyPI setup
 
-Two things must exist before the first upload, and only a person can do them.
+Uploads authenticate with a **trusted publisher**, registered per project name.
+Nothing is stored in this repository. Two things must exist before an upload,
+and only a person can do them.
 
 1. Create or log into the PyPI account that will own the releases, and enable
    two-factor authentication on it.
-2. Register a **pending publisher** for each of the eight project names at
-   `https://pypi.org/manage/account/publishing/`, with exactly these values:
+2. Register a GitHub Actions trusted publisher on **each of the eight project
+   names**, with exactly these values:
 
    | Field | Value |
    | --- | --- |
@@ -62,15 +64,41 @@ Two things must exist before the first upload, and only a person can do them.
    | Environment | `pypi` |
 
 The workflow filename and the environment are matched character for character
-against the job that uploads. Rename either and PyPI rejects the exchange with a
-message that does not mention either rename.
+against the job that uploads. Rename either and PyPI rejects the exchange.
 
-A pending publisher on a name that already exists becomes active on the next
-successful upload. The eight names were created by the first release, so all
-eight now need the entry added.
+### Where the registration goes depends on whether the project exists
 
-No project has to be created by hand. If any name is already claimed by someone
-else, stop and escalate. Do not publish under a substitute name.
+This is the step that is easy to get half-right, and getting it half-right
+produces a release that uploads most of its packages and then stops.
+
+- **A project that does not exist yet** takes a **pending publisher**, added on
+  the account page at `https://pypi.org/manage/account/publishing/`. Pending
+  publishers create the project on first use.
+- **A project that already exists** takes an ordinary trusted publisher, added
+  on that project's own page at
+  `https://pypi.org/manage/project/<name>/settings/publishing/`. An account
+  page is not where it goes.
+
+All eight names already exist — the first release created them with a stored
+token — so all eight belong on their project pages. Measured on the v0.6.17
+release: six of the eight uploaded, and `mvgeos` was refused with
+
+```
+403 Invalid API Token: OIDC scoped token is not valid for project 'mvgeos'
+```
+
+while `mvgeos-gui` was never attempted, because the run stopped at `mvgeos`. A
+pending publisher on the account page had been registered for all eight names,
+and six of them worked. **Do not assume one registration covers the set**: check
+each of the eight project pages individually, and treat a name that 403s as
+unregistered rather than as misconfigured.
+
+The refusal names the project, which is the one useful thing in the message. The
+publish job surfaces it as such instead of a generic failure — see "A refused
+project is not a misconfigured one" below.
+
+If any name is already claimed by someone else, stop and escalate. Do not
+publish under a substitute name.
 
 There is no API for this step — it is a browser form — which is why it is a
 human prerequisite and not something an agent can unblock.
@@ -117,6 +145,30 @@ the project rather than a permission mistake.
 `UV_PUBLISH_CHECK_URL=https://pypi.org/simple` makes a re-run after a partial
 failure skip whatever already landed. PyPI versions are immutable, so without
 this a retry after uploading four of eight packages would fail on the first.
+
+### A refused project is not a misconfigured one
+
+PyPI answers "this OIDC token is not valid for project X" with a 403, which
+means **X has no trusted publisher matching this run**. It does not mean the
+workflow, the workflow filename, or the environment is wrong — if those were
+wrong, *every* package in the loop would fail, because one token is minted for
+the job and offered to all eight uploads.
+
+So read the scope of the failure as the diagnosis:
+
+| What failed | What it means |
+| --- | --- |
+| All eight | The workflow filename, owner, repository, or environment is wrong on every registration |
+| Some, and it stops partway | Only those project names are unregistered; the rest are fine |
+
+The run stops at the first refusal, so a failure at position seven tells you
+nothing about position eight. Check every project page, not just the one named
+in the error.
+
+Re-running the same tag is the recovery. `--check-url` skips what already
+landed, so a run that uploaded six and refused the seventh resumes at the
+seventh. The tag is unchanged and PyPI versions are immutable, so nothing needs
+re-releasing.
 
 ### When PyPI refuses a project as new
 
