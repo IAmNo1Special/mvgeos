@@ -40,6 +40,7 @@ jobs:
     timeout-minutes: 15
     outputs:
       order: ${{ steps.order.outputs.packages }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v5
 
@@ -137,9 +138,7 @@ jobs:
           # the fixed username PyPI requires when authenticating with a token.
           UV_PUBLISH_USERNAME: __token__
           UV_PUBLISH_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-          # PyPI versions are immutable. Checking the index first makes a
-          # re-run after a partial failure skip what already landed.
-          UV_PUBLISH_CHECK_URL: https://pypi.org/simple
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -euo pipefail
           if [ "${{ inputs.dry_run }}" != "true" ]; then
@@ -157,44 +156,78 @@ jobs:
             echo "::group::upload $package"
             if [ "${{ inputs.dry_run }}" = "true" ]; then
               uv publish --dry-run "dist/$package/*"
-            else
-              # Run once and report what the server said. A failure that is not
-              # rate limiting -- bad metadata, a rejected filename, no
-              # permission -- is a real defect and stops the release here.
-              set +e
-              output="$(uv publish "dist/$package/*" 2>&1)"
-              status=$?
-              set -e
-              echo "$output"
-              if [ "$status" -ne 0 ]; then
-                if printf '%s' "$output" | grep -qi '429\|too many new projects'; then
-                  echo "::error::$package was refused: PyPI's new-project quota is full. This is not a packaging fault and no retry inside this run can outrun a 24 hour window."
-                  {
-                    echo
-                    python3 scripts/pypi_new_project_window.py
-                  } >> "$GITHUB_STEP_SUMMARY" || true
-                  echo "::error::A slot next frees at the time printed in the step summary. Re-dispatch this workflow then; it skips what already landed."
-                  exit 1
-                fi
-                # PyPI answers a missing or mismatched trusted publisher with a
-                # 403 that names the project and nothing else actionable. Left
-                # generic, this reads as "the packaging is broken" and sends
-                # whoever reads it to the wrong page, because every distribution
-                # in this loop is built and validated by preflight already.
-                # Say which fault it is and which page fixes it.
-                #
-                # Unreachable while uploads authenticate with a stored token:
-                # "OIDC scoped token is not valid for project" is wording only
-                # trusted publishing produces. Kept because the rollback is
-                # temporary, and this is the branch that explains the failure
-                # the rollback was caused by.
-                if printf '%s' "$output" | grep -qi "not valid for project"; then
-                  echo "::error::$package was refused: PyPI has no trusted publisher that matches this run's OIDC token for '$package'. Register one at https://pypi.org/manage/project/$package/settings/publishing/ with owner IAmNo1Special, repository mvgeos, workflow filename publish.yml, environment pypi. Everything before this package already uploaded; re-run the same tag to upload the rest."
-                  exit "$status"
-                fi
-                echo "::error::$package failed for a reason other than rate limiting or a missing trusted publisher"
+              echo "::endgroup::"
+              continue
+            fi
+
+            # PyPI versions are immutable, so a release that failed partway can
+            # only be finished by uploading what is still missing. Deciding
+            # what that is was uv's job, via UV_PUBLISH_CHECK_URL, and it could
+            # not do it: uv compares the rebuilt file's hash against the
+            # published one and errors when they differ. A wheel embeds
+            # `Generator: uv <version>` in its WHEEL metadata and setup-uv@v7
+            # installs the newest uv available, so the same commit rebuilt on a
+            # different day is a different file. Measured on v0.6.17: the
+            # published mvgeos_core-0.6.17-py3-none-any.whl carries `Generator:
+            # uv 0.12.24` and a rebuild of the identical commit carries a
+            # different version. The entire payload is byte-identical; only that
+            # line and the RECORD hash of it differ. uv refused with "Local
+            # file and index file do not match", which is the resume mechanism
+            # refusing to resume.
+            #
+            # Presence is therefore asked by filename. A version can exist with
+            # a file missing, because an upload can die between two files, so
+            # this is per file and not per version.
+            missing="$(python3 scripts/published_files.py \
+              --package "$package" --version "$VERSION" --dist-dir dist)"
+            if [ -z "$missing" ]; then
+              echo "::notice::$package $VERSION is already on PyPI; skipping"
+              echo "::endgroup::"
+              continue
+            fi
+            echo "::notice::$package $VERSION: $(echo "$missing" | wc -l) of \
+              $(ls "dist/$package" | wc -l) file(s) not yet on PyPI"
+
+            files=""
+            for name in $missing; do
+              files="$files dist/$package/$name"
+            done
+
+            # Run once and report what the server said. A failure that is not
+            # rate limiting -- bad metadata, a rejected filename, no
+            # permission -- is a real defect and stops the release here.
+            set +e
+            output="$(uv publish $files 2>&1)"
+            status=$?
+            set -e
+            echo "$output"
+            if [ "$status" -ne 0 ]; then
+              if printf '%s' "$output" | grep -qi '429\|too many new projects'; then
+                echo "::error::$package was refused: PyPI's new-project quota is full. This is not a packaging fault and no retry inside this run can outrun a 24 hour window."
+                {
+                  echo
+                  python3 scripts/pypi_new_project_window.py
+                } >> "$GITHUB_STEP_SUMMARY" || true
+                echo "::error::A slot next frees at the time printed in the step summary. Re-dispatch this workflow then; it skips what already landed."
+                exit 1
+              fi
+              # PyPI answers a missing or mismatched trusted publisher with a
+              # 403 that names the project and nothing else actionable. Left
+              # generic, this reads as "the packaging is broken" and sends
+              # whoever reads it to the wrong page, because every distribution
+              # in this loop is built and validated by preflight already.
+              #
+              # Unreachable while uploads authenticate with a stored token:
+              # "OIDC scoped token is not valid for project" is wording only
+              # trusted publishing produces. Kept because the rollback is
+              # temporary, and this is the branch that explains the failure the
+              # rollback was caused by.
+              if printf '%s' "$output" | grep -qi "not valid for project"; then
+                echo "::error::$package was refused: PyPI has no trusted publisher that matches this run's OIDC token for '$package'. Register one at https://pypi.org/manage/project/$package/settings/publishing/ with owner IAmNo1Special, repository mvgeos, workflow filename publish.yml, environment pypi. Everything before this package already uploaded; re-run the same tag to upload the rest."
                 exit "$status"
               fi
+              echo "::error::$package failed for a reason other than rate limiting or a missing trusted publisher"
+              exit "$status"
             fi
             echo "::endgroup::"
           done
