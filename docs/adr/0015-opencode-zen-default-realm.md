@@ -108,6 +108,22 @@ any of them, and on a clean machine the Realm being exempted is not installed ye
 - The documented first run depends on a marketplace fetch to install the Rune. A
   fetch failure trades "provider is saturated" for "could not reach the
   marketplace". Both are first-run failures; this one is at least visible.
+- **The install is asked for only where there is somebody to ask.** The offer is
+  made on the answer to "is a human watching", not on the answer to "is this the
+  interactive mode". A script, a pipe or CI has no TTY, and there `input()` raises
+  `EOFError` — which the CLI caught and read as a refusal, so the one remedy
+  available switched itself off exactly when nobody was there to decline it.
+  With no terminal the Rune is installed without asking; with one, one-shot mode
+  still reports the error and names the command, because a Summoner who is
+  watching can be told to run it. Manifest-declared `python_deps` remain a
+  separate gate that fails closed without a terminal: installing the Rune is not
+  consent to fetch arbitrary packages on the strength of its manifest.
+- **The self-heal retries once.** Installing is only half of it — the factory
+  exists once the Rune has *loaded* — so the request runs again afterwards. An
+  Rune that installs and registers nothing, or a marketplace entry pointing at
+  the wrong directory, made that retry raise the same error, and an unbounded
+  retry reinstalls on every frame until the stack runs out. One attempt, then the
+  error is reported: the same Rune installed twice is the same Rune.
 - `opencode/space-bunny-free`'s context window is **1048576**, measured against
   the live gateway rather than taken from documentation. Zen publishes no context
   length — all 86 entries in `/zen/v1/models` carry only `id`, `object`,
