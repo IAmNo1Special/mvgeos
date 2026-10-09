@@ -114,6 +114,14 @@ def realm_for_model_id(model_id: str) -> str:
     key to read, which Rune to offer, which base URL to call -- keys off this
     prefix, so it is derived once here rather than by each caller re-splitting
     the string and getting the no-slash case subtly different.
+
+    This is the slug's own prefix and nothing more. For a *routed* slug it is
+    the provider rather than the Realm, so a caller that needs to know which
+    Realm will serve the model wants
+    :func:`mvgeos_provider.model_registry.serving_realm_for_model` instead. The
+    two are kept apart because they answer different questions: this one is
+    what the id is *spelled*, and the GUI's cascading selector needs exactly
+    that, since a provider tier is what it lets a Summoner choose.
     """
     prefix, separator, rest = model_id.partition("/")
     return prefix if separator and rest else model_id

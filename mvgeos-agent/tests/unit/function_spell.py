@@ -269,18 +269,21 @@ class TestMvgeApiKeyAndEnvLoading:
     ) -> None:
         """The message names this Realm's variable, not OpenRouter's.
 
-        ``google/`` is the discriminating case. It does need a credential, and
-        it is not ``openrouter``, so a message that hardcodes
-        ``OPENROUTER_API_KEY`` still passes every assertion written against the
-        default model -- which is the bug, since the default model's Realm is
-        ``opencode``.
+        ``opencode/glm-5`` is the discriminating case. It does need a credential,
+        and it is not ``openrouter``, so a message that hardcodes
+        ``OPENROUTER_API_KEY`` still passes every assertion written against a
+        routed slug -- which is what a test here used to do, reading
+        ``google/gemini-2.5-flash`` as a Realm. It is not one: no ``google``
+        Realm ships, and the catalog serves every ``google/*`` model as
+        ``openrouter``, so that slug's correct variable *is*
+        ``OPENROUTER_API_KEY`` and it cannot tell the two answers apart.
         """
         for var in self.API_KEY_ENV_VARS:
             monkeypatch.delenv(var, raising=False)
 
         environment = MvgeEnvironment.resolve(
             config_dir=tmp_path,
-            overrides={"model": "google/gemini-2.5-flash"},
+            overrides={"model": "opencode/glm-5"},
         )
         agent = Mvge(environment=environment)
 
@@ -288,8 +291,8 @@ class TestMvgeApiKeyAndEnvLoading:
             await agent.initialize()
 
         message = str(caught.value)
-        assert "google" in message
-        assert "GOOGLE_API_KEY" in message
+        assert "opencode" in message
+        assert "OPENCODE_API_KEY" in message
         assert "OPENROUTER_API_KEY" not in message
 
     def test_dot_env_auto_loading(

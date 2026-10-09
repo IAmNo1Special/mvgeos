@@ -47,10 +47,13 @@ from mvgeos_core.layers import (
 from mvgeos_core.loop import StreamFn
 from mvgeos_core.spells import MvgeSpell
 from mvgeos_provider.base import Realm, RealmFactory
-from mvgeos_provider.model_registry import ModelRegistry, model_requires_credential
+from mvgeos_provider.model_registry import (
+    ModelRegistry,
+    model_requires_credential,
+    serving_realm_for_model,
+)
 from mvgeos_provider.realms import (
     api_key_env_for_realm,
-    realm_for_model_id,
 )
 from mvgeos_provider.registry import RealmRegistry, get_default_realm_registry
 from mvgeos_runes.codecs import load_session_codecs
@@ -464,8 +467,13 @@ class Mvge:
         # Now that the model is known, its Realm is too, and only then is it
         # safe to read a credential. An explicit key still wins: the Summoner
         # handing one over is not a guess about which Realm they meant.
+        #
+        # The Realm that serves the model rather than the slug's prefix, which
+        # differ for a routed slug -- see serving_realm_for_model.
         if not self._api_key:
-            self._api_key = _resolve_api_key(realm=realm_for_model_id(self._model_id))
+            self._api_key = _resolve_api_key(
+                realm=serving_realm_for_model(self._model_id)
+            )
         self._temperature = environment.temperature
         self._max_tokens = environment.max_tokens
         self._contemplation_level = environment.contemplation_level
@@ -1697,13 +1705,17 @@ class Mvge:
             return
 
         if not self._api_key:
-            self._api_key = _resolve_api_key(realm=realm_for_model_id(self._model_id))
-        realm = realm_for_model_id(self._model_id)
+            self._api_key = _resolve_api_key(
+                realm=serving_realm_for_model(self._model_id)
+            )
+        realm = serving_realm_for_model(self._model_id)
         if not self._api_key and model_requires_credential(self._model_id):
             # Named from the Realm being served, not from a default. The
             # message this replaces named OPENROUTER_API_KEY regardless of which
             # Realm wanted a credential, so a Summoner on `opencode` was sent to
-            # set a key that Realm never reads.
+            # set a key that Realm never reads. Read off the serving Realm rather
+            # than the slug, so a routed slug names the Realm that will actually
+            # be dispatched to.
             raise MissingApiKeyError(
                 realm=realm, api_key_env=api_key_env_for_realm(realm)
             )
