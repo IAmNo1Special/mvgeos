@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+
+### Bug Fixes
+
+- **verify_install:** let the gate run on a runner where bwrap is installed and denied (#205) (742ed33)
+
+
+## [0.6.18] - 2026-10-09
+
+
+### Bug Fixes
+
+- **publish:** decide what is missing by filename, because uv cannot resume a partial release (#203) (85a65c2)
+
+- **release:** pin uv so a re-dispatch rebuilds the bytes already on PyPI (#202) (655c05b)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (3e225ab)
+
+- **release:** v0.6.18 (e14fea2)
+
+
+### Documentation
+
+- **release:** put the trusted publisher on each project page, and name a refused project (#198) (9a1e018)
+
+
+### Reverts
+
+- **publish:** upload with a stored token again, and make the gate catch a half-land (#201) (689a2cc)
+
+
 ## [0.6.17] - 2026-10-09
 
 
