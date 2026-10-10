@@ -23,6 +23,25 @@ exited zero on it and the first real task completed. Nothing that existed at
 the time could tell. A half-published release is now a loud failure instead of
 a silent one.
 
+The ``>=`` floor was itself the second half of that defect, and it outlived the
+half-land. On 2026-10-10 verify-install failed again on a release where all
+eight packages had published::
+
+    verify_install failed: a mixed-version tree resolved at released 0.6.24:
+    mvgeos-agent 0.6.25, mvgeos-cli 0.6.25, mvgeos-core 0.6.25,
+    mvgeos-provider 0.6.25, mvgeos-runes 0.6.25, mvgeos-tome 0.6.25
+
+``uvx mvgeos==0.6.24`` resolves ``mvgeos-cli>=0.6.24`` to a 0.6.25 cli, so the
+root pins to the release a stranger asked for and every sibling floats off it.
+A fully-published release hands out a mixed tree exactly as a half-landed one
+does, as long as the internal constraint is a floor. The internal constraints
+are ``==`` pins now -- constrained, resolvable, and unable to float upward off
+the release they shipped with. ``check_lockstep`` and ``check_wheels`` both
+accept a pin, so neither gate changes.
+
+This assertion stays regardless. It is the thing that noticed while the pins
+were floors, and it is what will notice if the two ever drift apart again.
+
 "Cold" here is precise, and the distinction matters. The scratch ``HOME`` starts
 empty apart from the credential, and the uv cache is a fresh directory, so the
 measured install is a real download rather than a cache hit.

@@ -325,10 +325,17 @@ jobs:
           echo "New version: $NEW_VERSION"
 
       # uv version rewrites project.version only. Internal dependencies carry an
-      # explicit >= floor so published wheels record a resolvable Requires-Dist
-      # rather than an unbounded name, and those floors must move with the
+      # explicit == pin so published wheels record a resolvable Requires-Dist
+      # rather than an unbounded name, and those pins must move with the
       # lockstep bump or they silently rot back into the bug they prevent.
-      - name: Refresh internal dependency floors
+      #
+      # == and not >=. A >= floor lets a release float *upward*: mvgeos 0.6.24
+      # declaring mvgeos-cli>=0.6.24 resolves a 0.6.25 cli, so
+      # `uvx mvgeos==0.6.24` hands a stranger six packages at 0.6.24 and one at
+      # 0.6.25. That is the mixed tree verify-install caught on 2026-10-10, and
+      # it is why gate 0 exists. These packages are lockstep, so an exact pin
+      # is the honest constraint and >= guarded a problem this repo does not have.
+      - name: Refresh internal dependency pins
         if: steps.bump_type.outputs.type != 'none'
         run: |
           NEW_VERSION="$(uv version --short)"
@@ -339,15 +346,15 @@ jobs:
 
           new = sys.argv[1]
           pattern = re.compile(
-              r'^(?P<prefix>\s*")(?P<name>mvgeos(?:-[a-z]+)?)>=\d[^"]*(?P<suffix>",?\s*)$',
+               r'^(?P<prefix>\s*")(?P<name>mvgeos(?:-[a-z]+)?)==\d[^"]*(?P<suffix>",?\s*)$',
               re.MULTILINE,
           )
           for path in [Path("pyproject.toml"), *sorted(Path(".").glob("*/pyproject.toml"))]:
               text = path.read_text()
-              updated, count = pattern.subn(rf'\g<prefix>\g<name>>={new}\g<suffix>', text)
-              if count:
-                  path.write_text(updated)
-                  print(f"{path}: refreshed {count} internal dep floor(s)")
+               updated, count = pattern.subn(rf'\g<prefix>\g<name>=={new}\g<suffix>', text)
+               if count:
+                   path.write_text(updated)
+                   print(f"{path}: refreshed {count} internal dep pin(s)")
           PY
           uv lock
 

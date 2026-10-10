@@ -5,7 +5,7 @@ description = "MvgeOS — a Python-based AI coding agent"
 requires-python = ">=3.13"
 license = "MIT"
 dependencies = [
-    "mvgeos-cli>=0.6.25",
+    "mvgeos-cli==0.6.25",
 ]
 
 [project.scripts]
