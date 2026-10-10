@@ -270,10 +270,76 @@ choosing "Limit Request", and note that this is a coordinated first release of
 eight distributions in dependency order, how many already landed, and that the
 account is not being recreated. Expect it to take days to be answered.
 
+### A release is not installable the moment the upload returns
+
+`publish` returning green means PyPI accepted the bytes. It does not mean the
+index has them. Measured on `v0.6.19`: the upload returned at 00:03:12Z, the
+run's `verify-install` job started at 00:03:14Z, and its first command failed
+with
+
+```
+[1/5] uvx mvgeos --help -> exit 1 in 0.14s
+error: No solution found when resolving tool dependencies
+  cause: Because there is no version of mvgeos==0.6.19 and you require
+         mvgeos==0.6.19, we can conclude that your requirements are unsatisfiable.
+```
+
+The release had landed. Nothing had propagated it yet.
+
+`uvx` resolves against the *simple index*, `https://pypi.org/simple/<name>/`,
+and PyPI serves that from cache -- measured on `https://pypi.org/simple/mvgeos/`
+as `cache-control: max-age=600, public`. Warehouse caches it under the
+surrogate key `project/<name>` and purges that key when a file is uploaded
+(`warehouse/api/simple.py`, `warehouse/cache/origin/__init__.py`), so the purge
+is what makes a new release visible there, and it propagates over seconds. Both
+gate jobs therefore wait, in `scripts/wait_for_pypi.py`, before they assert
+anything.
+
+**Do not fix that wait by polling the version-specific URL.** It is the obvious
+answer and it is wrong in both directions, both measured:
+
+- `https://pypi.org/pypi/<name>/<version>/json` answers **200 too early**. A URL
+  nobody has requested is served from origin, so it answers 200 the moment the
+  release commits -- while the purge above has not propagated. Waiting for it is
+  waiting for something that has already happened.
+- The same URL answers **404 too long** afterwards. A 404 for a version that
+  does not exist yet is produced before the view runs, so it carries no cache
+  key and the upload's purge cannot invalidate it. `published_files.py` asks
+  that exact URL seconds before the upload in the publish job, seeding the cache
+  with a 404 that outlives the release. Measured on
+  `https://pypi.org/pypi/mvgeos/0.6.99.json`: 404 from the Fastly cache,
+  `x-cache: MISS, HIT`, on every request across a six-minute window, with no
+  `cache-control` on the response to bound it.
+
+So the wait reads the **project document**, `https://pypi.org/pypi/<name>/json`,
+which lists every release under `releases` and is cached under the key the
+upload purges. It is the one PyPI document whose freshness is the index's
+freshness. `verify` asks it for all eight names, so a half-landed release is
+named after one bounded wait rather than after eight.
+
+`verify-install` goes further and waits for the command a stranger types,
+`uvx --from mvgeos==<version> mvgeos --help`, until it exits zero. That
+resolves the whole runtime closure, and it is the only claim that settles the
+question: a URL can be right about a release that is not yet installable, and
+`uvx` cannot be wrong about it.
+
+The wait is 120 seconds, polling every 5. A name still absent when it expires
+is a release that did not land, not a slow index, and the run says which one it
+saw.
+
 **`verify`** checks out nothing at all and runs `uvx mvgeos --help`. Because
 there is no clone and no `uv sync`, uvx resolves the command from PyPI exactly
 as a stranger's machine would. That job is the acceptance test; `pip download`
 is not.
+
+Its first step is the wait above, asked of every name in the publish order, so
+a half-landed release is reported as one. The version comes from `preflight`'s
+job output, which is also why `preflight` is in this job's `needs`: a job that
+does not need another job reads its outputs as the empty string, and the empty
+version turns the check into `/pypi/<name>//json`, which is 200 for every
+package that has ever existed. That is exactly what ran on the `v0.6.25` tag --
+eight lines of `mvgeos-core : HTTP 200` with the version blank, over a run
+whose publish had been refused.
 
 **`verify-install`** runs `scripts/verify_install.py`, which is the half
 `verify` structurally cannot reach. `--help` returns before a Realm is
@@ -283,6 +349,14 @@ script builds a scratch `HOME` that starts empty â€” no credential, no config â€
 installs `opencode-realm` and `coding_mvge` into it, runs one real task, and
 fails unless the artifact is byte-correct and a session Tome naming the model
 lands under `.agents/sessions/`. It reports cold-to-first-token on the way.
+
+It waits first, and it waits last in the job on purpose: the bubblewrap install
+above it is fifteen seconds of propagation the run gets for free, so the wait
+usually starts after the release is already installable. That is a saving, not
+the gate. The gate is `--resolve`, which polls `uvx --from mvgeos==<version>
+mvgeos --help` until it exits zero, because that command resolves the whole
+runtime closure and is the only thing that proves the release is installable
+rather than merely published.
 
 It also asserts the resolved tree is one coherent release: every first-party
 distribution present is at the released version, and none of the seven that
