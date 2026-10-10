@@ -285,6 +285,14 @@ jobs:
           VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -uo pipefail
+          # An empty VERSION asks /pypi/<name>//json, which PyPI resolves as the
+          # project page and answers 200 for every name that has ever released.
+          # That is the project-exists check this step replaced, so a preflight
+          # failure would silently turn into eight greens. Refuse to run instead.
+          if [ -z "$VERSION" ]; then
+            echo "::error::VERSION is empty -- preflight did not resolve a version, so this check cannot run. Fix preflight first."
+            exit 1
+          fi
           missing=0
           for package in $(python3 scripts/check_publish.py --list); do
             status="$(curl -sS -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/$package/$VERSION/json")"
