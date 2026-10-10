@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.25] - 2026-10-10
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (28bc168)
+
+- **bridge:** remove the temporary token upload bridge (806d4fb)
+
+- **release:** v0.6.25 (eb6de22)
+
+
+### Continuous Integration
+
+- **publish:** let the half-land gate run, and make it check the version (#210) (974a8f1)
+
+- **bridge:** token-auth upload of the two refused v0.6.24 wheels (b33a6d9)
+
+
 ## [0.6.24] - 2026-10-10
 
 
