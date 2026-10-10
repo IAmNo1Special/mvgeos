@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.23] - 2026-10-10
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (23d662e)
+
+- **deps:** bump python-dotenv from 1.2.3 to 1.2.4 (#184) (f37ee3d)
+
+- **deps-dev:** bump mypy from 2.3.1 to 2.4.0 (#185) (4415e08)
+
+- **deps-dev:** bump ruff from 0.16.8 to 0.16.10 (#186) (d5c0424)
+
+- **deps:** bump virtualenv (#189) (ef03776)
+
+- **release:** v0.6.23 (e4d5f87)
+
+
+### Continuous Integration
+
+- **release:** run the install gate on a Realm that needs no credential (#199) (8f7a550)
+
+
+### Features
+
+- **cli:** `mvgeos config refresh-models` so a clean machine can escape the stale catalog (#173) (e8de2da)
+
+
 ## [0.6.22] - 2026-10-10
 
 
