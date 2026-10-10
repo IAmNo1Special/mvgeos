@@ -20,10 +20,12 @@ from mvgeos_core.constants import (
     DEFAULT_MODEL,
 )
 from mvgeos_provider import NoRealmRegisteredError, get_default_realm_registry
-from mvgeos_provider.model_registry import model_requires_credential
+from mvgeos_provider.model_registry import (
+    model_requires_credential,
+    serving_realm_for_model,
+)
 from mvgeos_provider.realms import (
     api_key_env_for_realm,
-    realm_for_model_id,
     rune_for_realm,
 )
 from mvgeos_runes.installer import install_rune
@@ -118,6 +120,7 @@ async def _run_agent(
     prompts: list[str] | None = None,
     agent_factory: AgentFactory | None = None,
     approval_mode: str | None = None,
+    realm_install_attempted: bool = False,
 ) -> int:
     prompts_out = ([incantation] if incantation else []) + (prompts or [])
     mode: ApprovalMode = resolve_approval_mode(approval_mode)
@@ -282,7 +285,36 @@ async def _run_agent(
         # Realm could not be determined there is no install to offer, so the
         # error is reported as-is instead of a prompt naming nothing.
         missing_rune = exc.rune_name or rune_for_realm(exc.realm)
-        if is_interactive and missing_rune:
+        # Is anyone there to be asked? That is a fact about the terminal, and it
+        # is a different fact from whether this run's mode ever asks. A script, a
+        # pipe and CI have no TTY, and there `input()` raises EOFError -- which
+        # the old code caught and read as "no", so the one remedy available
+        # turned itself off exactly when nobody was there to decline it. That is
+        # what made the documented first run a dead end: the Realm is missing,
+        # the Rune that provides it is named on screen, and the run still exits
+        # 1.
+        #
+        # So the question is only put where there is somebody to answer it, and
+        # the install runs on the prompt's default answer where there is not.
+        # Which is the same act a Summoner typing "y" chose, and ADR-0015
+        # already records the first run as depending on a marketplace fetch for
+        # the Rune. Manifest-declared python dependencies stay a separate gate
+        # and still fail closed without a terminal: fetching arbitrary packages
+        # on the strength of a manifest is not the same act as fetching the Rune
+        # that declares them.
+        at_a_terminal = sys.stdin.isatty() and sys.stdout.isatty()
+        may_ask = at_a_terminal and is_interactive
+        answer = "y" if not at_a_terminal else "n"
+        # One install, one retry. The retry is what makes the self-heal worth
+        # having -- the factory only exists once the Rune has loaded -- but the
+        # recursion that performs it is unbounded unless it is bounded here, and
+        # an install that does not fix the problem (a Rune that loads and
+        # registers nothing, a marketplace entry that names the wrong directory)
+        # would otherwise reinstall on every frame until the stack ran out. A
+        # second failure is reported rather than retried, which is also the
+        # honest answer: the same Rune installed twice is the same Rune.
+        can_install = missing_rune and not realm_install_attempted
+        if may_ask and can_install:
             try:
                 answer = (
                     input(
@@ -295,34 +327,35 @@ async def _run_agent(
             except (EOFError, KeyboardInterrupt):
                 answer = "n"
 
-            if answer in ("", "y", "yes"):
-                try:
-                    install_rune(missing_rune)
-                    console.print(
-                        f"[green]Successfully installed '{missing_rune}'. "
-                        "Starting session...[/green]"
-                    )
-                    return await _run_agent(
-                        incantation=incantation,
-                        model_id=model_id,
-                        api_key=api_key,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        contemplation_level=contemplation_level,
-                        spells_enabled=spells_enabled,
-                        extension_dir=extension_dir,
-                        resume=resume,
-                        provider_name=provider_name,
-                        tome_dir=tome_dir,
-                        tui=tui,
-                        agent_name=agent_name,
-                        prompts=prompts,
-                        agent_factory=agent_factory,
-                        approval_mode=approval_mode,
-                    )
-                except Exception as install_exc:
-                    console.print(format_error(install_exc))
-                    return 1
+        if can_install and answer in ("", "y", "yes"):
+            try:
+                install_rune(missing_rune)
+                console.print(
+                    f"[green]Successfully installed '{missing_rune}'. "
+                    "Starting session...[/green]"
+                )
+                return await _run_agent(
+                    incantation=incantation,
+                    model_id=model_id,
+                    api_key=api_key,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    contemplation_level=contemplation_level,
+                    spells_enabled=spells_enabled,
+                    extension_dir=extension_dir,
+                    resume=resume,
+                    provider_name=provider_name,
+                    tome_dir=tome_dir,
+                    tui=tui,
+                    agent_name=agent_name,
+                    prompts=prompts,
+                    agent_factory=agent_factory,
+                    approval_mode=approval_mode,
+                    realm_install_attempted=True,
+                )
+            except Exception as install_exc:
+                console.print(format_error(install_exc))
+                return 1
 
         console.print(format_error(exc))
         return 1
@@ -493,14 +526,18 @@ def _repl_callback(
         except ValueError as exc:
             raise typer.BadParameter(str(exc)) from exc
 
-    if api_key is None and model and model.startswith("google/"):
-        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     # Which variable holds the credential depends on the model's Realm, so the
     # model has to be known first. With no --model the Realm is the default
     # model's. Passing the resolved slug onwards is deliberately *not* done:
     # an agent's own config may name a different model, and that precedence
     # belongs to the config layer, not to this lookup.
-    key_realm = realm_for_model_id(model or DEFAULT_MODEL)
+    #
+    # The Realm that serves the model, not the slug's prefix. Those differ for a
+    # routed slug: `nvidia/nemotron-3-ultra-550b-a55b:free` is served by
+    # openrouter, so reading the prefix asked for NVIDIA_API_KEY and for
+    # ~/.agents/auth/nvidia.json while the credential `mvgeos export` writes sits
+    # in openrouter.json doing nothing.
+    key_realm = serving_realm_for_model(model or DEFAULT_MODEL)
     key_model = model or DEFAULT_MODEL
     if api_key is None:
         # Only the Realm's own variable, then its own credential file. The

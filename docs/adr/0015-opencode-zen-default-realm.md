@@ -91,17 +91,39 @@ Both tables record *exceptions* rather than rules, so a newly added Realm needs 
 engine edit and cannot be made to fail by an omission, and a model the shipped
 catalog does not carry is treated as needing one.
 
+`serving_realm_for_model` is what the tables are consulted against, so the Realm
+that decides whether a credential is needed and the Realm whose credential file
+is read cannot be two different Realms. It reads the baseline catalog rather than
+`ModelRegistry`, for the same reason `model_requires_credential` does: this runs
+on the credential gate and a prompt must not wait on an HTTP call.
+
 The engine cannot defer any of this to a Rune's manifest: every credential gate
 runs before any Rune is loaded, so a declaration on the Rune could not be read at
 any of them, and on a clean machine the Realm being exempted is not installed yet.
 
-<!-- adr-contract: DEFAULT_MODEL, REALM_RUNES, REALM_BASE_URLS, REALM_API_KEY_ENV, REALM_FREE_SUFFIXES, DEFAULT_REALM, REALMS_WITHOUT_CREDENTIAL, REALMS_WITH_ANONYMOUS_FREE_TIER, realm_for_model_id, rune_for_realm, api_key_env_for_realm, free_suffix_for_realm, model_requires_credential, no_realm_registered, NoRealmRegisteredError, Model.free -->
+<!-- adr-contract: DEFAULT_MODEL, REALM_RUNES, REALM_BASE_URLS, REALM_API_KEY_ENV, REALM_FREE_SUFFIXES, DEFAULT_REALM, REALMS_WITHOUT_CREDENTIAL, REALMS_WITH_ANONYMOUS_FREE_TIER, realm_for_model_id, serving_realm_for_model, rune_for_realm, api_key_env_for_realm, free_suffix_for_realm, model_requires_credential, no_realm_registered, NoRealmRegisteredError, Model.free -->
 
 ## Consequences
 
 - The documented first run depends on a marketplace fetch to install the Rune. A
   fetch failure trades "provider is saturated" for "could not reach the
   marketplace". Both are first-run failures; this one is at least visible.
+- **The install is asked for only where there is somebody to ask.** The offer is
+  made on the answer to "is a human watching", not on the answer to "is this the
+  interactive mode". A script, a pipe or CI has no TTY, and there `input()` raises
+  `EOFError` — which the CLI caught and read as a refusal, so the one remedy
+  available switched itself off exactly when nobody was there to decline it.
+  With no terminal the Rune is installed without asking; with one, one-shot mode
+  still reports the error and names the command, because a Summoner who is
+  watching can be told to run it. Manifest-declared `python_deps` remain a
+  separate gate that fails closed without a terminal: installing the Rune is not
+  consent to fetch arbitrary packages on the strength of its manifest.
+- **The self-heal retries once.** Installing is only half of it — the factory
+  exists once the Rune has *loaded* — so the request runs again afterwards. An
+  Rune that installs and registers nothing, or a marketplace entry pointing at
+  the wrong directory, made that retry raise the same error, and an unbounded
+  retry reinstalls on every frame until the stack runs out. One attempt, then the
+  error is reported: the same Rune installed twice is the same Rune.
 - `opencode/space-bunny-free`'s context window is **1048576**, measured against
   the live gateway rather than taken from documentation. Zen publishes no context
   length — all 86 entries in `/zen/v1/models` carry only `id`, `object`,
@@ -159,6 +181,17 @@ any of them, and on a clean machine the Realm being exempted is not installed ye
   the two are not the same question: for a routed slug the id prefix is the
   *provider*, not the Realm. `test_default_realm_agrees_with_the_shipped_catalog`
   holds the copy honest, and fails if `DEFAULT_MODEL` moves without it.
+- Which Realm serves a model is therefore **two derivations**, and they answer two
+  questions. `realm_for_model_id` reads what the id is *spelled* — its prefix —
+  which is what the GUI's cascading selector needs, since a provider tier is what
+  it offers a Summoner. `serving_realm_for_model` reads where the request is
+  actually *sent*, from the catalog entry's own `realm`, falling back to the
+  prefix for a model the catalog does not carry because a Rune may serve one.
+  Every credential gate consults the second. Before that, `realm_for_model_id`
+  answered both, and for a routed slug it named a Realm that does not exist: the
+  CLI looked for `NVIDIA_API_KEY` and `~/.agents/auth/nvidia.json` for a model
+  openrouter serves, so the credential `mvgeos export` actually writes did nothing
+  and an exported `OPENROUTER_API_KEY` was the only thing keeping it working.
 - `Model.free` now reads a `-free` suffix, scoped to the Realms that use it.
   Scoping is the point: reading it globally would let a model id call a paid model
   free, which is the one mistake a cost guard must not make.

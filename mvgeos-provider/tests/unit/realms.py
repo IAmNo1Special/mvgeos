@@ -15,7 +15,11 @@ from mvgeos_core.channel import Model
 from mvgeos_core.constants import DEFAULT_MODEL
 
 from mvgeos_provider.base import NoRealmRegisteredError
-from mvgeos_provider.model_registry import list_models, model_requires_credential
+from mvgeos_provider.model_registry import (
+    list_models,
+    model_requires_credential,
+    serving_realm_for_model,
+)
 from mvgeos_provider.realms import (
     DEFAULT_REALM,
     REALM_API_KEY_ENV,
@@ -50,6 +54,74 @@ from mvgeos_provider.registry import RealmRegistry, no_realm_registered
 )
 def test_realm_for_model_id(slug: str, expected: str) -> None:
     assert realm_for_model_id(slug) == expected
+
+
+# ---------------------------------------------------------------------------
+# Deriving the Realm that will actually serve a slug
+# ---------------------------------------------------------------------------
+
+
+def test_a_routed_slug_resolves_to_the_realm_that_serves_it() -> None:
+    """The credential must be read from the Realm the request goes to.
+
+    A routed slug's prefix is the *provider*, not the Realm. Reading the key
+    off it looks for ``NVIDIA_API_KEY`` and ``~/.agents/auth/nvidia.json`` for a
+    model the shipped catalog serves as ``openrouter``, so the documented
+    credential silently does nothing: ``mvgeos export`` writes
+    ``openrouter.json`` and the next run asks for a variable that Realm never
+    reads. Only an exported ``OPENROUTER_API_KEY`` kept it working, which is the
+    one path the credential file exists to avoid needing.
+    """
+    assert (
+        serving_realm_for_model("nvidia/nemotron-3-ultra-550b-a55b:free")
+        == "openrouter"
+    )
+    assert (
+        api_key_env_for_realm(
+            serving_realm_for_model("nvidia/nemotron-3-ultra-550b-a55b:free")
+        )
+        == "OPENROUTER_API_KEY"
+    )
+
+
+def test_an_uncatalogued_slug_falls_back_to_its_prefix() -> None:
+    """A Rune may serve a model the shipped catalog has never heard of.
+
+    That is the feature that makes Runes worth having, so the derivation has to
+    keep producing an answer for an id no catalog carries. The prefix is the
+    best available answer there, and it is the answer a directly-addressed Realm
+    needs -- Zen publishes bare ids with no provider tier to choose.
+
+    The premise is asserted rather than assumed. Other suites lean on
+    ``opencode/glm-5`` being uncatalogued -- that is what makes it a *paid*
+    model on a Realm whose free tier is anonymous, which is the only shipped way
+    to ask whether a credential is required of a Realm other than openrouter. If
+    the catalog ever carries it as free, those suites would silently stop
+    discriminating, so this fails first.
+    """
+    assert serving_realm_for_model("opencode/a-model-nobody-catalogued") == "opencode"
+    assert serving_realm_for_model("groq/some-model") == "groq"
+    assert serving_realm_for_model("gpt-5.5") == "gpt-5.5"
+    assert serving_realm_for_model("") == ""
+
+    catalogued = {m.id for m in list_models()}
+    assert "opencode/glm-5" not in catalogued
+    # The only Zen model that ships is the free one, so today the fallback is the
+    # sole way to name a credential-requiring model on an anonymous-free Realm.
+    assert {m.id for m in list_models() if m.realm == "opencode"} == {DEFAULT_MODEL}
+
+
+def test_the_serving_realm_agrees_with_the_catalog_for_every_shipped_model() -> None:
+    """The derivation must not disagree with what dispatch will do.
+
+    ``RealmRegistry`` dispatches on the composed ``Model.realm``, so if this
+    derivation ever answered something else the credential would be read from a
+    Realm the request is not sent to. Asserted across the whole shipped catalog
+    rather than one slug: the two are the same lookup, and a single case cannot
+    tell a correct derivation from a coincidence.
+    """
+    for model in list_models():
+        assert serving_realm_for_model(model.id) == model.realm
 
 
 # ---------------------------------------------------------------------------

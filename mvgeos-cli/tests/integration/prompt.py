@@ -27,25 +27,34 @@ class TestPromptCommand:
     def test_prompt_no_api_key(self) -> None:
         """A Realm that needs a credential refuses, naming its own variable.
 
-        ``google/`` rather than the default model: ``opencode`` is exempt from
-        the credential requirement because its free tier serves without one, so
-        on the default model this exits 0 now -- correctly, since there is no key
-        to go and set. That behaviour is pinned separately, in ``cli.py``.
+        ``opencode/glm-5`` rather than the default model: ``opencode`` is exempt
+        from the credential requirement because its free tier serves without one,
+        so on the default model this exits 0 now -- correctly, since there is no
+        key to go and set. That behaviour is pinned separately, in ``cli.py``.
+
+        Not a ``google/`` slug either. No ``google`` Realm ships and the catalog
+        serves every ``google/*`` model as ``openrouter``, so that slug's correct
+        variable is ``OPENROUTER_API_KEY`` and naming ``GOOGLE_API_KEY`` was
+        advice for a credential the serving Realm never reads.
         """
         env = dict(os.environ)
-        for name in ("OPENROUTER_API_KEY", "OPENCODE_API_KEY", "GEMINI_API_KEY"):
+        for name in (
+            "OPENROUTER_API_KEY",
+            "OPENCODE_API_KEY",
+            "GEMINI_API_KEY",
+            "GOOGLE_API_KEY",
+        ):
             env.pop(name, None)
-        env.pop("GOOGLE_API_KEY", None)
         with (
             patch.dict(os.environ, env, clear=True),
             patch("mvgeos_cli.main.load_api_key_for_realm", return_value=None),
         ):
             result = runner.invoke(
                 app,
-                ["--model", "google/gemini-2.5-flash", "--incantation", "test prompt"],
+                ["--model", "opencode/glm-5", "--incantation", "test prompt"],
             )
             assert result.exit_code != 0
-            assert "GOOGLE_API_KEY" in result.output
+            assert "OPENCODE_API_KEY" in result.output
 
     def test_prompt_unknown_model(self) -> None:
         result = runner.invoke(
