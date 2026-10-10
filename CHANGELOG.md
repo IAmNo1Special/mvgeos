@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.24] - 2026-10-10
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (7bd6449)
+
+- **release:** v0.6.24 (3d4b5e5)
+
+
+### Features
+
+- **scripts:** measure release automation so no axis is hand-counted (#175) (28a3704)
+
+
 ## [0.6.23] - 2026-10-10
 
 
