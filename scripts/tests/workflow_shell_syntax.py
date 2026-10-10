@@ -27,6 +27,7 @@ import pathlib
 import re
 import shutil
 import subprocess
+import sys
 
 import pytest
 import yaml
@@ -34,6 +35,26 @@ import yaml
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 
 WORKFLOWS = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+
+
+def _bash_can_check() -> bool:
+    """Whether this runner can actually syntax-check with bash.
+
+    Probed rather than assumed, because "bash exists" and "bash works here" are
+    different questions and the windows runner is the proof: `shutil.which`
+    finds a bash there, and running it over piped stdin exits 1 with nothing
+    on stderr. Hardcoding a platform guess would have guessed about a failure
+    mode that was only visible by running it.
+    """
+    if shutil.which("bash") is None:
+        return False
+    probe = subprocess.run(
+        ["bash", "-n"], input="true\n", capture_output=True, text=True
+    )
+    return probe.returncode == 0
+
+
+BASH_CAN_CHECK = _bash_can_check()
 
 #: Shells a `run` block can name. Only bash is supported: no workflow here
 #: overrides `shell:`, and a `shell: python` step checked with `bash -n` would
@@ -106,9 +127,30 @@ def test_no_step_asks_for_a_shell_this_test_cannot_check() -> None:
     )
 
 
+def test_this_runner_can_check_bash_where_it_should() -> None:
+    """The probe is allowed to decline; it is not allowed to decline on Linux.
+
+    Every workflow job runs on `ubuntu-latest`, so Linux is where these scripts
+    execute and where the check must run. A decline there is a broken runner
+    masquerading as an unsupported one, and the parametrized test below would
+    skip itself into looking green. This makes that loud instead.
+    """
+    if sys.platform.startswith("win"):
+        pytest.skip(
+            "the workflows run on ubuntu-latest; the bash on a windows runner "
+            "(Git Bash or WSL) is a different emulator and cannot check a "
+            "piped script, which was measured rather than assumed"
+        )
+    assert BASH_CAN_CHECK, (
+        "bash exists but cannot syntax-check on this runner, and this suite "
+        "runs its workflows on ubuntu-latest. Either bash is broken here or "
+        "the probe is wrong; neither is a reason to skip the check."
+    )
+
+
 @pytest.mark.skipif(
-    shutil.which("bash") is None,
-    reason="no bash on this runner; nothing here can be checked",
+    not BASH_CAN_CHECK,
+    reason="this runner cannot syntax-check with bash (probed, not assumed)",
 )
 @pytest.mark.parametrize(
     ("workflow", "job_name", "step_name", "script", "_shell"),
