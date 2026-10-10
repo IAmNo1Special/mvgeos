@@ -57,26 +57,77 @@ import tempfile
 import time
 from typing import Any
 
-# The cheapest tool-capable model in the registry, so a release gate costs a
-# fraction of a cent instead of a decision about budget. Overridable because a
-# flaky upstream model is not a packaging failure and should not read as one.
-DEFAULT_MODEL = "openai/gpt-4o-mini"
+# The Realm and model the engine defaults to, and the cheapest thing on it. Zen
+# serves its free tier with no credential at all and bills it at zero, so a
+# release gate costs nothing and needs no key -- which matters more than the
+# money: a gate that needs a secret cannot run on a fork, and a fork is exactly
+# where a stranger's first contact happens. Overridable because a flaky upstream
+# model is not a packaging failure and should not read as one.
+DEFAULT_PROVIDER = "opencode"
+DEFAULT_MODEL = "opencode/space-bunny-free"
 
 # The Realm Rune and the Mvge a Summoner installs before their first task, named
 # exactly as the README names them.
-REALM_RUNE = "openrouter-realm"
+REALM_RUNE = "opencode-realm"
 MVGE = "coding_mvge"
+
+# Realms that bill, and so refuse a request with no credential. Recorded as an
+# exception list rather than an exemption list so a new Realm defaults to
+# needing one: the cost of that mistake is a confusing failure, and the cost of
+# the opposite is a request sent with an empty Authorization header.
+REALMS_REQUIRING_CREDENTIAL = frozenset({"openrouter"})
+
+# The environment variable each Realm reads its key from.
+#
+# A copy of ``mvgeos_provider.realms.REALM_API_KEY_ENV``, which is the authority.
+# The duplication is forced: this harness runs under a bare ``python3`` before
+# any sync, so it cannot import the workspace it ships beside. ``
+# test_api_key_env_matches_the_engine`` holds the two together, so the copy
+# cannot drift without a red build.
+#
+# It matters because the CLI falls back to ``OPENROUTER_API_KEY`` for *every*
+# Realm (``mvgeos-cli/src/mvgeos_cli/main.py``). Exporting an OpenRouter key
+# while testing ``--provider opencode`` therefore hands it to Zen, and the run
+# fails at the host that received it rather than at the packaging under test.
+API_KEY_ENV_BY_REALM = {
+    "openrouter": "OPENROUTER_API_KEY",
+    "opencode": "OPENCODE_API_KEY",
+}
 
 # OpenRouter rejects a request whose declared ``max_tokens`` exceeds what the
 # key's remaining credit can cover, and it rejects it *before* any tokens are
 # spent. The engine's default is 4096, which is more than a nearly-exhausted
-# key can offer, so the gate would fail on the account's budget rather than on
-# the packaging it exists to check. This task needs a fraction of it.
+# key can offer, so a ``--provider openrouter`` run would fail on the account's
+# budget rather than on the packaging it exists to check. This task needs a
+# fraction of it. The default Realm bills its free tier at zero, so the cap is
+# no longer about money there -- it keeps the gate's own turn short.
 MAX_TOKENS = 2000
 
 # The artifact the task is asked to produce, and what it must contain.
 ARTIFACT = "hello.txt"
 ARTIFACT_CONTENT = "hello from mvgeos"
+
+
+def api_key_env_for_realm(realm: str) -> str:
+    """The variable ``realm`` reads its key from, mirroring the engine's."""
+    return API_KEY_ENV_BY_REALM.get(realm, f"{realm.upper()}_API_KEY")
+
+
+def realm_rune_for_realm(realm: str) -> str:
+    """The Rune that provides ``realm``, mirroring the engine's derivation.
+
+    An unmapped Realm falls back to ``<realm>-realm``, which is the convention
+    both Runes we ship use. That is deliberately not "the default Rune": naming
+    ``opencode-realm`` for a Realm we know nothing about would install a
+    provider that cannot serve the model under test and fail somewhere far from
+    the cause.
+    """
+    if not realm:
+        return ""
+    if realm == DEFAULT_PROVIDER:
+        return REALM_RUNE
+    return f"{realm}-realm"
+
 
 TASK = f"Create a file named {ARTIFACT} containing exactly the text: {ARTIFACT_CONTENT}"
 
@@ -137,19 +188,26 @@ SANDBOX_PATH = "/usr/bin:/bin"
 SANDBOX_PYTHONS = ("/usr/bin/python3", "/usr/local/bin/python3")
 
 
-def clean_env(home: pathlib.Path, cache: pathlib.Path, api_key: str) -> dict[str, str]:
+def clean_env(
+    home: pathlib.Path, cache: pathlib.Path, api_key: str, api_key_env: str
+) -> dict[str, str]:
     """Return an environment that cannot see the machine running the harness.
 
     Built from nothing rather than filtered from ``os.environ``. A filter has to
     enumerate every variable that could leak state, and forgetting one silently
     turns "a stranger's machine" into "this machine, wearing a hat".
+
+    The credential is carried only when one was supplied, and only under the
+    name the Realm under test reads. The default Realm serves its free tier
+    keyless, so the default run must genuinely have no credential in it --
+    exporting an empty ``OPENROUTER_API_KEY`` would look like the same thing
+    while leaving a code path that reads a credential open.
     """
-    return {
+    env = {
         "HOME": str(home),
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "UV_CACHE_DIR": str(cache),
         "UV_NO_CONFIG": "1",
-        "OPENROUTER_API_KEY": api_key,
         # Rich reflows to the console width, and a wrapped preamble stops
         # looking like a preamble: `--approval-mode` prints one WARNING line at
         # 80 columns and two at 80 if it overflows, so the second half no longer
@@ -158,6 +216,9 @@ def clean_env(home: pathlib.Path, cache: pathlib.Path, api_key: str) -> dict[str
         # which is what makes the stream machine-readable at all.
         "COLUMNS": "400",
     }
+    if api_key:
+        env[api_key_env] = api_key
+    return env
 
 
 def is_model_output(line: str) -> bool:
@@ -527,13 +588,21 @@ def run_sandboxed(arguments: argparse.Namespace) -> int:
             shutil.rmtree(outer, ignore_errors=True)
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """The harness's argument parser.
+
+    Built by a named function rather than inline in :func:`main` so the defaults
+    can be asserted without running the gate. The Realm, model, and Rune a bare
+    invocation reaches are decisions, and an earlier revision proved they can be
+    wrong while every test stays green: ``--provider`` still defaulted to
+    ``openrouter`` after the engine's default had moved to ``opencode``.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", required=True, help="released version to test")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="model slug to run")
     parser.add_argument(
         "--provider",
-        default="openrouter",
+        default=DEFAULT_PROVIDER,
         help="Realm to force; the slug alone derives one from its prefix",
     )
     parser.add_argument(
@@ -559,15 +628,25 @@ def main() -> int:
         help="directory to build HOME, cache, and work in",
     )
     parser.add_argument("--keep", action="store_true", help="keep the scratch HOME")
-    arguments = parser.parse_args()
+    return parser
 
-    api_key = os.environ.get("OPENROUTER_API_KEY", "")
-    if not api_key and not arguments.help_only:
+
+def main() -> int:
+    arguments = build_parser().parse_args()
+
+    api_key_env = api_key_env_for_realm(arguments.provider)
+    api_key = os.environ.get(api_key_env, "")
+    if (
+        arguments.provider in REALMS_REQUIRING_CREDENTIAL
+        and not api_key
+        and not arguments.help_only
+    ):
         print(
-            "verify_install failed: OPENROUTER_API_KEY is not set. Without a "
-            "credential there is no first real task to run, and a green gate "
-            "that never called a model would be a lie. `--help-only` checks "
-            "resolution alone and needs no credential.",
+            f"verify_install failed: the {arguments.provider!r} Realm needs a "
+            f"credential and {api_key_env} is not set. The default "
+            f"({DEFAULT_PROVIDER!r}) serves a free tier keyless and needs "
+            f"neither, so the cheaper gate is to drop --provider. A green "
+            f"gate that never called a model would be a lie.",
             file=sys.stderr,
         )
         return 2
@@ -595,12 +674,19 @@ def main() -> int:
     for directory in (home / ".agents" / "auth", cache, work):
         directory.mkdir(parents=True, exist_ok=True)
 
-    # Seed only the credential. A Summoner types it; the Rune and the Mvge are
-    # installed by the run below, so that path is exercised too.
-    (home / ".agents" / "auth" / "openrouter.json").write_text(
-        json.dumps({"api_key": api_key}), encoding="utf-8"
-    )
-    env = clean_env(home, cache, api_key)
+    # Seed the credential only when there is one. The default Realm serves a
+    # free tier keyless, and a gate that silently supplied a key would stop
+    # testing the thing a stranger actually has: no key. When there is a key it
+    # is written the way a Summoner types it, under the Realm's own name
+    # (`~/.agents/auth/<realm>.json`, per `mvgeos_agent.auth`), so the real
+    # key-resolution path is exercised rather than bypassed with --api-key. The
+    # Rune and the Mvge are installed by the run below either way.
+    if api_key:
+        (home / ".agents" / "auth" / f"{arguments.provider}.json").write_text(
+            json.dumps({"api_key": api_key}), encoding="utf-8"
+        )
+    realm_rune = realm_rune_for_realm(arguments.provider)
+    env = clean_env(home, cache, api_key, api_key_env)
     version = arguments.version
 
     failures: list[str] = []
@@ -643,12 +729,12 @@ def main() -> int:
         code, output, _ = run_uvx(
             version,
             env,
-            ["rune", "install", REALM_RUNE, "--confirm-python-deps"],
+            ["rune", "install", realm_rune, "--confirm-python-deps"],
             cwd=work,
         )
-        print(f"[3/5] rune install {REALM_RUNE} -> exit {code}")
+        print(f"[3/5] rune install {realm_rune} -> exit {code}")
         if code != 0:
-            failures.append(f"`rune install {REALM_RUNE}` exited {code}")
+            failures.append(f"`rune install {realm_rune}` exited {code}")
             print(output[-2000:])
 
         code, output, _ = run_uvx(

@@ -29,6 +29,13 @@ import subprocess
 
 import pytest
 import verify_install
+from mvgeos_core.constants import DEFAULT_MODEL as CORE_DEFAULT_MODEL
+from mvgeos_provider.realms import (
+    DEFAULT_REALM,
+    REALM_API_KEY_ENV,
+    free_suffix_for_realm,
+    rune_for_realm,
+)
 
 
 def test_clean_env_cannot_see_the_host(
@@ -38,7 +45,9 @@ def test_clean_env_cannot_see_the_host(
     monkeypatch.setenv("MVGEOS_SESSION", "leaked")
     monkeypatch.setenv("HOME", "/home/somebody-else")
 
-    env = verify_install.clean_env(tmp_path / "home", tmp_path / "cache", "sk-or-v")
+    env = verify_install.clean_env(
+        tmp_path / "home", tmp_path / "cache", "sk-or-v", "OPENROUTER_API_KEY"
+    )
 
     assert env["HOME"] == str(tmp_path / "home")
     assert env["OPENROUTER_API_KEY"] == "sk-or-v"
@@ -47,6 +56,89 @@ def test_clean_env_cannot_see_the_host(
     # multi-line preamble stays recognisable as one message.
     assert env["COLUMNS"] == "400"
     assert not [key for key in env if key.startswith("_")]
+
+
+def test_the_keyless_default_run_carries_no_credential(
+    tmp_path: pathlib.Path,
+) -> None:
+    """The default Realm's free tier is reached with no key, and must be.
+
+    Exporting an empty variable would pass a test that only checked for the
+    absence of a *value*, while leaving the CLI's own "read a credential" path
+    open. The property that matters is that no key variable exists at all.
+    """
+    env = verify_install.clean_env(
+        tmp_path / "home", tmp_path / "cache", "", "OPENCODE_API_KEY"
+    )
+
+    assert not [key for key in env if key.endswith("_API_KEY")]
+
+
+def test_one_realms_key_is_never_exported_under_another_realms_name(
+    tmp_path: pathlib.Path,
+) -> None:
+    """The CLI falls back to OPENROUTER_API_KEY for every Realm.
+
+    So an OpenRouter key exported while testing ``--provider opencode`` reaches
+    Zen, and the run fails at the host that received it rather than at the
+    packaging under test. The variable the harness writes has to be named for
+    the Realm it is actually testing.
+    """
+    env = verify_install.clean_env(
+        tmp_path / "home", tmp_path / "cache", "sk-or-v", "OPENCODE_API_KEY"
+    )
+
+    assert env["OPENCODE_API_KEY"] == "sk-or-v"
+    assert "OPENROUTER_API_KEY" not in env
+
+
+def test_api_key_env_matches_the_engine() -> None:
+    """The harness's copy of the Realm table must not drift from the engine's.
+
+    The harness runs under a bare ``python3`` before any sync, so it cannot
+    import the workspace. That is the only reason the table is duplicated, and
+    this is the only thing holding the copy to the original.
+    """
+    assert verify_install.API_KEY_ENV_BY_REALM == REALM_API_KEY_ENV
+
+
+@pytest.mark.parametrize("realm", ["opencode", "openrouter", "somebody-new", ""])
+def test_the_rune_name_matches_the_engine(realm: str) -> None:
+    """Installing the wrong Rune fails far from its cause, so the two agree.
+
+    The harness re-derives this rather than looking it up, and an unknown Realm
+    is the interesting case: the engine answers ``<realm>-realm`` for anything it
+    does not know, and a harness that answered "the default Rune" instead would
+    install a provider that cannot serve the model under test.
+    """
+    assert verify_install.realm_rune_for_realm(realm) == rune_for_realm(realm)
+
+
+def test_a_bare_invocation_gates_the_engines_default_realm() -> None:
+    """What CI actually runs, with no flags, must be the Realm the engine defaults to.
+
+    This is the assertion that was missing. An earlier revision hardcoded
+    ``default="openrouter"`` in the parser while ``DEFAULT_PROVIDER`` and the
+    engine both said ``opencode``, so every other test in this file stayed green
+    and the gate would have exercised a Realm no new Summoner starts on.
+    """
+    arguments = verify_install.build_parser().parse_args(["--version", "0.0.0"])
+
+    assert arguments.provider == DEFAULT_REALM
+    assert arguments.model == CORE_DEFAULT_MODEL
+
+
+def test_the_default_gate_costs_nothing_and_needs_no_credential() -> None:
+    """The whole point of the default: a release gate with no account and no key.
+
+    If the default Realm ever moved behind a credential this assertion fails
+    rather than the gate quietly becoming one that needs a secret.
+    """
+    assert (
+        verify_install.DEFAULT_PROVIDER
+        not in verify_install.REALMS_REQUIRING_CREDENTIAL
+    )
+    assert verify_install.DEFAULT_MODEL.endswith(free_suffix_for_realm(DEFAULT_REALM))
 
 
 @pytest.mark.parametrize(
