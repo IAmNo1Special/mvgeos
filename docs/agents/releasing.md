@@ -101,6 +101,33 @@ Register **all eight** names before flipping the workflow. A `dry_run` dispatch
 does not help here: it uploads nothing, so it cannot detect a missing
 registration either. The only thing that detects it is an upload.
 
+**The token was needed a second time, on 2026-10-10, for the same reason.** The
+two names from the rollback above were still unregistered, so tags v0.6.20
+through v0.6.23 each half-landed — refused at `mvgeos`, and the loop aborted
+before it reached `mvgeos-gui` — and the v0.6.24 tag run was refused at `mvgeos`
+again. A temporary `token-bridge.yml` (commit `b33a6d9`) uploaded exactly those
+two distributions for 0.6.24 with `PYPI_API_TOKEN` at 14:42:52-55Z, and commit
+`806d4fb` removed the workflow again. `PYPI_API_TOKEN` is no longer a secret on
+the repo.
+
+**The bridge is also how a missing publisher stays invisible.** Once
+`mvgeos` 0.6.24 and `mvgeos-gui` 0.6.24 were on the index, the release looked
+whole and the unregistered `mvgeos` publisher was undetectable — every later
+`publish.yml` run was refused at exactly that name while the six registered ones
+skipped on re-dispatch, which reads as "one broken package" rather than "two
+names were never registered". That is what happened to 0.6.26.
+
+The way to separate the two cases without reading PyPI's config (which has no
+API): publish a package that *is* correctly registered **first**. An identical
+OIDC token is minted once for the job and offered to all eight uploads, so a
+success there proves the token, repository, workflow filename and environment
+are all right, and isolates the refusal to one project's publisher. Running
+`mvgeos-gui` before `mvgeos` is what identified the fault — which turned out to
+be a typo in that one project's **workflow filename** field. It was refused for
+the same reason across four runs while the field held a wrong value, and
+succeeded on the run after the correction. With it corrected, 0.6.26 and 0.6.27
+each uploaded all eight names over OIDC.
+
 ### A refused project is not a misconfigured one
 
 PyPI answers "this OIDC token is not valid for project X" with a 403, which
