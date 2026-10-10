@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.27] - 2026-10-10
+
+
+### Bug Fixes
+
+- **ci:** give verify the preflight job it reads its VERSION from (8ab2151)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (ffd11e9)
+
+- **release:** v0.6.27 (a948925)
+
+
 ## [0.6.26] - 2026-10-10
 
 
