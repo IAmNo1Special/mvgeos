@@ -25,6 +25,11 @@ project``. The global layer is the tree root; the user layer is its
 the project layer is anchored beneath an explicitly named project
 directory.
 
+The same shape governs Skills: :func:`skills_dir` is the user layer and
+:func:`project_skills_dir` is the project layer, anchored the same way and
+omitted when no project is named. Skills and Runes are both things a Mvge
+loads from a named project, so they answer that question the same way.
+
 The project layer is **omitted, never defaulted**. A caller that passes no
 project directory gets no project layer, so the ambient working directory
 can never leak into a search path and load code the caller did not name.
@@ -47,7 +52,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from mvgeos_core.constants import GLOBAL_DIR_ENV, PROJECT_RUNE_PATH
+from mvgeos_core.constants import (
+    GLOBAL_DIR_ENV,
+    PROJECT_RUNE_PATH,
+    PROJECT_SKILL_PATH,
+)
 
 
 class Scope(StrEnum):
@@ -172,6 +181,26 @@ def agent_spells_dir(name: str) -> Path:
 def skills_dir() -> Path:
     """User-scope skills: ``<global>/skills``."""
     return global_agents_dir() / "skills"
+
+
+def project_skills_dir(project_dir: str | Path) -> Path:
+    """Project-scope skills: ``<project>/.agents/skills``.
+
+    The project layer of the skills scheme, and the only way to name it.
+    ``project_dir`` is required rather than defaulted, for the reason
+    :func:`resolve_rune_layers` states: the project layer is *omitted* when a
+    caller names no project, so the ambient working directory can never leak
+    into a search path. A Skill is instructions the Mvge will follow, so a
+    search rooted at a checkout the caller did not name loads the wrong ones
+    -- the same failure a wrong cwd causes when it loads the wrong Rune.
+
+    This exists because the engine spelled the path out in two places and the
+    Rune spelled a third form of it out: ``mvgeos-gui`` joined
+    ``project_path / ".agents" / "skills"`` and the ``seeker`` Rune joined
+    ``Path(".agents") / "skills"`` with no project at all, which bound it to
+    the working directory at the moment of the call. See ADR 0017.
+    """
+    return _anchor_project_dir(project_dir) / PROJECT_SKILL_PATH
 
 
 def auth_dir() -> Path:
@@ -348,6 +377,7 @@ __all__ = [
     "global_file",
     "history_file",
     "models_file",
+    "project_skills_dir",
     "resolve_rune_layers",
     "resolve_rune_paths",
     "scope_rank",

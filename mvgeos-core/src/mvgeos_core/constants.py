@@ -1,13 +1,13 @@
 """Protocol-facing constants for the ``.agents`` layer scheme.
 
-Four names, all of them contract: the ones that describe the ``.agents``
+Five names, all of them contract: the ones that describe the ``.agents``
 layer scheme itself. Nothing here *derives* a path -- resolution lives in
 :mod:`mvgeos_core.layers`, which is the single place a search path comes
 from.
 
-``GLOBAL_DIR_ENV`` and ``PROJECT_RUNE_PATH`` are the protocol-facing names
-and must not be renamed; ``Scope`` lives with the ranking rule it feeds, in
-``layers``. A feature-scoped environment variable -- the CLI's
+``GLOBAL_DIR_ENV``, ``PROJECT_RUNE_PATH`` and ``PROJECT_SKILL_PATH`` are the
+protocol-facing names and must not be renamed; ``Scope`` lives with the ranking
+rule it feeds, in ``layers``. A feature-scoped environment variable -- the CLI's
 ``MVGEOS_EXTENSION_DIR``, say -- belongs to the feature that reads it, not
 here: this module is the layer scheme, not every literal in the engine.
 
@@ -46,3 +46,10 @@ GLOBAL_DIR_ENV = "MVGEOS_GLOBAL_DIR"
 #: Project-layer rune directory, relative to an anchored project directory.
 #: Always the standard protocol name -- never a proprietary subdirectory.
 PROJECT_RUNE_PATH = ".agents/extensions"
+
+#: Project-layer skills directory, relative to an anchored project directory.
+#: The sibling of :data:`PROJECT_RUNE_PATH`: both name the project layer of
+#: the same ``.agents`` scheme, for the two things a project can carry.
+#: Added by ADR 0017, which closed a live gap where this string was
+#: spelled out relative to the working directory instead.
+PROJECT_SKILL_PATH = ".agents/skills"
