@@ -246,7 +246,14 @@ jobs:
   # The acceptance test. This job checks out nothing, so uvx resolves the
   # command from PyPI exactly as a stranger's machine would.
   verify:
-    needs: publish
+    # preflight is here for one reason: this job reads
+    # `needs.preflight.outputs.version`, and GitHub only populates the outputs of
+    # jobs named in `needs`. With `needs: publish` alone, `needs.preflight` is
+    # null, so VERSION arrives empty and the guard below refuses the step -- the
+    # compare-eight-packages-on-PyPI job has not run since #210 put the version
+    # in the URL. It was red-or-skipped the whole time, which reads as a broken
+    # publish and hides the one job whose job is to say which two are missing.
+    needs: [preflight, publish]
     # dry_run is declared type: boolean, so it arrives as a boolean. Comparing
     # it to the string 'true' is never equal, which sent verify out to assert
     # that eight packages were on PyPI after a dry run uploaded none of them.
