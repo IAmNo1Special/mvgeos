@@ -10,7 +10,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug Fixes
 
+- **publish:** restore OIDC trusted publishing now that all eight are registered (#207) (a35d520)
+
+
+### Chores
+
+- **release:** v0.6.20 (b16c9b4)
+
+
+## [0.6.19] - 2026-10-10
+
+
+### Bug Fixes
+
 - **verify_install:** let the gate run on a runner where bwrap is installed and denied (#205) (742ed33)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (47b8a4c)
+
+- **release:** v0.6.19 (8c240b4)
+
+
+### Documentation
+
+- **release:** a fix to the tooling cannot rescue the tag it was cut before (#206) (2b5154b)
 
 
 ## [0.6.18] - 2026-10-09
