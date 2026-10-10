@@ -2,7 +2,7 @@
 """Re-measure the published MvgeOS scorecard so a sceptic can falsify it.
 
 Scorecard v1 was measured by hand. This script is the measurement code. Every
-number it prints is produced by one of the six measures below, and every measure
+number it prints is produced by one of the seven measures below, and every measure
 states the definition it uses so the reader can disagree with the definition
 rather than with an unverifiable claim.
 
@@ -24,8 +24,7 @@ when it does not: the snapshot is a permanent reference point, so a sha that
 resolves only in the clone that measured it would make the published number
 uncheckable for good. Run the re-record from a tree that is on a pushed ref.
 
-THE SIX MEASURES AND THEIR EXACT DEFINITIONS
-=============================================
+THE SEVEN MEASURES AND THEIR EXACT DEFINITIONS
 
 1. Source and test LOC
    A counted file is any `.py`, `.ts` or `.tsx` file in the checkout. Every
@@ -178,6 +177,24 @@ THE SIX MEASURES AND THEIR EXACT DEFINITIONS
    one. mypy strict passing is a different and stronger claim, reported
    separately by measure 2.
 
+7. Release automation
+   The number of workflow FILES directly in `<checkout>/.github/workflows`,
+   counting `*.yml` and `*.yaml`. Not recursive: a file in a subdirectory of
+   `.github/workflows` is not counted. One file is one workflow, whatever it is
+   called -- `ci.yml`, `ci.yaml` and `release-checks.yml` each count once, and a
+   reusable workflow called via `workflow_call` counts the same as any other.
+
+   A project with no `.github/workflows` directory reports 0, not null and not an
+   error: no workflows is a measurement, and a missing column would read like a
+   measurement that never ran.
+
+   This is the weakest axis on the scorecard and is reported as a count for that
+   reason. A count of files is not a measure of whether releases are automated,
+   of how good they are, or of whether they succeed; it is the axis the published
+   document had hand-counted, and this makes the count reproducible. It is never
+   treated as a regression (see REGRESSION_DIRECTION), because openclaw's 111 is
+   not eleven times more released than a project's 10.
+
 EXIT CODES
 ==========
 0   no gate violation
@@ -269,6 +286,12 @@ TEST_FILENAME_PATTERNS = (
     "*.spec.tsx",
 )
 
+#: Measure 7 counts files in `.github/workflows` with one of these suffixes.
+#: Spelled out rather than borrowed from the `*.y*ml` glob measure 3 uses: that
+#: glob also matches extensions GitHub does not run (`.yxml`), and two measures
+#: with one stated convention each must not silently share a third.
+WORKFLOW_SUFFIXES = (".yml", ".yaml")
+
 PYPI_URL = "https://pypi.org/pypi/{name}/json"
 NPM_URL = "https://registry.npmjs.org/{name}"
 
@@ -283,6 +306,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CACHE_DIRNAME = "mvgeos-scorecard-clones"
 DEFAULT_BASELINE = Path("docs/scorecard-baseline.json")
 BASELINE_SCHEMA = 1
+
+#: The docstring heading that opens the measures list, and the epilog --help
+#: prints verbatim. Spelling the count in one constant keeps the two copies of
+#: the heading from disagreeing, which is the only thing this constant is for.
+MEASURES_HEADING = "THE SEVEN MEASURES"
 
 
 # --------------------------------------------------------------------------
@@ -454,6 +482,10 @@ class Result:
     annotation_fully: int | None = None
     annotation_partial: int | None = None
     annotation_weighted: float | None = None
+    #: Measure 7. Always an int once a checkout was read, including 0 for a
+    #: project with no `.github/workflows` directory. None only when the project
+    #: could not be obtained at all, which is already reported in `error`.
+    workflow_files: int | None = None
     install: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -1089,6 +1121,36 @@ def measure_annotation_coverage(
 
 
 # --------------------------------------------------------------------------
+# Measure 7: release automation
+# --------------------------------------------------------------------------
+
+
+def measure_release_automation(root: Path) -> int:
+    """Measure 7. Workflow files directly in ``.github/workflows``. See the
+    measure 7 section of the docstring for the convention.
+
+    ``iterdir`` rather than ``glob``: the directory is not walked into, so a
+    subdirectory of ``.github/workflows`` contributes nothing, and no directory
+    matches a ``*.yml`` suffix in the first place. A missing directory is 0,
+    not None, because "this project ships no workflows" is an answer rather than
+    a measurement that failed to run.
+
+    An unreadable directory is not caught and is not reported as 0. A zero that
+    means "we could not look" is the failure mode this whole axis was measured
+    to remove, so it is left to raise, the way an unreadable source file does in
+    measure 1.
+    """
+    workflows = root / ".github" / "workflows"
+    if not workflows.is_dir():
+        return 0
+    return sum(
+        1
+        for entry in workflows.iterdir()
+        if entry.is_file() and entry.suffix in WORKFLOW_SUFFIXES
+    )
+
+
+# --------------------------------------------------------------------------
 # Obtaining sources
 # --------------------------------------------------------------------------
 
@@ -1207,6 +1269,8 @@ def measure_project(
     for failure in ann_failures:
         result.parse_failures.append(failure)
 
+    result.workflow_files = measure_release_automation(checkout)
+
     if online:
         result.install = measure_installability(project, timeout)
     return result
@@ -1234,6 +1298,13 @@ REGRESSION_DIRECTION: dict[str, bool | None] = {
     "annotation_files": None,
     "annotation_fully": None,
     "annotation_partial": None,
+    # Measure 7 is a count of files, and a count of files is not a measure of
+    # release quality in either direction. More is not worse -- openclaw's 111
+    # workflows are not a better release process than ours -- and less is not
+    # gatable here either, because the six repositories this axis counts are
+    # not ours and a peer deleting a workflow must never fail our build. It is
+    # recorded and diffed as a measurement and never as a gate. See measure 7.
+    "workflow_files": None,
 }
 
 #: Measures compared by a rule of their own rather than by direction.
@@ -1299,6 +1370,7 @@ def baseline_document(
                 if result.annotation_weighted is not None
                 else None
             ),
+            "workflow_files": result.workflow_files,
             "install": result.install or None,
         }
     return {
@@ -1382,6 +1454,18 @@ def _cell(value: str, width: int = _CELL_WIDTH) -> str:
     if len(text) > width:
         text = text[: width - 1] + "…"
     return text.ljust(width)
+
+
+def _workflow_text(result: Result) -> str:
+    """Measure 7 as a cell: a count, or an explicit dash when unmeasured.
+
+    A project whose checkout could not be read has ``workflow_files`` unset and
+    an ``error`` already printed beside its key. Printing `0` there would be a
+    number this run did not measure, so it prints `-`.
+    """
+    if result.workflow_files is None:
+        return "-"
+    return str(result.workflow_files)
 
 
 def render_table(results: list[Result], online: bool) -> str:
@@ -1488,6 +1572,14 @@ def render_table(results: list[Result], online: bool) -> str:
             for name, status in sorted(result.install.items()):
                 lines.append(f"{_cell(result.key, 18)}{_cell(name, 30)}{status}")
     lines.append("")
+    lines.append("Release automation (measure 7: workflow files in .github/workflows)")
+    lines.append("-" * len(header))
+    for result in results:
+        if result.error:
+            lines.append(_cell(result.key, 18) + _cell("ERROR"))
+            continue
+        lines.append(_cell(result.key, 18) + _cell(_workflow_text(result)))
+    lines.append("")
     lines.append("Provenance")
     lines.append("-" * len(header))
     for result in results:
@@ -1560,6 +1652,16 @@ def render_markdown(results: list[Result], online: bool) -> str:
                 lines.append(f"| {result.key} | `{name}` | {status} |")
     lines += [
         "",
+        "| Project | Workflow files in `.github/workflows` |",
+        "| --- | ---: |",
+    ]
+    for result in results:
+        if result.error:
+            lines.append(f"| {result.key} | ERROR |")
+            continue
+        lines.append(f"| {result.key} | {_workflow_text(result)} |")
+    lines += [
+        "",
         "A number without the commit it was measured at cannot be checked.",
         "",
         "| Project | Commit | Published | Source |",
@@ -1613,7 +1715,7 @@ def _parse_assignment(value: str, flag: str) -> tuple[str, str]:
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser. The epilog carries every definition."""
-    epilog = __doc__.split("THE SIX MEASURES", 1)[1]
+    epilog = __doc__.split(MEASURES_HEADING, 1)[1]
     parser = argparse.ArgumentParser(
         prog="scorecard.py",
         description=(
@@ -1621,7 +1723,7 @@ def build_parser() -> argparse.ArgumentParser:
             "shallow-clones each project, measures it, prints a table, and "
             "exits non-zero if a gate regresses."
         ),
-        epilog="THE SIX MEASURES" + epilog,
+        epilog=MEASURES_HEADING + epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
