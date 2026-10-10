@@ -251,30 +251,69 @@ jobs:
     # it to the string 'true' is never equal, which sent verify out to assert
     # that eight packages were on PyPI after a dry run uploaded none of them.
     # A tag push has no inputs at all, and null != true is what runs verify.
-    if: ${{ inputs.dry_run != true }}
+    #
+    # `always()` is what makes this job survive a failed publish. Without it
+    # `needs: publish` skips verify the moment publish fails, and a publish that
+    # died on the seventh of eight names leaves six on PyPI with nothing in the
+    # run saying which two are missing. v0.6.20 through v0.6.23 were each cut
+    # three times and each half-landed on `mvgeos` and `mvgeos-gui` with no
+    # diagnosis, because the job whose whole purpose is that diagnosis was the
+    # one being skipped. The run is red either way; this way it is red for a
+    # reason a person can act on.
+    if: ${{ always() && inputs.dry_run != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v4
+
       - uses: astral-sh/setup-uv@v7
         with:
           version: "0.12.24"
           enable-cache: false
 
       - name: Confirm every distribution is on PyPI
+        # check_publish.py owns the name list and the dependency order. Spelling
+        # the eight out here meant a ninth Rune would be published and never
+        # verified.
+        #
+        # The version is part of the URL. Checking only `/$package/json` asked
+        # whether the project exists on PyPI, which is true as soon as any
+        # release ever landed -- so a tag whose last two wheels were refused
+        # still reported all eight green. v0.6.19 for mvgeos made every later
+        # tag look complete in this step while it was not.
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
-          set -euo pipefail
-          for package in mvgeos mvgeos-core mvgeos-provider mvgeos-tome \
-                         mvgeos-runes mvgeos-agent mvgeos-cli mvgeos-gui; do
-            status="$(curl -sS -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/$package/json")"
-            echo "$package: HTTP $status"
+          set -uo pipefail
+          missing=0
+          for package in $(python3 scripts/check_publish.py --list); do
+            status="$(curl -sS -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/$package/$VERSION/json")"
+            echo "$package $VERSION: HTTP $status"
             if [ "$status" != "200" ]; then
-              echo "::error::$package is not on PyPI"
-              exit 1
+              echo "::error::$package $VERSION is not on PyPI"
+              missing=$((missing + 1))
             fi
           done
+          if [ "$missing" -gt 0 ]; then
+            echo "::error::$missing of the packages in the publish order are not on PyPI at $VERSION, so this tag is half-landed. These names must resolve to 200 before the tag is usable."
+            exit 1
+          fi
 
+      # Only meaningful against a publish that completed. When publish failed the
+      # step above already says why, and installing from a half-landed release
+      # would fail in a way that reads as a packaging fault rather than the
+      # upload it actually was.
       - name: Run the command a stranger types
+        if: ${{ needs.publish.result == 'success' }}
         run: uvx mvgeos --help
+
+      # verify ran for a reason, so it has to carry publish's failure forward. A
+      # green verify over a red publish would read as a pass.
+      - name: Carry the publish result forward
+        if: ${{ needs.publish.result != 'success' }}
+        run: |
+          echo "::error::publish ended ${{ needs.publish.result }}; see the upload log for the PyPI refusal."
+          exit 1
 
   # The half `verify` above structurally cannot reach. `--help` returns before a
   # Realm is contacted, so a release whose key never loads, whose Rune is
