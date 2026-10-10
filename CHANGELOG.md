@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.21] - 2026-10-10
+
+
+### Bug Fixes
+
+- **cli,provider:** a Realm the CLI cannot use keyless (#204) (51ef180)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (12eee4a)
+
+- **release:** v0.6.21 (203318d)
+
+
+### Documentation
+
+- **readme:** the first run uses the Realm the product ships (#208) (cc8e3fd)
+
+
 ## [0.6.20] - 2026-10-10
 
 
