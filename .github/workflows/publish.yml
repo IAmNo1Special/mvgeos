@@ -246,14 +246,17 @@ jobs:
   # The acceptance test. This job checks out nothing, so uvx resolves the
   # command from PyPI exactly as a stranger's machine would.
   verify:
-    # preflight is here for one reason: this job reads
-    # `needs.preflight.outputs.version`, and GitHub only populates the outputs of
-    # jobs named in `needs`. With `needs: publish` alone, `needs.preflight` is
-    # null, so VERSION arrives empty and the guard below refuses the step -- the
-    # compare-eight-packages-on-PyPI job has not run since #210 put the version
-    # in the URL. It was red-or-skipped the whole time, which reads as a broken
-    # publish and hides the one job whose job is to say which two are missing.
-    needs: [preflight, publish]
+    # preflight is in `needs` because the version is read from its output, and
+    # a job that does not need another job reads that job's outputs as the
+    # empty string. `verify` needed only `publish`, so `needs.preflight.outputs
+    # .version` was blank, and this job polled
+    # `https://pypi.org/pypi/<name>//json` -- which is 200 for every package
+    # that has ever existed. Measured on the v0.6.25 tag: every line printed
+    # `mvgeos-core : HTTP 200` with the version blank, over a run whose publish
+    # had been refused. `wait_for_pypi.py` refuses a version it cannot name
+    # rather than asking that question, so the next regression of this fails
+    # the run instead of greening it.
+    needs: [publish, preflight]
     # dry_run is declared type: boolean, so it arrives as a boolean. Comparing
     # it to the string 'true' is never equal, which sent verify out to assert
     # that eight packages were on PyPI after a dry run uploaded none of them.
@@ -278,39 +281,33 @@ jobs:
           version: "0.12.24"
           enable-cache: false
 
-      - name: Confirm every distribution is on PyPI
-        # check_publish.py owns the name list and the dependency order. Spelling
-        # the eight out here meant a ninth Rune would be published and never
-        # verified.
-        #
-        # The version is part of the URL. Checking only `/$package/json` asked
-        # whether the project exists on PyPI, which is true as soon as any
-        # release ever landed -- so a tag whose last two wheels were refused
-        # still reported all eight green. v0.6.19 for mvgeos made every later
-        # tag look complete in this step while it was not.
+      # An upload returning is not a release being installable; the index is
+      # what decides that, and it lags. Measured on v0.6.19: the upload
+      # returned at 00:03:12Z and this run's first `uvx` failed at 00:03:26Z
+      # with "there is no version of mvgeos==0.6.19" -- a release that had
+      # already landed, measured two seconds too early. So this waits, and the
+      # wait is also what turns the failure back into a diagnosis: a name that
+      # is still absent when the wait expires is a half-landed release, which
+      # is the report this job exists to make.
+      #
+      # What it waits *for* is in scripts/wait_for_pypi.py, and it is not the
+      # version-specific URL. `/pypi/<name>/<version>/json` answers 200 while
+      # the index `uvx` resolves against is still stale, and 404 after the
+      # release published, because `published_files.py` asked that exact URL
+      # seconds before the upload in the publish job. The project document
+      # `/pypi/<name>/json` is the one cached under the key the upload purges,
+      # so it is fresh when the index is fresh.
+      - name: Wait for the released version to reach the index
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
         run: |
-          set -uo pipefail
-          # An empty VERSION asks /pypi/<name>//json, which PyPI resolves as the
-          # project page and answers 200 for every name that has ever released.
-          # That is the project-exists check this step replaced, so a preflight
-          # failure would silently turn into eight greens. Refuse to run instead.
-          if [ -z "$VERSION" ]; then
-            echo "::error::VERSION is empty -- preflight did not resolve a version, so this check cannot run. Fix preflight first."
-            exit 1
-          fi
-          missing=0
+          set -euo pipefail
+          args=(--version "$VERSION")
           for package in $(python3 scripts/check_publish.py --list); do
-            status="$(curl -sS -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/$package/$VERSION/json")"
-            echo "$package $VERSION: HTTP $status"
-            if [ "$status" != "200" ]; then
-              echo "::error::$package $VERSION is not on PyPI"
-              missing=$((missing + 1))
-            fi
+            args+=(--package "$package")
           done
-          if [ "$missing" -gt 0 ]; then
-            echo "::error::$missing of the packages in the publish order are not on PyPI at $VERSION, so this tag is half-landed. These names must resolve to 200 before the tag is usable."
+          if ! python3 scripts/wait_for_pypi.py "${args[@]}"; then
+            echo "::error::$VERSION is not on the index at every name in the publish order. The lines above say which, and whether the index answered at all. If publish was refused, read that job's log; if it uploaded, this is propagation lag and a re-dispatch is the recovery."
             exit 1
           fi
 
@@ -388,6 +385,37 @@ jobs:
       # belt-and-braces, but the gate costs nothing to be as strong as it can be.
       - name: Install bubblewrap for the sandbox
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends bubblewrap
+
+      # The acceptance test starts here, and it must not start until the
+      # release is installable. PyPI answers an upload before the index that
+      # `uvx` resolves against holds the release: the simple index is served
+      # from cache -- measured as `cache-control: max-age=600` on
+      # `https://pypi.org/simple/mvgeos/` -- and only the upload's cache purge
+      # makes it fresh, which takes a moment. Measured on v0.6.19: the upload
+      # returned at 00:03:12Z and this job's first uvx failed at 00:03:26Z with
+      # "there is no version of mvgeos==0.6.19", on a release that had already
+      # landed.
+      #
+      # `--resolve` waits for the command a stranger types, run verbatim:
+      # `uvx --from mvgeos==<version> mvgeos --help`. That resolves the whole
+      # runtime closure, so it also proves the seven distributions the command
+      # needs are on the index together, which is the half of the question
+      # `verify` above answers for all eight.
+      #
+      # It waits last on purpose. The bubblewrap install above it is fifteen
+      # seconds of propagation the run gets for free, so a wait that starts
+      # after it usually does not wait at all. That is a saving, not the gate:
+      # the gate is this step, and it is what fails red if the release never
+      # becomes installable.
+      - name: Wait for the release to become installable
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if ! python3 scripts/wait_for_pypi.py --version "$VERSION" --resolve; then
+            echo "::error::$VERSION is not installable yet. If the wait above says it is on the index and uvx still cannot install it, this is PyPI propagation lag, not a packaging fault: re-dispatch this run. If it is not on the index at all, publish did not upload it -- read that job's log."
+            exit 1
+          fi
 
       - name: Install the Realm, the Mvge, and run one real task
         env:
