@@ -158,7 +158,7 @@ class TestConfigRefreshModels:
         assert "new/free:free" in result.stdout
         assert "old/withdrawn" in result.stdout
         assert "nvidia/now-paid:free" in result.stdout
-        assert "/home/user/.agents/models.json" in result.stdout
+        assert str(Path("/home/user/.agents/models.json")) in result.stdout
         mock_refresh.assert_awaited_once_with(force_refresh=False)
 
     def test_network_failure_is_not_reported_as_zero_updates(self) -> None:
