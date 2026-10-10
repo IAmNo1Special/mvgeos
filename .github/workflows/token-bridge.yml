@@ -1,0 +1,89 @@
+name: Bridge PyPI token upload (temporary, SOM-103)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag version (e.g., v0.6.24)"
+        required: true
+        type: string
+      source_run:
+        description: "Run id whose preflight dist artifact is the byte source"
+        required: true
+        type: string
+      dry_run:
+        description: "Resolve the missing set but upload nothing"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pypi
+    steps:
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.24"
+
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Fetch the validated distributions from the source run
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+          run-id: ${{ inputs.source_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload only the missing files, in dependency order
+        env:
+          VERSION: ${{ inputs.tag }}
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+          UV_PUBLISH_TRUSTED_PUBLISHING: never
+        run: |
+          set -euo pipefail
+          ver="${VERSION#v}"
+          if [ -z "$ver" ]; then
+            echo "::error::could not derive version from tag '$VERSION'"
+            exit 1
+          fi
+          if [ ! -d dist ]; then
+            echo "::error::dist/ did not arrive from the source run"
+            exit 1
+          fi
+          for package in mvgeos mvgeos-gui; do
+            if ! missing="$(python3 scripts/published_files.py --package "$package" --version "$ver" --dist-dir dist)"; then
+              echo "::error::could not determine the missing set for $package $ver from the PyPI index"
+              exit 1
+            fi
+            if [ -z "$missing" ]; then
+              echo "::notice::$package $ver is already complete on PyPI; skipping"
+              continue
+            fi
+            files=""
+            for name in $missing; do
+              files="$files dist/$package/$name"
+            done
+            if [ "${{ inputs.dry_run }}" = "true" ]; then
+              echo "::notice::dry_run: would upload$files for $package $ver"
+              continue
+            fi
+            echo "::group::upload $package$files"
+            set +e
+            output="$(uv publish $files 2>&1)"
+            status=$?
+            set -e
+            echo "$output"
+            if [ "$status" -ne 0 ]; then
+              echo "::error::$package $ver upload failed with status $status"
+              exit "$status"
+            fi
+            echo "::endgroup::"
+          done
