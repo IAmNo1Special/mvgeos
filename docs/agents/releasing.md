@@ -101,6 +101,17 @@ Register **all eight** names before flipping the workflow. A `dry_run` dispatch
 does not help here: it uploads nothing, so it cannot detect a missing
 registration either. The only thing that detects it is an upload.
 
+**The token was needed a second time on 2026-10-10, for the same reason.** Two
+of the eight names (`mvgeos`, `mvgeos-gui`) were still unregistered, so tags
+v0.6.20 through v0.6.23 each half-landed and the v0.6.24 tag run was refused at
+`mvgeos` again. A temporary `token-bridge.yml` workflow (commit `b33a6d9`)
+uploaded exactly those two distributions for 0.6.24 with `PYPI_API_TOKEN` at
+14:42Z, and commit `806d4fb` removed the workflow again. The bridge is the
+recovery of record for a half-land, and it is still a regression against the
+end state — while those two names are unregistered, every tag re-runs the whole
+cycle, because the six registered names skip on re-dispatch and the two
+unregistered ones are refused.
+
 ### A refused project is not a misconfigured one
 
 PyPI answers "this OIDC token is not valid for project X" with a 403, which
