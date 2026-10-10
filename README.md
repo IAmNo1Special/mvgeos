@@ -95,10 +95,10 @@ as it stands now is tracked separately.
 </details>
 
 Here is that task, actually run, with nothing edited. The Mvge cast `write`,
-checked its own work, and reported back:
+checked its own work with a second Spell, and reported back:
 
 ```text
-Created hello.txt with the content "hello from mvgeos". Verified the file contents match exactly.
+Created hello.txt containing exactly hello from mvgeos — verified byte-for-byte with od -c (17 bytes, no trailing newline).
 Stop reason: stop
 ```
 
@@ -113,6 +113,10 @@ $ od -c hello.txt
 0000020   s
 0000021
 ```
+
+And after that run `~/.agents/` holds `agents`, `extensions`, `sessions` — and no
+`auth/`. That is the checkable form of "your first run needs no key": nothing
+asked, and nothing was written.
 
 The same task in the desktop app, same Realm, same model:
 
@@ -223,9 +227,9 @@ quickstart, concepts, troubleshooting with real errors, and FAQ.
   tests. The command surface still moves. The distribution on PyPI is `v0.6.16`;
   check yours with `uv tool list`.
 - **The default model call can be refused, so "run one task" is.** Every install
-  and inspect command above was verified on a clean machine, and so was the
-  recipe's Realm. The model call was not, and it is not MvgeOS's to fix: when
-  the default free tier is at capacity the run ends in
+  and inspect command above was verified on a clean machine, and so was the task
+  itself. It is not MvgeOS's to fix: when the default free tier is at capacity
+  the run ends in
 
   ```text
   Rate limited by the provider: Realm requested 2209s retry delay (max: 60s). Rate
@@ -233,10 +237,11 @@ quickstart, concepts, troubleshooting with real errors, and FAQ.
   No spells ran before the failure, so nothing was written.
   ```
 
-  Seven consecutive clean-machine attempts at the command above returned exactly
-  that. **Read the number before you retry** — `2209s` is about 37 minutes, and
-  a fast retry loop will not shorten it. A refused attempt costs a few seconds
-  and writes nothing.
+  On the check that produced the transcript above, this exact command was refused
+  seven times and then completed, about 40 minutes after the first refusal —
+  the delay counts down and does end. **Read the number before you retry.**
+  `2209s` is about 37 minutes; a fast retry loop will not shorten it. A refused
+  attempt costs a few seconds and writes nothing.
 
   Check the file before you re-run, so you do not overwrite work you already
   have:
@@ -248,12 +253,12 @@ quickstart, concepts, troubleshooting with real errors, and FAQ.
   A `-m` slug names its Realm in the prefix, so naming a different model only
   helps if the Realm that serves it is installed. Details in the
   [troubleshooting guide](https://iamno1special.github.io/mvgeos-marketplace/troubleshooting/).
-- **A known bug costs a wasted round-trip.** When a Mvge checks its own work with
-  `read`, `grep`, `find`, or `list_files`, leaving the optional paging arguments
-  out, the cast is rejected once and retried: a nullable optional Spell argument
-  loses its nullability and then fails the second of two validation passes. The
-  task still completes correctly; you pay one extra model call. Tracked as
-  SOM-23.
+- **A known bug costs a wasted round-trip.** When a Mvge checks its own work,
+  leaving a Spell's optional arguments out, the cast is rejected once and
+  retried: an optional Spell argument loses its nullability and then fails the
+  second of two validation passes. The task still completes correctly; you pay
+  one extra model call. In the transcript above it hit `bash`, rejecting three
+  arguments the Mvge never sent. Tracked as SOM-23.
 - **Runes run in-process** via `importlib`. Not sandboxed, not
   process-isolated — a Rune has your permissions, and a manifest's
   `python_deps` is an instruction to fetch packages from PyPI. Read manifests
