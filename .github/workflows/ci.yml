@@ -346,15 +346,15 @@ jobs:
 
           new = sys.argv[1]
           pattern = re.compile(
-               r'^(?P<prefix>\s*")(?P<name>mvgeos(?:-[a-z]+)?)==\d[^"]*(?P<suffix>",?\s*)$',
+              r'^(?P<prefix>\s*")(?P<name>mvgeos(?:-[a-z]+)?)==\d[^"]*(?P<suffix>",?\s*)$',
               re.MULTILINE,
           )
           for path in [Path("pyproject.toml"), *sorted(Path(".").glob("*/pyproject.toml"))]:
               text = path.read_text()
-               updated, count = pattern.subn(rf'\g<prefix>\g<name>=={new}\g<suffix>', text)
-               if count:
-                   path.write_text(updated)
-                   print(f"{path}: refreshed {count} internal dep pin(s)")
+              updated, count = pattern.subn(rf'\g<prefix>\g<name>=={new}\g<suffix>', text)
+              if count:
+                  path.write_text(updated)
+                  print(f"{path}: refreshed {count} internal dep pin(s)")
           PY
           uv lock
 
