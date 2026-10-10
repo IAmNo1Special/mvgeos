@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import json
 
 import typer
 from mvgeos_agent.config_manager import ConfigManager, validate_agent_name
 from mvgeos_core.constants import DEFAULT_AGENT_NAME
+from mvgeos_provider.model_registry import CatalogRefresh, RefreshStatus
+from mvgeos_provider.registry import refresh_catalog
 
 from mvgeos_cli.console import format_error, get_console
 
@@ -116,3 +119,61 @@ def config_path(
     """Show the agent-scope config file path."""
     mgr = _get_manager(agent_name)
     console.print(str(mgr.agent_config_path))
+
+
+def _print_change(label: str, model_ids: tuple[str, ...], style: str) -> None:
+    """Print one bucket of catalog changes, or say it was empty."""
+    if not model_ids:
+        console.print(f"  {label}: none")
+        return
+    console.print(f"  {label} ({len(model_ids)}):")
+    for mid in model_ids:
+        console.print(f"    [{style}]{mid}[/{style}]")
+
+
+def _report_refresh(result: CatalogRefresh) -> None:
+    """Render a catalog refresh and choose the process exit code."""
+    if result.status is RefreshStatus.UNREACHABLE:
+        console.print(
+            "[red]Could not reach OpenRouter[/red] -- the shipped catalog is "
+            "still in use and nothing was overwritten."
+        )
+        raise typer.Exit(1)
+
+    if result.status is RefreshStatus.CACHE_FRESH:
+        console.print(
+            "The catalog cache is still fresh (24h TTL); nothing to fetch. "
+            "Pass [bold]--force[/bold] to refresh anyway."
+        )
+        return
+
+    console.print(
+        f"[green]Catalog refreshed from OpenRouter: {result.total} models[/green]"
+    )
+    _print_change("Added", result.added, "green")
+    _print_change("Removed", result.removed, "yellow")
+    _print_change("No longer free", result.no_longer_free, "bold red")
+    if result.no_longer_free:
+        console.print("  (free before, now retired or priced)")
+    console.print(f"Cache written to {result.cache_path}")
+
+
+@config_app.command("refresh-models")
+def config_refresh_models(
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Bypass the 24-hour catalog cache TTL and re-fetch now",
+    ),
+) -> None:
+    """Re-fetch the model catalog from OpenRouter and report what changed.
+
+    The shipped catalog is a static snapshot, so a free-tier id in it can
+    quietly stop being free.  This reports ids added, ids removed, and every id
+    that used to be free and no longer is -- retired from the catalog or repriced
+    -- so the loss surfaces here rather than as a failed request later.
+
+    The catalog is never pruned: ids are reported, not dropped, so an
+    unreachable Realm cannot take the shipped catalog away.
+    """
+    _report_refresh(asyncio.run(refresh_catalog(force_refresh=force)))

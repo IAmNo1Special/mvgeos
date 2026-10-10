@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import time
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -222,6 +224,41 @@ def _default_cache_path() -> Path:
     return models_file()
 
 
+class RefreshStatus(StrEnum):
+    """Outcome of a catalog refresh."""
+
+    REFRESHED = "refreshed"
+    CACHE_FRESH = "cache_fresh"
+    UNREACHABLE = "unreachable"
+
+
+@dataclass(frozen=True)
+class CatalogRefresh:
+    """What a catalog refresh actually changed.
+
+    ``added``, ``removed`` and ``no_longer_free`` compare the Realm's live
+    catalog against everything the registry could resolve beforehand, which is
+    the shipped snapshot merged with any on-disk cache.
+
+    The three buckets are disjoint and cover every id either side. ``removed``
+    holds ids that retired from the paid catalog; ``no_longer_free`` holds every
+    id that used to be free and no longer is -- whether it was repriced or
+    withdrawn outright. That second bucket is the one that matters to a Summoner
+    on the free tier: an id that stops being free is otherwise discovered at the
+    point of a failed request, not at the point of choice.
+
+    The registry is never pruned: a stale id is reported, not dropped, so a
+    partial or unreachable Realm cannot take the shipped catalog away.
+    """
+
+    status: RefreshStatus
+    total: int
+    added: tuple[str, ...]
+    removed: tuple[str, ...]
+    no_longer_free: tuple[str, ...]
+    cache_path: Path
+
+
 class ModelRegistry:
     def __init__(
         self,
@@ -352,7 +389,76 @@ class ModelRegistry:
         if not force_refresh and (self._refreshed or self.load_cache()):
             return 0
 
-        count = 0
+        api_data = await self._fetch_api_models(client)
+        if api_data is None:
+            return 0
+
+        landed = self._absorb_api_models(api_data)
+        self._save_cache(api_data)
+        self._refreshed = True
+        logger.info("Refreshed models: %d from API", len(landed))
+        return len(landed)
+
+    async def refresh_catalog(
+        self,
+        force_refresh: bool = False,
+        client: httpx.AsyncClient | None = None,
+    ) -> CatalogRefresh:
+        """Refresh the catalog and report what changed against the Realm.
+
+        Unlike :meth:`refresh`, this distinguishes "the cache was still fresh",
+        "the Realm answered" and "the Realm could not be reached", so a failed
+        fetch can never be reported as a refresh that updated nothing.
+        """
+        if not force_refresh and (self._refreshed or self.load_cache()):
+            return CatalogRefresh(
+                status=RefreshStatus.CACHE_FRESH,
+                total=len(self._models),
+                added=(),
+                removed=(),
+                no_longer_free=(),
+                cache_path=self._cache_path,
+            )
+
+        before: dict[str, bool] = {
+            mid: model.is_free for mid, model in self._models.items()
+        }
+
+        api_data = await self._fetch_api_models(client)
+        if api_data is None:
+            return CatalogRefresh(
+                status=RefreshStatus.UNREACHABLE,
+                total=0,
+                added=(),
+                removed=(),
+                no_longer_free=(),
+                cache_path=self._cache_path,
+            )
+
+        landed = self._absorb_api_models(api_data)
+        self._save_cache(api_data)
+        self._refreshed = True
+
+        live = {mid: self._models[mid].is_free for mid in landed}
+        return CatalogRefresh(
+            status=RefreshStatus.REFRESHED,
+            total=len(landed),
+            added=tuple(sorted(mid for mid in live if mid not in before)),
+            removed=tuple(
+                mid for mid in sorted(before) if mid not in live and not before[mid]
+            ),
+            no_longer_free=tuple(
+                sorted(
+                    mid for mid in before if before[mid] and not live.get(mid, False)
+                )
+            ),
+            cache_path=self._cache_path,
+        )
+
+    async def _fetch_api_models(
+        self, client: httpx.AsyncClient | None
+    ) -> list[dict[str, Any]] | None:
+        """Return the Realm's model entries, or ``None`` when unreachable."""
         try:
             if client is not None:
                 response = await client.get(OPENROUTER_MODELS_URL, timeout=30)
@@ -373,10 +479,17 @@ class ModelRegistry:
                 api_data = res_json
             else:
                 api_data = []
-        except Exception:
-            logger.exception("Failed to fetch OpenRouter models")
-            return 0
+        except Exception as exc:
+            # Not logger.exception: an unreachable realm is an expected outcome
+            # that callers report in their own words, so the traceback would only
+            # bury that message under a stack the Summoner cannot act on.
+            logger.warning("Failed to fetch OpenRouter models: %s", exc)
+            return None
+        return api_data
 
+    def _absorb_api_models(self, api_data: list[dict[str, Any]]) -> tuple[str, ...]:
+        """Merge the Realm's entries into the catalog, returning the ids landed."""
+        landed: list[str] = []
         for entry in api_data:
             mid = entry.get("id", "")
             if not mid:
@@ -394,12 +507,8 @@ class ModelRegistry:
                 is_free=_is_free_entry(entry),
                 supported_contemplation_levels=levels,
             )
-            count += 1
-
-        self._save_cache(api_data)
-        self._refreshed = True
-        logger.info("Refreshed models: %d from API", count)
-        return count
+            landed.append(mid)
+        return tuple(landed)
 
     def _save_cache(self, api_data: list[dict[str, Any]]) -> None:
         try:

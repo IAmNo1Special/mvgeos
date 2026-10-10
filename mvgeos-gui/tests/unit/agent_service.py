@@ -950,10 +950,39 @@ async def test_run_prompt_rate_limit_daily_quota(
 
     await agent_service.run_prompt("Test daily quota", app_state, msg)
     assert msg.is_error is True
-    assert "Daily Free Tier Quota Reached (HTTP 429)" in msg.content
+    assert "Daily Free Tier Quota Reached" in msg.content
     assert "50/50 requests used" in msg.content
     assert "Resets at" in msg.content
     assert "Wait for the daily reset, or purchase credits." in msg.content
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_rate_limit_daily_quota_without_reported_window(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """The router's 402 names the allowance without a quota or a reset time."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(
+        side_effect=RateLimitError(
+            "Provider returned error",
+            limit_source="openrouter_free_tier_daily",
+            remedy_hint="Wait for the daily reset.",
+        )
+    )
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.on = MagicMock()
+    agent_service._agent = mock_agent
+
+    msg = ChatMessage(role="assistant", is_streaming=True)
+    app_state.messages.append(msg)
+
+    await agent_service.run_prompt("Test spent router allowance", app_state, msg)
+    assert msg.is_error is True
+    assert "Daily Free Tier Quota Reached" in msg.content
+    assert "requests used" not in msg.content
+    assert "Resets at" not in msg.content
+    assert "HTTP 402" not in msg.content
+    assert "Wait for the daily reset." in msg.content
 
 
 @pytest.mark.asyncio

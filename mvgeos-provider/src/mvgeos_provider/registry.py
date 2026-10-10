@@ -11,7 +11,7 @@ from mvgeos_provider.base import (
     Realm,
     RealmFactory,
 )
-from mvgeos_provider.model_registry import ModelRegistry
+from mvgeos_provider.model_registry import CatalogRefresh, ModelRegistry
 from mvgeos_provider.realms import (
     REALM_RUNES,
     realm_for_model_id,
@@ -379,6 +379,17 @@ def get_flat_model_ids() -> list[str]:
 async def refresh_models(force_refresh: bool = False) -> int:
     """Refresh model catalog using the default realm registry."""
     return await get_default_realm_registry().refresh_models(
+        force_refresh=force_refresh
+    )
+
+
+async def refresh_catalog(force_refresh: bool = False) -> CatalogRefresh:
+    """Refresh the model catalog and report what changed against the realm.
+
+    Unlike :func:`refresh_models`, an unreachable realm is reported as such
+    rather than collapsing into a count of zero.
+    """
+    return await get_default_realm_registry().model_registry.refresh_catalog(
         force_refresh=force_refresh
     )
 

@@ -9,6 +9,7 @@ from mvgeos_core.channel import Model
 from mvgeos_provider.model_registry import (
     CACHE_TTL_SECONDS,
     ModelRegistry,
+    RefreshStatus,
     _create_openrouter_model,
     _is_free_entry,
 )
@@ -328,6 +329,140 @@ async def test_auto_refresh_force_refresh(tmp_path: Path) -> None:
 
     assert count == 1
     assert reg.get("live/model") is not None
+
+
+_FREE_PRICING = {"prompt": "0", "completion": "0"}
+_PAID_PRICING = {"prompt": "3", "completion": "3"}
+
+
+def _mock_api_client(
+    entries: list[dict[str, object]],
+) -> tuple[MagicMock, object]:
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"data": entries}
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.get = AsyncMock(return_value=mock_response)
+    return mock_client, patch(
+        "mvgeos_provider.model_registry.httpx.AsyncClient", return_value=mock_client
+    )
+
+
+@pytest.mark.asyncio
+async def test_refresh_catalog_reports_added_removed_and_no_longer_free(
+    tmp_path: Path,
+) -> None:
+    reg = ModelRegistry(cache_path=tmp_path / "c.json")
+    reg._models.clear()
+    for mid, is_free in (
+        ("kept/still-free", True),
+        ("retired/free", True),
+        ("repriced/free", True),
+        ("retired/paid", False),
+    ):
+        reg._models[mid] = _create_openrouter_model(mid, mid, is_free=is_free)
+
+    client, patched = _mock_api_client(
+        [
+            {"id": "kept/still-free", "name": "Kept", "pricing": _FREE_PRICING},
+            {"id": "repriced/free", "name": "Repriced", "pricing": _PAID_PRICING},
+            {"id": "new/free", "name": "New", "pricing": _FREE_PRICING},
+        ]
+    )
+    with patched:
+        result = await reg.refresh_catalog()
+
+    assert result.status is RefreshStatus.REFRESHED
+    assert result.total == 3
+    assert result.added == ("new/free",)
+    assert result.removed == ("retired/paid",)
+    # Both a repriced free id and a withdrawn one are free-tier losses.
+    assert result.no_longer_free == ("repriced/free", "retired/free")
+    assert result.cache_path == tmp_path / "c.json"
+    # A stale id is reported, never pruned: the shipped catalog stays in use.
+    assert reg.get("retired/free") is not None
+    assert reg.get("retired/paid") is not None
+
+
+@pytest.mark.asyncio
+async def test_refresh_catalog_unreachable_keeps_shipped_catalog(
+    tmp_path: Path,
+) -> None:
+    reg = ModelRegistry(cache_path=tmp_path / "c.json")
+    shipped = set(reg.models)
+
+    with patch(
+        "mvgeos_provider.model_registry.httpx.AsyncClient",
+        side_effect=Exception("boom"),
+    ):
+        result = await reg.refresh_catalog()
+
+    assert result.status is RefreshStatus.UNREACHABLE
+    assert result.total == 0
+    assert result.added == ()
+    assert result.removed == ()
+    assert result.no_longer_free == ()
+    assert set(reg.models) == shipped
+    assert not (tmp_path / "c.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_refresh_catalog_fresh_cache_skips_the_realm(tmp_path: Path) -> None:
+    cache_path = tmp_path / "c.json"
+    cache_path.write_text(
+        json.dumps(
+            {"_cached_at": time.time(), "models": [{"id": "a/b", "name": "A B"}]}
+        ),
+        encoding="utf-8",
+    )
+    reg = ModelRegistry(cache_path=cache_path)
+
+    with patch("mvgeos_provider.model_registry.httpx.AsyncClient") as mock_client_cls:
+        result = await reg.refresh_catalog()
+
+    assert result.status is RefreshStatus.CACHE_FRESH
+    mock_client_cls.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_refresh_catalog_force_reaches_the_realm_over_a_fresh_cache(
+    tmp_path: Path,
+) -> None:
+    cache_path = tmp_path / "c.json"
+    cache_path.write_text(
+        json.dumps(
+            {
+                "_cached_at": time.time(),
+                "models": [{"id": "a/b", "name": "A B", "is_free": True}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    reg = ModelRegistry(cache_path=cache_path)
+    assert reg.load_cache() is True
+    shipped = {mid: model.is_free for mid, model in reg.models.items() if mid != "a/b"}
+
+    client, patched = _mock_api_client(
+        [{"id": "a/b", "name": "A B", "pricing": _PAID_PRICING}]
+    )
+    with patched:
+        result = await reg.refresh_catalog(force_refresh=True)
+
+    assert result.status is RefreshStatus.REFRESHED
+    assert "a/b" not in result.added
+    # The cached id was free and is now priced; every shipped id the Realm does
+    # not carry is reported, never pruned.
+    assert result.no_longer_free == (
+        "a/b",
+        *sorted(mid for mid, is_free in shipped.items() if is_free),
+    )
+    assert result.removed == tuple(
+        sorted(mid for mid, is_free in shipped.items() if not is_free)
+    )
+    assert reg.get(next(iter(shipped))) is not None
+    client.get.assert_awaited_once()
 
 
 def test_create_openrouter_model_contemplation_levels() -> None:
