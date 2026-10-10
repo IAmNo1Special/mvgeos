@@ -2,7 +2,15 @@
 
 ## Status
 
-Accepted
+Accepted (amended 2026-10-10: decision 4, see ADR 0017)
+
+> **Amended 2026-10-10.** Decision 4 listed the standard layer names and named
+> `PROJECT_RUNE_PATH` as the only project-layer constant, because at the time it
+> was the only one there was. Decision 3 -- project is anchored, never ambient --
+> is unchanged and is now applied to Skills as well, which the decision did not
+> mention because no engine name covered them. ADR 0017 adds `PROJECT_SKILL_PATH`
+> and `project_skills_dir`, which is the same rule applied to the second kind
+> of thing a project layer carries.
 
 ## Date
 

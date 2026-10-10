@@ -24,6 +24,7 @@ CONTRACT_CONSTANTS = (
     "DEFAULT_MODEL",
     "GLOBAL_DIR_ENV",
     "PROJECT_RUNE_PATH",
+    "PROJECT_SKILL_PATH",
 )
 
 
@@ -45,10 +46,12 @@ def test_constants_module_defines_no_callables() -> None:
 
 
 def test_constants_module_exposes_exactly_the_contract() -> None:
-    """Four names, no more.
+    """Five names, no more.
 
     Anything added here is a path derivation or a duplicated contract
-    symbol; both belong in ``layers``.
+    symbol; both belong in ``layers``. The fifth is ``PROJECT_SKILL_PATH``,
+    added by ADR 0017 when the project skills layer stopped being spelled
+    out by hand at each site that needed it.
     """
     public = sorted(
         name

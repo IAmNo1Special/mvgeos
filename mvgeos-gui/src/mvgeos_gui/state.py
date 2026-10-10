@@ -30,7 +30,12 @@ from mvgeos_core.approval import (
 )
 from mvgeos_core.constants import DEFAULT_MODEL
 from mvgeos_core.invocations import Attachment, build_content_parts
-from mvgeos_core.layers import agents_dir, extensions_dir, skills_dir
+from mvgeos_core.layers import (
+    agents_dir,
+    extensions_dir,
+    project_skills_dir,
+    skills_dir,
+)
 from mvgeos_provider import (
     get_default_realm_registry,
     get_model_options,
@@ -113,7 +118,7 @@ def _scan_skill_manifests(project_path: Path) -> list[SkillManifest]:
     """
     skills: list[SkillManifest] = []
     search_dirs = [
-        project_path / ".agents" / "skills",
+        project_skills_dir(project_path),
         skills_dir(),
     ]
     for sdir in search_dirs:

@@ -29,6 +29,7 @@ from mvgeos_core.constants import (
     DEFAULT_MODEL,
     GLOBAL_DIR_ENV,
     PROJECT_RUNE_PATH,
+    PROJECT_SKILL_PATH,
 )
 from mvgeos_core.dispatcher import BatchResult, SpellDispatcher
 from mvgeos_core.errors import (
@@ -73,6 +74,7 @@ from mvgeos_core.layers import (
     global_file,
     history_file,
     models_file,
+    project_skills_dir,
     resolve_rune_layers,
     resolve_rune_paths,
     scope_rank,
@@ -152,6 +154,7 @@ __all__ = [
     "GEN_AI_CONVERSATION_ID",
     "GEN_AI_OPERATION_NAME",
     "PROJECT_RUNE_PATH",
+    "PROJECT_SKILL_PATH",
     "agent_dir",
     "agent_extensions_dir",
     "agent_skills_dir",
@@ -163,6 +166,7 @@ __all__ = [
     "global_file",
     "history_file",
     "models_file",
+    "project_skills_dir",
     "skills_dir",
     "default_rune_paths",
     "extensions_dir",

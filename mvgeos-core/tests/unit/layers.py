@@ -28,6 +28,7 @@ from mvgeos_core.layers import (
     global_file,
     history_file,
     models_file,
+    project_skills_dir,
     resolve_rune_layers,
     resolve_rune_paths,
     scope_rank,
@@ -246,6 +247,74 @@ def test_project_layer_accepts_str_project_dir(tmp_path) -> None:
     paths = resolve_rune_paths("test-agent", project_dir=str(project))
 
     assert paths[2] == project / ".agents" / "extensions"
+
+
+def test_project_skills_dir_anchored_to_project_dir(tmp_path: Path) -> None:
+    """An explicit project_dir anchors the project skills layer beneath it."""
+    project = tmp_path / "project"
+
+    resolved = project_skills_dir(project)
+
+    assert resolved == project / ".agents" / "skills"
+    assert resolved.is_absolute()
+
+
+def test_project_skills_dir_accepts_str_project_dir(tmp_path: Path) -> None:
+    """String project dirs anchor the same as Path ones."""
+    project = tmp_path / "project"
+
+    assert project_skills_dir(str(project)) == project / ".agents" / "skills"
+
+
+def test_project_skills_dir_never_follows_the_ambient_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A named project wins over whatever the working directory happens to be.
+
+    Regression: the ``seeker`` Rune held ``Path(".agents") / "skills"`` as a
+    module constant and resolved it against the CWD at the call, so running
+    from an unrelated checkout searched that checkout's skills. ADR 0017.
+    """
+    decoy = tmp_path / "decoy"
+    (decoy / ".agents" / "skills").mkdir(parents=True)
+    monkeypatch.chdir(decoy)
+
+    named = tmp_path / "named"
+
+    assert project_skills_dir(named) == named / ".agents" / "skills"
+    assert decoy / ".agents" / "skills" not in (project_skills_dir(named).resolve(),)
+
+
+def test_project_skills_dir_and_project_rune_path_are_siblings(
+    tmp_path: Path,
+) -> None:
+    """Skills and Runes are two things one project layer carries."""
+    project = tmp_path / "project"
+
+    skills = project_skills_dir(project)
+    runes = resolve_rune_paths("test-agent", project_dir=project)[2]
+
+    assert skills.parent == runes.parent
+    assert skills.name == "skills"
+    assert runes.name == "extensions"
+
+
+def test_project_skills_dir_resolves_relative_project_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A relative project_dir is anchored once, at the moment it is named.
+
+    Same rule as ``_anchor_project_dir``: the caller named a project, so a
+    relative name has to mean something. It is resolved here rather than
+    later, which is what keeps the returned path stable if the process then
+    changes directory.
+    """
+    monkeypatch.chdir(tmp_path)
+
+    resolved = project_skills_dir("some-project")
+
+    assert resolved == tmp_path / "some-project" / ".agents" / "skills"
+    assert resolved.is_absolute()
 
 
 def test_project_layer_keeps_position_before_extension_dir(tmp_path) -> None:
